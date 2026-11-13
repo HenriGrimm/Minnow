@@ -32,7 +32,7 @@ export function managedChatModelSelection(chat: Chat): ModelSelection {
 }
 export function formatManagedModelSelection(selection: ModelSelection): string {
   const options = selection.options ?? {};
-  return [selection.modelId, options.reasoningEffort ? `${options.reasoningEffort} effort` : options.thinkingMode && options.thinkingMode !== 'inherit' ? `thinking ${options.thinkingMode}` : '',
+  return [selection.modelId, options.fastMode === true ? 'Fast' : '', options.reasoningEffort ? `${options.reasoningEffort} effort` : options.thinkingMode && options.thinkingMode !== 'inherit' ? `thinking ${options.thinkingMode}` : '',
     Object.hasOwn(options, 'thinkingBudgetTokens') ? options.thinkingBudgetTokens == null ? 'no token budget' : `${options.thinkingBudgetTokens} token budget` : ''].filter(Boolean).join(' · ');
 }
 export function managedReasoningSelection(chat: Chat, value: string, effortLevels: boolean): ModelSelection {

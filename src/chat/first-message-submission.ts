@@ -25,6 +25,12 @@ export function acceptFirstMessageSubmission(chat: Chat, submissionId: string | 
   submission.accepted = !['settled', 'failed', 'cancelled'].includes(state);
 }
 
+/** The renderer's turn guard now owns the composer while the local echo remains visible. */
+export function releaseFirstMessageSubmission(chat: Chat): void {
+  const submission = submissions.get(chat);
+  if (submission) submission.active = false;
+}
+
 export function finishFirstMessageSubmission(chat: Chat, submissionId?: string): void {
   const submission = submissions.get(chat);
   if (!submission || submissionId !== undefined && submission.id !== submissionId) return;

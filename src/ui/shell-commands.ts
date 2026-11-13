@@ -9,6 +9,7 @@ import { showShellKeyboardHelp } from './shell-keyboard-help';
 import { sessionState, getSidebarListedChatsForWorkspace, getUnassignedChats } from '../state/sessions';
 import { getWorkspacePath } from '../state/workspace';
 import { buildRecentChatCommands } from './recent-chat-commands';
+import { SURFACES } from './surfaces/surface-registry';
 
 function recentChatCommands(): Command[] {
   if (!sessionState) return [];
@@ -111,12 +112,13 @@ export function codeCommands(inCode = getForegroundAppId() === 'code'): Command[
       },
     })),
     {
+      id: 'chat.group.new', title: 'New chat group', group: 'Chat', keywords: 'new group folder organize threads',
+      run: async () => (await import('./sidebar')).createSidebarChatGroup(),
+    },
+    {
       id: 'chat.search', title: 'Search chats', group: 'Chat', keywords: 'find history conversation messages',
-      available: () => Boolean(document.getElementById('btnChatSearch')),
-      run: async () => {
-        const anchor = document.getElementById('btnChatSearch');
-        if (anchor) (await import('./chat-search-popover')).openChatSearchPopover(anchor);
-      },
+      available: () => Boolean(document.querySelector('#graphiteThreadHeader:not([hidden]), .mn-os-mb-search')),
+      run: async () => (await import('./chat-search-popover')).openChatSearchPopover(),
     },
     {
       id: 'code.sidebar', title: 'Toggle chat sidebar', group: 'Code', keywords: 'sessions layout collapse',
@@ -133,6 +135,39 @@ export function codeCommands(inCode = getForegroundAppId() === 'code'): Command[
     {
       id: 'code.preview', title: 'Toggle preview', group: 'Code', keywords: 'browser website panel',
       run: async () => (await import('./preview-panel')).togglePreviewPanel(),
+    },
+    ...SURFACES.map(({ id, label }): Command => ({
+      id: `code.surface.${id}`,
+      title: `Open ${label}`,
+      group: 'Code',
+      keywords: `surface panel inspector ${id}`,
+      available: () => Boolean(document.getElementById('graphiteThreadHeader')),
+      run: async () => {
+        const { openSurface } = await import('./surfaces/surfaces-column');
+        if (!openSurface(id, id === 'changes' ? { force: true } : undefined)) {
+          (await import('./toast')).showToast(`${label} is unavailable for this thread`);
+        }
+      },
+    })),
+    ...(['side', 'bottom'] as const).map((panel): Command => ({
+      id: `code.surface.toggle.${panel}`,
+      title: `Toggle ${panel} panel`,
+      group: 'Code',
+      keywords: 'panel dock inspector right pane',
+      run: async () => (await import('./surfaces/surfaces-column')).toggleSurfacePanel(panel),
+    })),
+    {
+      id: 'code.surface.move', title: 'Move tab to other panel', group: 'Code', keywords: 'surface dock move',
+      run: async () => (await import('./surfaces/surfaces-column')).moveActiveSurface(),
+    },
+    {
+      id: 'code.surface.maximize', title: 'Maximize or restore panel', group: 'Code', keywords: 'surface dock expand full screen',
+      run: async () => (await import('./surfaces/surfaces-column')).toggleSurfaceMaximize(),
+    },
+    {
+      id: 'chat.thread-card', title: 'Thread card', group: 'Chat', keywords: 'thread branch worktree model changes',
+      shortcut: 'Ctrl/Cmd+.',
+      run: async () => (await import('./thread-card')).toggleThreadCard(),
     },
     {
       id: 'code.save', title: 'Save current file', group: 'Code', keywords: 'editor write document',

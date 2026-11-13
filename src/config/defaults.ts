@@ -2,10 +2,9 @@
  * Default persisted payloads when home dir or localStorage is empty.
  */
 
-import { SYSTEM_PROMPT_PRESETS } from '../constants';
 import { randomUUID } from '../lib/random-id.ts';
 import type { ToolConfig } from '../tools/tool-settings-types';
-import type { SessionState, SystemPromptSettings } from '../types';
+import type { SessionState } from '../types';
 import { defaultSkillConfig as buildDefaultSkillConfig } from '../skills/config';
 import { DEFAULT_MAX_OUTPUT_CHARS } from '../../server/tools/output-cap.js';
 import type { SkillConfig } from '../skills/config';
@@ -34,15 +33,6 @@ export function defaultUserRulesSettings(): UserRulesSettings {
     enabled: false,
     groups: [{ id: 'general', name: 'General' }],
     rules: [],
-  };
-}
-
-/** Default system prompt file contents. */
-export function defaultSystemPromptSettings(): SystemPromptSettings {
-  const preset = SYSTEM_PROMPT_PRESETS.find((p) => p.id === 'general-assistant');
-  return {
-    presetId: 'general-assistant',
-    text: preset?.text ?? 'You are a helpful, concise assistant.',
   };
 }
 

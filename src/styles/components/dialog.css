@@ -25,7 +25,7 @@
   max-height: min(85dvh, calc(100dvh - var(--mn-space-6)));
   border: 1px solid var(--mn-border);
   border-radius: var(--mn-radius-lg);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
   font-family: var(--font-ui);
   box-shadow: var(--shadow-popover-tall);

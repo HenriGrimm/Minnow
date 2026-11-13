@@ -73,6 +73,7 @@ const confirmingDeletes = new Set<string>();
 let bound = false;
 let renderedHost: HTMLElement | null = null;
 let structureKey = '';
+let libraryControlsOpen = false;
 
 function mount(): HTMLElement | null {
   return document.getElementById('modelsInstalledBody');
@@ -129,6 +130,7 @@ function selectControl(
 ): HTMLSelectElement {
   const select = el('select', 'models-select') as HTMLSelectElement;
   select.setAttribute('aria-label', ariaLabel);
+  select.dataset.libraryFocus = ariaLabel;
   for (const opt of options) {
     const option = el('option', undefined, opt.label) as HTMLOptionElement;
     option.value = opt.value;
@@ -143,7 +145,7 @@ function openSection(section: 'recommend' | 'settings' | 'server'): void {
   void import('../models-page').then((m) => m.openModels(section));
 }
 
-function renderHeading(groups: LibraryVariantGroup[]): HTMLElement {
+function renderHeading(groups: LibraryVariantGroup[], scanningEmpty: boolean): HTMLElement {
   const head = el('header', 'models-workspace-heading');
   const title = el('div', 'models-workspace-heading__main');
   title.append(
@@ -159,7 +161,8 @@ function renderHeading(groups: LibraryVariantGroup[]): HTMLElement {
   actions.append(storage, discover);
   head.append(title, actions);
   const summary = el('div', 'models-library-summary');
-  summary.append(icon('disk'), el('span', undefined, totals(groups)));
+  summary.append(icon('disk'), el('span', undefined, scanningEmpty ? 'Scanning for models…' : totals(groups)));
+  if (scanningEmpty) summary.setAttribute('role', 'status');
   const loaded = getModelsState().serves.filter((s) => s.status === 'running').length;
   if (loaded) {
     const server = textButton(`${loaded} serving`, () => openSection('server'));
@@ -182,13 +185,14 @@ function renderStatusFilters(groups: LibraryVariantGroup[]): HTMLElement {
   const bar = el('div', 'models-library-tabs');
   bar.setAttribute('role', 'group');
   bar.setAttribute('aria-label', 'Model status');
-  for (const [value, label] of [['all', 'All models'], ['loaded', 'Loaded'], ['attention', 'Needs attention']] as const) {
+  for (const [value, label] of [['all', 'All'], ['loaded', 'Loaded'], ['attention', 'Needs attention']] as const) {
     const count = groups.filter((group) => group.variants.some((model) => modelHasStatus(model, value))).length;
     const button = textButton(label, () => {
       filters.status = value;
       render();
     });
     button.className = 'models-library-tabs__button';
+    button.dataset.libraryFocus = value;
     button.setAttribute('aria-pressed', String(filters.status === value));
     button.appendChild(el('span', 'models-library-tabs__count', String(count)));
     bar.appendChild(button);
@@ -198,6 +202,7 @@ function renderStatusFilters(groups: LibraryVariantGroup[]): HTMLElement {
 
 function renderToolbar(all: LibraryModel[], shownGroups: LibraryVariantGroup[]): HTMLElement {
   const bar = el('div', 'models-toolbar');
+  bar.id = 'modelsLibraryControls';
 
   const searchWrap = el('div', 'models-search');
   searchWrap.appendChild(icon('search', 'models-search__icon'));
@@ -422,13 +427,17 @@ function renderGroupRow(
   if (group.variants.some((v) => v.id === selectedId)) row.classList.add('is-selected');
 
   const serve = serveForModel(active);
+  const load = loadForModel(active);
+  row.dataset.libraryStatus = load && !load.error ? 'loading' : serve?.status ?? (active.incomplete ? 'incomplete' : 'on-disk');
   if (serve?.status === 'running') row.classList.add('is-loaded');
 
   const identity = el('div', 'models-row__identity');
   const identityMain = el('div', 'models-row__identity-main');
   const mark = el('span', 'models-row__mark');
   mark.appendChild(producerLogoSpan(active.producerLogoId) ?? icon('cube'));
-  identity.append(mark, identityMain);
+  const dot = el('span', 'models-row__graphite-dot');
+  dot.setAttribute('aria-hidden', 'true');
+  identity.append(mark, dot, identityMain);
   const nameLine = el('div', 'models-row__name-line');
   const name = el('span', 'models-row__name', group.displayName);
   name.title = group.displayName;
@@ -453,9 +462,12 @@ function renderGroupRow(
   for (const capability of [...new Set(active.capabilities.map(capabilityLabel))].slice(0, 2)) {
     details.appendChild(el('span', 'models-row__capability', capability));
   }
-  identityMain.append(nameLine, repo, details);
+  const subtitle = el('span', 'models-row__graphite-summary', [active.publisher, active.arch].filter(Boolean).join(' · ') || active.repoId);
+  subtitle.title = active.repoId;
+  identityMain.append(nameLine, repo, details, subtitle);
   row.appendChild(identity);
 
+  row.appendChild(el('span', 'models-row__graphite-format', active.format));
   row.appendChild(renderQuantCell(group, active));
   const specs = el('div', 'models-row__specs');
   specs.append(
@@ -464,6 +476,20 @@ function renderGroupRow(
     el('span', 'models-row__cell models-row__cell--context', `${formatContext(active.contextLength)} context`),
   );
   row.appendChild(specs);
+  const status = el('div', 'models-row__graphite-status');
+  if (load && !load.error) {
+    const progress = el('progress', 'models-row__graphite-progress');
+    progress.max = 100;
+    if (load.percent != null) progress.value = load.percent;
+    progress.dataset.modelId = active.id;
+    progress.setAttribute('aria-label', `Load progress for ${group.displayName}`);
+    const phase = el('span', 'models-row__loading', load.phase);
+    phase.dataset.modelId = active.id;
+    status.append(progress, phase);
+  } else {
+    status.textContent = serve ? serveStatusLabel(serve.status) : active.incomplete ? 'Incomplete download' : 'On disk';
+  }
+  row.appendChild(status);
   row.appendChild(renderRowActions(active));
   for (const cell of row.children) cell.setAttribute('role', 'cell');
 
@@ -487,6 +513,7 @@ function renderSortHeader(
   const btn = el('button', 'models-table__sort') as HTMLButtonElement;
   btn.type = 'button';
   btn.dataset.sortKey = sortKey;
+  btn.dataset.libraryFocus = `sort:${sortKey}`;
   if (cellModifier) btn.classList.add(`models-row__cell--${cellModifier}`);
   const aria = libraryAriaSortValue(filters.listSort, sortKey);
   btn.dataset.sortDirection = aria;
@@ -515,11 +542,16 @@ function renderTable(
   const head = el('div', 'models-table__head');
   head.setAttribute('role', 'row');
   head.appendChild(renderSortHeader('Model', 'name'));
+  head.appendChild(el('span', 'models-table__th models-row__graphite-format', 'Format'));
   head.appendChild(renderSortHeader('Quantization', 'quant', 'quant'));
   head.appendChild(renderSortHeader('Size', 'size', 'size'));
+  head.appendChild(el('span', 'models-table__th models-row__graphite-status', 'Status'));
   head.appendChild(el('span', 'models-table__th', 'Actions'));
   for (const control of Array.from(head.children)) {
     const cell = el('div', 'models-library-column');
+    for (const className of ['models-row__graphite-format', 'models-row__graphite-status']) {
+      if (control.classList.contains(className)) cell.classList.add(className);
+    }
     cell.setAttribute('role', 'columnheader');
     const direction = (control as HTMLElement).dataset.sortDirection;
     if (direction && direction !== 'none') cell.setAttribute('aria-sort', direction);
@@ -564,6 +596,12 @@ function patchLoadingLabels(host: HTMLElement): void {
     const load = model && loadForModel(model);
     if (load && label.textContent !== load.phase) label.textContent = load.phase;
   }
+  for (const progress of host.querySelectorAll<HTMLProgressElement>('.models-row__graphite-progress')) {
+    const model = models.get(progress.dataset.modelId!);
+    const load = model && loadForModel(model);
+    if (load?.percent == null) progress.removeAttribute('value');
+    else if (progress.value !== load.percent || !progress.hasAttribute('value')) progress.value = load.percent;
+  }
 }
 
 /** Redraw My Models from store state. */
@@ -601,9 +639,10 @@ export function render(): void {
 
   const installable = loadableLibrary(state.library, { backend: state.hardware?.backend });
   const allGroups = prepareLibraryGroups(installable, {}, state.selectedId, state.serves, variantPreferences);
-  const heading = renderHeading(allGroups);
+  const scanningEmpty = state.scanning && !state.library.length;
+  const heading = renderHeading(allGroups, scanningEmpty);
 
-  if (state.scanning && !state.library.length) {
+  if (scanningEmpty) {
     host.replaceChildren(
       heading,
       skeletonRows(6),
@@ -662,7 +701,23 @@ export function render(): void {
     variantPreferences,
   );
   const fragment = document.createDocumentFragment();
-  fragment.append(heading, renderStatusFilters(allGroups), renderToolbar(installable, shownGroups));
+  const toolbar = renderToolbar(installable, shownGroups);
+  const headerTools = el('div', 'models-library-header-tools');
+  const toggle = iconButton('settings-sliders', 'Library controls', () => {
+    libraryControlsOpen = !libraryControlsOpen;
+    host.classList.toggle('is-controls-open', libraryControlsOpen);
+    toggle.setAttribute('aria-expanded', String(libraryControlsOpen));
+    host.style.setProperty('--models-toolbar-h', `${toolbar.offsetHeight}px`);
+  }, 'models-library-toolbar-toggle');
+  toggle.setAttribute('aria-controls', toolbar.id);
+  toggle.setAttribute('aria-expanded', String(libraryControlsOpen));
+  toggle.dataset.libraryFocus = 'controls';
+  headerTools.append(renderStatusFilters(allGroups), toggle);
+  heading.append(headerTools);
+  const headingActions = heading.querySelector('.models-workspace-heading__actions');
+  if (headingActions) heading.append(headingActions);
+  host.classList.toggle('is-controls-open', libraryControlsOpen);
+  fragment.append(heading, toolbar);
 
   if (!shownGroups.length) {
     const statusOnly = !filters.search && !filters.format && !filters.publisher && !filters.producer;
@@ -672,7 +727,7 @@ export function render(): void {
       emptyState({
         glyph: 'search',
         title: loadedEmpty ? 'No models loaded' : attentionEmpty ? 'All clear' : 'No matches',
-        body: loadedEmpty ? 'Choose a model from All models to start serving.'
+        body: loadedEmpty ? 'Choose a model from the full list to start serving.'
           : attentionEmpty ? 'Your local models have no reported runtime errors.'
           : 'No local model matches these filters.',
         action: {
@@ -693,12 +748,17 @@ export function render(): void {
   }
 
   const refocusSearch = isModelsSearchInputFocused();
+  const active = document.activeElement as HTMLElement | null;
+  const focusKey = active && host.contains(active) ? active.dataset.libraryFocus : undefined;
   host.replaceChildren(fragment);
 
-  const toolbar = host.querySelector<HTMLElement>('.models-toolbar');
-  if (toolbar) host.style.setProperty('--models-toolbar-h', `${toolbar.offsetHeight}px`);
+  host.style.setProperty('--models-toolbar-h', `${toolbar.offsetHeight}px`);
 
   if (refocusSearch) restoreModelsSearchInputFocus(host);
+  else if (focusKey) {
+    [...host.querySelectorAll<HTMLElement>('[data-library-focus]')]
+      .find((control) => control.dataset.libraryFocus === focusKey)?.focus({ preventScroll: true });
+  }
 }
 
 /** Mount My Models (idempotent). */

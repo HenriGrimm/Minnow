@@ -45,9 +45,9 @@ function listen(listener) {
   });
 }
 
-/** POST /api/tools against a local tools-middleware server. */
-async function postTools(baseUrl, body) {
-  const res = await fetch(`${baseUrl}/api/tools`, {
+/** POST against a local tools-middleware server. */
+async function postTools(baseUrl, body, endpoint = '/api/tools') {
+  const res = await fetch(`${baseUrl}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -109,6 +109,41 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
     assert.equal(res.status, 200);
     const json = await res.json();
     assert.deepEqual(json, { ok: true });
+  });
+
+  test('workspace file actions read, save and move files in Manual mode', async () => {
+    const setPermissionLevel = (permissionLevel) =>
+      updateConfigJson('config.json', config => ({ ...config, toolSecurity: { permissionLevel } }));
+    const fileAction = (name, args) =>
+      postTools(baseUrl, { name, args }, '/api/tools/workspace-files');
+
+    await setPermissionLevel('manual');
+    try {
+      const { json: saved } = await fileAction('save_file', { path: '.env', content: 'EXAMPLE=value' });
+      assert.match(saved.result, /^Saved /);
+      const { json: metadata } = await fileAction('get_file_metadata', { path: '.env' });
+      assert.match(metadata.result, /type: file/);
+      const { json: moved } = await fileAction('move_file', { source: '.env', destination: '.env.local' });
+      assert.match(moved.result, /^Moved /);
+      assert.equal(await fs.readFile(path.join(codeWorkspace, '.env.local'), 'utf8'), 'EXAMPLE=value');
+    } finally {
+      await fs.rm(path.join(codeWorkspace, '.env.local'), { force: true });
+      await fs.rm(path.join(codeWorkspace, '.env'), { force: true });
+      await setPermissionLevel('full');
+    }
+  });
+
+  test('workspace file actions reject other tools and enforce the project boundary in Full access', async () => {
+    const endpoint = '/api/tools/workspace-files';
+    const unsupported = await postTools(baseUrl, { name: 'get_datetime', args: {} }, endpoint);
+    assert.equal(unsupported.status, 400);
+    const outside = await postTools(baseUrl, {
+      name: 'save_file',
+      args: { path: '../outside.txt', content: 'outside' },
+      approvedOutsideWorkspace: true,
+    }, endpoint);
+    assert.match(outside.json.result, /resolves outside the workspace directory/);
+    await assert.rejects(fs.stat(path.join(homeDir, 'outside.txt')), { code: 'ENOENT' });
   });
 
   test('POST /api/tools list_directory still works', async () => {

@@ -22,6 +22,7 @@ const {
   finishWorkspaceGateSwitch,
   isHoldingWorkspaceGateForAppReady,
   isWorkspaceGateOpen,
+  markWorkspaceGateOpening,
   mountWorkspaceGateDom,
   onWorkspaceGateChosen,
   openWorkspaceGate,
@@ -42,6 +43,44 @@ describe('page-navigation', () => {
 });
 
 describe('workspace-gate boot', { concurrency: false }, () => {
+  test('the workspace switcher isolates covered controls and restores its opener on Escape', () => {
+    const win = setupShellDom();
+    resetWorkspaceGateForTests();
+    document.body.innerHTML = `
+      <button id="workspace-opener">Workspace</button>
+      <div id="osStage">
+        <div id="osWorkspaceGate" hidden></div>
+        <div id="welcomeView" hidden><button id="open">Open folder</button><details><summary id="sandbox">Sandbox</summary></details></div>
+        <div id="osAppsLayer"><button>Capture issue</button></div>
+        <div id="inactive" inert></div>
+      </div>
+      <div id="picker" data-above-shell-overlay hidden></div>`;
+    const opener = document.getElementById('workspace-opener')!;
+    const gate = document.getElementById('osWorkspaceGate')!;
+    const first = document.getElementById('open')!;
+    const last = document.getElementById('sandbox')!;
+    opener.focus();
+    openWorkspaceGate({ switch: true, opener });
+    assert.equal(document.activeElement, gate);
+    assert.equal(gate.getAttribute('aria-modal'), 'true');
+    assert.equal(document.getElementById('osAppsLayer')!.inert, true);
+    assert.equal(document.getElementById('picker')!.inert, false);
+    last.focus();
+    last.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(document.activeElement, first);
+    first.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(document.activeElement, last);
+    markWorkspaceGateOpening(true);
+    last.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(isWorkspaceGateOpen(), true);
+    markWorkspaceGateOpening(false);
+    last.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(isWorkspaceGateOpen(), false);
+    assert.equal(document.activeElement, opener);
+    assert.equal(document.getElementById('osAppsLayer')!.inert, false);
+    assert.equal(document.getElementById('inactive')!.inert, true);
+  });
+
   test('shouldBlockBootOnWorkspaceGate is false on reload', () => {
     setupShellDom();
     resetWorkspaceGateForTests();
@@ -149,14 +188,14 @@ describe('workspace-gate boot', { concurrency: false }, () => {
     resetInstancesForTests(); resetOsRouterForTests();
   });
 
-  test('switching project from Dashboard returns to Code without starting another chat', async () => {
+  test('switching project from Issues returns to Code without starting another chat', async () => {
     const window = setupShellDom();
     resetWorkspaceGateForTests(); resetInstancesForTests(); resetOsRouterForTests();
     const codeChat = seedMinimalSession('existing-project-chat');
     window.requestAnimationFrame = globalThis.requestAnimationFrame = cb => { cb(0); return 1; };
     globalThis.fetch = async () => new Response('{}');
     document.body.innerHTML = '<div id="osWorkspaceGate" hidden></div><div id="welcomeView" hidden></div>';
-    launchInstance('home'); window.location.hash = '#/app/home';
+    launchInstance('issues'); window.location.hash = '#/app/issues';
     openWorkspaceGate({ switch: true });
     await onWorkspaceGateChosen();
     assert.equal(getForegroundAppId(), 'code');

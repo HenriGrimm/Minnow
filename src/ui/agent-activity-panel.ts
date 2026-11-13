@@ -38,8 +38,16 @@ let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let feed: ActivityFeed | null = null;
 let lifetime = 0;
 let disposeMountedPanel: (() => void) | undefined;
+type ActivityPresentation = {
+  bell?: boolean;
+  phone?: boolean;
+  open?: (item: ActivityItem, childRunId?: string) => void;
+  settings?: () => void;
+};
+let presentation: ActivityPresentation | undefined;
 const labels = new Map<string, string>();
 const context = new Map<string, AgentActivityContextFill>();
+const dismissedExecutionAlerts = new Set<string>();
 
 function workspace(): string {
   return getViewWorkspacePath() || getWorkspacePath();
@@ -60,7 +68,7 @@ function snapshot(): ActivityFeed {
   });
   return buildActivityFeed({
     chats, live, notifications: getNotifications().filter((record) => isAppAvailable(record.appId)),
-    pendingChatIds: pending, workspacePath: workspace(),
+    pendingChatIds: pending, dismissedExecutionAlerts, workspacePath: workspace(),
   });
 }
 
@@ -73,13 +81,31 @@ function refresh(): void {
   feed = snapshot();
   if (!anchor) return;
   const count = feed.attention.length;
+  const hasAlerts = count > 0 || feed.unreadCount > 0;
   const agents = getRunningAgentCount(feed);
-  if (anchor.dataset.agentCount !== String(agents)) {
+  const phone = presentation?.phone === true;
+  const bellIcon = hasAlerts ? 'bellFilled' : 'bell';
+  const iconStyle = presentation?.bell || phone ? bellIcon : 'activity';
+  if (anchor.dataset.agentCount !== String(agents) || anchor.dataset.iconStyle !== iconStyle) {
     anchor.dataset.agentCount = String(agents);
+    anchor.dataset.iconStyle = iconStyle;
     anchor.classList.toggle('is-running', agents > 0);
-    anchor.innerHTML = agents
+    anchor.innerHTML = agents && iconStyle === 'activity'
       ? `<span class="activity-trigger__wheel" aria-hidden="true"><span class="activity-trigger__ring"></span><span class="activity-trigger__count">${agents > 99 ? '99+' : agents}</span></span>`
-      : iconHtml('appAgentActivity', { size: 16 });
+      : iconHtml(iconStyle === 'activity' ? 'appAgentActivity' : iconStyle, { size: 16 });
+  }
+  if (phone) {
+    const countLabel = count > 9 ? '9+' : String(count);
+    let badge = anchor.querySelector<HTMLElement>('.m-phone-alert-count');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'm-phone-alert-count';
+      badge.setAttribute('aria-hidden', 'true');
+      anchor.append(badge);
+    }
+    badge.hidden = !hasAlerts;
+    badge.classList.toggle('m-phone-alert-count--dot', !count);
+    badge.textContent = count ? countLabel : '';
   }
   anchor.classList.toggle('has-attention', count > 0);
   anchor.setAttribute('aria-label', `Activity, ${agents} agents running, ${count} need your attention, ${feed.unreadCount} unseen outcomes`);
@@ -95,10 +121,22 @@ function scheduleRefresh(): void {
 function position(): void {
   if (!anchor || !panel || !open) return;
   const rect = anchor.getBoundingClientRect();
+  if (presentation?.phone) {
+    const viewport = window.visualViewport;
+    panel.style.left = '8px';
+    panel.style.top = `${rect.bottom + 6}px`;
+    panel.style.bottom = 'auto';
+    panel.style.maxHeight = `${Math.max(100, (viewport?.height ?? window.innerHeight) - (rect.bottom - (viewport?.offsetTop ?? 0)) - 14)}px`;
+    return;
+  }
   const width = panel.offsetWidth;
-  panel.style.left = `${Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))}px`;
-  panel.style.top = `${rect.bottom + 6}px`;
-  panel.style.maxHeight = `${Math.max(100, window.innerHeight - rect.bottom - 14)}px`;
+  const below = window.innerHeight - rect.bottom;
+  const showAbove = below < 260 && rect.top > below;
+  const left = showAbove ? rect.left : rect.right - width;
+  panel.style.left = `${Math.max(8, Math.min(left, window.innerWidth - width - 8))}px`;
+  panel.style.top = showAbove ? 'auto' : `${rect.bottom + 6}px`;
+  panel.style.bottom = showAbove ? `${window.innerHeight - rect.top + 6}px` : 'auto';
+  panel.style.maxHeight = `${Math.max(100, (showAbove ? rect.top : below) - 14)}px`;
 }
 
 function refreshScheduled(): void {
@@ -209,31 +247,49 @@ export async function acknowledgeAgentActivityItems(items: ActivityItem[]): Prom
   refresh();
 }
 
+function dismissAlert(item: ActivityItem): void {
+  const executionId = item.live?.executionId;
+  // Restored executions can have an Activity row without a session notification.
+  if (executionId) dismissedExecutionAlerts.add(item.id);
+  resolveActivityNotifications(item.notifications.map((record) => record.id));
+  refresh();
+  if (item.chatId && item.activityCursor && item.activityCursor.executionId === executionId) {
+    void acknowledgeObservedManagedActivity(item.chatId, item.activityCursor).then(refresh).catch(reportError);
+  }
+}
+
 /** One workspace-scoped Activity control for live work, actionable alerts, and history. */
-export function initAgentActivityMenubar(button: HTMLButtonElement): () => void {
+export function initAgentActivityMenubar(button: HTMLButtonElement, options?: ActivityPresentation): () => void {
   disposeMountedPanel?.();
   anchor = button;
-  button.id = 'btnActivity';
+  presentation = options;
+  button.id = options?.phone ? 'btnPhoneActivity' : 'btnActivity';
   button.classList.add('activity-trigger');
   button.setAttribute('aria-haspopup', 'dialog');
   button.setAttribute('aria-controls', 'activityDropdown');
   const unbind = bindShellOverlayTrigger(button, 'activity');
   panel = document.createElement('section');
   panel.id = 'activityDropdown';
-  panel.className = 'activity-dropdown';
+  panel.className = options?.phone ? 'activity-dropdown activity-dropdown--phone' : 'activity-dropdown';
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Activity');
   panel.hidden = true;
   document.body.append(panel);
   view = createActivityDropdown(panel, {
-    open: (item, runId) => { void activate(item, runId).catch(reportError); },
+    open: (item, runId) => {
+      if (options?.open) {
+        closeAgentActivityPanel();
+        options.open(item, runId);
+      } else void activate(item, runId).catch(reportError);
+    },
     seen: (items) => { void acknowledgeAgentActivityItems(items).catch(reportError); },
-    dismiss: (item) => { void acknowledgeAgentActivityItems([item]).then(() => resolveActivityNotifications(item.notifications.map((record) => record.id))).catch(reportError); },
+    dismiss: dismissAlert,
     stop: (item) => { void stop(item).catch(reportError); },
     mute: () => saveNotificationPref('muted', !loadNotificationPrefs().muted),
     settings: () => {
       closeAgentActivityPanel();
-      void import('./settings-page').then((module) => module.openSettings('notifications'));
+      if (options?.settings) options.settings();
+      else void import('./settings-page').then((module) => module.openSettings('notifications'));
     },
     retry: async (item) => {
       const record = [...item.notifications].reverse().find((notice) => notice.jobId);
@@ -254,6 +310,7 @@ export function initAgentActivityMenubar(button: HTMLButtonElement): () => void 
     event.preventDefault(); closeAgentActivityPanel(); button.focus();
   };
   const visible = () => { if (!document.hidden) refresh(); };
+  const shellChanged = () => { refresh(); position(); };
   const subscriptions = [
     subscribeMainTurnActivity(scheduleRefresh), subscribeSubAgentRuns(scheduleRefresh),
     subscribeTitleJobActivity(scheduleRefresh), subscribeChatStreamEnd(scheduleRefresh),
@@ -262,10 +319,15 @@ export function initAgentActivityMenubar(button: HTMLButtonElement): () => void 
     subscribeNotificationPrefs(refresh), subscribeWorkspace(() => { context.clear(); scheduleRefresh(); }),
   ];
   button.addEventListener('click', click);
+  window.addEventListener('minnow:graphite-workspace-changed', shellChanged);
   document.addEventListener('pointerdown', outside, true);
   document.addEventListener('keydown', escape);
   document.addEventListener('visibilitychange', visible);
   window.addEventListener('resize', position);
+  if (options?.phone) {
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
+  }
   refresh();
   let disposed = false;
   const dispose = () => {
@@ -277,12 +339,17 @@ export function initAgentActivityMenubar(button: HTMLButtonElement): () => void 
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = null;
     button.removeEventListener('click', click);
+    window.removeEventListener('minnow:graphite-workspace-changed', shellChanged);
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', escape);
     document.removeEventListener('visibilitychange', visible);
     window.removeEventListener('resize', position);
+    if (options?.phone) {
+      window.visualViewport?.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('scroll', position);
+    }
     view?.destroy(); panel?.remove();
-    panel = null; anchor = null; view = null; feed = null;
+    panel = null; anchor = null; view = null; feed = null; presentation = undefined;
     context.clear(); labels.clear(); unbind();
     if (disposeMountedPanel === dispose) disposeMountedPanel = undefined;
   };

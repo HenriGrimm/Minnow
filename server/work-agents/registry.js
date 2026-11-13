@@ -300,25 +300,22 @@ export async function patchWorkAgentOverride(agentId, patch) {
 /**
  * Shipped work-agent prompt only (ignores ~/.minnow overrides).
  */
-export async function readBuiltinWorkAgentPrompt(projectRoot, agentId, profile) {
+export async function readBuiltinWorkAgentPrompt(projectRoot, agentId) {
   const builtinPath = path.join(
     builtinWorkAgentsDir(projectRoot),
     agentId,
-    `agent.${profile}.md`,
+    `agent.full.md`,
   );
   const raw = await fs.readFile(builtinPath, 'utf8');
   const parsed = parsePromptMarkdown(raw, builtinPath);
   return { content: parsed.body.trim(), source: 'builtin' };
 }
 
-async function readPackWorkAgentPrompt(agentId, profile) {
+async function readPackWorkAgentPrompt(agentId) {
   const source = getPackAgentSource(agentId);
   if (!source) return null;
 
-  const rel =
-    profile === 'lite' && source.promptPaths.lite
-      ? source.promptPaths.lite
-      : source.promptPaths.full;
+  const rel = source.promptPaths.full;
   const filePath = resolvePackPromptPath(source.packRoot, rel);
   const raw = await fs.readFile(filePath, 'utf8');
   const { parsePromptMarkdown } = await import('../prompts/parse.js');
@@ -331,7 +328,7 @@ async function readPackWorkAgentPrompt(agentId, profile) {
 }
 
 // Overrides are often raw markdown without YAML front matter.
-export async function readWorkAgentPrompt(projectRoot, agentId, profile) {
+export async function readWorkAgentPrompt(projectRoot, agentId) {
   const overridePath = (() => {
     try {
       return path.join(
@@ -339,7 +336,7 @@ export async function readWorkAgentPrompt(projectRoot, agentId, profile) {
         'prompts',
         'work-agents',
         agentId,
-        `agent.${profile}.md`,
+        `agent.full.md`,
       );
     } catch {
       return null;
@@ -360,15 +357,15 @@ export async function readWorkAgentPrompt(projectRoot, agentId, profile) {
     }
   }
 
-  const packPrompt = await readPackWorkAgentPrompt(agentId, profile);
+  const packPrompt = await readPackWorkAgentPrompt(agentId);
   if (packPrompt) return packPrompt;
 
-  return readBuiltinWorkAgentPrompt(projectRoot, agentId, profile);
+  return readBuiltinWorkAgentPrompt(projectRoot, agentId);
 }
 
-export async function writeWorkAgentPromptOverride(agentId, profile, content) {
+export async function writeWorkAgentPromptOverride(agentId, content) {
   const { workAgentPromptOverridePath } = await import('./paths.js');
-  const filePath = workAgentPromptOverridePath(agentId, profile);
+  const filePath = workAgentPromptOverridePath(agentId);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const body =
     typeof content === 'string' && content.trim()

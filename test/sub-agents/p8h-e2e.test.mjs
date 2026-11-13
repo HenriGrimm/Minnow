@@ -121,7 +121,6 @@ function installFactory() {
     lastEffector = createSubAgentEffector({
       parentChatId,
       model: MODEL,
-      promptVariant: 'lite',
       limits: { maxTurns: 8, wallClockMs: 25_000 },
       postChatCompletions: async (provider, body, signal) => {
         if (beforeModelCall) await beforeModelCall(body, signal);

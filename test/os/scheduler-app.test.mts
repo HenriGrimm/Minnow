@@ -156,11 +156,76 @@ describe('scheduler workspace shell', () => {
   });
 
   test('scheduler job editor opens as an in-app overlay', () => {
-    openJobEditorWindow({ title: 'Add scheduled job' });
+    openJobEditorWindow();
     const overlay = document.querySelector('.scheduler-editor-overlay');
     assert.ok(overlay);
     resetJobEditorWindowForTests();
     assert.equal(document.querySelector('.scheduler-editor-overlay'), null);
+  });
+
+  test('job editor contains focus and restores the launcher when dismissed', async () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+    openJobEditorWindow();
+    const dialog = document.querySelector<HTMLElement>('.scheduler-editor-overlay__dialog')!;
+    const heading = dialog.querySelector('h2')!;
+    assert.equal(dialog.getAttribute('aria-labelledby'), heading.id);
+    assert.equal(heading.textContent, 'New job');
+    assert.equal(opener.inert, true);
+    assert.ok(document.activeElement === dialog);
+    const key = (target: HTMLElement, value: string, shiftKey = false) =>
+      target.dispatchEvent(new window.KeyboardEvent('keydown', {
+        key: value, shiftKey, bubbles: true, cancelable: true,
+      }));
+    key(dialog, 'Escape');
+    assert.equal(dialog.isConnected, false);
+    assert.equal(opener.inert, false);
+    assert.ok(document.activeElement === opener);
+  });
+
+  test('failed job saves stay in the editor, preserve the draft, and can be retried', async () => {
+    const previousFetch = globalThis.fetch;
+    let attempts = 0;
+    let saved: Record<string, unknown> | undefined;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === '/api/scheduler/jobs' && init?.method === 'POST') {
+        attempts += 1;
+        if (attempts === 1) return Response.json({ error: 'Workspace is unavailable' }, { status: 400 });
+        saved = JSON.parse(String(init.body)).job;
+        return Response.json({ job: { ...saved, id: 'saved' } });
+      }
+      return previousFetch(input, init);
+    };
+    openJobEditorWindow();
+    const dialog = document.querySelector<HTMLElement>('.scheduler-editor-overlay__dialog')!;
+    for (let i = 0; i < 40 && !dialog.querySelector('.scheduler-editor__actions'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    const label = dialog.querySelector<HTMLInputElement>('input[placeholder="Morning standup summary"]')!;
+    const prompt = dialog.querySelector<HTMLTextAreaElement>('.scheduler-textarea')!;
+    const save = dialog.querySelector<HTMLButtonElement>('.scheduler-editor__actions button')!;
+    const error = dialog.querySelector<HTMLElement>('[role="alert"]')!;
+    save.click();
+    assert.equal(label.getAttribute('aria-invalid'), 'true');
+    assert.ok(document.activeElement === label);
+    label.value = 'Audit job';
+    prompt.value = 'Check the fixture';
+    for (const field of [label, prompt]) field.dispatchEvent(new window.Event('input'));
+    save.click();
+    for (let i = 0; i < 40 && error.textContent !== 'Workspace is unavailable'; i++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(error.hidden, false);
+    assert.equal(error.textContent, 'Workspace is unavailable');
+    assert.equal(label.value, 'Audit job');
+    assert.equal(prompt.value, 'Check the fixture');
+    assert.ok(document.activeElement === error);
+    save.click();
+    for (let i = 0; i < 40 && dialog.isConnected; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(dialog.isConnected, false);
+    assert.equal(attempts, 2);
+    assert.equal(saved?.prompt, 'Check the fixture');
   });
 
   test('watcher editor keeps repository configuration when saving guidance changes', async () => {

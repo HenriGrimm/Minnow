@@ -32,6 +32,7 @@ import {
   isProvidersApiAvailable,
   invalidateProviderCache,
   listProviders,
+  testDraftProviderConnection,
   updateProvider,
   updateProviderSecrets,
 } from '../providers/store';
@@ -51,6 +52,8 @@ import {
 } from './settings-layout';
 
 let stopProviderUsageViews: Array<() => void> = [];
+const CUSTOM_API_KIND: ApiKind = 'openai-v1';
+const draftConnectionChecks = new WeakMap<HTMLFormElement, AbortController>();
 
 /** Prefer the top-bar #modelSelect model for this provider, then the active chat binding. */
 function resolveProbePreferredModelId(providerId: string): string | undefined {
@@ -466,13 +469,13 @@ function buildProvidersAddForm(): HTMLFormElement {
   );
   form.append(urlField);
 
-  const kindSel = appendApiFields(form, 'lm-studio-v0', 'bearer');
+  const kindSel = appendApiFields(form, CUSTOM_API_KIND, 'bearer', true);
   kindSel.id = 'settingsProvidersAddApiKind';
   const authSel = form.querySelector<HTMLSelectElement>('select[name="authStyle"]');
   if (authSel) authSel.id = 'settingsProvidersAddAuthStyle';
 
-  const defaultPaths = getDefaultPaths('lm-studio-v0');
-  appendPathFields(form, defaultPaths.modelsPath, defaultPaths.chatCompletionsPath, 'lm-studio-v0');
+  const defaultPaths = getDefaultPaths(CUSTOM_API_KIND);
+  appendPathFields(form, defaultPaths.modelsPath, defaultPaths.chatCompletionsPath, CUSTOM_API_KIND);
   const modelsInput = form.querySelector<HTMLInputElement>('input[name="modelsPath"]');
   const chatInput = form.querySelector<HTMLInputElement>('input[name="chatCompletionsPath"]');
   if (modelsInput) modelsInput.id = 'settingsProvidersAddModelsPath';
@@ -512,11 +515,16 @@ function buildProvidersAddForm(): HTMLFormElement {
   const err = el('p', 'settings-providers-form-error hidden');
   err.id = 'settingsProvidersAddError';
   err.setAttribute('role', 'alert');
-  form.append(err);
+  const connectionStatus = el('p', 'field-hint settings-providers-connection-status');
+  connectionStatus.dataset.providerDraftConnectionStatus = '';
+  connectionStatus.setAttribute('role', 'status');
+  connectionStatus.hidden = true;
+  form.append(err, connectionStatus);
 
   form.append(
     createSettingsActionsRow(
       [
+        { label: 'Test connection', type: 'button', id: 'settingsProvidersAddTest' },
         { label: 'Add provider', type: 'submit', variant: 'primary' },
         { label: 'Cancel', type: 'button', id: 'settingsProvidersAddReset' },
       ],
@@ -876,6 +884,7 @@ function appendApiFields(
   parent: HTMLElement,
   apiKind: ApiKind,
   authStyle: AuthStyle,
+  showApiKind = false,
 ): HTMLSelectElement {
   const row = el('div', 'field-row');
 
@@ -915,9 +924,15 @@ function appendApiFields(
   }
   authSel.value = authStyle;
   authField.append(authSel);
-  row.append(authField);
+  if (showApiKind) {
+    row.dataset.providerPrimaryApi = '';
+    authField.dataset.providerAdvancedField = '';
+    parent.append(row, authField);
+  } else {
+    row.append(authField);
+    parent.append(row);
+  }
 
-  parent.append(row);
   return kindSel;
 }
 
@@ -1115,6 +1130,7 @@ export function createProviderSettingsRow(
   provider: ProviderPublic,
   canRemove: boolean,
   capabilities: ProviderCapabilities | null = null,
+  active = false,
 ): HTMLElement {
   const row = el('div', 'settings-providers-row');
   row.setAttribute('role', 'listitem');
@@ -1123,6 +1139,7 @@ export function createProviderSettingsRow(
   const summary = el('summary', 'settings-providers-row-head');
   const identity = el('span', 'settings-providers-row-identity');
   identity.append(el('span', 'settings-providers-name', provider.label));
+  if (active) identity.firstElementChild?.append(el('span', 'models-provider-active', 'Active'));
   identity.append(el('span', 'settings-providers-endpoint', provider.baseUrl));
   const state = el('span', 'settings-providers-state', provider.enabled === false ? 'Disabled' : 'Enabled');
   state.dataset.enabled = String(provider.enabled !== false);
@@ -1178,10 +1195,23 @@ export function createProviderSettingsRow(
   };
   panel.addEventListener('toggle', reveal);
   row.append(panel);
+  const metrics = el('div', 'models-provider-metrics');
+  const modelCount = el('span', 'models-provider-models', '—');
+  const latency = el('span', 'models-provider-latency', '—');
+  latency.title = 'Round-trip time for the connection test';
+  const result = el('span', 'models-provider-result');
+  result.setAttribute('role', 'status');
+  const quickTest = el('button', 'models-provider-test', 'Test');
+  quickTest.type = 'button';
+  quickTest.dataset.providerTest = provider.id;
+  quickTest.setAttribute('aria-label', `Test ${provider.label}`);
+  metrics.append(el('span', 'models-provider-kind', provider.apiKind), modelCount, latency,
+    el('span', 'models-provider-credential', provider.hasApiKey || provider.hasBearer ? 'Key saved' : 'No key'), quickTest, result);
+  row.append(metrics);
   return row;
 }
 
-/** CLI connections are configured in Models → CLIs, but still belong in Providers. */
+/** CLI connections are configured in Models → Subscriptions, but still belong in Providers. */
 export function createAgentCliProviderSettingsRow(provider: ProviderPublic): HTMLElement {
   const row = el('div', 'settings-providers-row settings-providers-row--cli');
   row.setAttribute('role', 'listitem');
@@ -1190,11 +1220,11 @@ export function createAgentCliProviderSettingsRow(provider: ProviderPublic): HTM
   const identity = el('div', 'settings-providers-row-identity');
   identity.append(
     el('span', 'settings-providers-name', provider.label),
-    el('span', 'settings-providers-endpoint', 'Agent CLI'),
+    el('span', 'settings-providers-endpoint', 'Subscription'),
   );
   const state = el('span', 'settings-providers-state', provider.enabled === false ? 'Disabled' : 'Enabled');
   state.dataset.enabled = String(provider.enabled !== false);
-  const manage = el('button', 'settings-inline-btn', 'Manage CLI');
+  const manage = el('button', 'settings-inline-btn', 'Manage connection');
   manage.type = 'button';
   manage.addEventListener('click', () => {
     void import('./models-page').then((m) => m.openModels('clis'));
@@ -1205,6 +1235,8 @@ export function createAgentCliProviderSettingsRow(provider: ProviderPublic): HTM
 }
 
 function closeProvidersAddPanel(): void {
+  const form = providersAddGroupEl?.querySelector('form');
+  if (form) resetDraftConnectionCheck(form);
   providersAddGroupEl?.classList.add('hidden');
   const button = document.getElementById('settingsProvidersAddButton');
   button?.setAttribute('aria-expanded', 'false');
@@ -1220,6 +1252,7 @@ function organizeProviderForm(form: HTMLFormElement, adding = false): void {
   if (idField) content.append(idField);
   const names = ['apiKind', 'authStyle', 'modelsPath', 'chatCompletionsPath', 'constrainedToolCalls'];
   for (const child of Array.from(form.children)) {
+    if (child.matches('[data-provider-primary-api]')) continue;
     if ((adding && child.querySelector('[name="enabled"]')) || child.matches('[data-provider-advanced-field], [data-provider-paths-hint], .settings-providers-gateway-fields, .settings-providers-pricing-panel') ||
       names.some((name) => child.querySelector(`[name="${name}"]`))) {
       content.append(child);
@@ -1266,12 +1299,15 @@ function isProviderFormDirty(form: HTMLFormElement): boolean {
 }
 
 async function testProviderConnection(button: HTMLButtonElement): Promise<void> {
-  const form = button.closest('form');
-  const status = form?.querySelector<HTMLElement>('[data-provider-connection-status]');
-  if (!form || !status) return;
+  const row = button.closest('.settings-providers-row');
+  const inline = button.classList.contains('models-provider-test');
+  const form = button.closest('form') ?? row?.querySelector('form');
+  const status = inline ? row?.querySelector<HTMLElement>('.models-provider-result')
+    : form?.querySelector<HTMLElement>('[data-provider-connection-status]');
+  if (!status) return;
   status.classList.remove('hidden');
   status.dataset.tone = 'muted';
-  if (isProviderFormDirty(form)) {
+  if (form && isProviderFormDirty(form)) {
     status.textContent = 'Wait for changes to save before testing this connection.';
     return;
   }
@@ -1281,37 +1317,105 @@ async function testProviderConnection(button: HTMLButtonElement): Promise<void> 
   status.dataset.tone = 'muted';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
+  const started = performance.now();
+  const modelCount = row?.querySelector('.models-provider-models');
+  const latency = row?.querySelector('.models-provider-latency');
   try {
     const response = await fetch(`/api/providers/${encodeURIComponent(button.dataset.providerTest ?? '')}/models`, { cache: 'no-store', signal: controller.signal });
     const body = await response.json() as { data?: unknown[]; unreachable?: boolean; error?: string };
     if (!response.ok || body.unreachable || body.error) throw new Error(body.error || `Connection failed (HTTP ${response.status}).`);
     if (!Array.isArray(body.data)) throw new Error('The server returned an invalid model catalog.');
     const count = body.data.length;
+    if (modelCount) modelCount.textContent = `${count} ${count === 1 ? 'model' : 'models'}`;
+    if (latency) latency.textContent = `${Math.round(performance.now() - started)} ms`;
+    if (row instanceof HTMLElement) row.dataset.connection = 'connected';
     status.dataset.tone = 'ok';
     status.textContent = count ? `Connected. ${count} ${count === 1 ? 'model' : 'models'} available.` : 'Connected. No models available yet.';
   } catch (error) {
+    if (modelCount) modelCount.textContent = '—';
+    if (latency) latency.textContent = '—';
+    if (row instanceof HTMLElement) row.dataset.connection = 'failed';
     status.dataset.tone = 'error';
     status.textContent = error instanceof Error && error.name === 'AbortError' ? 'Connection timed out. Check the server address and try again.' : error instanceof Error ? error.message : 'Could not connect.';
   } finally {
     clearTimeout(timer);
     button.disabled = false;
-    button.textContent = 'Test connection';
+    button.textContent = inline ? 'Test' : 'Test connection';
+  }
+}
+
+function resetDraftConnectionCheck(form: HTMLFormElement): void {
+  draftConnectionChecks.get(form)?.abort();
+  draftConnectionChecks.delete(form);
+  const status = form.querySelector<HTMLElement>('[data-provider-draft-connection-status]');
+  if (status) {
+    status.hidden = true;
+    status.textContent = '';
+  }
+  const button = form.querySelector<HTMLButtonElement>('#settingsProvidersAddTest');
+  if (button && !form.dataset.saving) button.disabled = false;
+}
+
+async function testDraftConnection(form: HTMLFormElement, button: HTMLButtonElement): Promise<void> {
+  if (draftConnectionChecks.has(form) || form.dataset.saving) return;
+  const status = form.querySelector<HTMLElement>('[data-provider-draft-connection-status]');
+  if (!status) return;
+  const address = form.querySelector<HTMLInputElement>('[name="baseUrl"]');
+  const baseUrl = address?.value.trim();
+  status.hidden = false;
+  if (!baseUrl || !address?.validity.valid || !/^https?:\/\//i.test(baseUrl)) {
+    status.dataset.tone = 'error';
+    status.textContent = 'Enter a server address beginning with http:// or https://.';
+    address?.focus();
+    return;
+  }
+  const controller = new AbortController();
+  draftConnectionChecks.set(form, controller);
+  button.disabled = true;
+  status.dataset.tone = 'muted';
+  status.textContent = 'Checking the model catalog…';
+  try {
+    const count = await testDraftProviderConnection({
+      baseUrl,
+      apiKind: parseApiKind(form.querySelector('[name="apiKind"]')),
+      authStyle: parseAuthStyle(form.querySelector('[name="authStyle"]')),
+      modelsPath: form.querySelector<HTMLInputElement>('[name="modelsPath"]')?.value.trim(),
+      apiKey: form.querySelector<HTMLInputElement>('[name="apiKey"]')?.value.trim(),
+    }, controller.signal);
+    if (controller.signal.aborted) return;
+    status.dataset.tone = 'ok';
+    status.textContent = count ? `Connected. ${count} ${count === 1 ? 'model' : 'models'} available.` : 'Connected. No models available yet.';
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    status.dataset.tone = 'error';
+    status.textContent = error instanceof TypeError ? 'Could not reach Minnow. Check the connection and try again.'
+      : error instanceof Error ? error.message : 'Could not test the connection. Try again.';
+  } finally {
+    if (draftConnectionChecks.get(form) === controller) {
+      draftConnectionChecks.delete(form);
+      button.disabled = false;
+    }
   }
 }
 
 function clearProvidersAddForm(): void {
   const form = document.getElementById('settingsProvidersAddForm') as HTMLFormElement | null;
   form?.reset();
+  if (form) resetDraftConnectionCheck(form);
   const id = form?.querySelector<HTMLInputElement>('input[name="id"]');
   if (id) delete id.dataset.manual;
   const enabled = document.getElementById('settingsProvidersAddEnabled') as HTMLInputElement | null;
   if (enabled) enabled.checked = true;
   const apiKind = document.getElementById('settingsProvidersAddApiKind') as HTMLSelectElement | null;
-  if (apiKind) apiKind.value = 'lm-studio-v0';
+  if (apiKind) apiKind.value = CUSTOM_API_KIND;
   const authStyle = document.getElementById('settingsProvidersAddAuthStyle') as HTMLSelectElement | null;
   if (authStyle) authStyle.value = 'bearer';
-  if (form) fillPathInputs(form, 'lm-studio-v0');
-  if (apiKind) apiKind.dataset.prevApiKind = 'lm-studio-v0';
+  if (form) {
+    fillPathInputs(form, CUSTOM_API_KIND);
+    updatePathFieldLabels(form, CUSTOM_API_KIND);
+    syncGatewayFieldVisibility(form);
+  }
+  if (apiKind) apiKind.dataset.prevApiKind = CUSTOM_API_KIND;
   const err = document.getElementById('settingsProvidersAddError');
   err?.classList.add('hidden');
   if (err) err.textContent = '';
@@ -1359,6 +1463,16 @@ function bindProvidersAddForm(): void {
     wirePathSyncOnApiKindChange(form, apiKindInput);
     renderProvidersAddPicker(form);
     showProvidersAddPicker();
+    const test = form.querySelector<HTMLButtonElement>('#settingsProvidersAddTest');
+    test?.addEventListener('click', () => void testDraftConnection(form, test));
+    const invalidateConnection = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('[name="baseUrl"], [name="apiKind"], [name="authStyle"], [name="modelsPath"], [name="apiKey"]')) {
+        resetDraftConnectionCheck(form);
+      }
+    };
+    form.addEventListener('input', invalidateConnection);
+    form.addEventListener('change', invalidateConnection);
   }
 
   const backBtn = document.getElementById('settingsProvidersAddBack');
@@ -1369,6 +1483,7 @@ function bindProvidersAddForm(): void {
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
     if (!form) return;
+    resetDraftConnectionCheck(form);
     void runProviderFormAction(form, errEl, async () => {
       const idInput = document.getElementById('settingsProvidersAddId') as HTMLInputElement | null;
       const labelInput = document.getElementById('settingsProvidersAddLabel') as HTMLInputElement | null;
@@ -1762,7 +1877,7 @@ function bindProvidersListActions(listEl: HTMLElement): void {
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
-/** Agent CLI providers are managed exclusively from Models → CLIs. */
+/** Agent CLI providers are managed exclusively from Models → Subscriptions. */
 export function filterGenericProviderSettingsRows(
   providers: ProviderPublic[],
 ): ProviderPublic[] {
@@ -1784,7 +1899,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   bindProvidersAddForm();
   bindProvidersListActions(listEl);
   const openIds = new Set(Array.from(listEl.querySelectorAll<HTMLDetailsElement>('.settings-providers-edit-panel[open]'), (panel) => panel.closest<HTMLElement>('[data-provider-id]')?.dataset.providerId));
-  const { providers } = await listProviders().catch(() => ({ providers: [] }));
+  const { providers, activeProviderId } = await listProviders().catch(() => ({ providers: [], activeProviderId: '' }));
   if (revision !== providersRenderRevision || !listEl.isConnected) return;
   const online = isServerStorageMode() && isProvidersApiAvailable();
   providersOfflineEl?.classList.toggle('hidden', online);
@@ -1821,7 +1936,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   const rows = document.createDocumentFragment();
   configurableProviders.sort((a, b) => Number(b.enabled !== false) - Number(a.enabled !== false));
   configurableProviders.forEach((provider) => {
-    const row = createProviderSettingsRow(provider, canRemove);
+    const row = createProviderSettingsRow(provider, canRemove, null, provider.id === activeProviderId);
     rows.append(row);
     const panel = row.querySelector<HTMLDetailsElement>('.settings-providers-edit-panel');
     if (panel && openIds.has(provider.id)) panel.open = true;

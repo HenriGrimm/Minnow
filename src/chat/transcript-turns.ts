@@ -1,6 +1,7 @@
 import type { Chat, TurnRunRecord } from '../types';
 import { isHiddenTranscriptUserMessage, isSubAgentResumeUserMessage } from './hidden-transcript-user-messages';
 import { apiMessageContentToText } from '../api/message-content';
+import { isToolResultFailure } from '../lib/tool-result-failure';
 
 export interface TranscriptTurn {
   fork: number;
@@ -22,6 +23,7 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
   if (chat.historyLoaded === false) return [];
   const turns: TranscriptTurn[] = [];
   const byCommand = new Map<string, TranscriptTurn>();
+  const pendingToolIds = new Set<string>();
   let turn: TranscriptTurn | undefined;
   for (let i = 0; i < chat.history.length; i++) {
     const msg = chat.history[i];
@@ -31,6 +33,7 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
     if (msg.role === 'user' && (!isHiddenTranscriptUserMessage(msg) || msg.provenance?.kind === 'delegation_result') && (!turn || !msg.steer && !agentResume)) {
       turn = { fork: i, end: i, finalIndex: null, finalIndices: [], toolCount: 0 };
       turns.push(turn);
+      pendingToolIds.clear();
     }
     if (!turn) continue;
     turn.end = i;
@@ -45,9 +48,13 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
       turn.finalIndices = [];
       turn.finalIndex = null;
     }
+    if (msg.role === 'tool' && pendingToolIds.delete(msg.tool_call_id) && isToolResultFailure(msg.content)) {
+      turn.toolCount--;
+    }
     if (msg.role === 'assistant') {
       if ('tool_calls' in msg && msg.tool_calls?.length) {
         turn.toolCount += msg.tool_calls.length;
+        for (const call of msg.tool_calls) pendingToolIds.add(call.id);
         if (!msg.tool_calls.every((call) => REPLY_BOOKKEEPING_TOOLS.has(call.function.name))) {
           turn.finalIndices = [];
           turn.finalIndex = null;

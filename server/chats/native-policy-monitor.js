@@ -4,9 +4,9 @@ import path from 'node:path';
 const listeners = new Set();
 const normalize = value => String(value ?? '').replaceAll('\\', '/').toLowerCase();
 const relevant = value => /^(?:config\.json|tools\.json|sub-agents\.json|rules\.json|skills\.json|system-prompt\.json)(?:$|\.tmp-)/.test(value)
-  || /^(?:work-agents|agents|mcp|plugins|prompts|tools|agent-packs|prompt-configs|profiles)(?:[/.]|$)/.test(value)
+  || /^(?:work-agents|agents|mcp|plugins|prompts|tools|agent-packs|profiles)(?:[/.]|$)/.test(value)
   || /^providers\/.*(?:secrets|credentials|capabilities)/.test(value);
-const policyDirectories = ['work-agents', 'agents', 'mcp', 'plugins', 'prompts', 'tools', 'agent-packs', 'prompt-configs', 'profiles', 'providers'];
+const policyDirectories = ['work-agents', 'agents', 'mcp', 'plugins', 'prompts', 'tools', 'agent-packs', 'profiles', 'providers'];
 const providerAuthority = profile => {
   if (!profile) return null;
   const { createdAt, updatedAt, label, pricing, ...rest } = profile;

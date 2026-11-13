@@ -39,9 +39,6 @@ function formatBreakdownLine(est: OutboundPromptEstimate): string {
     `Tools ~${est.tools.toLocaleString()}`,
     `Rules ~${est.userRules.toLocaleString()}`,
   ];
-  if (est.legacyFallback) {
-    parts[0] = 'System (legacy drawer) ~' + est.composedSystem.toLocaleString();
-  }
   return parts.join(' · ');
 }
 

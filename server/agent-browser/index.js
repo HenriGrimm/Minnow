@@ -672,7 +672,8 @@ export class AgentBrowserService extends EventEmitter {
       }
       if (tab.session.native) {
         const hit = await tab.session.client.send('DOM.getNodeForLocation', {
-          ...selection.point, includeUserAgentShadowDOM: true, ignorePointerEventsNone: true,
+          x: Math.round(selection.point.x), y: Math.round(selection.point.y),
+          includeUserAgentShadowDOM: true, ignorePointerEventsNone: true,
         });
         if (hit.backendNodeId !== selection.backendNodeId) {
           tab.guideSelections.delete(input.selectionToken);

@@ -183,8 +183,7 @@ function buildSummary(parts: readonly DetailRowSummaryPart[]): HTMLElement {
 /**
  * Build one property row and its detail host.
  *
- * The row is a button whenever it can do something: open the detail when it
- * has content, run the add action when it does not.
+ * The disclosure and trailing action are separate controls in one row.
  */
 export function createDetailRow(options: DetailRowOptions): DetailRowHandle {
   const section = document.createElement('section');
@@ -200,26 +199,28 @@ export function createDetailRow(options: DetailRowOptions): DetailRowHandle {
   const expandable = Boolean(options.expandable);
   const interactive = expandable || Boolean(options.onAdd);
 
-  const row = interactive ? document.createElement('button') : document.createElement('div');
+  const row = document.createElement('div');
   row.className = 'issues-detail__row';
   if (filled) row.classList.add('is-filled');
-  const rowButton = interactive ? (row as HTMLButtonElement) : null;
+  const rowButton = interactive ? document.createElement('button') : null;
+  const content = rowButton ?? document.createElement('div');
+  content.className = 'issues-detail__row-trigger';
   if (rowButton) rowButton.type = 'button';
 
-  row.appendChild(createIcon(options.icon, { size: 14, className: 'issues-detail__row-icon' }));
+  content.appendChild(createIcon(options.icon, { size: 14, className: 'issues-detail__row-icon' }));
 
-  const name = document.createElement('h3');
+  const name = document.createElement('span');
   name.className = 'issues-detail__section-title';
   name.textContent = options.label;
-  row.appendChild(name);
+  content.appendChild(name);
 
   // Value sits beside its name, not pinned to the far edge: at peek widths a
   // right-aligned value ends up hundreds of pixels from the label it belongs to.
-  if (filled) row.appendChild(buildSummary(summary));
+  if (filled) content.appendChild(buildSummary(summary));
 
   const trailing = document.createElement('span');
   trailing.className = 'issues-detail__row-trailing';
-  row.appendChild(trailing);
+  row.append(content, trailing);
 
   section.append(row, body);
 
@@ -227,7 +228,7 @@ export function createDetailRow(options: DetailRowOptions): DetailRowHandle {
     trailing.replaceChildren(control);
   };
 
-  if (options.onAdd) {
+  if (options.onAdd && expandable) {
     const add = options.onAdd;
     setTrailing(
       createDetailIconButton({
@@ -262,9 +263,16 @@ export function createDetailRow(options: DetailRowOptions): DetailRowHandle {
     };
   } else {
     body.hidden = true;
+    expand = () => {
+      section.classList.add('is-open');
+      body.hidden = false;
+    };
     if (rowButton && options.onAdd) {
       const add = options.onAdd;
-      rowButton.title = options.addLabel ?? `Add to ${options.label}`;
+      const addLabel = options.addLabel ?? `Add to ${options.label}`;
+      rowButton.title = addLabel;
+      rowButton.setAttribute('aria-label', addLabel);
+      rowButton.append(createIcon(options.addIcon ?? 'plus', { size: 14, className: 'issues-detail__row-add-icon' }));
       rowButton.addEventListener('click', () => add(rowButton));
     }
   }

@@ -238,7 +238,7 @@ html.mn-narrow.minnow-os-enabled .mn-os-app-rail__tooltip {
   background: var(--mn-fg-muted);
   color: var(--mn-bg);
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--mn-type-2xs);
   font-weight: 600;
   line-height: 15px;
   text-align: center;

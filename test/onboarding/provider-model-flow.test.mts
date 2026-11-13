@@ -19,6 +19,7 @@ mock.module('../../src/providers/store.ts', { namedExports: {
   createProvider: async (provider: any) => ({ ok: true, provider }),
   updateProvider: async (id: string, provider: any) => ({ ok: true, provider: { ...provider, id } }),
   updateProviderSecrets: async () => ({ ok: true }),
+  testDraftProviderConnection: async () => modelRows.length,
 } });
 mock.module('../../src/providers/fetch-models.ts', { namedExports: {
   fetchModelsForProvider: async () => modelRequest ? modelRequest() : modelRows,
@@ -96,7 +97,7 @@ test('switching from a connected local provider to cloud cannot reuse local cred
     url.dispatchEvent(new win.Event('input'));
     assert.equal(state.enabled(), false, 'editing a tested URL requires another test');
     providerChoiceStep.render(container, ctx, actions);
-    container.querySelectorAll<HTMLButtonElement>('.mn-onboarding-choice')[1].click();
+    container.querySelectorAll<HTMLButtonElement>('.mn-onboarding-choice')[2].click();
     providerCloudStep.render(container, ctx, actions);
     await flush();
     assert.equal(state.enabled(), false);
@@ -111,6 +112,8 @@ test('provider paths use the requested labels and order', () => {
   try {
     providerChoiceStep.render(container, ctx, actions);
     assert.deepEqual(Array.from(container.querySelectorAll('.mn-onboarding-choice__title'), node => node.textContent),
-      ['Minnow', 'Cloud API', 'CLI', 'External Local Server']);
+      ['Subscriptions', 'Run with Minnow', 'Cloud API', 'Local server']);
+    container.querySelector<HTMLButtonElement>('.mn-onboarding-choice')!.click();
+    assert.equal(ctx.providerPath, 'cli');
   } finally { win.close(); }
 });

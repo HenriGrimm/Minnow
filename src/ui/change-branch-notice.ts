@@ -2,7 +2,8 @@ import type { Chat } from '../types';
 import { worktreePathsEqual } from '../lib/worktree-list-parse';
 import { gitBranches, gitCheckoutSwitch, type GitCheckoutSwitchInput } from '../state/git-api';
 import { getWorkspacePath } from '../state/workspace';
-import { appChoice, appConfirm } from './app-dialog';
+import { appConfirm } from './app-dialog';
+import { chooseDirtyCheckout } from './git-checkout-confirm';
 import { createIcon } from './icon';
 import '../styles/change-branch-notice.css';
 
@@ -52,19 +53,10 @@ export async function switchToChangeBranch(checkout: Required<ChangeCheckout>): 
   const input: GitCheckoutSwitchInput = { cwd, branch, expectedBranch: current.current || 'HEAD' };
   let result = await gitCheckoutSwitch(input);
   if (result.needsChoice) {
-    const choice = await appChoice({
-      title: `Switch to ${branch}?`,
-      message: `You have ${result.fileCount ?? 0} uncommitted files on ${result.branch}. Choose where to keep them.`,
-      buttons: [
-        { id: 'leave', label: `Leave changes on ${result.branch}` },
-        { id: 'bring', label: 'Bring my changes' },
-        { id: 'cancel', label: 'Cancel' },
-      ],
-      cancelId: 'cancel', defaultFocusId: 'cancel',
-    });
-    if (!choice || (choice.id !== 'bring' && choice.id !== 'leave')) return false;
+    const dirtyHandling = await chooseDirtyCheckout(branch, result);
+    if (!dirtyHandling) return false;
     if (!(await warn())) return false;
-    result = await gitCheckoutSwitch({ ...input, expectedBranch: result.branch, dirtyHandling: choice.id });
+    result = await gitCheckoutSwitch({ ...input, expectedBranch: result.branch, dirtyHandling });
   }
   if (!result.ok) throw new Error(result.error || 'Could not switch branches');
   const { sessionState, touchChat, scheduleSaveSessions } = await import('../state/sessions');

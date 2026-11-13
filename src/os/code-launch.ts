@@ -7,6 +7,7 @@ import { sendMessageWithTools, sendProgrammaticChatText } from '../chat/messagin
 import { formatCodeRefLabel } from '../attachments/code-ref-format';
 import type { Attachment } from '../attachments/types';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import { applyChatRunTargetChoice, parseChatRunTargetChoice } from '../state/chat-worktree';
 import { findChatById, scheduleSaveSessions, touchChat } from '../state/sessions';
 import { getWorkspacePath, isCurrentWindowWorkspace } from '../state/workspace';
@@ -79,6 +80,7 @@ export async function restoreCodeSessionOnForeground(): Promise<void> {
   const workspaceKey = normalizeWorkspacePath(workspacePath);
   const activeInCurrentWorkspace =
     !activeIsAssistant &&
+    !isGraphiteSideChat(active) &&
     normalizeWorkspacePath(active.workspacePath ?? '') === workspaceKey;
 
   if (activeInCurrentWorkspace) {

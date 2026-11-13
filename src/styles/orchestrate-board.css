@@ -74,7 +74,7 @@
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   font-family: var(--font-ui);
-  font-size: 0.62rem;
+  font-size: var(--mn-type-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -555,7 +555,7 @@
   margin-left: 6px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--mn-warn, #c9a227);
+  color: var(--mn-warning);
   white-space: nowrap;
 }
 
@@ -1026,7 +1026,7 @@
   margin: 0 0 16px;
   padding: 12px 14px;
   border: 1px solid var(--mn-danger-border, var(--mn-border));
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-danger-soft, transparent);
 }
 
@@ -1126,7 +1126,7 @@
 .board-run-help-setting {
   padding: 12px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface, transparent);
 }
 
@@ -1255,7 +1255,7 @@
 /* ---------- card drag between lanes (orchestrate-board-dnd.ts) ---------- */
 
 .kanban-column.is-drag-over {
-  background: var(--mn-bg-hover, rgb(255 255 255 / 4%));
+  background: var(--mn-surface-elevated);
   border-radius: 6px;
 }
 
@@ -1267,7 +1267,7 @@
   height: 2px;
   margin: 0 4px;
   background: var(--mn-accent, var(--accent));
-  border-radius: 1px;
+  border-radius: var(--mn-radius-pill);
   pointer-events: none;
 }
 
@@ -1350,7 +1350,7 @@
   border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--mn-fg-subtle) 28%, transparent);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.58rem;
+  font-size: var(--mn-type-2xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--mn-fg-subtle);
@@ -1362,16 +1362,16 @@
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  font-size: 0.58rem;
+  font-size: var(--mn-type-2xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .board-task-card__lifecycle--suspect {
-  color: color-mix(in srgb, var(--mn-warning, #d4a017) 90%, var(--mn-fg));
-  border-color: color-mix(in srgb, var(--mn-warning, #d4a017) 45%, transparent);
-  background: color-mix(in srgb, var(--mn-warning, #d4a017) 12%, transparent);
+  color: color-mix(in srgb, var(--mn-warning) 90%, var(--mn-fg));
+  border-color: color-mix(in srgb, var(--mn-warning) 45%, transparent);
+  background: color-mix(in srgb, var(--mn-warning) 12%, transparent);
 }
 
 .board-task-card__lifecycle--recovering {
@@ -1394,7 +1394,7 @@
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  font-size: 0.58rem;
+  font-size: var(--mn-type-2xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1571,7 +1571,7 @@
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--mn-border);
-  font-size: 0.58rem;
+  font-size: var(--mn-type-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1831,8 +1831,8 @@
   width: 3rem;
   height: 3rem;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--mn-success, oklch(0.72 0.14 155)) 18%, var(--mn-surface-1));
-  border: 1px solid color-mix(in srgb, var(--mn-success, oklch(0.72 0.14 155)) 28%, var(--mn-border));
+  background: color-mix(in srgb, var(--mn-success) 18%, var(--mn-surface-1));
+  border: 1px solid color-mix(in srgb, var(--mn-success) 28%, var(--mn-border));
 }
 
 .board-onboarding__icon-svg {
@@ -1867,7 +1867,7 @@
 
 .board-onboarding__headline {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: var(--mn-type-xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--mn-fg);
@@ -1967,7 +1967,7 @@
 }
 
 .board-onboarding__cancel {
-  color: var(--mn-danger, oklch(0.62 0.18 15));
+  color: var(--mn-danger-ink);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -2513,7 +2513,7 @@
 }
 
 .board-wave-compact__lane-label {
-  font-size: 0.58rem;
+  font-size: var(--mn-type-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -2714,7 +2714,7 @@
   flex-direction: column;
   background: var(--mn-surface-1, var(--mn-bg));
   border-left: 1px solid var(--mn-border);
-  box-shadow: var(--shadow-drawer, -8px 0 32px rgba(0, 0, 0, 0.18));
+  box-shadow: var(--shadow-drawer);
   animation: slideInRight 0.24s var(--ease-out);
 }
 
@@ -2737,7 +2737,7 @@
   font: inherit;
   cursor: pointer;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-2, var(--mn-bg));
   color: var(--mn-fg);
   padding: 4px 10px;
@@ -2763,7 +2763,7 @@
   font: inherit;
   font-size: 12px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-2, var(--mn-bg));
   color: var(--mn-fg);
   padding: 2px 6px;
@@ -2816,11 +2816,11 @@
 }
 
 .board-timeline-drawer__row--warn .board-timeline-drawer__level-dot {
-  background: var(--mn-warn, #d4a017);
+  background: var(--mn-warning);
 }
 
 .board-timeline-drawer__row--error .board-timeline-drawer__level-dot {
-  background: var(--mn-danger, #c0392b);
+  background: var(--mn-danger);
 }
 
 .board-timeline-drawer__time {
@@ -2859,7 +2859,7 @@
 .board-timeline-drawer__detail-json {
   margin: 6px 0 0;
   padding: 8px;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-1, var(--mn-bg));
   border: 1px solid var(--mn-border);
   overflow: auto;
@@ -2881,7 +2881,7 @@
   font-size: 11px;
   font-weight: 600;
   line-height: 18px;
-  background: var(--mn-danger, #c0392b);
+  background: var(--mn-danger);
   color: #fff;
 }
 
@@ -3046,7 +3046,7 @@
   gap: 8px;
   padding: 8px 10px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   font-size: 13px;
 }
 
@@ -3147,7 +3147,7 @@
 .board-finish-dashboard__review-link:focus-visible {
   outline: 2px solid var(--mn-focus, var(--accent));
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
 }
 
 .board-finish-dashboard__commit-caret {
@@ -3155,7 +3155,7 @@
   padding: 0 8px;
   border: 1px solid var(--mn-border-strong, var(--mn-border));
   border-left: none;
-  border-radius: 0 var(--radius-sm, 6px) var(--radius-sm, 6px) 0;
+  border-radius: 0 var(--mn-radius-sm) var(--mn-radius-sm) 0;
   background: var(--mn-bg, var(--bg));
   cursor: pointer;
   font-size: 12px;

@@ -17,10 +17,10 @@ export function trackDeviceTransport(auth, transport) {
   transport.once('finish', release);
 }
 
-export function closeDeviceTransports(deviceId, credentialId) {
+export function closeDeviceTransports(deviceId, credentialId, exceptTransport) {
   const connections = active.get(deviceId);
   if (!connections) return;
   for (const [transport, id] of connections) {
-    if (credentialId === undefined || credentialId === id) transport.destroy();
+    if (transport !== exceptTransport && (credentialId === undefined || credentialId === id)) transport.destroy();
   }
 }

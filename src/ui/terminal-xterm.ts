@@ -59,6 +59,7 @@ let lineBuffer = '';
 let historyIndex = -1;
 let tabHistory: string[] = [];
 let resizeObserver: ResizeObserver | null = null;
+let themeObserver: MutationObserver | null = null;
 let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSentCols = 0;
 let lastSentRows = 0;
@@ -167,7 +168,7 @@ function applyXtermTheme(): void {
 }
 
 /** Re-read CSS variables into xterm after theme change (no-op if terminal not mounted). */
-export function refreshXtermTheme(): void {
+function refreshXtermTheme(): void {
   applyXtermTheme();
   fitAddon?.fit();
 }
@@ -326,6 +327,10 @@ function ensureTerminal(): Terminal | null {
   term.loadAddon(new WebLinksAddon(handleTerminalWebLink));
   applyXtermTheme();
   term.open(hostEl);
+  themeObserver = new MutationObserver(refreshXtermTheme);
+  themeObserver.observe(document.documentElement, {
+    attributeFilter: ['data-theme', 'data-tint', 'data-graphite-accent', 'style'],
+  });
   hostEl.setAttribute('role', 'document');
   hostEl.setAttribute('aria-label', 'Terminal');
   hostEl.setAttribute('aria-keyshortcuts', 'Control+C Meta+C Control+V Meta+V');
@@ -549,6 +554,8 @@ export function disposeTerminalXterm(): void {
   }
   resizeObserver?.disconnect();
   resizeObserver = null;
+  themeObserver?.disconnect();
+  themeObserver = null;
   term?.dispose();
   term = null;
   fitAddon = null;

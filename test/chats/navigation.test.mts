@@ -273,6 +273,15 @@ test('waiting state has honest text and no working spinner; pending descendant w
   assert.match(document.body.textContent!, /Stop this conversation and its agents/);
 });
 
+test('deleting a family waits for the child’s interrupted work to stop', async () => {
+  const root = chat('root'), child = chat('interrupted-child', 'root');
+  child.agentExecution = { executionId: 'interrupted', status: 'recovery_required' };
+  setup([root, child]);
+  await deleteChat(root.id);
+  assert.equal(sessionState!.chats.length, 2);
+  assert.match(document.body.textContent!, /waiting for interrupted work in "interrupted-child" to stop/);
+});
+
 test('stable chat links route by id, preserve current titles and use the common launch path in Markdown', () => {
   const link = chatLink('child-ID_12');
   assert.equal(link, '#/app/code/chat?chatId=child-ID_12');

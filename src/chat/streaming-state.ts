@@ -90,13 +90,19 @@ export interface ChatStreamText {
   lastDelta: string;
   lastThinking: string;
   toolCallCount: number;
+  reasoningFormat?: 'summary';
+  phase?: string;
+  currentTool?: string | null;
 }
 
-const streamTextReaders = new Map<string, () => ChatStreamText>();
+const streamTextReaders = new Map<string, () => ChatStreamText | null>();
 
 /** Expose a live turn's text to activity listeners; cleared when the chat's stream ends. */
-export function registerChatStreamText(chatId: string, read: () => ChatStreamText): void {
+export function registerChatStreamText(chatId: string, read: () => ChatStreamText | null): () => void {
   if (chatId) streamTextReaders.set(chatId, read);
+  return () => {
+    if (streamTextReaders.get(chatId) === read) streamTextReaders.delete(chatId);
+  };
 }
 
 /** The live turn's text for a chat, or null when nothing is streaming there. */

@@ -26,7 +26,6 @@ function packAgentEntryFromBuiltin(meta) {
     label: meta.label,
     prompts: {
       full: `prompts/${meta.id}.full.md`,
-      lite: `prompts/${meta.id}.lite.md`,
     },
   };
 
@@ -67,10 +66,8 @@ export async function buildBuiltinAgentPackFileMap(projectRoot) {
   const manifestAgents = [];
 
   for (const meta of agents) {
-    const full = await readBuiltinWorkAgentPrompt(projectRoot, meta.id, 'full');
-    const lite = await readBuiltinWorkAgentPrompt(projectRoot, meta.id, 'lite');
+    const full = await readBuiltinWorkAgentPrompt(projectRoot, meta.id);
     files[`prompts/${meta.id}.full.md`] = `${full.content.trim()}\n`;
-    files[`prompts/${meta.id}.lite.md`] = `${lite.content.trim()}\n`;
     manifestAgents.push(packAgentEntryFromBuiltin(meta));
   }
 

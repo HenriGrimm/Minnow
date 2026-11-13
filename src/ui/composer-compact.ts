@@ -378,7 +378,7 @@ function settingsElements(all = false): HTMLElement[] {
   return found;
 }
 
-/** Compact row is flex, not a 4-column grid: the cog must be a sibling of the mode dropdown. */
+/** Keep the cog in the footer's keyboard order when compact. */
 function placeOverflowAnchor(compactMode: boolean): void {
   const anchor = document.getElementById('composerOverflowAnchor');
   const trail = getRow()?.querySelector('.composer-controls__trail');
@@ -392,6 +392,10 @@ function placeOverflowAnchor(compactMode: boolean): void {
   const dropdown = document.getElementById('modeSelectorDropdown');
   const row = dropdown?.parentElement ?? getRow();
   if (!row) return;
+  if (row.closest('#mainColumn')) {
+    if (row.lastElementChild !== anchor) row.appendChild(anchor);
+    return;
+  }
   if (dropdown && anchor.parentElement === row && dropdown.nextSibling === anchor) return;
   if (dropdown) {
     row.insertBefore(anchor, dropdown.nextSibling);

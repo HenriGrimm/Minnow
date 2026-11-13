@@ -1,4 +1,3 @@
-import { parsePromptMarkdown } from '../chat/prompts/parse-front-matter';
 import { parseWorkAgentMetaFromMarkdown } from './work-agent-meta-parse';
 import type {
   WorkAgentDefinition,
@@ -32,48 +31,12 @@ function shouldSkipAgentId(id: string): boolean {
 
 function agentIdFromPath(relativePath: string): string | null {
   const norm = relativePath.replace(/\\/g, '/');
-  const match = norm.match(/work-agents\/([^/]+)\/agent\.(full|lite)\.md$/);
+  const match = norm.match(/work-agents\/([^/]+)\/agent\.full\.md$/);
   return match?.[1] ?? null;
 }
 
-interface AgentAccumulator {
-  meta?: WorkAgentDefinition;
-  fullBody?: string;
-  liteBody?: string;
-}
-
-function mergeRawFile(
-  accMap: Map<string, AgentAccumulator>,
-  agentId: string,
-  suffix: 'full' | 'lite',
-  raw: string,
-  relativePath: string,
-): void {
-  if (shouldSkipAgentId(agentId)) return;
-
-  let acc = accMap.get(agentId);
-  if (!acc) {
-    acc = {};
-    accMap.set(agentId, acc);
-  }
-
-  if (suffix === 'full') {
-    const meta = parseWorkAgentMetaFromMarkdown(raw, relativePath);
-    if (meta) acc.meta = meta;
-    try {
-      const { markdownBody } = parsePromptMarkdown(raw, relativePath);
-      acc.fullBody = markdownBody.trim();
-    } catch {}
-  } else {
-    try {
-      const { markdownBody } = parsePromptMarkdown(raw, relativePath);
-      acc.liteBody = markdownBody.trim();
-    } catch {}
-  }
-}
-
 function buildAgentsFromRaw(rawMap: Record<string, string>): Map<string, WorkAgentDefinition> {
-  const accMap = new Map<string, AgentAccumulator>();
+  const agents = new Map<string, WorkAgentDefinition>();
 
   for (const [globPath, raw] of Object.entries(rawMap)) {
     const relativePath = globPath
@@ -82,18 +45,12 @@ function buildAgentsFromRaw(rawMap: Record<string, string>): Map<string, WorkAge
     if (!relativePath.includes('work-agents/')) continue;
 
     const agentId = agentIdFromPath(relativePath);
-    if (!agentId) continue;
+    if (!agentId || shouldSkipAgentId(agentId)) continue;
 
-    const suffix = relativePath.endsWith('.lite.md') ? 'lite' : 'full';
-    mergeRawFile(accMap, agentId, suffix, raw, relativePath);
+    const meta = parseWorkAgentMetaFromMarkdown(raw, relativePath);
+    if (meta) agents.set(agentId, meta);
   }
-
-  const out = new Map<string, WorkAgentDefinition>();
-  for (const [id, acc] of accMap) {
-    if (!acc.meta) continue;
-    out.set(id, { ...acc.meta });
-  }
-  return out;
+  return agents;
 }
 
 export function mergeWorkAgentDefinition(

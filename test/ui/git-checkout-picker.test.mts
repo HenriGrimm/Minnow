@@ -3,6 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { createGitCheckoutPicker, type CheckoutPickerState } from '../../src/ui/git-checkout-picker.ts';
 import type { GitCheckoutSwitchInput, GitOpResult } from '../../src/state/git-api.ts';
+import { isLocalServerAvailable, setLocalServerAvailable } from '../../src/tools/config.ts';
 
 let win: Window;
 let picker: ReturnType<typeof createGitCheckoutPicker>;
@@ -114,8 +115,68 @@ test('polling adds remote branches while preserving the open search and focus', 
 });
 
 test('worktree tab browses checkouts without moving uncommitted changes', () => {
-  click('main'); click('Worktrees'); click('occupied');
+  click('main'); click('Worktrees');
+  const input = document.querySelector('input')!;
+  assert.equal(input.getAttribute('aria-label'), 'Search worktrees');
+  assert.equal(input.parentElement?.textContent, '');
+  click('occupied');
   assert.deepEqual(worktrees, ['/other']); assert.equal(calls.length, 0);
+});
+
+test('pull requests load on demand, keep search focus, and switch by PR identity through the dirty prompt', async (t) => {
+  const available = isLocalServerAvailable();
+  setLocalServerAvailable(true);
+  t.after(() => setLocalServerAvailable(available));
+  const url = 'https://github.com/owner/repo/pull/42';
+  const list = t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    assert.deepEqual(JSON.parse(init.body), { op: 'prList', cwd: '/workspace', state: 'open', limit: 200 });
+    return Response.json({ ok: true, prs: [
+      { number: 42, title: 'Fix keyboard focus', headRef: 'feature', url },
+      { number: 43, title: 'Update layout', headRef: 'design', draft: true },
+    ] });
+  });
+  click('main');
+  assert.equal(list.mock.callCount(), 0);
+  click('Pull requests');
+  const input = document.querySelector('input')!;
+  assert.equal(input.getAttribute('aria-label'), 'Search pull requests');
+  await tick();
+  assert.equal(document.activeElement === input, true);
+  assert.match(document.querySelector('.git-checkout__list')?.textContent ?? '', /#43 Update layoutdesignDraft/);
+
+  for (const query of ['#42', 'keyboard', 'feature']) {
+    input.value = query;
+    input.dispatchEvent(new win.Event('input') as unknown as Event);
+    assert.equal(document.querySelectorAll('.git-checkout__item').length, 1);
+  }
+  click('#42 Fix keyboard focus'); await tick();
+  assert.equal(document.querySelector('.git-checkout__heading')?.textContent, 'Switch to PR #42?');
+  assert.deepEqual(calls[0], {
+    branch: 'feature', cwd: '/workspace', expectedBranch: 'main', pullRequest: { number: 42, url },
+  });
+  click('Leave changes on main'); await tick();
+  assert.deepEqual(calls[1], { ...calls[0], dirtyHandling: 'leave' });
+  assert.equal(list.mock.callCount(), 1);
+});
+
+test('branch search keeps main first and orders the other names naturally', () => {
+  picker.update({
+    ...state,
+    branch: 'pr-10',
+    branches: ['pr-10', 'feature', 'main', 'pr-2'],
+    remoteBranches: ['origin/pr-10', 'origin/pr-2'],
+  });
+  click('pr-10');
+  const names = () => [...document.querySelectorAll('.git-checkout__item .git-checkout__branch')]
+    .map((row) => row.textContent);
+  const input = document.querySelector('input')!;
+  assert.equal(input.getAttribute('aria-label'), 'Search branches');
+  assert.equal(input.parentElement?.textContent, '');
+  assert.deepEqual(names(), ['main', 'feature', 'pr-2', 'pr-10', 'origin/pr-2', 'origin/pr-10']);
+
+  input.value = 'pr-';
+  input.dispatchEvent(new win.Event('input') as unknown as Event);
+  assert.deepEqual(names(), ['pr-2', 'pr-10', 'origin/pr-2', 'origin/pr-10']);
 });
 
 test('branch search, arrow navigation and polling preserve focused input', () => {
@@ -146,4 +207,31 @@ test('a late dirty response cannot paint a prompt over a different worktree', as
   await request;
   assert.equal(document.querySelector('.git-checkout__choice'), null);
   assert.match(document.getElementById('gitCheckoutTrigger')?.textContent ?? '', /occupied/);
+});
+
+test('the embedded checkout picker stays open through dirty switches and worktree selection', async () => {
+  const inline = createGitCheckoutPicker({
+    inline: true,
+    onSwitch: async input => {
+      if (!input.dirtyHandling) return { ok: false, needsChoice: true, branch: 'main', fileCount: 3 };
+      inline.update({ ...state, branch: input.branch });
+      return { ok: true };
+    },
+    onWorktree: async cwd => { inline.update({ ...state, cwd, branch: 'occupied' }); },
+    onRestore: async () => ({ ok: true }),
+  });
+  document.body.append(inline.root);
+  try {
+    inline.update(state);
+    const menu = document.getElementById('threadCheckoutMenu')!;
+    assert.equal(menu.hidden, false);
+    click('feature'); await tick(); click('Bring my changes'); await tick();
+    assert.equal(menu.hidden, false);
+    assert.match(menu.querySelector('[aria-current="true"]')?.textContent ?? '', /feature/);
+    click('Worktrees'); click('occupied'); await tick();
+    assert.equal(menu.hidden, false);
+    assert.match(menu.querySelector('.git-checkout__item:has(.git-checkout__tag)')?.textContent ?? '', /occupied.*Current/);
+  } finally {
+    inline.dispose();
+  }
 });

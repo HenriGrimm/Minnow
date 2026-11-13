@@ -56,6 +56,26 @@ test('native turns receive the selected reasoning level without conflating extra
   assert.deepEqual(starts.map(row => row.params.effort), ['none', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 });
 
+test('Fast and Standard use the same Codex conversation with distinct native tiers', async () => {
+  const log = path.join(root, 'service-tiers.jsonl');
+  setup([{ text: 'Fast reply.' }, { text: 'Standard reply.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  const deps = runnerDeps({
+    resolveProvider: async () => ({ id: 'codex-cli', apiKind: 'agent-cli-v1' }),
+    resolveSendCapabilities: () => ({ reasoning: true, reasoningAllowedOptions: ['high'] }),
+  });
+  for (const fastMode of [true, false]) {
+    const result = await runTurn({
+      chatId: 'runner-speed', seed: fastMode ? 'Start.' : 'Continue.', seedKind: 'continue', tools,
+      model: { providerId: 'codex-cli', id: 'fixture', options: { fastMode, reasoningEffort: 'high' } },
+      deps, injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    });
+    assert.equal(result.outcome, 'no_report', result.error);
+  }
+  const starts = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.method === 'turn/start');
+  assert.deepEqual(starts.map(row => [row.params.serviceTier, row.params.effort]), [['priority', 'high'], [null, 'high']]);
+  assert.equal(processes, 1);
+});
+
 test('revised native prose is delivered as a replacement and reused with the corrected transcript', async () => {
   setup([{ deltas: ['Wrong.'], text: 'Correct.' }, { text: 'Next.' }]);
   const messages = [{ role: 'user', content: 'Start.' }];

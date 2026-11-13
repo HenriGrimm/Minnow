@@ -14,6 +14,12 @@ describe('findSettingsLink', () => {
     );
   });
 
+  it('keeps provider recovery clickable under the current Models location', () => {
+    assert.deepEqual(findSettingsLink('Cannot reach providers. Check Models → Providers.'), {
+      section: 'providers', label: 'Models → Providers',
+    });
+  });
+
   it('prefers the deepest named section', () => {
     assert.equal(findSettingsLink('adjust timeouts in Settings → Agents → Watchdog.')?.section, 'watchdog');
     assert.equal(findSettingsLink('Turn on Two-way mirror in Settings → Issues → GitHub')?.section, 'github');

@@ -13,6 +13,7 @@ import { showToast } from './toast';
 import { applyWorkspaceScopedSession } from './sidebar';
 import { openWorkspaceFolderPicker } from './workspace-folder-picker';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from './shell-overlay-state';
+import { createIcon } from './icon';
 import {
   closeWorkspaceMenu,
   configureWorkspaceRecentMenu,
@@ -28,6 +29,10 @@ function getWorkspacePathLabel(): HTMLElement | null {
   return document.getElementById('workspacePathLabel');
 }
 
+function isGraphiteWorkspaceTrigger(btn: HTMLElement): boolean {
+  return btn.closest('#osGraphiteWorkspaceSlot') !== null;
+}
+
 /** Reflect current workspace on the top bar button and folder name label. */
 export function updateWorkspaceButtonLabel(label: string, fullPath: string): void {
   const btn = getWorkspaceButton();
@@ -37,7 +42,12 @@ export function updateWorkspaceButtonLabel(label: string, fullPath: string): voi
   const pathTooltip = path || 'Choose workspace folder';
   btn.title = pathTooltip;
   btn.setAttribute('aria-label', `Workspace: ${short}. Click to open recent workspaces.`);
-  btn.setAttribute('aria-haspopup', isOsShellEnabled() ? 'dialog' : 'menu');
+  btn.setAttribute('aria-haspopup', isOsShellEnabled() && !isGraphiteWorkspaceTrigger(btn) ? 'dialog' : 'menu');
+  const parent = btn.querySelector('.mn-graphite-workspace-parent');
+  if (parent) {
+    const nameStart = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    parent.textContent = nameStart > 0 ? path.slice(0, nameStart) : '';
+  }
 
   const pathLabel = getWorkspacePathLabel();
   const control = (pathLabel?.closest('.workspace-control') as HTMLElement | null) ?? null;
@@ -172,7 +182,11 @@ export function initWorkspaceButton(): void {
   if (!btn) return;
 
   bindShellOverlayTrigger(btn, 'workspace');
-  btn.setAttribute('aria-controls', 'osWorkspaceGate');
+  btn.setAttribute('aria-controls', isGraphiteWorkspaceTrigger(btn) ? 'workspaceMenu' : 'osWorkspaceGate');
+  const parent = document.createElement('span');
+  parent.className = 'mn-graphite-workspace-parent';
+  parent.setAttribute('aria-hidden', 'true');
+  btn.append(parent, createIcon('chevronDown', { className: 'mn-graphite-workspace-chevron', size: 14 }));
   setWorkspaceMenuDeps({
     isServerAvailable: getLocalServerAvailable,
     reportStatus: (state, message) => {
@@ -188,21 +202,26 @@ export function initWorkspaceButton(): void {
         setStatus('ok', 'Workspace unchanged');
       }
     },
-    onOpenNew: onOpenNewWorkspace,
+    onOpenNew: async () => {
+      if (isGraphiteWorkspaceTrigger(btn)) {
+        const { openWorkspaceGate } = await import('../os/workspace-gate');
+        openWorkspaceGate({ switch: true, opener: btn });
+        return;
+      }
+      await onOpenNewWorkspace();
+    },
   });
 
   btn.addEventListener('click', () => {
-    if (isOsShellEnabled()) {
+    if (isOsShellEnabled() && !isGraphiteWorkspaceTrigger(btn)) {
       void import('../os/workspace-gate').then((m) => {
         if (isShellOverlayOpen('workspace')) closeShellOverlay();
-        else m.openWorkspaceGate({ switch: true });
+        else m.openWorkspaceGate({ switch: true, opener: btn });
       });
       return;
     }
     void toggleWorkspaceMenu(btn);
   });
-
-  void refreshWorkspaceUi();
 }
 
 export { closeWorkspaceMenu };

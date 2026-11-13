@@ -15,7 +15,8 @@ import {
   resetOsRouterForTests,
   syncOsRouteFromHashForTests,
 } from '../../src/os/router.ts';
-import { initOsShell } from '../../src/os/shell.ts';
+import { disposeOsShell, initOsShell } from '../../src/os/shell.ts';
+import { mountOsMobileDrawerBackdrops } from '../../src/ui/mobile-drawer-portal.ts';
 import { installHappyDomGlobals, teardownHappyDomAsync } from './dom-helpers.mts';
 
 function setupCodeShellDom(doc: Document): void {
@@ -39,6 +40,7 @@ describe('code app sidebar DOM', () => {
   beforeEach(async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
+    win.happyDOM.setWindowSize({ width: 1440, height: 900 });
     happyDomWindow = win;
     win.fetch = async () =>
       new Response(JSON.stringify({}), {
@@ -61,6 +63,7 @@ describe('code app sidebar DOM', () => {
   });
 
   afterEach(async () => {
+    disposeOsShell();
     resetOsRouterForTests();
     resetInstancesForTests();
     resetOsPageBridgeForTests();
@@ -72,7 +75,7 @@ describe('code app sidebar DOM', () => {
     assert.equal(shouldDeferAppLayerReveal('code'), true);
   });
 
-  test('keeps sidebars under #appBody when the Code layer is mounted', () => {
+  test('keeps the desktop thread list in the shared rail when Code mounts', () => {
     assert.equal(shouldHideAppBody(), false);
     const appBody = document.getElementById('appBody');
     assert.ok(appBody);
@@ -84,8 +87,11 @@ describe('code app sidebar DOM', () => {
 
     const chat = document.getElementById('chatSidebar');
     const file = document.getElementById('fileSidebar');
-    assert.equal(chat?.parentElement, appBody);
-    assert.equal(file?.parentElement, appBody);
+    const rail = document.getElementById('osAppRail');
+    assert.equal(chat?.parentElement?.id, rail?.id);
+    mountOsMobileDrawerBackdrops();
+    assert.equal(chat?.parentElement?.id, rail?.id);
+    assert.equal(file?.parentElement?.id, appBody.id);
   });
 
   test('keeps the left app rail visible while Code is foreground', () => {

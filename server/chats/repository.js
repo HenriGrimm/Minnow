@@ -11,6 +11,7 @@ import { isDeletedConversation, isManagedConversation, readAgentConversationProj
 import { createChatTaskRepository } from './task-repository.js';
 import { readChatActivity } from './activity.js';
 import { advanceChatPresentationRevision, hasChatPresentationChanges } from './presentation-revision.js';
+import { isGraphiteSideChat } from '../../src/lib/graphite-side-chat.mjs';
 
 const TERMINAL_EXECUTIONS = new Set(['completed', 'failed', 'stopped']);
 const TERMINAL_COMMANDS = new Set(['settled', 'failed', 'cancelled']);
@@ -23,6 +24,22 @@ function checked(result) {
   return result.value;
 }
 function identity(value) { return checked(validateChatId(value)); }
+
+function assertCompleteToolGroups(messages) {
+  const pending = new Set();
+  for (const message of messages) {
+    if (message.role === 'tool') {
+      if (!pending.delete(message.tool_call_id)) fail('recovery_required', 'The retained history contains an unmatched tool result');
+      continue;
+    }
+    if (pending.size) fail('recovery_required', 'The retained history splits a tool call/result group');
+    if (message.role === 'assistant') for (const call of message.tool_calls ?? []) {
+      if (typeof call.id !== 'string' || !call.id || pending.has(call.id)) fail('recovery_required', 'The retained history contains invalid tool identities');
+      pending.add(call.id);
+    }
+  }
+  if (pending.size) fail('recovery_required', 'The retained history splits a tool call/result group');
+}
 function integer(value, name, minimum = 0) {
   if (!Number.isSafeInteger(value) || value < minimum) fail('invalid_request', 'Invalid ' + name);
   return value;
@@ -151,7 +168,11 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
     }
     return lease;
   }
-  function updateMessageDerived(chatId) {
+  function nextMessageSeq(chatId) {
+    return db.prepare(`SELECT MAX(COALESCE((SELECT MAX(seq) FROM messages WHERE chat_id=?),-1),
+      COALESCE((SELECT json_extract(meta_json,'$.historyRewrite.lastRemovedSeq') FROM chat_conversation_state WHERE chat_id=?),-1))+1 AS next`).get(chatId, chatId).next;
+  }
+  function updateMessageDerived(chatId, { rewound = false } = {}) {
     // Hashes only, never hydrate or reserialize historical message bodies.
     const hashes = db.prepare('SELECT row_hash FROM messages WHERE chat_id = ? ORDER BY seq').all(chatId);
     const last = db.prepare('SELECT payload_json FROM messages WHERE chat_id = ? ORDER BY seq DESC LIMIT 1').get(chatId);
@@ -160,7 +181,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
     db.prepare('UPDATE chats SET message_count = ?, history_digest = ?, last_message_preview = ?, last_message_at = ?, last_assistant_at = CASE WHEN ? THEN ? ELSE last_assistant_at END WHERE id = ?')
       .run(hashes.length, hashPayload(hashes.map((row) => row.row_hash).join('\n')),
         message ? messageTextContent(message).slice(0, 240) : '', stamp,
-        message?.role === 'assistant' ? 1 : 0, stamp, chatId);
+        rewound || message?.role === 'assistant' ? 1 : 0, rewound ? 0 : stamp, chatId);
     return touch(chatId);
   }
   function getCommand(commandId) {
@@ -353,7 +374,8 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         // Expiry alone is not evidence that a native generation/tool stopped.
         fail('ownership_conflict', 'Conversation execution must settle before replacement');
       }
-      if (db.prepare("SELECT 1 FROM chat_tool_invocations WHERE chat_id=? AND state!='settled' LIMIT 1").get(chatId)) {
+      if (prior && getExecution(prior.execution_id)?.status === 'recovery_required' ||
+          db.prepare("SELECT 1 FROM chat_tool_invocations WHERE chat_id=? AND state!='settled' LIMIT 1").get(chatId)) {
         fail('recovery_required', 'Unsettled tool effects prevent a replacement execution');
       }
       const execution = existing ?? createExecution(input);
@@ -389,7 +411,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         if (prior.input_hash !== inputHash) fail('idempotency_conflict', 'Message identity was reused');
         return { rowId: prior.seq, messageId: stableId, revision: revision(chatId), replayed: true };
       }
-      const rowId = db.prepare('SELECT COALESCE(MAX(seq),-1)+1 AS next FROM messages WHERE chat_id=?').get(chatId).next;
+      const rowId = nextMessageSeq(chatId);
       upsertMessageRow(db, chatId, rowId, message);
       db.prepare('INSERT INTO chat_message_identities (chat_id,message_id,seq,input_hash) VALUES (?,?,?,?)').run(chatId, stableId, rowId, inputHash);
       const next = updateMessageDerived(chatId);
@@ -499,6 +521,48 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
     atomic: (work) => transaction(() => work(repository)),
     createChat: (input) => transaction(() => createChat(input)),
     createChild, getChat,
+    /** Drop transcript rows atomically while keeping command receipts and effect journals. */
+    rewriteHistory({ chatId, index, expectedHistoryDigest }) {
+      return transaction(() => {
+        const chat = getChat(chatId);
+        if (chat.chatCommandVersion !== 1 || chat.agentConversation || isGraphiteSideChat(chat)) {
+          fail('capability_unavailable', 'History changes require an ordinary server-owned chat');
+        }
+        if (chat.historyDigest !== expectedHistoryDigest) fail('stale_revision', 'The conversation changed. Review the messages and try again.');
+        const latest = repository.getLatestExecution(chatId);
+        if (latest?.status === 'recovery_required' || db.prepare("SELECT 1 FROM chat_tool_invocations WHERE chat_id=? AND state!='settled' LIMIT 1").get(chatId) ||
+            db.prepare("SELECT 1 FROM chat_workspace_checkpoints WHERE chat_id=? AND state IN ('executing','uncertain') LIMIT 1").get(chatId)) {
+          fail('recovery_required', 'Resolve the interrupted execution before changing this chat’s history');
+        }
+        if (repository.getLease(chatId)?.state === 'active' || latest && !TERMINAL_EXECUTIONS.has(latest.status) ||
+            repository.listCommands({ chatId, states: ['accepted', 'queued', 'waiting_for_host', 'running'], limit: 1 }).length ||
+            repository.listRequests(chatId).length || repository.getTaskAttention(chatId)) {
+          fail('ownership_conflict', 'Finish or stop the current work before changing this chat’s history');
+        }
+        const transcript = readTranscript(chatId);
+        if (transcript.compaction || chat.lastNativeContext || db.prepare("SELECT 1 FROM chat_executions WHERE chat_id=? AND json_extract(captured_json,'$.nativeExecution.requestedMode')='native' LIMIT 1").get(chatId)) {
+          fail('capability_unavailable', 'This chat’s saved context does not support rewriting history');
+        }
+        const anchor = transcript.messages[index];
+        if (!anchor || !['user', 'assistant'].includes(anchor.role)) fail('invalid_request', 'Choose a saved message');
+        const prefix = transcript.messages.slice(0, index);
+        assertCompleteToolGroups(prefix);
+        const first = transcript.rowIds[index];
+        for (const table of ['chat_message_identities', 'messages_fts', 'messages']) {
+          db.prepare(`DELETE FROM ${table} WHERE chat_id=? AND seq>=?`).run(chatId, first);
+        }
+        db.prepare('DELETE FROM chat_runs WHERE chat_id=? AND fork_history_index>=?').run(chatId, index);
+        db.prepare("UPDATE chats SET meta_json=json_remove(json_set(meta_json,'$.lastStats',json('null')),'$.injectedContext','$.contextBudget','$.lastContextTrim','$.todos','$.todosUpdatedAt') WHERE id=?").run(chatId);
+        const meta = { ...transcript.meta };
+        for (const key of ['contextBudget', 'lastContextTrim', 'todos', 'todosUpdatedAt']) delete meta[key];
+        if (!prefix.some(message => message.role === 'user')) delete meta.injectedContext;
+        const revision = updateMessageDerived(chatId, { rewound: true });
+        meta.historyRewrite = { revision, throughExecutionId: latest?.executionId,
+          lastRemovedSeq: Math.max(meta.historyRewrite?.lastRemovedSeq ?? -1, transcript.rowIds.at(-1)) };
+        db.prepare('UPDATE chat_conversation_state SET meta_json=? WHERE chat_id=?').run(json(meta), chatId);
+        return revision;
+      });
+    },
     /** Copy observations only. No execution leases, tool intents or results are replayed. */
     forkChat({ sourceChatId, messageId, expectedRevision, chat, profile, projectId }) {
       return transaction(() => {
@@ -516,20 +580,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         const anchor = repository.readMessageByIdentity(sourceChatId, messageId);
         if (!anchor || anchor.message.role !== 'user' || anchor.message.provenance?.actor !== 'human') fail('invalid_request', 'Fork from a saved human message');
         const prefix = db.prepare('SELECT seq,payload_json FROM messages WHERE chat_id=? AND seq<? ORDER BY seq').all(sourceChatId, anchor.rowId);
-        const pending = new Set();
-        for (const row of prefix) {
-          const message = parse(row.payload_json);
-          if (message.role === 'tool') {
-            if (!pending.delete(message.tool_call_id)) fail('recovery_required', 'The fork prefix contains an unmatched tool result');
-          } else {
-            if (pending.size) fail('recovery_required', 'The fork prefix splits a tool call/result group');
-            if (message.role === 'assistant') for (const call of message.tool_calls ?? []) {
-              if (typeof call.id !== 'string' || !call.id || pending.has(call.id)) fail('recovery_required', 'The fork prefix contains invalid tool identities');
-              pending.add(call.id);
-            }
-          }
-        }
-        if (pending.size) fail('recovery_required', 'The fork prefix splits a tool call/result group');
+        assertCompleteToolGroups(prefix.map(row => parse(row.payload_json)));
         const created = createChat(chat);
         saveProfile(created.id, profile);
         const origin = { sourceChatId, sourceMessageId: messageId, sourceRevision: expectedRevision,
@@ -548,7 +599,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         // Saved snapshots stay observational too; branch reconstruction must not
         // dispatch historical calls just to reproduce the visible prefix.
         db.prepare('INSERT INTO chat_runs (chat_id,run_id,branch_id,fork_history_index,status,payload_json) SELECT ?,run_id,branch_id,fork_history_index,status,payload_json FROM chat_runs WHERE chat_id=? AND fork_history_index<?')
-          .run(created.id, sourceChatId, anchor.rowId);
+          .run(created.id, sourceChatId, prefix.length);
         updateMessageDerived(created.id);
         return { chat: getChat(created.id), origin };
       });
@@ -853,52 +904,88 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         const log = db.prepare('SELECT log_path FROM chat_terminal_history WHERE chat_id=? AND tool_call_id=? AND started_at>=? ORDER BY seq DESC LIMIT 1')
           .get(chatId, op.toolCallId, execution.createdAt);
         return { invocationId: op.invocationId, toolName: op.toolName, targets: targets.map(s => s.trim().slice(0, 500)),
-          ...(log?.log_path ? { logPath: log.log_path.slice(0, 500) } : {}), receiptId: known ? receipt.outboxId : null };
+          ...(log?.log_path ? { logPath: log.log_path.slice(0, 500) } : {}), receiptId: known ? receipt.outboxId : null,
+          ...(dispatch?.attempts > 0 || dispatch?.state === 'applying' || receipt ? { dispatchedToHost: true } : {}) };
       });
       const checkpoints = db.prepare("SELECT checkpoint_id,payload_json FROM chat_workspace_checkpoints WHERE execution_id=? AND state IN ('executing','uncertain') ORDER BY checkpoint_id").all(execution.executionId)
         .map(row => ({ checkpointId: row.checkpoint_id, ...parse(row.payload_json) }));
       return { executionId: execution.executionId, ownerReleased: lease.state === 'released', checkout: execution.captured?.scope?.canonicalKey ?? null,
         revision: hashChatPayload([execution.executionId, lease.ownerId, lease.epoch, lease.state, operations, checkpoints]), operations, checkpoints };
     },
-    retireInterruptedExecution(chatId, { executionId, revision: expected, note, clientRequestId }, verifyIdle) {
+    retireInterruptedExecution(chatId, { executionId, revision: expected, note, clientRequestId }, verifyIdle, { quiescence } = {}) {
       identity(executionId); identity(clientRequestId);
-      if (typeof note !== 'string' || !note.trim() || note.length > 2000) fail('invalid_request', 'Record what you verified before retiring this attempt (up to 2000 characters).');
+      if (note !== undefined && (typeof note !== 'string' || !note.trim() || note.length > 2000)) fail('invalid_request', 'Recovery notes must be between 1 and 2000 characters.');
       return transaction(() => {
         const execution = getExecution(executionId);
         if (execution?.chatId !== chatId) fail('stale_revision', 'The interrupted execution has changed');
-        const decision = { clientRequestId, revision: expected, note: note.trim() };
-        const prior = execution.result?.humanRecovery;
+        const decision = { clientRequestId, revision: expected, ...(note ? { note: note.trim() } : {}) };
+        const prior = execution.result?.automaticRecovery ?? execution.result?.humanRecovery;
         if (prior && hashChatPayload(prior.decision) === hashChatPayload(decision)) return prior;
+        if (quiescence && (quiescence.verified !== true || !quiescence.source ||
+            !Number.isSafeInteger(quiescence.checkedAt) || quiescence.checkedAt < 0)) {
+          fail('invalid_request', 'Verified runtime quiescence evidence is required');
+        }
         const review = repository.inspectRecovery(chatId);
         if (executionId !== review.executionId || expected !== review.revision) fail('stale_revision', 'Refresh the recovery evidence before deciding.');
-        if (!review.ownerReleased) fail('ownership_conflict', 'Restart Minnow to verify the original execution has stopped, then review the operation again.');
         if (verifyIdle(execution) !== true) fail('ownership_conflict', 'Wait for the execution and its tools to stop before retiring it.');
         for (const op of review.operations) {
-          const result = op.receiptId ? getOutbox(op.receiptId).payload.result : { content: 'Interrupted tool retired by the user. Its outcome is unknown.', indeterminate: true };
+          const result = op.receiptId ? getOutbox(op.receiptId).payload.result : { content: 'Tool interrupted. Its outcome is unknown.', indeterminate: true };
           const encoded = json(result);
           db.prepare("UPDATE chat_tool_invocations SET state='settled',result_hash=?,result_json=?,settled_at=? WHERE execution_id=? AND invocation_id=? AND state!='settled'")
             .run(hashPayload(encoded), encoded, time(), executionId, op.invocationId);
         }
         db.prepare("UPDATE chat_workspace_checkpoints SET state='retired' WHERE execution_id=? AND state IN ('executing','uncertain')").run(executionId);
-        const humanRecovery = { decision, operations: review.operations, checkpoints: review.checkpoints, retiredAt: time() };
+        const recovery = { decision, operations: review.operations, checkpoints: review.checkpoints, retiredAt: time(),
+          ...(quiescence ? { quiescence } : {}) };
+        // A crash between transcript appends can leave the last tool batch
+        // open. Close that batch with recorded results or an honest error.
+        const prefix = 'm-' + createHash('sha256').update(executionId).digest('hex').slice(0, 32) + '-';
+        const tail = db.prepare("SELECT seq,payload_json FROM messages WHERE chat_id=? AND role!='tool' ORDER BY seq DESC LIMIT 1").get(chatId);
+        const last = parse(tail?.payload_json);
+        let seq = nextMessageSeq(chatId);
+        const appendRecoveryMessage = message => {
+          upsertMessageRow(db, chatId, seq, message);
+          db.prepare('INSERT INTO chat_message_identities(chat_id,message_id,seq,input_hash) VALUES(?,?,?,?)')
+            .run(chatId, message.messageId, seq++, hashChatPayload(message));
+        };
+        if (last?.role === 'assistant' && last.messageId?.startsWith(prefix) && last.tool_calls?.length) {
+          const answered = new Set(db.prepare("SELECT tool_call_id FROM messages WHERE chat_id=? AND seq>? AND role='tool'").all(chatId, tail.seq).map(row => row.tool_call_id));
+          const receipt = db.prepare('SELECT result_json FROM chat_tool_invocations WHERE execution_id=? AND tool_call_id=?');
+          for (const call of last.tool_calls) {
+            if (!call.id || answered.has(call.id)) continue;
+            const result = parse(receipt.get(executionId, call.id)?.result_json);
+            appendRecoveryMessage({ role: 'tool', tool_call_id: call.id,
+              messageId: 'recovered-tool-' + hashChatPayload([executionId, call.id]),
+              createdAt: recovery.retiredAt, content: result?.indeterminate || typeof result?.content !== 'string'
+                ? 'Error: Tool interrupted. Its outcome is unknown.' : result.content });
+            answered.add(call.id);
+          }
+        }
         const messageId = 'recovery-' + hashChatPayload(executionId);
-        const message = { role: 'user', messageId, createdAt: humanRecovery.retiredAt,
-          provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' },
-          content: 'I retired the interrupted attempt after checking its effects. My findings:\n' + decision.note };
-        const seq = db.prepare('SELECT COALESCE(MAX(seq),-1)+1 AS next FROM messages WHERE chat_id=?').get(chatId).next;
-        upsertMessageRow(db, chatId, seq, message);
-        db.prepare('INSERT INTO chat_message_identities(chat_id,message_id,seq,input_hash) VALUES(?,?,?,?)').run(chatId, messageId, seq, hashChatPayload(message));
+        const message = { role: 'user', messageId, createdAt: recovery.retiredAt,
+          ...(decision.note ? {
+            provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' },
+            content: 'I retired the interrupted attempt after checking its effects. My findings:\n' + decision.note,
+          } : {
+            hiddenFromTranscript: true, hidden: true,
+            content: '[Minnow] The previous turn ended during tool execution. Its effects may already exist. Check the current state before retrying an operation or making further changes.',
+          }) };
+        appendRecoveryMessage(message);
         updateMessageDerived(chatId);
         db.prepare("UPDATE chat_executions SET status='stopped',result_json=?,settled_at=?,updated_at=? WHERE execution_id=?")
-          .run(json({ ...execution.result, outcome: 'crashed', humanRecovery }), time(), time(), executionId);
+          .run(json({ ...execution.result, outcome: 'crashed', [quiescence ? 'automaticRecovery' : 'humanRecovery']: recovery }), time(), time(), executionId);
         updateRecoveredWorkStatus(execution, 'stopped');
         db.prepare("UPDATE chat_execution_leases SET state='released',expires_at=? WHERE chat_id=? AND execution_id=?").run(time(), chatId, executionId);
-        repository.holdQueuedCommands(chatId);
+        repository.requeueUnconsumedSteers(chatId, executionId, { held: true });
+        if (!quiescence) repository.holdQueuedCommands(chatId);
         const command = execution.commandId && getCommand(execution.commandId);
-        if (command && !TERMINAL_COMMANDS.has(command.state)) repository.updateCommand(command.commandId, {
-          state: 'cancelled', result: { disposition: 'removed', removedByCommandId: clientRequestId }, error: null });
+        if (command && !TERMINAL_COMMANDS.has(command.state)) {
+          repository.updateCommand(command.commandId, {
+            state: 'cancelled', result: { disposition: 'removed', removedByCommandId: clientRequestId }, error: null,
+          });
+        }
         touch(chatId);
-        return humanRecovery;
+        return recovery;
       });
     },
     assertFence, appendMessage, patchMessage, readMessage, readTranscript, setTranscriptMeta,
@@ -921,7 +1008,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         }
         if (repository.getLease(record.chatId)?.state === 'active'
           || db.prepare("SELECT 1 FROM chat_tool_invocations WHERE chat_id=? AND state!='settled' LIMIT 1").get(record.chatId)) fail('ownership_conflict', 'A live or uncertain execution prevents legacy result retention');
-        const rowId = db.prepare('SELECT COALESCE(MAX(seq),-1)+1 AS next FROM messages WHERE chat_id=?').get(record.chatId).next;
+        const rowId = nextMessageSeq(record.chatId);
         upsertMessageRow(db, record.chatId, rowId, message);
         db.prepare('INSERT INTO chat_message_identities(chat_id,message_id,seq,input_hash) VALUES(?,?,?,?)').run(record.chatId, messageId, rowId, inputHash);
         return { rowId, messageId, revision: updateMessageDerived(record.chatId), replayed: false };

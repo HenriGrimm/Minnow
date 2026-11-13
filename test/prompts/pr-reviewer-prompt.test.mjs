@@ -30,10 +30,10 @@ describe('pr-reviewer sub-agent prompts', () => {
   });
 
   test('shipped map includes the PR framing and JSON contract', () => {
-    const body = SHIPPED_SUB_AGENT_PROMPTS['pr-reviewer.full'] ?? '';
+    const body = SHIPPED_SUB_AGENT_PROMPTS['pr-reviewer'] ?? '';
     assert.ok(body.includes('PR reviewer'));
     assert.ok(body.includes('APPROVE'));
     assert.ok(body.includes('execute_command'));
-    assert.ok(SHIPPED_SUB_AGENT_PROMPTS['pr-reviewer.lite']?.includes('NEEDS_DISCUSSION'));
+    assert.ok(body.includes('NEEDS_DISCUSSION'));
   });
 });

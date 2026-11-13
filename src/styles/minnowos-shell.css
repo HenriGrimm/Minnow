@@ -55,7 +55,7 @@ html.minnow-os-enabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 14px;
+  padding: 0 var(--mn-menubar-inline-padding);
   background: var(--os-surface-1);
   border-bottom: 1px solid var(--os-border);
   position: relative;
@@ -70,6 +70,12 @@ html.minnow-os-enabled {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.mn-os-workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: inherit;
 }
 
 .mn-os-mb-left {
@@ -257,6 +263,7 @@ html.minnow-os-enabled {
   transition: 0.14s var(--os-ease);
 }
 
+.mn-os-mb-logo[hidden],
 .mn-os-mb-icon[hidden] {
   display: none;
 }
@@ -401,9 +408,15 @@ html.is-electron-shell[data-platform='darwin'] .mn-os-mb-window-controls {
 .mn-os-mb-window-controls {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--mn-window-controls-gap);
   flex-shrink: 0;
-  margin-left: 6px;
+}
+
+html.is-electron-shell[data-platform='win32'] .mn-os-mb-window-controls::before {
+  content: '';
+  width: 1px;
+  height: 18px;
+  background: var(--os-border-strong);
 }
 
 /* Frameless Electron titlebar — shared with legacy floating windows (styles live here after Phase 5). */
@@ -436,9 +449,9 @@ html.is-electron-shell[data-platform='darwin'] .mn-os-mb-window-controls {
 }
 
 .mn-os-window-btn--close:hover {
-  background: color-mix(in srgb, #e5484d 18%, var(--os-surface-2));
-  color: #ffb4b4;
-  border-color: color-mix(in srgb, #e5484d 35%, var(--os-border));
+  background: var(--mn-danger-soft);
+  color: var(--mn-danger-ink);
+  border-color: var(--mn-danger-border);
 }
 
 .mn-os-ws-dot {
@@ -841,8 +854,8 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebarBackdrop.o
   color: var(--os-text-dim);
 }
 
-/* light theme menubar logo shadow tweak */
-:root[data-theme$='-light'] .mn-os-mb-logo {
+/* Light theme shadow for the legacy boxed menubar logo. */
+:root[data-theme$='-light']:not(.mn-graphite-workspace) .mn-os-mb-logo {
   box-shadow: 0 4px 14px -4px var(--os-accent-glow);
 }
 

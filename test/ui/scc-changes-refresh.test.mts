@@ -86,6 +86,36 @@ test('error recovery and workspace changes invalidate cached content', async () 
   assert.equal(view.root.querySelector<HTMLElement>('.scc-filerow')?.dataset.path, 'recovered.ts');
 });
 
+test('a staged empty addition and a staged binary addition have distinct diff states', async () => {
+  setup();
+  status = { ok: true, staged: [{ path: 'empty.txt', status: 'A' }] };
+  patch = 'diff --git a/empty.txt b/empty.txt\nnew file mode 100644\nindex 0000000..e69de29\n';
+  await view.refresh();
+  view.root.querySelector<HTMLElement>('.scc-filerow')!.click();
+  await view.refresh();
+  const diff = view.root.querySelector('.scc-changes__diff-body')!;
+  assert.match(diff.textContent ?? '', /Empty file added/);
+  patch += 'Binary files /dev/null and b/empty.txt differ\n';
+  await view.refresh();
+  assert.match(diff.textContent ?? '', /Binary file changed/);
+});
+
+test('Graphite changes keep untracked actions scoped while displaying refreshed line totals', async () => {
+  setup();
+  document.documentElement.classList.add('mn-graphite-apps');
+  status = { ok: true, unstaged: [{ path: 'edited.ts', status: 'M', additions: 4, deletions: 2 }],
+    untracked: [{ path: 'new.ts', status: '?', additions: 3, deletions: 0 }] };
+  await view.refresh();
+  assert.equal(view.root.querySelectorAll('.scc-filegroup').length, 1);
+  assert.match(view.root.querySelector('.scc-filegroup__head')?.textContent ?? '', /Changes2/);
+  const row = view.root.querySelector<HTMLElement>('[data-bucket="untracked"]')!;
+  assert.equal(row.querySelector('.scc-filerow__status')?.getAttribute('aria-label'), 'Untracked');
+  assert.match(row.querySelector('.scc-filerow__counts')?.textContent ?? '', /\+3/);
+  status.untracked![0].additions = 5;
+  await view.refresh();
+  assert.match(view.root.querySelector('[data-bucket="untracked"] .scc-filerow__counts')?.textContent ?? '', /\+5/);
+});
+
 test('late diff replies cannot replace a newer selection of the same path in another bucket', async () => {
   setup();
   status = { ok: true, staged: [{ path: 'shared.ts', status: 'M' }], unstaged: [{ path: 'shared.ts', status: 'M' }] };
@@ -128,7 +158,14 @@ test('Changes keeps its existing rows and buttons while range selection and the 
   rows[2]!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, shiftKey: true }));
   assert.equal(view.root.querySelectorAll('.scc-filerow.is-selected').length, 3);
   assert.equal(view.root.querySelectorAll('.scc-filerow input, .scc-filerow [role="checkbox"]').length, 0);
-  assert.equal(rows[0]!.querySelectorAll('button').length, 2);
+  const trigger = rows[0]!.querySelector<HTMLButtonElement>('.scc-filerow__trigger')!;
+  assert.equal(rows[0]!.querySelectorAll('button').length, 3);
+  assert.equal(rows[0]!.querySelector('[role="option"], button button'), null);
+  assert.equal(trigger.getAttribute('aria-pressed'), 'true');
+  const stage = rows[0]!.querySelector<HTMLButtonElement>('.scc-filerow__actions [aria-label^="Stage "]')!;
+  const activation = new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+  stage.dispatchEvent(activation);
+  assert.equal(activation.defaultPrevented, false, 'the list leaves action button activation alone');
   await view.refresh();
   assert.equal(view.root.querySelector('.scc-filerow'), rows[0]);
   assert.equal(view.root.querySelectorAll('.scc-filerow.is-selected').length, 3);
@@ -138,6 +175,6 @@ test('Changes keeps its existing rows and buttons while range selection and the 
   closeContextMenu();
   const event = new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true });
   rows[0]!.addEventListener('keydown', (key) => view.onKey?.(key), { capture: true, once: true });
-  rows[0]!.dispatchEvent(event);
+  trigger.dispatchEvent(event);
   assert.equal(view.root.querySelectorAll('.scc-filerow.is-selected').length, 81);
 });

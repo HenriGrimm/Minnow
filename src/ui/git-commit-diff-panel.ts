@@ -18,6 +18,7 @@ import {
   setSideBySidePatchDiffWordWrap,
 } from './side-by-side-patch-diff';
 import { iconHtml } from './icon';
+import { usesGraphiteContentTabs } from './surfaces/surface-bridge';
 import {
   clearGitCommitReview, commitReviewMatchesWorkspace, getGitCommitReview, normalizeReviewPath,
   selectGitCommitReviewFile, setGitCommitReview, subscribeGitCommitReview,
@@ -57,15 +58,40 @@ let wrapToggleBtn: HTMLButtonElement | null = null;
 let diffMountEl: HTMLElement | null = null;
 let openRequest = 0;
 let disposeNotice: (() => void) | undefined;
+let graphiteReview: { chatId: string; pane: HTMLElement; host: HTMLElement; dismiss(): void } | undefined;
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 function getViewerPane(): HTMLElement | null {
-  return document.getElementById('fileViewerPane');
+  return graphiteReview?.pane ?? document.getElementById('fileViewerPane');
 }
 
 function getViewerHost(): HTMLElement | null {
-  return document.getElementById('fileViewerHost');
+  return graphiteReview?.host ?? document.getElementById('fileViewerHost');
+}
+
+export function getGraphiteReviewPane(chatId: string): HTMLElement | null {
+  return graphiteReview?.chatId === chatId ? graphiteReview.pane : null;
+}
+
+async function showReview(): Promise<void> {
+  if (!usesGraphiteContentTabs()) {
+    showViewerSplit();
+    return;
+  }
+  const { getActiveChat, sessionState } = await import('../state/sessions');
+  const chat = sessionState ? getActiveChat() : undefined;
+  if (!chat) return;
+  const { openSurface, dismissSurface } = await import('./surfaces/surfaces-column');
+  if (!graphiteReview || graphiteReview.chatId !== chat.id) {
+    const pane = document.createElement('section');
+    pane.className = 'file-viewer-pane';
+    const host = document.createElement('div');
+    host.className = 'file-viewer-body';
+    pane.append(host);
+    graphiteReview = { chatId: chat.id, pane, host, dismiss: () => dismissSurface('review') };
+  }
+  openSurface('review');
 }
 
 /** True when the commit diff panel is showing in the file viewer split. */
@@ -408,7 +434,7 @@ export async function openGitCommitDiffPanel(
   }
   if (request !== openRequest) return { ok: false, cancelled: true };
 
-  showViewerSplit();
+  await showReview();
   openWorkingFile = null;
   openRecorded = false;
   markViewerPane();
@@ -456,7 +482,7 @@ export async function openGitWorkingFileDiffPanel(
   }
   if (request !== openRequest) return { ok: false, cancelled: true };
 
-  showViewerSplit();
+  await showReview();
   openRecorded = false;
   markViewerPane();
 
@@ -488,7 +514,7 @@ export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[],
   const { dismissFileViewerForPreview } = await import('./file-viewer');
   if (!(await dismissFileViewerForPreview())) return { ok: false, cancelled: true };
   if (request !== openRequest) return { ok: false, cancelled: true };
-  showViewerSplit();
+  await showReview();
   markViewerPane();
   openSha = null;
   clearGitCommitReview();
@@ -528,7 +554,10 @@ export function closeGitCommitDiffPanel(): void {
 
   clearGitCommitReview();
 
-  hideViewerSplit();
+  const review = graphiteReview;
+  graphiteReview = undefined;
+  if (review) review.dismiss();
+  else hideViewerSplit();
 
   window.dispatchEvent(new CustomEvent(GIT_COMMIT_DIFF_CLOSED_EVENT));
 }

@@ -1812,6 +1812,7 @@ export function showServeInInspector(serveId: string): void {
   closeLoadSettingsPopover();
   selectServe(serveId);
   activeTab = 'info';
+  document.getElementById('modelsView')?.classList.add('is-runtime-inspector');
   setModelsInspectorOpen(true);
   render();
   queueMicrotask(() => {

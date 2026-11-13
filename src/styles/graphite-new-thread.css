@@ -1,0 +1,173 @@
+.graphite-new-thread__intro[hidden],
+.graphite-new-thread__context[hidden] {
+  display: none;
+}
+
+#mainColumn.graphite-new-thread {
+  gap: 0;
+  overflow: auto;
+  padding: var(--mn-space-10) var(--mn-space-8);
+}
+
+#mainColumn.graphite-new-thread > :is(.chat-viewport, .graphite-metrics-trigger, #statsStrip) {
+  display: none;
+}
+
+#mainColumn.graphite-new-thread > :is(.graphite-new-thread__intro, .graphite-new-thread__context, .input-bar) {
+  width: min(680px, 100%);
+  flex: none;
+  margin-inline: auto;
+}
+
+#mainColumn.graphite-new-thread > .input-bar {
+  margin-block: 0;
+}
+
+.graphite-new-thread__intro {
+  /* The outer auto margins share free space and collapse to zero when scrolling. */
+  margin-block-start: auto;
+  padding: 0 2px 22px;
+}
+
+.graphite-new-thread__intro h2 {
+  margin: 0 0 6px;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -.03em;
+  line-height: 1.2;
+}
+
+.graphite-new-thread__intro p,
+.graphite-new-thread__context p {
+  margin: 0;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 13px;
+}
+
+.graphite-new-thread__context code {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.graphite-new-thread__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mn-space-6);
+  margin-block: var(--mn-space-10) auto;
+}
+
+.graphite-new-thread__context > section {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.graphite-new-thread__context > .graphite-new-thread__ready {
+  flex: 2 1 360px;
+}
+
+.graphite-new-thread__context h3 {
+  margin: 0;
+  padding: var(--mn-space-2);
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-semibold);
+  line-height: var(--mn-leading-snug);
+}
+
+.graphite-new-thread__section-title,
+.graphite-new-thread__context :is(button, a) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graphite-new-thread__section-title {
+  justify-content: space-between;
+}
+
+.graphite-new-thread__context :is(button, a) {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.graphite-new-thread__context :is(button, a):is(:hover, :focus-visible) {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+}
+
+.graphite-new-thread__section-title button {
+  width: auto;
+  min-height: var(--mn-control-h-sm);
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: var(--mn-type-sm);
+  white-space: nowrap;
+}
+
+.graphite-new-thread__issue-list {
+  display: grid;
+  grid-template-columns: fit-content(40%) minmax(0, 1fr) auto;
+  column-gap: var(--mn-space-3);
+  margin: var(--mn-space-1) 0 0;
+  padding: 0;
+  border-block-start: 1px solid var(--mn-border);
+  list-style: none;
+}
+
+.graphite-new-thread__issue-list > li,
+.graphite-new-thread__issue-list a {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  column-gap: inherit;
+}
+
+.graphite-new-thread__issue-list > li + li {
+  border-block-start: 1px solid var(--mn-border);
+}
+
+.graphite-new-thread__issue-list a {
+  align-items: baseline;
+  align-content: center;
+  min-height: var(--touch-min);
+  padding: var(--mn-space-2);
+  line-height: var(--mn-leading-snug);
+  text-decoration: none;
+}
+
+.graphite-new-thread__issue-list code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphite-new-thread__issue-list span {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.graphite-new-thread__issue-list .icon-svg {
+  align-self: center;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+}
+
+.graphite-new-thread__context p {
+  padding: 8px;
+}
+
+@media (max-width: 640px) {
+  #mainColumn.graphite-new-thread {
+    padding: var(--mn-space-6) var(--mn-space-4);
+  }
+}

@@ -11,7 +11,7 @@ Everything on this page lives in the **Models** app. Open it from the app rail.
 | To use a runtime you already have | [LM Studio](#lm-studio) or [Ollama](#ollama) |
 | Minnow to handle downloading and serving | [Serve a model inside Minnow](#serve-a-model-inside-minnow) |
 | Frontier-quality answers, no local hardware cost | [Cloud APIs](#cloud-apis) |
-| An installed Claude Code, Codex, or Cursor CLI | [Agent CLIs](#agent-clis) |
+| An installed Claude Code, Codex, or Cursor CLI | [Subscriptions](#subscriptions) |
 
 Mixing is normal and often the right answer: a small fast local model for routine turns, a cloud model bound to the roles that need real reasoning. See [Routing](#routing-which-model-does-what).
 
@@ -54,19 +54,19 @@ API keys are **encrypted at rest** with AES-256-GCM under a key file in your Min
 
 Using a cloud provider, including a cloud-connected agent CLI, sends prompts and context to that provider. See [Privacy and security](../reference/privacy-and-security.md) for other network services and permissions.
 
-## Agent CLIs
+## Subscriptions
 
-Open **Models → CLIs**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal, and **Update** runs the CLI's own updater there. **Sign in** opens an inline connection flow: approve access in your browser and Minnow verifies the login automatically. **Verify** checks an existing login.
+Open **Models → Subscriptions**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal, and **Update** runs the CLI's own updater there. **Sign in** opens an inline connection flow: approve access in your browser and Minnow verifies the login automatically. **Verify** checks an existing login.
 
 The CLI's models appear in the normal picker and can be selected in chats and configured for supporting tasks. Minnow applies the global permission mode and workflow restrictions to their tool calls. Vendor account requirements, model access, and usage limits apply. Background helper tasks are off by default for CLI connections.
 
-See [Models → CLIs](../apps/models.md#clis) for supported CLI versions, conversation persistence, and usage displays.
+See [Models → Subscriptions](../apps/models.md#subscriptions) for supported CLI versions, conversation persistence, and usage displays.
 
 ## Choosing the model for a turn
 
 Choose the model in the composer, or press **Ctrl+M / Cmd+M**. The choice applies to this chat and becomes the starting model for new chats across projects and restarts. Opening an older chat keeps its own model and does not change that remembered choice.
 
-Issues and Dashboard show a model choice before starting chats. They initially use the last composer-selected model; choosing another model there applies to that dispatch. Boards keep their own model picker.
+Issues shows a model choice before starting individual chats. It initially uses the last composer-selected model; choosing another model there applies to that dispatch. Boards keep their own model picker.
 
 The top-bar **Models** icon opens routing controls and links to **Providers & connections**, **Model pools**, and **Manage models…**. Local runtimes expose **Load / Unload** in the composer picker for the selected model.
 

@@ -6,7 +6,7 @@
 .plugin-settings__add { align-items: flex-end; }
 .plugin-settings label { display: grid; gap: 6px; }
 .plugin-settings__add label { flex: 1; min-width: min(260px, 100%); }
-.plugin-settings input, .plugin-settings select { min-height: 40px; padding: 8px 10px; border: 1px solid var(--mn-border); border-radius: 6px; background: var(--mn-bg); color: var(--mn-fg); font: inherit; min-width: 0; }
+.plugin-settings input:not(.settings-switch__input), .plugin-settings select { min-height: 40px; padding: 8px 10px; border: 1px solid var(--mn-border); border-radius: 6px; background: var(--mn-bg); color: var(--mn-fg); font: inherit; min-width: 0; }
 .plugin-settings button { min-height: 40px; }
 .plugin-settings :is(button, input, select, summary):focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 3px; }
 .plugin-settings__preview:empty { display: none; }

@@ -28,7 +28,6 @@ export interface HeadlessRunResult {
   workAgentId: string | null;
   providerId: string;
   modelId: string;
-  promptProfile: string;
   userPrompt: string;
   assistantFinal: string;
   turns: HeadlessTurnRecord[];
@@ -57,7 +56,6 @@ export function serializeHeadlessRunResult(result: HeadlessRunResult): string {
     workAgentId: result.workAgentId,
     providerId: result.providerId,
     modelId: result.modelId,
-    promptProfile: result.promptProfile,
     userPrompt: result.userPrompt,
     assistantFinal: result.assistantFinal,
     turns: result.turns,

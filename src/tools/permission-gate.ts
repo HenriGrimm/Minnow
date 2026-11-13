@@ -8,6 +8,7 @@
 
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
 import { findChatById, scheduleSaveSessions } from '../state/sessions';
+import { isServerStorageMode } from '../config/storage-mode';
 import {
   getToolSecurityMetaCached,
   loadToolSecurityMeta,
@@ -136,7 +137,7 @@ export async function maybeBlockToolForUserApproval(
 ): Promise<ToolExecutionResult | null> {
   const execName = displayToolName ?? permissionToolId;
 
-  await loadToolSecurityMeta().catch(() => undefined);
+  await loadToolSecurityMeta({ refresh: isServerStorageMode() });
   const level: PermissionLevel = getToolSecurityMetaCached().permissionLevel;
   const action = classifyForGate(execName, args, context);
   const grants = getChatPermissionGrants(context.chatId);

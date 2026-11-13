@@ -103,7 +103,7 @@ test('CLI onboarding waits for an enabled verified agent and restores its provid
       assert.equal(ctx.providerId, 'codex-cli', 'initial loading must retain the saved binding');
       assert.equal(ctx.modelId, 'saved-model');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="Default CLI agent"]')!.value, 'codex-cli');
+      assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="Default agent"]')!.value, 'codex-cli');
       assert.equal(ctx.modelId, 'saved-model', 'status refresh must not clear the existing model');
     } finally {
       if (typeof restoredCleanup === 'function') restoredCleanup();

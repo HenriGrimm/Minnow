@@ -127,6 +127,7 @@ export function renderTaskDetail(
   detail.setAttribute('role', 'dialog');
   detail.setAttribute('aria-modal', 'true');
   detail.setAttribute('aria-labelledby', titleId);
+  detail.tabIndex = -1;
   detail.addEventListener('click', (event) => event.stopPropagation());
 
   const dismissOnEscape = (event: KeyboardEvent) => {
@@ -1157,15 +1158,15 @@ function renderSpecSection(
     edited.title = 'Changed on this board. Agents follow this spec, not the plan file.';
     summary.appendChild(edited);
   }
+  details.appendChild(summary);
+
+  const body = el('div', 'ov2-spec__body');
   if (editable) {
     const edit = el('button', 'ov2-btn ov2-btn--ghost ov2-spec__edit', 'Edit');
     edit.type = 'button';
     edit.dataset.focusKey = 'spec-edit';
     edit.title = `Edit ${task.id}'s spec. The plan file is not changed.`;
-    edit.addEventListener('click', (event) => {
-      // Inside <summary>: keep the click from toggling the disclosure.
-      event.preventDefault();
-      event.stopPropagation();
+    edit.addEventListener('click', () => {
       ui.specEdit = {
         taskId: task.id,
         title: task.title,
@@ -1179,11 +1180,8 @@ function renderSpecSection(
       replaceSpecPanel(details, state, task, actions);
       details.ownerDocument.querySelector<HTMLElement>('.ov2-spec-edit textarea')?.focus();
     });
-    summary.appendChild(edit);
+    body.appendChild(edit);
   }
-  details.appendChild(summary);
-
-  const body = el('div', 'ov2-spec__body');
   for (const [label, value] of parts) {
     const block = el('div', 'ov2-spec__block');
     block.appendChild(el('h4', 'ov2-spec__label', label));

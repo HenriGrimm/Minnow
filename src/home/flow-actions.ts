@@ -7,7 +7,7 @@ import { ensureBackgroundChat } from '../state/background-chat';
 import { appendIssueLinks, collectIssues, findIssueById, isIssuesStoreLoaded, requireIssueStatusForRole, saveIssuesNow, updateIssue, updateIssueAgentRun } from '../state/issues-store';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
-import { getWorkspacePath } from '../state/workspace';
+import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { getAutopilotMetaSync, loadAutopilotMeta } from '../config/autopilot-meta';
 import { getRouterConfigSync } from '../models/routers';
@@ -72,7 +72,12 @@ export function initHomeFlow(): void {
   });
   subscribeIssuesChanges(() => { queueMicrotask(() => void pumpHomeQueue()); });
   subscribeChatStreamEnd(() => { queueMicrotask(() => void pumpHomeQueue()); });
-  void loadAutopilotMeta().then(() => pumpHomeQueue()).catch(() => {});
+  const resumeWorkspace = () => {
+    reconcileHomeFlow();
+    void pumpHomeQueue();
+  };
+  subscribeWorkspace(resumeWorkspace);
+  void loadAutopilotMeta().then(resumeWorkspace).catch(() => {});
 }
 
 export async function sendHomeIssues(groups: IssueCard[][], options: { modelId: string; providerId?: string; mode: 'build' | 'plan'; baseBranch: string; instructions?: string; startNow?: boolean }): Promise<string[]> {

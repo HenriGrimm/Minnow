@@ -1,5 +1,5 @@
 /**
- * Permission level: composer pill, level menu, Settings → Permissions cards.
+ * Permission level: composer button, level menu, Settings → Permissions cards.
  * The level icon carries the tone: Manual neutral, Auto accent, Full danger.
  */
 
@@ -8,66 +8,35 @@
 }
 
 .permission-pill {
-  --pp-tone: var(--mn-fg-muted);
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 0 8px 0 7px;
-  border: 1px solid var(--mn-border);
+  justify-content: center;
+  width: var(--mn-control-h-sm);
+  height: var(--mn-control-h-sm);
+  padding: 0;
+  border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--mn-fg-muted);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.2;
-  white-space: nowrap;
   cursor: pointer;
-  transition: border-color 0.2s var(--ease-out), background 0.2s var(--ease-out), color 0.2s var(--ease-out);
 }
 
 .permission-pill[data-level='auto'] {
-  --pp-tone: var(--mn-accent);
+  color: var(--mn-accent);
 }
 
 .permission-pill[data-level='full'] {
-  --pp-tone: var(--mn-danger);
-  border-color: var(--mn-danger-border);
-  background: var(--mn-danger-soft);
-  color: var(--mn-danger-ink);
+  color: var(--mn-danger);
 }
 
 .permission-pill__icon {
-  --mn-icon-size: 13px;
-  color: var(--pp-tone);
-}
-
-.permission-pill__chevron {
-  --mn-icon-size: 10px;
-  opacity: 0.7;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .permission-pill:hover {
-    border-color: var(--mn-border-strong);
-    color: var(--mn-fg);
-  }
+  --mn-icon-size: 12px;
 }
 
 .permission-pill:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 2px;
-}
-
-.permission-pill[aria-expanded='true'] {
-  border-color: var(--mn-accent);
-}
-
-/* Compact composer: icon only. */
-.composer-controls--compact .permission-pill__label {
-  display: none;
 }
 
 /* ── Menu ─────────────────────────────────────────────────────────────── */

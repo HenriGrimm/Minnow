@@ -1,9 +1,9 @@
 import type { Message, ToolCall, ToolResultMessage } from '../types';
-import { isImpeccableDetectFindingsResult } from '../lib/impeccable-detect-result';
+import { isToolResultFailure } from '../lib/tool-result-failure';
 import { formatWorkDuration } from './transcript-turns';
 
 /**
- * Deterministic tally for a collapsed chat turn ("Read 6 files · Ran 4 commands · 1 failed").
+ * Deterministic tally for a collapsed chat turn ("Read 6 files · Ran 4 commands").
  * Reads persisted history only; the live DOM supplies nothing here, so it stays testable.
  * Spec: documentation/plans/compact-chat-turn-summary.md
  */
@@ -15,8 +15,6 @@ export interface TurnSummaryEntry {
   kind: TurnSummaryKind;
   /** Distinct targets touched (calls, for families without a meaningful target). */
   count: number;
-  /** Distinct targets whose failure the model never recovered from. */
-  failed: number;
   text: string;
 }
 
@@ -106,7 +104,7 @@ function changedPaths(result: ToolResultMessage): string[] {
   return change.paths ?? [];
 }
 
-/** What the call acted on. Calls with the same key count once and can recover each other. */
+/** What the call acted on. Calls with the same key count once. */
 function targetsFor(kind: TurnSummaryKind, call: ToolCall, args: Record<string, unknown>, result: ToolResultMessage): string[] {
   switch (kind) {
     case 'read':
@@ -127,11 +125,6 @@ function targetsFor(kind: TurnSummaryKind, call: ToolCall, args: Record<string, 
   }
 }
 
-export function isToolResultFailure(content: string): boolean {
-  if (isImpeccableDetectFindingsResult(content)) return false;
-  return content.trimStart().startsWith('Error:');
-}
-
 function isCompactionRow(msg: Message | undefined): boolean {
   return msg?.role === 'context' && (msg as { compaction?: { version?: number } }).compaction?.version === 1;
 }
@@ -140,9 +133,7 @@ function questionCount(args: Record<string, unknown>): number {
   return Array.isArray(args.questions) && args.questions.length ? args.questions.length : 1;
 }
 
-interface Attempt { kind: TurnSummaryKind; name: string; targets: string[]; failed: boolean; weight: number }
-
-/** Tally for history rows `fork..end` (inclusive). Calls without a result yet are not counted. */
+/** Tally completed, successful calls in history rows `fork..end` (inclusive). */
 export function summarizeTurn(
   history: readonly Message[],
   fork: number,
@@ -162,7 +153,7 @@ export function summarizeTurn(
     activeCompactions = new Set([last]);
   }
 
-  const attempts: Attempt[] = [];
+  const tallies = new Map<TurnSummaryKind, { targets: Set<string>; weight: number }>();
   let compacted = 0;
   let thought = false;
   let thinkingMs = 0;
@@ -179,55 +170,35 @@ export function summarizeTurn(
     if (!('tool_calls' in msg) || !msg.tool_calls?.length) continue;
     for (const call of msg.tool_calls) {
       const result = results.get(call.id);
-      if (!result) continue;
+      if (!result || isToolResultFailure(result.content)) continue;
       const kind = kindForTool(call.function.name, result);
       if (!kind) continue;
       const args = parseArgs(call);
-      attempts.push({
-        kind,
-        name: call.function.name,
-        targets: targetsFor(kind, call, args, result),
-        failed: isToolResultFailure(typeof result.content === 'string' ? result.content : ''),
-        weight: kind === 'asked' ? questionCount(args) : 1,
-      });
+      const tally = tallies.get(kind) ?? { targets: new Set<string>(), weight: 0 };
+      for (const target of targetsFor(kind, call, args, result)) tally.targets.add(target);
+      tally.weight += kind === 'asked' ? questionCount(args) : 1;
+      tallies.set(kind, tally);
     }
   }
-
-  const tallies = new Map<TurnSummaryKind, { targets: Set<string>; failed: Set<string>; weight: number }>();
-  attempts.forEach((attempt, index) => {
-    const tally = tallies.get(attempt.kind) ?? { targets: new Set<string>(), failed: new Set<string>(), weight: 0 };
-    tallies.set(attempt.kind, tally);
-    tally.weight += attempt.weight;
-    for (const target of attempt.targets) {
-      tally.targets.add(target);
-      if (!attempt.failed) continue;
-      const recovered = attempts.slice(index + 1).some((later) =>
-        !later.failed && later.name === attempt.name && later.targets.includes(target));
-      if (!recovered) tally.failed.add(target);
-    }
-  });
 
   const all: TurnSummaryEntry[] = [];
   for (const [kind, tally] of tallies) {
     const count = kind === 'asked' ? tally.weight : tally.targets.size;
-    all.push({ kind, count, failed: tally.failed.size, text: entryText(kind, count) });
+    all.push({ kind, count, text: entryText(kind, count) });
   }
-  if (compacted) all.push({ kind: 'compacted', count: compacted, failed: 0, text: entryText('compacted', compacted) });
+  if (compacted) all.push({ kind: 'compacted', count: compacted, text: entryText('compacted', compacted) });
   if (!tallies.size && thought) {
-    all.push({ kind: 'thought', count: 1, failed: 0, text: thinkingMs > 0 ? `Thought for ${formatWorkDuration(thinkingMs)}` : 'Thought' });
+    all.push({ kind: 'thought', count: 1, text: thinkingMs > 0 ? `Thought for ${formatWorkDuration(thinkingMs)}` : 'Thought' });
   }
   all.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
 
-  // Unrecovered failures are never hidden behind "+N more".
-  const visible = new Set(all.filter((entry) => entry.failed).slice(0, MAX_ENTRIES));
-  for (const entry of all) if (visible.size < MAX_ENTRIES) visible.add(entry);
-  const entries = all.filter((entry) => visible.has(entry));
+  const entries = all.slice(0, MAX_ENTRIES);
   return { entries, overflow: all.length - entries.length };
 }
 
-/** Plain-text form for accessible names: "Read 2 files · Ran 1 command, 1 failed · +1 more". */
+/** Plain-text form for accessible names. */
 export function formatTurnSummary(summary: TurnSummary): string {
-  const parts = summary.entries.map((entry) => entry.failed ? `${entry.text}, ${entry.failed} failed` : entry.text);
+  const parts = summary.entries.map((entry) => entry.text);
   if (summary.overflow) parts.push(`+${summary.overflow} more`);
   return parts.join(' · ');
 }

@@ -343,16 +343,15 @@ test('a saved spawn result anchors a completed child even when its parent tool c
   assert.ok((receipt.closest('.tool-call-batch') ?? receipt).nextElementSibling?.matches('.sub-agent-card'));
 });
 
-test('failed prompt-driven delegation remains an inline error without manufacturing a child activity card', () => {
+test('failed prompt-driven delegation is omitted without manufacturing a child activity card', () => {
   const parent = shell('preflight-parent'); const area = setup([parent]);
   parent.history = [{ role: 'user', content: 'Use the unavailable model for a reviewer.' },
     { role: 'assistant', content: '', tool_calls: [{ id: 'invalid-spawn', type: 'function', function: { name: 'spawn_sub_agent', arguments: '{"type":"explore","task":"Inspect","target":{"providerId":"provider","modelId":"missing"}}' } }] },
     { role: 'tool', tool_call_id: 'invalid-spawn', content: 'Error: The selected model is unavailable. No agent conversation was created.' },
     { role: 'assistant', content: 'The requested reviewer model is unavailable.' }];
   renderChatFromHistory(parent);
-  const failed = area.querySelector<HTMLElement>('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]')!; assert.ok(failed);
-  const container = failed.closest('.tool-call-batch') ?? failed;
-  assert.equal(container.classList.contains('chat-work-hidden'), false);
+  assert.ok(area.querySelector<HTMLElement>('[data-tool-call-id="invalid-spawn"]')?.hidden);
+  assert.match(area.querySelector('.chat-turn-final')?.textContent ?? '', /The requested reviewer model is unavailable/);
   assert.equal(area.querySelectorAll('.sub-agent-card').length, 0);
 });
 

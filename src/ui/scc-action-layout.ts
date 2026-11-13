@@ -3,7 +3,8 @@ import { button, el } from './scc-shared';
 export function actionHeader(title: string, description: string, actions: HTMLElement[] = []): HTMLElement {
   const head = el('header', 'scc-actions__header');
   const copy = el('div');
-  copy.append(el('h1', undefined, title), el('p', undefined, description));
+  copy.append(el('h1', undefined, title));
+  if (description) copy.append(el('p', undefined, description));
   const controls = el('div', 'scc-actions__controls');
   controls.append(...actions);
   head.append(copy, controls);

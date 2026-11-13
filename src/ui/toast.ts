@@ -70,7 +70,7 @@ const AGE_REFRESH_MS = 15_000;
 const TONE_ICONS: Record<NotifyTone, IconName> = {
   success: 'check',
   error: 'statusFail',
-  attention: 'help',
+  attention: 'warning',
   info: 'bell',
 };
 
@@ -142,7 +142,7 @@ function getStack(create: boolean): HTMLElement | null {
     stack.setAttribute('aria-label', 'Notifications');
     // Clicking a card must not close an open Settings or workspace overlay.
     stack.dataset.aboveShellOverlay = '';
-    document.body.appendChild(stack);
+    (document.getElementById('mobileShell') ?? document.body).appendChild(stack);
   }
   return stack;
 }
@@ -162,7 +162,9 @@ function layoutStack(): void {
   if (all.length <= MAX_VISIBLE) stackExpanded = false;
   const hiddenCount = stackExpanded ? 0 : Math.max(0, all.length - MAX_VISIBLE);
   const waits = new Set([...entries.values()].filter((entry) => entry.total === null).map((entry) => entry.el));
-  const foldOrder = [...all.filter((card) => !waits.has(card)), ...all.filter((card) => waits.has(card))];
+  const focused = all.find((card) => card.contains(document.activeElement));
+  const candidates = all.filter((card) => card !== focused);
+  const foldOrder = [...candidates.filter((card) => !waits.has(card)), ...candidates.filter((card) => waits.has(card))];
   const folded = new Set(foldOrder.slice(0, hiddenCount));
   for (const card of all) card.hidden = folded.has(card);
   let more = stack.querySelector<HTMLButtonElement>(':scope > .mn-toast-more');
@@ -173,8 +175,11 @@ function layoutStack(): void {
       more.className = 'mn-toast-more';
       markPreviewOccluder(more, 'notification');
       more.addEventListener('click', () => {
+        const wasFocused = document.activeElement === more;
+        const next = cards(stack).find((card) => card.hidden);
         stackExpanded = true;
         layoutStack();
+        if (wasFocused) next?.querySelector<HTMLButtonElement>('.mn-toast__dismiss')?.focus();
       });
       stack.prepend(more);
     }
@@ -253,12 +258,12 @@ function closeEntry(entry: Entry, byUser: boolean): void {
   stopTimer(entry);
   entries.delete(entry.key);
   entry.el.remove();
+  layoutStack();
   if (hadFocus) {
     const next = stack?.querySelector<HTMLButtonElement>('.mn-toast:not([hidden]) .mn-toast__dismiss');
     if (next) next.focus();
     else if (entry.previousFocus?.isConnected) entry.previousFocus.focus();
   }
-  layoutStack();
   if (byUser) entry.opts.onDismiss?.();
 }
 
@@ -294,7 +299,7 @@ function renderEntry(entry: Entry): void {
   const icon = document.createElement('span');
   icon.className = 'mn-toast__icon';
   icon.setAttribute('aria-hidden', 'true');
-  icon.innerHTML = iconHtml(opts.icon ?? TONE_ICONS[tone], { size: compact ? 14 : 15 });
+  icon.innerHTML = iconHtml(opts.icon ?? TONE_ICONS[tone], { size: 14 });
 
   const main = document.createElement('div');
   main.className = 'mn-toast__main';
@@ -302,7 +307,12 @@ function renderEntry(entry: Entry): void {
   const head: HTMLElement = opts.open ? button('mn-toast__open', '') : document.createElement('div');
   if (!opts.open) head.className = 'mn-toast__head';
   if (opts.open) {
-    head.setAttribute('aria-label', [announcementText(opts), opts.openLabel ?? 'Open'].filter(Boolean).join('. '));
+    const label = opts.openLabel ?? 'Open';
+    const announcement = announcementText(opts).replace(/\.$/, '');
+    const destination = label.startsWith('Open ') ? label.slice(5) : '';
+    const instruction = destination ? [`Check ${destination}`, label].find(text => announcement.endsWith(text)) : undefined;
+    const message = instruction ? announcement.slice(0, -instruction.length).trimEnd().replace(/\.$/, '') : announcement;
+    head.setAttribute('aria-label', [message, label].filter(Boolean).join('. '));
     head.addEventListener('click', () => {
       if (entry.busy) return;
       closeEntry(entry, false);
@@ -331,7 +341,7 @@ function renderEntry(entry: Entry): void {
     }
     if (entry.total === null) {
       const tag = document.createElement('span');
-      tag.className = 'mn-toast__tag';
+      tag.className = 'mn-toast__tag visually-hidden';
       tag.textContent = 'Needs you';
       meta.append(tag);
     }
@@ -371,7 +381,6 @@ function renderEntry(entry: Entry): void {
     detail.id = `mn-toast-detail-${++nextId}`;
     detail.textContent = opts.detail;
     detail.hidden = !entry.expanded;
-    main.append(detail);
   }
   if (opts.content) main.append(opts.content);
 
@@ -407,7 +416,8 @@ function renderEntry(entry: Entry): void {
       expand.setAttribute('aria-expanded', String(entry.expanded));
       restartTimer(entry);
     });
-    row.append(expand);
+    main.insertBefore(expand, opts.content ?? error);
+    if (detail) expand.after(detail);
   }
   if (row.childElementCount) main.append(row);
 
@@ -491,7 +501,7 @@ export function notify(input: NotifyOptions): NotifyHandle | null {
   if ((!opts.title && !opts.message) || typeof document === 'undefined' || !document.body) return null;
   if (!document.defaultView) return null;
   if (!opts.open) {
-    // "Check Settings → Providers" opens Providers when the card is clicked.
+    // A named Settings or Models destination can open from the card.
     const link = findSettingsLink(`${opts.title ?? ''} ${opts.message ?? ''}`);
     if (link) {
       opts.open = () => { void import('./settings-page').then((m) => m.openSettings(link.section)); };

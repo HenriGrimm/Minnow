@@ -12,14 +12,13 @@ import {
 } from '../state/sessions';
 import { streamingChatIds } from '../app-state';
 import { isChatTurnSetupPending } from './chat-turn-guard';
-import { readChatStreamText } from './streaming-state';
+import { isStreamDomVisible, notifyChatStreamActivity, readChatStreamText, registerChatStreamText } from './streaming-state';
 import { getMainTurnActivity, subscribeMainTurnActivity } from './main-turn-activity';
 import { appendStreamingAssistantRow, revealAssistantProseBubble } from '../ui/messages';
 import { scheduleAssistantBubbleRender, cancelAssistantBubbleRenderDebounce, flushAssistantBubbleRender } from '../markdown/renderer';
 import { createRunnerTiming } from '../../server/runner/timing.js';
 import { ThoughtBubbleController } from '../ui/thought-bubbles';
 import { registerStreamDomRemount, type StreamDomHandles } from '../tools/stream-chat-dom';
-import { isStreamDomVisible } from './streaming-state';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { syncComposerFromStreamingState } from '../ui/composer-send';
 import { enqueueComposerMessage, pushQueuedMessageNow, removeQueuedMessage, updateQueuedMessage } from './message-queue';
@@ -32,6 +31,7 @@ import type { SharedChatFrame } from './shared-chat-protocol';
 import type { TurnEvent } from '../../server/runner/run-turn';
 import type { SendProgrammaticChatTextOptions } from './messaging';
 import { randomUUID } from '../lib/random-id';
+import { decodeModelSelectKey } from '../lib/model-select-key';
 import { getChatTranscript } from '../config/api-client';
 import { startManagedChatBridge } from './managed-chat-bridge';
 import { startManagedChatRequests } from '../ui/managed-chat-requests';
@@ -42,7 +42,7 @@ import { chatMutationVersion } from '../state/chat-mutation-version';
 
 const FIELD_KEYS = ['name', 'workspacePath', 'modelId', 'providerId', 'modeId', 'updatedAt',
   'currentGenerationId', 'lastStats', 'modelInfo', 'turnError', 'unread', 'pinnedAt', 'archivedAt', 'pendingMessageQueue',
-  'pendingSteerMessage', 'reasoningEffort', 'worktreeRoot', 'worktreeEnabled', 'worktreeSetupRequired',
+  'pendingSteerMessage', 'reasoningEffort', 'cliFastMode', 'worktreeRoot', 'worktreeEnabled', 'worktreeSetupRequired',
   'worktreeSetupError', 'subAgentAutoResumeBlocked', 'activeGoal', 'activeLoops', 'remoteCommandReceipts'] as const;
 
 function sharedFields(chat: Chat): Record<string, unknown> {
@@ -189,7 +189,7 @@ export function createSharedChatPublisher(send: (frame: Omit<SharedChatFrame, 'h
 }
 
 interface Observation { frame: SharedChatFrame; row?: StreamDomHandles; thoughts?: ThoughtBubbleController; thinking: string;
-  proseEpoch?: string; firstProseReceived?: number; prosePainted?: boolean }
+  proseEpoch?: string; firstProseReceived?: number; prosePainted?: boolean; unregisterStreamText?: () => void }
 
 /** Render live output without executing tools or adding anything to persisted history. */
 export function createSharedChatObserver(onChange: (activeChanged: boolean) => void, options: {
@@ -264,10 +264,19 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     if (!chat) throw new Error('Chat transcript has not arrived yet.');
     if (chat?.historyLoaded === false) await ensureChatHistoryLoaded(chat.id);
     if (disposed) return;
-    if (frame.history && frame.history.start > chat.history.length) {
-      const { history } = await getChatTranscript(chat.id);
+    const rewrite = frame.fields?.historyRewriteRevision;
+    const needsRewrittenPrefix = typeof rewrite === 'number' && rewrite > (chat.historyRewriteRevision ?? 0);
+    if (frame.history && (frame.history.start > chat.history.length || needsRewrittenPrefix && frame.history.start > 0)) {
+      const { history, detail } = await getChatTranscript(chat.id);
       if (disposed) return;
-      applySharedChatFrame(chat.id, undefined, { start: 0, messages: history, length: history.length });
+      if (needsRewrittenPrefix) {
+        // A fetch can overtake this frame. A newer rewrite must arrive with its own metadata.
+        if (detail?.historyRewriteRevision !== rewrite) throw new Error('Transcript changed during refresh.');
+        frame = { ...frame, fields: { ...frame.fields, historyDigest: detail.historyDigest },
+          history: { start: 0, messages: history, length: history.length } };
+      } else {
+        applySharedChatFrame(chat.id, undefined, { start: 0, messages: history, length: history.length });
+      }
     }
     const next = { ...existing?.frame, ...frame };
     if (frame.liveAppend) {
@@ -284,14 +293,26 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     setRemoteChatRunning(frame.chatId, frame.running, frame.hostId === 'minnow-server' ? 'managed' : 'legacy');
     const applied = applySharedChatFrame(frame.chatId, frame.fields, frame.history);
     if (!applied) throw new Error('Transcript prefix has not arrived yet.');
+    const liveChanged = next.live !== existing?.frame.live;
     state.frame = next;
     observed.set(frame.chatId, state);
-    registerStreamDomRemount(frame.chatId, frame.running ? row => {
+    registerStreamDomRemount(frame.chatId, next.running && next.live ? row => {
       state.row = row; state.thoughts?.abort(); state.thoughts = new ThoughtBubbleController(row.wrap); state.thinking = ''; paint(state);
     } : null);
     if (frame.fields || frame.history) onChange(getActiveChat().id === frame.chatId);
     paint(state, receivedAt);
     syncComposerFromStreamingState();
+    // Observed turns have no local painter to publish activity for the composer.
+    if (next.running && next.live && !state.unregisterStreamText) {
+      state.unregisterStreamText = registerChatStreamText(frame.chatId, () => state.frame.live ?? null);
+    }
+    if (state.unregisterStreamText && (!next.running || liveChanged)) {
+      if (!next.running) {
+        state.unregisterStreamText();
+        state.unregisterStreamText = undefined;
+      }
+      notifyChatStreamActivity(frame.chatId);
+    }
     if (!frame.running) { state.frame.history = undefined; state.frame.fields = undefined; }
   }
   return {
@@ -305,6 +326,7 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     dispose() {
       disposed = true;
       for (const [id, state] of observed) {
+        state.unregisterStreamText?.();
         if (state.row) cancelAssistantBubbleRenderDebounce(state.row.bubble);
         state.thoughts?.abort(); state.row?.streamStatus.dispose(); state.row?.wrap.remove(); registerStreamDomRemount(id, null);
       }
@@ -348,6 +370,14 @@ export function createHostChatCommandHandler(publish: (chatId: string, running: 
       if (typeof patch.modelSelectValue === 'string') {
         const { onActiveChatModelChange } = await import('../ui/chat-model-ui');
         onActiveChatModelChange(patch.modelSelectValue, chat);
+      }
+      if (typeof patch.cliFastMode?.enabled === 'boolean' && typeof patch.cliFastMode.modelKey === 'string') {
+        if (busy) throw new Error('Wait for the current reply to finish before changing speed.');
+        const binding = decodeModelSelectKey(patch.cliFastMode.modelKey);
+        if (!binding || binding.providerId !== chat.providerId || binding.modelId !== chat.modelId) {
+          throw new Error('The selected model changed before speed could be saved.');
+        }
+        chat.cliFastMode = patch.cliFastMode.enabled;
       }
       if (typeof patch.modeId === 'string') {
         if (!['general', 'build', 'plan', 'debug'].includes(patch.modeId)) throw new Error('Invalid chat mode.');

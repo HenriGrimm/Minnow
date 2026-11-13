@@ -34,6 +34,19 @@ function fixture() {
 }
 
 describe('agent model selection preflight', () => {
+  it('validates and captures Fast for advertised CLI models only', async () => {
+    const { models, context } = fixture();
+    models.cli[0].supportsFastMode = true;
+    const parentSelection = { providerId: 'cli', modelId: 'cli-model', options: { fastMode: true, reasoningEffort: 'high' } };
+    const resolved = await resolveAgentModelSelection({ target: parentSelection }, context);
+    assert.deepEqual(resolved.selection.options, parentSelection.options);
+    await assert.rejects(resolveAgentModelSelection({
+      target: { providerId: 'api', modelId: 'small', options: { fastMode: true } },
+    }, context), { code: 'options_unsupported' });
+    const child = await resolveAgentModelSelection({ parentSelection, target: { providerId: 'api', modelId: 'small' } }, context);
+    assert.deepEqual(child.selection.options, { reasoningEffort: 'high' });
+  });
+
   it('admits tools and streaming after an inconclusive legacy capability probe', async () => {
     for (const streaming of [true, false]) {
       const { context, adapters } = fixture();

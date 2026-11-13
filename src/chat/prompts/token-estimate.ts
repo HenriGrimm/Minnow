@@ -83,12 +83,6 @@ export interface ResolveOutboundPromptEstimateOptions {
   modelId?: string;
 }
 
-function readLegacySystemPromptText(): string {
-  if (typeof document === 'undefined') return '';
-  const el = document.getElementById('systemPrompt') as HTMLTextAreaElement | null;
-  return el?.value?.trim() ?? '';
-}
-
 function lastUserRouteText(chat: Chat): string {
   const last = chat.history
     .slice()
@@ -240,13 +234,11 @@ async function resolveOutboundComposeForEstimate(
   composed: string;
   userRules: string | null;
   ctx: ComposeContext;
-  legacyFallback: boolean;
 }> {
   const routeUserText =
     options?.composeOptions?.routeUserText ??
     options?.composeOptions?.userMessagePreview ??
     lastUserRouteText(chat);
-  const legacyText = readLegacySystemPromptText();
 
   const expertCtx = await resolveExpertContextForSend(chat, routeUserText);
   const activeWorkAgent = resolveActiveWorkAgent(chat);
@@ -284,19 +276,16 @@ async function resolveOutboundComposeForEstimate(
   } catch {
     composedRaw = '';
   }
-  const composedTrimmed = composedRaw.trim() || legacyText.trim();
-  const legacyFallback = !composedRaw.trim() && !!legacyText.trim();
+  const composedTrimmed = composedRaw.trim();
 
   const rulesSettings = await loadUserRules();
   const userRules = getUserRulesPayloadForSend(rulesSettings);
-
-  return { composed: composedTrimmed, userRules, ctx, legacyFallback };
+  return { composed: composedTrimmed, userRules, ctx };
 }
 
 interface CachedOutboundStaticEstimate {
   composed: string;
   userRules: string | null;
-  legacyFallback: boolean;
   ctx: ComposeContext | null;
   composedSystem: number;
   userRulesTokens: number;
@@ -362,17 +351,14 @@ async function resolveCachedStaticOutboundEstimate(
 
   let composed = '';
   let userRules: string | null = null;
-  let legacyFallback = false;
   let ctx: ComposeContext | null = null;
   try {
     const resolved = await resolveOutboundComposeForEstimate(chat, options);
     composed = resolved.composed;
     userRules = resolved.userRules;
-    legacyFallback = resolved.legacyFallback;
     ctx = resolved.ctx;
   } catch {
-    composed = readLegacySystemPromptText();
-    legacyFallback = !!composed.trim();
+    // Report tool and history estimates even if composition fails.
   }
 
   const tools = resolveEnabledToolsForEstimate(chat, provider.apiKind);
@@ -381,13 +367,11 @@ async function resolveCachedStaticOutboundEstimate(
     history: [],
     tools,
     userRulesText: userRules ?? '',
-    legacyFallback,
   });
 
   const entry: CachedOutboundStaticEstimate = {
     composed,
     userRules,
-    legacyFallback,
     ctx,
     composedSystem: partial.composedSystem,
     userRulesTokens: partial.userRules,
@@ -444,7 +428,6 @@ export async function resolveOutboundPromptEstimate(
     userRules: staticPart.userRulesTokens,
     history: historyTokens,
     tools: staticPart.tools,
-    legacyFallback: staticPart.legacyFallback,
     brainNotesSystem: staticPart.brainNotesSystem,
     brainNotesInjectionEnabled: staticPart.brainNotesInjectionEnabled,
     codeMapSystem: staticPart.codeMapSystem,

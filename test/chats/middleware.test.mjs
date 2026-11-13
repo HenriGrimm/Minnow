@@ -40,6 +40,7 @@ async function fixture(t, options = {}) {
     toolEffects: { read_file: 'read', save_file: 'file-write' }, workspaceIds: registry.entries.map(row => row.workspaceId),
     fileWriteScope: 'workspace',
     capabilities: options.capabilities ?? ['chat.read', 'chat.send', 'chat.stop', 'request.respond', 'execution.host'],
+    ...options.policyOverrides?.(),
   });
   const context = createChatContext({ repository, resolvePolicyInput, validateRoot: async () => {}, runGit: async () => ({ code: 1, stdout: '' }) });
   const project = await context.project(workspace);
@@ -67,9 +68,10 @@ async function fixture(t, options = {}) {
     },
   });
   const capabilities = createChatHostCapabilities({ repository, resolveProject: () => ({ projectId: project.projectId, workspaceRoot: workspace }), retryMs: 10_000 });
-  const runtime = { repository, context, presentation, service, requests, capabilities, resolveModelSelection, resolvePolicyInput,
+  const taskDelivery = { recover: async () => {}, reconcileRemovedTask: async () => {} };
+  const runtime = { repository, context, presentation, service, requests, capabilities, resolveModelSelection, resolvePolicyInput, taskDelivery,
     hasRunningRecoveryCommand: options.hasRunningRecoveryCommand, hasExternalExecution: options.hasExternalExecution ?? (() => false) };
-  runtime.recovery = createChatRecovery({ repository, service, requests, taskDelivery: { recover: async () => {} },
+  runtime.recovery = createChatRecovery({ repository, service, requests, taskDelivery,
     verifyQuiescence: () => ({ verified: true, source: 'isolated-http', checkedAt: Date.now() }) });
   if (options.legacyImports) runtime.legacyImports = createLegacyChatImporter({ repository, context, feature,
     loadSource: async (_parent, runId) => ({ runId, type: 'explore', task: 'Historical assignment', source: 'saved_snapshot', partial: true, capped: true, truncated: true, messages: [{ role: 'assistant', content: 'Historical answer' }] }),
@@ -127,6 +129,82 @@ test('only the host can retire a verified interruption and its command is never 
   assert.equal(first.status, 200);
   assert.deepEqual((await f.request(route, { method: 'POST', headers: host, body })).body, first.body);
   assert.equal(f.repository.getToolInvocation('shell-call').result.indeterminate, true);
+});
+
+test('an attempted child retry can be removed and its interruption reviewed before deletion without a restart', async t => {
+  const f = await fixture(t); await savedChild(f);
+  const command = f.repository.admitCommand({ version: 1, commandId: 'interrupted-input', chatId: 'child', requestedAt: 1,
+    kind: 'send', message: 'Consumed task input', provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' } },
+  { producerId: 'human', requestKey: 'interrupted-input' });
+  const fence = f.repository.claimExecution({ chatId: 'child', executionId: 'interrupted-attempt', commandId: command.commandId,
+    runId: 'interrupted-task', attemptId: 'attempt-one', ownerId: 'minnow-server' });
+  f.repository.recordToolIntent({ chatId: 'child', executionId: fence.executionId, invocationId: 'uncertain-write', toolCallId: 'write',
+    toolName: 'save_file', input: { path: 'effect.txt' } }, { fence });
+  f.repository.updateExecution(fence.executionId, { status: 'recovery_required' }, { fence });
+  const queued = f.repository.updateCommand(command.commandId, { state: 'queued', held: true, executionId: fence.executionId, runId: 'interrupted-task' });
+  const headers = { 'x-test-host': '1' };
+  const remove = { action: 'remove', itemId: command.commandId, expectedRevision: queued.revision, clientRequestId: 'remove-retry' };
+  const removed = await f.request('/api/chats/child/commands', { method: 'POST', headers, body: remove });
+  assert.equal(removed.status, 202);
+  assert.equal(removed.body.frame.fields.pendingMessageQueue.length, 0);
+  assert.equal(f.repository.getCommand(command.commandId).result.disposition, 'removed');
+  assert.equal((await f.request('/api/chats/child/commands', { method: 'POST', headers, body: remove })).body.receipt.replayed, true);
+  assert.equal(f.repository.getExecution(fence.executionId).status, 'recovery_required');
+  assert.equal(f.repository.getToolInvocation('uncertain-write').state, 'intent');
+  const deletion = { method: 'DELETE', headers, body: { clientRequestId: 'delete-recovered-child' } };
+  assert.equal((await f.request('/api/chats/child', deletion)).status, 409);
+  const review = (await f.request('/api/chats/child/recovery', { headers })).body;
+  assert.equal(review.ownerReleased, false);
+  const retired = await f.request('/api/chats/child/recovery', { method: 'POST', headers,
+    body: { executionId: review.executionId, revision: review.revision, note: 'Checked the retained file and confirmed the host stopped.', clientRequestId: 'retire-child' } });
+  assert.equal(retired.status, 200);
+  assert.equal(f.repository.getLease('child').state, 'released');
+  assert.equal(f.repository.getToolInvocation('uncertain-write').result.indeterminate, true);
+  assert.equal((await f.request('/api/chats/child', deletion)).status, 200);
+});
+
+test('removing an input paused for a host settles its released execution and permits deletion', async t => {
+  const f = await fixture(t);
+  f.host(async input => { f.append(input); return { outcome: 'crashed', failure: { waitingForHost: true } }; });
+  const caller = (await f.context.humanCaller('chat', { workspacePath: f.workspace, ingress: 'renderer' })).caller;
+  const sent = await f.service.send(caller, { chatId: 'chat', message: 'Paused input', clientRequestId: 'paused' });
+  await f.service.idle('chat');
+  const queued = f.repository.getCommand(sent.commandId);
+  assert.equal(queued.state, 'waiting_for_host');
+  const removed = await f.request('/api/chats/chat/commands', { method: 'POST', headers: { 'x-test-host': '1' },
+    body: { action: 'remove', itemId: sent.commandId, expectedRevision: queued.revision, clientRequestId: 'remove-paused' } });
+  assert.equal(removed.status, 202);
+  assert.equal(f.repository.getExecution(queued.executionId).status, 'stopped');
+  assert.equal((await f.request('/api/chats/chat', { method: 'DELETE', headers: { 'x-test-host': '1' }, body: { clientRequestId: 'delete-paused' } })).status, 200);
+});
+
+test('same-session recovery refuses a live host and succeeds after that host finishes', async t => {
+  const f = await fixture(t);
+  let started, finish;
+  const entered = new Promise(resolve => { started = resolve; });
+  const released = new Promise(resolve => { finish = resolve; });
+  f.host(async input => {
+    f.append(input);
+    f.repository.recordToolIntent({ chatId: 'chat', executionId: input.execution.executionId, invocationId: 'live-write',
+      toolCallId: 'write', toolName: 'save_file', input: { path: 'effect.txt' } }, { fence: input.fence });
+    f.repository.updateExecution(input.execution.executionId, { status: 'recovery_required' }, { fence: input.fence });
+    started();
+    await Promise.race([released, new Promise(resolve => input.signal.addEventListener('abort', resolve, { once: true }))]);
+    return { outcome: 'crashed', failure: { recoveryRequired: true } };
+  });
+  const caller = (await f.context.humanCaller('chat', { workspacePath: f.workspace, ingress: 'renderer' })).caller;
+  await f.service.send(caller, { chatId: 'chat', message: 'Interrupted work', clientRequestId: 'live-interruption' });
+  await entered;
+  const headers = { 'x-test-host': '1' };
+  const review = (await f.request('/api/chats/chat/recovery', { headers })).body;
+  const options = { method: 'POST', headers, body: { executionId: review.executionId, revision: review.revision,
+    note: 'Checked the file and host.', clientRequestId: 'review-live-host' } };
+  const busy = await f.request('/api/chats/chat/recovery', options);
+  assert.equal(busy.status, 409);
+  assert.match(busy.body.error.message, /Wait for the execution/);
+  finish(); await f.service.idle('chat');
+  assert.equal((await f.request('/api/chats/chat/recovery', options)).status, 200);
+  assert.equal(f.repository.getLatestExecution('chat').status, 'stopped');
 });
 
 async function savedChild(f, id = 'child') {
@@ -379,6 +457,20 @@ test('automatic title HTTP updates compare the current name and preserve manual 
     name: 'Late title', expectedName: 'Generated title', clientRequestId: 'late-title' } });
   assert.equal(late.status, 409); assert.equal(late.body.error.code, 'stale_revision');
   assert.equal(f.repository.getChat('chat').name, 'My title');
+});
+
+test('archive HTTP receipts and retries never read or transmit transcript history', async t => {
+  const f = await fixture(t);
+  f.repository.readTranscript = () => { throw new Error('Archive hydrated history'); };
+  const body = { archived: true, clientRequestId: 'archive-placement' };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await f.request('/api/chats/second/configuration', { method: 'PATCH', body });
+    assert.equal(response.status, 200);
+    assert.ok(response.body.frame.fields.archivedAt > 0);
+    assert.equal(response.body.frame.history, undefined);
+    assert.equal(response.body.receipt.replayed, attempt === 1 ? true : undefined);
+  }
+  assert.equal(f.repository.getChat('second').messageCount, 0);
 });
 
 test('configuration captures exact pairs and immutable profiles with atomic lost-receipt retry and stale revision checks', async t => {
@@ -658,6 +750,41 @@ test('delegated Plan profiles cannot widen through human mode configuration', as
   assert.equal(f.repository.getLatestProfile('child').profileVersion, 2);
 });
 
+test('a saved chat can send when the MCP catalog gains a read-only annotation', async t => {
+  const name = 'mcp__docs__read';
+  let effect = 'unknown';
+  const f = await fixture(t, { policyOverrides: () => ({
+    toolPermissions: { [name]: 'full' }, toolEffects: { [name]: effect },
+  }) });
+  const original = await f.context.resolveTarget('chat');
+  f.repository.saveProfile('chat', { profileId: 'profile-chat', profileVersion: 1, snapshot: {
+    policy: original.policy, modelSelection: { providerId: 'provider', modelId: 'model' },
+  } });
+  effect = 'read';
+  const accepted = await f.request('/api/chats/chat/commands', { method: 'POST', body: {
+    action: 'send', text: 'Continue the conversation', clientRequestId: 'after-mcp-annotation',
+  } });
+  assert.equal(accepted.status, 202, JSON.stringify(accepted.body));
+  assert.equal(f.repository.getCommand(accepted.body.receipt.commandId).captured.policy.toolEffects[name], 'unknown');
+});
+
+test('a delegated chat can change models while live permissions are narrower than its saved ceiling', async t => {
+  let permissionLevel = 'full';
+  const f = await fixture(t, { policyOverrides: () => ({ permissionLevel }) });
+  await savedChild(f);
+  const prior = f.repository.getLatestProfile('child');
+  permissionLevel = 'manual';
+  const selection = { providerId: 'provider', modelId: 'next' };
+  const changed = await f.request('/api/chats/child/configuration', { method: 'PATCH', body: {
+    selection, expectedProfileVersion: 1, clientRequestId: 'child-model-under-manual',
+  } });
+  assert.equal(changed.status, 200, JSON.stringify(changed.body));
+  const next = f.repository.getLatestProfile('child');
+  assert.deepEqual(next.snapshot.modelSelection, { ...selection, options: {} });
+  assert.deepEqual(next.snapshot.policy, prior.snapshot.policy);
+  assert.equal((await f.context.resolveTarget('child')).policy.permissionLevel, 'manual');
+});
+
 test('ordinary rollout is advertised separately and human admission cannot accidentally promote a legacy root', async t => {
   const f = await fixture(t);
   const caps = await f.request('/api/chats/capabilities');
@@ -719,6 +846,78 @@ test('canonical replay forks one immutable prefix and saved options without exec
   assert.equal(conflict.body.error.code, 'idempotency_conflict');
   const stale = await f.request('/api/chats/chat/fork', { method: 'POST', body: { ...body, expectedRevision: source.revision - 1, clientRequestId: 'stale-fork' } });
   assert.equal(stale.body.error.code, 'stale_revision');
+});
+
+test('same-chat replay, edit and deletion update the transcript atomically and retain effect records', async t => {
+  const f = await fixture(t);
+  const received = [];
+  f.host(async input => {
+    const { command, fence } = input;
+    received.push(command.message);
+    f.repository.appendMessage('chat', { role: 'user', content: command.message, provenance: command.provenance,
+      ...(command.images ? { images: command.images } : {}) }, { fence, commandId: command.commandId, messageId: 'input-' + command.commandId });
+    f.repository.appendMessage('chat', { role: 'assistant', content: 'Answer to ' + command.message }, { fence, messageId: 'reply-' + command.commandId });
+    return { outcome: 'no_report' };
+  });
+  const send = async (text, images) => {
+    const response = await f.request('/api/chats/chat/commands', { method: 'POST', body: { action: 'send', text, images } });
+    assert.equal(response.status, 202, JSON.stringify(response.body));
+    await f.service.idle('chat');
+    return response.body.receipt;
+  };
+  await send('Keep this');
+  const images = [{ name: 'pic.png', dataUrl: 'data:image/png;base64,YWJjZA==' }];
+  const original = await send('Original', images);
+  await send('Remove this');
+  const route = '/api/chats/chat/history';
+  const digest = () => f.repository.getChat('chat').historyDigest;
+  const transcript = () => f.repository.readTranscript('chat');
+  const body = { action: 'replay', index: 2, expectedHistoryDigest: digest(), clientRequestId: 'replay-here' };
+  const before = transcript();
+  const putOutbox = f.repository.putOutbox;
+  f.repository.putOutbox = () => { throw new Error('Injected receipt failure'); };
+  assert.equal((await f.request(route, { method: 'POST', body })).status, 500);
+  assert.deepEqual(transcript(), before);
+  f.repository.putOutbox = putOutbox;
+  const replay = await f.request(route, { method: 'POST', body });
+  assert.equal(replay.status, 202, JSON.stringify(replay.body));
+  assert.equal(replay.body.receipt.chatId, 'chat');
+  await f.service.idle('chat');
+  assert.equal((await f.request(route, { method: 'POST', body })).body.receipt.replayed, true);
+  assert.equal((await f.request(route, { method: 'POST', body: { ...body, clientRequestId: 'stale-history' } })).body.error.code, 'stale_revision');
+  assert.deepEqual(transcript().messages.slice(0, 2), before.messages.slice(0, 2));
+  assert.ok(transcript().rowIds[2] > before.rowIds.at(-1), 'removed activity sequence numbers cannot be reused');
+  assert.equal(f.repository.getCommand(original.commandId).state, 'settled');
+  assert.equal(f.repository.readMessageByIdentity('chat', 'input-' + original.commandId), null);
+  assert.deepEqual(transcript().messages[2].images, images);
+  const edited = await f.request(route, { method: 'POST', body: { action: 'edit', index: 2, expectedHistoryDigest: digest(),
+    clientRequestId: 'edit-here', message: 'Revised', text: 'Revised' } });
+  assert.equal(edited.status, 202, JSON.stringify(edited.body));
+  await f.service.idle('chat');
+  assert.deepEqual(transcript().messages[2].images, images);
+  const deleted = await f.request(route, { method: 'POST', body: { action: 'delete', index: 2, expectedHistoryDigest: digest(), clientRequestId: 'delete-here' } });
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  assert.deepEqual(transcript().messages, before.messages.slice(0, 2));
+  assert.equal(deleted.body.frame.fields.agentExecution, null);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM messages_fts WHERE chat_id='chat'").get().n, 2);
+  assert.deepEqual(received, ['Keep this', 'Original', 'Remove this', 'Original', 'Revised']);
+});
+
+test('same-chat deletion cannot remove an interrupted execution with unresolved effects', async t => {
+  const f = await fixture(t);
+  f.host(async input => { f.append(input); return { outcome: 'no_report' }; });
+  await f.request('/api/chats/chat/commands', { method: 'POST', body: { action: 'send', text: 'Original' } });
+  await f.service.idle('chat');
+  const fence = f.repository.claimExecution({ chatId: 'chat', executionId: 'history-interruption', ownerId: 'test' });
+  f.repository.recordToolIntent({ chatId: 'chat', executionId: fence.executionId, invocationId: 'history-effect',
+    toolCallId: 'write', toolName: 'save_file', input: {} }, { fence });
+  f.repository.recoverExecution(fence.executionId, { fence, quiescence: { verified: true, source: 'fixture', checkedAt: 1 } });
+  const before = f.repository.readTranscript('chat');
+  const response = await f.request('/api/chats/chat/history', { method: 'POST', body: { action: 'delete', index: 0,
+    expectedHistoryDigest: f.repository.getChat('chat').historyDigest, clientRequestId: 'unsafe-delete' } });
+  assert.equal(response.body.error.code, 'recovery_required');
+  assert.deepEqual(f.repository.readTranscript('chat'), before);
+  assert.equal(f.repository.getToolInvocation('history-effect').state, 'intent');
 });
 
 test('canonical fork receipt failure rolls back prefix/profile/input, and malformed atomic tool groups stay blocked', async t => {

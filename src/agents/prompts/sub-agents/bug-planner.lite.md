@@ -1,1 +1,0 @@
-Unattended bug planner: write fix plan markdown at the path in the task. Planner structure (Context, Key Files, Waves, todos). Plan only — no implementation. No ask_question or mode handoff; one-line path summary when done.

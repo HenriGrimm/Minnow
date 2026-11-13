@@ -13,23 +13,31 @@ function clampWidth(px: number, stage?: HTMLElement | null): number {
 }
 
 function loadSavedWidth(): number {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return DEFAULT_WIDTH;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return DEFAULT_WIDTH;
-  if (parsed === LEGACY_DEFAULT_WIDTH) return DEFAULT_WIDTH;
-  return parsed;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_WIDTH;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return DEFAULT_WIDTH;
+    if (parsed === LEGACY_DEFAULT_WIDTH) return DEFAULT_WIDTH;
+    return parsed;
+  } catch {
+    return DEFAULT_WIDTH;
+  }
 }
 
 function saveWidth(px: number): void {
-  localStorage.setItem(STORAGE_KEY, String(px));
+  try {
+    localStorage.setItem(STORAGE_KEY, String(px));
+  } catch {
+    // The current width still applies when preferences cannot be saved.
+  }
 }
 
 function getSidebar(): HTMLElement | null {
   return document.querySelector('#brainSection-graph .brain-graph-sidebar') as HTMLElement | null;
 }
 
-/** Apply sidebar width via CSS variable + inline width on the rail element. */
+/** Apply the page tree width via the Brain root's CSS variable. */
 export function applyBrainGraphSidebarWidth(px: number): void {
   const sidebar = getSidebar();
   const root = document.getElementById('brainView');
@@ -38,7 +46,6 @@ export function applyBrainGraphSidebarWidth(px: number): void {
     root?.querySelector('.brain-stage');
   const w = clampWidth(px, stage);
   if (root) root.style.setProperty('--brain-graph-sidebar-w', `${w}px`);
-  if (sidebar) sidebar.style.width = `${w}px`;
   const handle = document.getElementById('brainGraphSidebarResize');
   handle?.setAttribute('aria-valuemax', String(clampWidth(Number.MAX_SAFE_INTEGER, stage)));
   handle?.setAttribute('aria-valuenow', String(w));

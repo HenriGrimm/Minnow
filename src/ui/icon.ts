@@ -16,8 +16,10 @@ export type ShellIconName =
   | 'windowRestore'
   | 'grid'
   | 'bell'
+  | 'bellFilled'
   | 'bellOff'
   | 'arrowUp'
+  | 'composerSend'
   | 'arrowDown'
   | 'globe'
   | 'folder'
@@ -108,6 +110,7 @@ export type ChromeIconName =
   | 'capture'
   | 'check'
   | 'help'
+  | 'info'
   | 'settings'
   | 'refresh'
   | 'send'
@@ -120,10 +123,13 @@ export type ChromeIconName =
   | 'expand'
   | 'compress'
   | 'edit'
+  | 'fileCode'
+  | 'clipboardChecklist'
   | 'addFolder'
   | 'openProject'
   | 'terminal'
   | 'browser'
+  | 'devices'
   | 'deviceMobile'
   | 'deviceTablet'
   | 'deviceDesktop'
@@ -144,12 +150,42 @@ export type ChromeIconName =
   | 'inbox'
   | 'moon'
   | 'link'
+  | 'plug'
+  | 'webhook'
   | 'externalLink'
   | 'pullRequest'
   | 'subIssues'
   | 'comment'
   | 'copy'
-  | 'clock';
+  | 'sidebar'
+  | 'sort'
+  | 'book'
+  | 'books'
+  | 'openPackage'
+  | 'puzzle'
+  | 'workflow'
+  | 'stopCircle'
+  | 'shieldCheck'
+  | 'warning'
+  | 'lock'
+  | 'key'
+  | 'bulb'
+  | 'pause'
+  | 'eye'
+  | 'cube'
+  | 'modelPool'
+  | 'pin'
+  | 'filter'
+  | 'timeline'
+  | 'keyboard'
+  | 'palette'
+  | 'tags'
+  | 'cursor'
+  | 'eject'
+  | 'clock'
+  | 'stopwatch'
+  | 'pulse'
+  | 'power';
 
 export type BoardIconName =
   | 'boardBuild'
@@ -222,8 +258,10 @@ export const ICON_CLASS: Record<IconName, string> = {
   windowRestore: 'fi-rr-window-restore',
   grid: 'fi-rr-apps',
   bell: 'fi-rr-bell',
+  bellFilled: 'fi-sr-bell',
   bellOff: 'fi-rr-bell-slash',
   arrowUp: 'fi-rr-arrow-up',
+  composerSend: 'fi-rr-arrow-small-up',
   arrowDown: 'fi-rr-arrow-down',
   globe: 'fi-rr-globe',
   folder: 'fi-rr-folder',
@@ -309,6 +347,7 @@ export const ICON_CLASS: Record<IconName, string> = {
   capture: 'fi-rr-ticket',
   check: 'fi-rr-check',
   help: 'fi-rr-interrogation',
+  info: 'fi-rr-info',
   settings: 'fi-rr-settings-sliders',
   refresh: 'fi-rr-refresh',
   send: 'fi-rr-paper-plane',
@@ -321,10 +360,13 @@ export const ICON_CLASS: Record<IconName, string> = {
   expand: 'fi-rr-expand',
   compress: 'fi-rr-compress-alt',
   edit: 'fi-rr-edit',
+  fileCode: 'fi-rr-file-code',
+  clipboardChecklist: 'fi-rr-clipboard-list-check',
   addFolder: 'fi-rr-add-folder',
   openProject: 'fi-rr-folder-open',
   terminal: 'fi-rr-terminal',
   browser: 'fi-rr-browser',
+  devices: 'fi-rr-devices',
   deviceMobile: 'fi-rr-mobile',
   deviceTablet: 'fi-rr-tablet',
   deviceDesktop: 'fi-rr-computer',
@@ -345,12 +387,42 @@ export const ICON_CLASS: Record<IconName, string> = {
   inbox: 'fi-rr-inbox',
   moon: 'fi-rr-moon',
   link: 'fi-rr-link-alt',
+  plug: 'fi-rr-plug',
+  webhook: 'fi-rr-webhook',
   externalLink: 'fi-rr-arrow-up-right-from-square',
   pullRequest: 'fi-rr-code-pull-request',
   subIssues: 'fi-rr-sitemap',
   comment: 'fi-rr-comment-alt',
   copy: 'fi-rr-copy-alt',
+  sidebar: 'fi-rr-sidebar',
+  sort: 'fi-rr-sort-alt',
+  book: 'fi-rr-book-alt',
+  books: 'fi-rr-books',
+  openPackage: 'fi-rr-box-open',
+  puzzle: 'fi-rr-puzzle',
+  workflow: 'fi-rr-workflow-alt',
+  stopCircle: 'fi-rr-stop-circle',
+  shieldCheck: 'fi-rr-shield-check',
+  warning: 'fi-rr-triangle-warning',
+  lock: 'fi-rr-lock',
+  key: 'fi-rr-key',
+  bulb: 'fi-rr-bulb',
+  pause: 'fi-rr-pause',
+  eye: 'fi-rr-eye',
+  cube: 'fi-rr-cube',
+  modelPool: 'fi-rr-layers',
+  pin: 'fi-rr-thumbtack',
+  filter: 'fi-rr-filter',
+  timeline: 'fi-rr-list-timeline',
+  keyboard: 'fi-rr-keyboard',
+  palette: 'fi-rr-palette',
+  tags: 'fi-rr-tags',
+  cursor: 'fi-rr-cursor',
+  eject: 'fi-rr-eject',
   clock: 'fi-rr-clock',
+  stopwatch: 'fi-rr-stopwatch',
+  pulse: 'fi-rr-heart-rate',
+  power: 'fi-rr-power',
 
   boardBuild: 'fi-sr-hammer',
   boardFix: 'fi-sr-band-aid',
@@ -378,7 +450,7 @@ export const ICON_CLASS: Record<IconName, string> = {
   metricCtx: 'fi-rr-scale',
 
   permManual: 'fi-rr-hand-paper',
-  permAuto: 'fi-rr-sparkles',
+  permAuto: 'fi-rr-shield-check',
   permFull: 'fi-rr-unlock',
   localModel: 'fi-rr-microchip',
   fish: 'fi-rr-fish',
@@ -408,6 +480,16 @@ export function createIcon(name: IconName, options: IconOptions = {}): HTMLEleme
   el.className = iconClassList(name, className);
   el.setAttribute('aria-hidden', 'true');
   if (size != null) el.style.setProperty('--mn-icon-size', `${size}px`);
+  return el;
+}
+
+/** Create the GitHub brand mark with the shared icon size and color. */
+export function createGitHubMark({ size, className }: IconOptions = {}): HTMLElement {
+  const el = document.createElement('span');
+  el.className = className ? `icon-svg ${className}` : 'icon-svg';
+  el.setAttribute('aria-hidden', 'true');
+  if (size != null) el.style.setProperty('--mn-icon-size', `${size}px`);
+  el.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="100%" height="100%" display="block"><path d="M12 .75C5.79.75.75 5.79.75 12c0 4.97 3.22 9.18 7.69 10.67.56.1.77-.24.77-.54v-2.1c-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.64-1.25-1.64-1.02-.7.08-.69.08-.69 1.13.08 1.73 1.16 1.73 1.16 1 .1 1.55 2.19 3.28 1.59.1-.72.39-1.2.71-1.48-2.5-.28-5.13-1.25-5.13-5.57 0-1.23.44-2.23 1.16-3.02-.12-.28-.5-1.42.11-2.96 0 0 .95-.3 3.1 1.15a10.8 10.8 0 0 1 5.63 0c2.15-1.46 3.1-1.15 3.1-1.15.61 1.54.23 2.68.11 2.96.72.79 1.16 1.79 1.16 3.02 0 4.33-2.63 5.28-5.14 5.56.4.35.76 1.03.76 2.08v3.08c0 .3.2.65.77.54A11.25 11.25 0 0 0 23.25 12C23.25 5.79 18.21.75 12 .75Z"/></svg>';
   return el;
 }
 

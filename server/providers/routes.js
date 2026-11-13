@@ -14,7 +14,7 @@ import {
 } from './store.js';
 import { readCapabilities } from './capabilities-store.js';
 import { runCapabilityProbe } from './capability-probe.js';
-import { proxyModelLoad, proxyModelUnload, proxyModels } from './proxy.js';
+import { proxyModelLoad, proxyModelUnload, proxyModels, testProviderConnection } from './proxy.js';
 import {
   probeProviderCapabilities,
   readProviderCapabilitiesFile,
@@ -74,6 +74,16 @@ export async function handleProviderRequest(req, res, pathname) {
       const body = await readJsonBody(req);
       const created = await createProvider(body);
       sendJson(res, 201, created);
+      return true;
+    }
+
+    if (pathname === '/api/providers/connection/test' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      try {
+        sendJson(res, 200, await testProviderConnection(await readJsonBody(req)));
+      } catch (error) {
+        sendJson(res, 400, { error: error instanceof Error ? error.message : 'Could not test the connection.' });
+      }
       return true;
     }
 

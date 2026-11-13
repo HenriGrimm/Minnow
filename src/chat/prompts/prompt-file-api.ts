@@ -15,7 +15,6 @@ export async function refreshUserPromptRegistry(): Promise<void> {
 }
 
 export type PromptFileFamily = 'modes' | 'experts' | 'sub-agents' | 'base' | 'tool-usage' | 'info';
-export type PromptFileProfile = 'full' | 'lite';
 
 export interface PromptFileResponse {
   content: string;
@@ -25,11 +24,10 @@ export interface PromptFileResponse {
 export async function fetchPromptFile(
   family: PromptFileFamily,
   entityId: string,
-  profile: PromptFileProfile = 'full',
 ): Promise<PromptFileResponse | null> {
   try {
     const res = await fetch(
-      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt?profile=${profile}`,
+      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt`,
       { cache: 'no-store' },
     );
     if (!res.ok) return null;
@@ -43,11 +41,10 @@ export async function fetchPromptFile(
 export async function fetchPromptBuiltinBaseline(
   family: PromptFileFamily,
   entityId: string,
-  profile: PromptFileProfile = 'full',
 ): Promise<PromptFileResponse | null> {
   try {
     const res = await fetch(
-      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt?profile=${profile}&baseline=builtin`,
+      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt?baseline=builtin`,
       { cache: 'no-store' },
     );
     if (!res.ok) return null;
@@ -60,16 +57,15 @@ export async function fetchPromptBuiltinBaseline(
 export async function savePromptFileOverride(
   family: PromptFileFamily,
   entityId: string,
-  profile: PromptFileProfile,
   content: string,
 ): Promise<PromptFileResponse | null> {
   try {
     const res = await fetch(
-      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt?profile=${profile}`,
+      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile, content }),
+        body: JSON.stringify({ content }),
       },
     );
     if (!res.ok) return null;
@@ -84,11 +80,10 @@ export async function savePromptFileOverride(
 export async function resetPromptFileOverride(
   family: PromptFileFamily,
   entityId: string,
-  profile: PromptFileProfile,
 ): Promise<PromptFileResponse | null> {
   try {
     const res = await fetch(
-      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt?profile=${profile}`,
+      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt`,
       { method: 'DELETE' },
     );
     if (!res.ok) return null;
@@ -104,11 +99,10 @@ export async function resetPromptFileOverride(
 export async function fetchPromptFileRaw(
   family: PromptFileFamily,
   entityId: string,
-  profile: PromptFileProfile = 'full',
 ): Promise<PromptFileResponse | null> {
   try {
     const res = await fetch(
-      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt?profile=${profile}&raw=1`,
+      `/api/prompts/${family}/${encodeURIComponent(entityId)}/prompt?raw=1`,
       { cache: 'no-store' },
     );
     if (!res.ok) return null;

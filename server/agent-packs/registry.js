@@ -104,7 +104,6 @@ async function isTemplatePackComplete(templateDir) {
   const required = [
     `${templateDir}/manifest.json`,
     `${templateDir}/prompts/example.full.md`,
-    `${templateDir}/prompts/example.lite.md`,
     `${templateDir}/README.md`,
   ];
   for (const filePath of required) {

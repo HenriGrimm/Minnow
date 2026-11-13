@@ -890,49 +890,17 @@
   },
   {
     "key": "appearance.theme",
-    "label": "Theme presets",
+    "label": "Appearance controls",
     "keywords": [
       "color",
       "dark",
       "light",
-      "swamp",
-      "desert",
-      "ocean",
-      "coral",
-      "mono",
-      "matrix",
-      "human",
-      "mint",
       "palette"
     ],
     "category": "appearance",
     "area": "appearance",
     "storage": "section",
     "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "appearance"
-    ]
-  },
-  {
-    "key": "appearance.theme.family",
-    "label": "Theme family",
-    "category": "appearance",
-    "area": "appearance",
-    "storage": "browser",
-    "path": "themeFamily",
-    "type": "enum",
-    "allowedValues": [
-      "swamp",
-      "desert",
-      "ocean",
-      "coral",
-      "mono",
-      "matrix",
-      "human",
-      "mint"
-    ],
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
@@ -964,6 +932,74 @@
     ]
   },
   {
+    "key": "appearance.theme.color",
+    "label": "Surface tint",
+    "keywords": [
+      "tint",
+      "surface",
+      "subtle",
+      "rich"
+    ],
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
+    "key": "appearance.theme.accent",
+    "label": "Accent color",
+    "keywords": [
+      "swatch",
+      "custom color",
+      "hex",
+      "color picker"
+    ],
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
+    "key": "appearance.density",
+    "label": "Density",
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
+    "key": "appearance.reduceMotion",
+    "label": "Reduce motion",
+    "keywords": [
+      "accessibility",
+      "animation"
+    ],
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
     "key": "appearance.fonts",
     "label": "Fonts",
     "keywords": [
@@ -983,10 +1019,12 @@
   },
   {
     "key": "appearance.customColors",
-    "label": "Custom colors",
+    "label": "Advanced colors",
     "keywords": [
+      "custom colors",
       "tokens",
-      "override"
+      "override",
+      "palette"
     ],
     "category": "appearance",
     "area": "appearance",
@@ -1329,6 +1367,26 @@
       "plan",
       "ask",
       "debug"
+    ],
+    "category": "agents",
+    "area": "agent-center",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "agent-center"
+    ]
+  },
+  {
+    "key": "agents.permissions",
+    "label": "Permission level",
+    "keywords": [
+      "manual",
+      "auto",
+      "full access",
+      "approval",
+      "tool permission"
     ],
     "category": "agents",
     "area": "agent-center",
@@ -1742,13 +1800,11 @@
   },
   {
     "key": "agents.prompting",
-    "label": "Prompt profiles",
+    "label": "System prompt settings",
     "keywords": [
       "prompt",
       "system prompt",
-      "full",
-      "lite",
-      "custom"
+      "estimate"
     ],
     "category": "agents",
     "area": "agent-center",
@@ -2457,7 +2513,7 @@
   },
   {
     "key": "advanced.diagnostics",
-    "label": "Health & diagnostics",
+    "label": "Health and diagnostics",
     "description": "Subsystem probes, grouped errors, and a local log tail. Nothing is sent off-device.",
     "keywords": [
       "errors",
@@ -2503,6 +2559,7 @@
     "label": "Diagnostic actions",
     "keywords": [
       "copy report",
+      "export diagnostics",
       "refresh",
       "clear logs"
     ],
@@ -2561,6 +2618,26 @@
   {
     "key": "about.version",
     "label": "App version",
+    "category": "general",
+    "area": "about",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "about"
+    ]
+  },
+  {
+    "key": "about.boot",
+    "label": "Performance diagnostics",
+    "keywords": [
+      "startup",
+      "boot",
+      "shell ready",
+      "interactive",
+      "page load"
+    ],
     "category": "general",
     "area": "about",
     "storage": "section",

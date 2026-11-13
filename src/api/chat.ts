@@ -394,9 +394,6 @@ export async function sendMessage(): Promise<void> {
   }
   const temp = parseFloat((document.getElementById('temperature') as HTMLInputElement).value);
   const maxTok = parseInt((document.getElementById('maxTokens') as HTMLInputElement).value, 10);
-  const legacySysPrompt = (
-    document.getElementById('systemPrompt') as HTMLTextAreaElement
-  ).value.trim();
 
   if (!modelId) {
     setStatus('err', 'Select a model first');
@@ -427,7 +424,8 @@ export async function sendMessage(): Promise<void> {
   renderSidebar();
   appendBubble('user', text);
 
-  const outbound = await resolveOutboundSystemMessages(chat, legacySysPrompt, {
+  const outbound = await resolveOutboundSystemMessages(chat, {
+    signal: chatSignal,
     userMessagePreview: text,
     routeUserText: text,
     firstUserSend,
@@ -448,11 +446,9 @@ export async function sendMessage(): Promise<void> {
   }
 
   const messages: ApiMessage[] = [];
-  if (outbound.composed) {
-    messages.push({ role: 'system', content: outbound.composed });
-  }
-  if (outbound.userRules) {
-    messages.push({ role: 'system', content: outbound.userRules });
+  const systemPrompt = [outbound.composed, outbound.userRules].filter(Boolean).join('\n\n---\n\n');
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
   }
   for (const m of chat.history) {
     if (isUiOnlyTranscriptMessage(m)) continue;

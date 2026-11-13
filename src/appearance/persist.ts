@@ -11,6 +11,16 @@ import {
   type AppearanceFonts,
 } from './types';
 import { setAppearancePersistScheduler } from './persist-schedule';
+import {
+  DEFAULT_APPEARANCE_FONT_ID,
+  DEFAULT_COLOR_INTENSITY,
+  DEFAULT_THEME_FAMILY,
+  DEFAULT_THEME_ID,
+  normalizeAppearanceDensity,
+  normalizeColorIntensity,
+  normalizeGraphiteAccent,
+} from '../lib/appearance-choices.mjs';
+import { readGraphitePreferences, type GraphitePreferences } from './graphite-preferences';
 
 const THEME_STORAGE_KEY = 'minnow.theme';
 const THEME_FOLLOW_SYSTEM_KEY = 'minnow.theme.followSystem';
@@ -19,7 +29,7 @@ const THEME_FAMILY_KEY = 'minnow.theme.family';
 const SAVE_DEBOUNCE_MS = 300;
 const APPEARANCE_PATH = '/api/config/appearance';
 
-export interface AppearancePersistState {
+export interface AppearancePersistState extends GraphitePreferences {
   version: 1;
   chatView?: 'compact' | 'full';
   followSystem: boolean;
@@ -87,8 +97,8 @@ function parseTokens(raw: string | null): Record<string, string> {
 /** Snapshot browser-local appearance keys for a PUT. */
 export function snapshotAppearanceFromLocalStorage(): AppearancePersistState {
   const followSystem = readStorage(THEME_FOLLOW_SYSTEM_KEY) === '1';
-  const themeId = readStorage(THEME_STORAGE_KEY) || 'swamp-dark';
-  const familyFromId = themeId.includes('-') ? themeId.slice(0, themeId.lastIndexOf('-')) : 'swamp';
+  const themeId = readStorage(THEME_STORAGE_KEY) || DEFAULT_THEME_ID;
+  const familyFromId = themeId.includes('-') ? themeId.slice(0, themeId.lastIndexOf('-')) : DEFAULT_THEME_FAMILY;
   const family = followSystem ? readStorage(THEME_FAMILY_KEY) || familyFromId : familyFromId;
   return {
     version: 1,
@@ -96,6 +106,7 @@ export function snapshotAppearanceFromLocalStorage(): AppearancePersistState {
     followSystem,
     family,
     themeId: followSystem ? `${family}-dark` : themeId,
+    ...readGraphitePreferences(),
     customEnabled: readStorage(APPEARANCE_STORAGE_KEYS.customEnabled) === '1',
     customAdvanced: readStorage(APPEARANCE_STORAGE_KEYS.customAdvanced) === '1',
     customTokens: parseTokens(readStorage(APPEARANCE_STORAGE_KEYS.customTokens)),
@@ -108,12 +119,15 @@ export function snapshotAppearanceFromLocalStorage(): AppearancePersistState {
 export function localAppearanceHasUserChoice(state: AppearancePersistState): boolean {
   if (state.chatView === 'full') return true;
   if (state.followSystem) return true;
-  if (state.themeId && state.themeId !== 'swamp-dark') return true;
-  if (state.family && state.family !== 'swamp') return true;
+  if (state.themeId && state.themeId !== DEFAULT_THEME_ID) return true;
+  if (state.family && state.family !== DEFAULT_THEME_FAMILY) return true;
+  if (normalizeColorIntensity(state.colorIntensity) !== DEFAULT_COLOR_INTENSITY) return true;
+  if (state.graphiteAccent && state.graphiteAccent !== 'teal') return true;
+  if ((state.density && state.density !== 'cozy') || state.reduceMotion) return true;
   if (state.customEnabled) return true;
   if (Object.keys(state.customTokens).length > 0) return true;
-  if (state.fonts.ui.kind !== 'preset' || state.fonts.ui.id !== 'system') return true;
-  if (state.fonts.mono.kind !== 'preset' || state.fonts.mono.id !== 'system') return true;
+  if (state.fonts.ui.kind !== 'preset' || state.fonts.ui.id !== DEFAULT_APPEARANCE_FONT_ID) return true;
+  if (state.fonts.mono.kind !== 'preset' || state.fonts.mono.id !== DEFAULT_APPEARANCE_FONT_ID) return true;
   return false;
 }
 
@@ -123,13 +137,17 @@ export function applyAppearanceToLocalStorage(state: AppearancePersistState): bo
   persistSuppressed = true;
   try {
     writeStorage(APPEARANCE_STORAGE_KEYS.chatView, state.chatView === 'full' ? 'full' : 'compact');
+    writeStorage(APPEARANCE_STORAGE_KEYS.colorIntensity, String(normalizeColorIntensity(state.colorIntensity)));
+    writeStorage(APPEARANCE_STORAGE_KEYS.graphiteAccent, normalizeGraphiteAccent(state.graphiteAccent));
+    writeStorage(APPEARANCE_STORAGE_KEYS.density, normalizeAppearanceDensity(state.density));
+    writeStorage(APPEARANCE_STORAGE_KEYS.reduceMotion, state.reduceMotion ? '1' : '0');
     if (state.followSystem) {
       writeStorage(THEME_FOLLOW_SYSTEM_KEY, '1');
-      writeStorage(THEME_FAMILY_KEY, state.family || 'swamp');
+      writeStorage(THEME_FAMILY_KEY, state.family || DEFAULT_THEME_FAMILY);
       removeStorage(THEME_STORAGE_KEY);
     } else {
       removeStorage(THEME_FOLLOW_SYSTEM_KEY);
-      writeStorage(THEME_STORAGE_KEY, state.themeId || 'swamp-dark');
+      writeStorage(THEME_STORAGE_KEY, state.themeId || DEFAULT_THEME_ID);
       if (state.family) writeStorage(THEME_FAMILY_KEY, state.family);
     }
 
@@ -159,6 +177,10 @@ export function applyAppearanceToLocalStorage(state: AppearancePersistState): bo
     before.followSystem !== after.followSystem ||
     before.themeId !== after.themeId ||
     before.family !== after.family ||
+    before.colorIntensity !== after.colorIntensity ||
+    before.graphiteAccent !== after.graphiteAccent ||
+    before.density !== after.density ||
+    before.reduceMotion !== after.reduceMotion ||
     before.customEnabled !== after.customEnabled ||
     before.customAdvanced !== after.customAdvanced ||
     JSON.stringify(before.customTokens) !== JSON.stringify(after.customTokens) ||
@@ -175,8 +197,12 @@ export function seedLocalStorageFromAppearanceBoot(): boolean {
     version: 1,
     chatView: boot.chatView === 'full' ? 'full' : 'compact',
     followSystem: boot.followSystem === true,
-    family: typeof boot.family === 'string' ? boot.family : 'swamp',
-    themeId: typeof boot.themeId === 'string' ? boot.themeId : 'swamp-dark',
+    family: typeof boot.family === 'string' ? boot.family : DEFAULT_THEME_FAMILY,
+    themeId: typeof boot.themeId === 'string' ? boot.themeId : DEFAULT_THEME_ID,
+    colorIntensity: normalizeColorIntensity(boot.colorIntensity),
+    graphiteAccent: normalizeGraphiteAccent(boot.graphiteAccent),
+    density: normalizeAppearanceDensity(boot.density),
+    reduceMotion: boot.reduceMotion === true,
     customEnabled: boot.customEnabled === true,
     customAdvanced: boot.customAdvanced === true,
     customTokens: boot.customTokens && typeof boot.customTokens === 'object' ? boot.customTokens : {},

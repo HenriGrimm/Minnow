@@ -1,110 +1,23 @@
 import type { ITheme } from '@xterm/xterm';
+import { formatCssColor, parseCssColor } from '../appearance/color-format';
+import { contrastRatio } from '../appearance/contrast';
 
-function readToken(
-  style: CSSStyleDeclaration,
-  name: string,
-  fallback: string,
-): string {
-  const value = style.getPropertyValue(name).trim();
-  return value || fallback;
+function readToken(style: CSSStyleDeclaration, name: string, fallback: string): string {
+  // xterm's palette and the contrast checks expect sRGB. Computed custom
+  // properties can still contain color-mix() expressions and OKLab colors.
+  const color = parseCssColor(style.getPropertyValue(name));
+  return color ? formatCssColor(color) : fallback;
 }
 
-function mixSrgb(
-  a: [number, number, number],
-  b: [number, number, number],
-  weightAPercent: number,
-): string {
-  const w = weightAPercent / 100;
-  const channels = a.map((v, i) => Math.round(v * w + b[i]! * (1 - w)));
-  return `#${channels.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+function rgb(color: string): [number, number, number] {
+  const { r, g, b } = parseCssColor(color)!;
+  return [r, g, b];
 }
 
-/** Resolve Minnow `color-mix(in srgb, var(--a) N%, var(--b))` selection tokens. */
-function tryResolveColorMix(
-  raw: string,
-  style: CSSStyleDeclaration,
-): string | null {
-  const m =
-    /^color-mix\(\s*in\s+\w+\s*,\s*var\((--[^)]+)\)\s+([\d.]+)%\s*,\s*var\((--[^)]+)\)\s*\)$/i.exec(
-      raw.trim(),
-    );
-  if (!m) return null;
-  const rgbA = parseHexOrRgb(readToken(style, m[1], ''));
-  const rgbB = parseHexOrRgb(readToken(style, m[3], ''));
-  if (!rgbA || !rgbB) return null;
-  return mixSrgb(rgbA, rgbB, Number(m[2]));
-}
-
-/** Hidden probe for resolving color-mix()/var() tokens to rgb() for xterm. */
-let colorProbe: HTMLElement | null = null;
-
-/** Resolve a CSS token (including color-mix) to a color string xterm can parse. */
-function resolveTokenColor(
-  style: CSSStyleDeclaration,
-  name: string,
-  fallback: string,
-): string {
-  const raw = readToken(style, name, '');
-  if (!raw) return fallback;
-  if (raw.startsWith('#') || /^rgba?\(/i.test(raw)) return raw;
-
-  const mixed = tryResolveColorMix(raw, style);
-  if (mixed) return mixed;
-
-  if (typeof document === 'undefined') return fallback;
-
-  if (!colorProbe) {
-    colorProbe = document.createElement('div');
-    colorProbe.hidden = true;
-    document.documentElement.appendChild(colorProbe);
-  }
-
-  colorProbe.style.backgroundColor = raw;
-  const resolved = getComputedStyle(colorProbe).backgroundColor.trim();
-  colorProbe.style.backgroundColor = '';
-  if (resolved && resolved !== 'rgba(0, 0, 0, 0)') return resolved;
-  return fallback;
-}
-
-function parseHexOrRgb(color: string): [number, number, number] | null {
-  const hex = color.trim();
-  if (hex.startsWith('#')) {
-    const h = hex.slice(1);
-    const full =
-      h.length === 3
-        ? h
-            .split('')
-            .map((c) => c + c)
-            .join('')
-        : h.length >= 6
-          ? h.slice(0, 6)
-          : null;
-    if (!full) return null;
-    const n = Number.parseInt(full, 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  }
-  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/.exec(hex);
-  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
-  return null;
-}
-
-function relativeLuminance([r, g, b]: [number, number, number]): number {
-  const f = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-}
-
-function contrastRatio(fg: string, bg: string): number {
-  const a = parseHexOrRgb(fg);
-  const b = parseHexOrRgb(bg);
-  if (!a || !b) return 0;
-  const l1 = relativeLuminance(a);
-  const l2 = relativeLuminance(b);
-  const lighter = Math.max(l1, l2);
-  const darker = Math.min(l1, l2);
-  return (lighter + 0.05) / (darker + 0.05);
+function mixSrgb(tint: string, background: string, weight: number): string {
+  const base = rgb(background);
+  const [r, g, b] = rgb(tint).map((channel, i) => channel * weight + base[i]! * (1 - weight));
+  return formatCssColor({ r, g, b, a: 1 });
 }
 
 /** Pick the first candidate with WCAG AA contrast on the terminal canvas. */
@@ -116,8 +29,7 @@ function pickReadable(bg: string, candidates: string[], fallback: string): strin
 }
 
 /** Pick the darkest gold/amber token that stays readable on the terminal canvas. */
-function pickLightAnsiYellow(style: CSSStyleDeclaration, bg: string): string {
-  const fg = readToken(style, '--mn-fg', '#1c2127');
+function pickLightAnsiYellow(style: CSSStyleDeclaration, bg: string, fg: string): string {
   return pickReadable(
     bg,
     [
@@ -130,38 +42,41 @@ function pickLightAnsiYellow(style: CSSStyleDeclaration, bg: string): string {
   );
 }
 
-/** PTY selection tint — app token on dark; stronger accent mix on light canvas. */
+/** xterm blends selection over its canvas, so compare the visible fill. */
 function pickTerminalSelectionBackground(
   style: CSSStyleDeclaration,
   isLight: boolean,
   bg: string,
+  fg: string,
+  accent: string,
 ): string {
-  if (!isLight) {
-    return resolveTokenColor(style, '--mn-selection-bg', '#3d4f47');
+  const token = parseCssColor(style.getPropertyValue('--mn-selection-bg'));
+  if (token) {
+    const visible = mixSrgb(formatCssColor(token), bg, token.a);
+    if (contrastRatio(visible, bg) >= 2 && contrastRatio(fg, visible) >= 4.5) {
+      return visible;
+    }
   }
 
-  const accent = parseHexOrRgb(readToken(style, '--mn-accent', '#5b8a72'));
-  const surface2 = parseHexOrRgb(readToken(style, '--mn-surface-2', '#ededea'));
-  if (!accent || !surface2) {
-    return resolveTokenColor(style, '--mn-selection-bg', '#b8d4c4');
+  for (const color of [accent, fg]) {
+    for (const weight of [0.25, 0.35, 0.45, 0.55, 0.65]) {
+      const candidate = mixSrgb(color, bg, weight);
+      if (contrastRatio(candidate, bg) >= 2 && contrastRatio(fg, candidate) >= 4.5) {
+        return candidate;
+      }
+    }
   }
 
-  const minContrast = 2;
-  for (const weight of [55, 60, 65, 70, 50, 45, 40]) {
-    const candidate = mixSrgb(accent, surface2, weight);
-    if (contrastRatio(candidate, bg) >= minContrast) return candidate;
-  }
-
-  return mixSrgb(accent, surface2, 65);
+  return mixSrgb(fg, bg, isLight ? 0.35 : 0.25);
 }
 
 /** Build a full 16-color xterm theme from computed CSS variables. */
 export function buildTerminalXtermTheme(style: CSSStyleDeclaration): ITheme {
   const isLight = style.colorScheme === 'light';
-  const bg = readToken(style, '--mn-bg', isLight ? '#f7f7f4' : '#0f1216');
+  const bg = readToken(style, '--mn-surface-0', isLight ? '#ffffff' : '#111113');
   const fg = readToken(style, '--mn-fg', isLight ? '#1c2127' : '#dfe3e8');
   const accent = readToken(style, '--mn-accent', isLight ? '#5b8a72' : '#9ec5a7');
-  const selection = pickTerminalSelectionBackground(style, isLight, bg);
+  const selection = pickTerminalSelectionBackground(style, isLight, bg, fg, accent);
 
   const base: ITheme = {
     background: bg,
@@ -173,15 +88,13 @@ export function buildTerminalXtermTheme(style: CSSStyleDeclaration): ITheme {
   };
 
   if (isLight) {
-    const fg = readToken(style, '--mn-fg', '#1c2127');
     const fgMuted = readToken(style, '--mn-fg-muted', '#5a626c');
     const dangerInk = readToken(style, '--mn-danger-ink', '#8a2f2b');
     const danger = readToken(style, '--mn-danger', '#c75651');
     const successInk = readToken(style, '--mn-success-ink', '#2d4f3c');
     const success = readToken(style, '--mn-success', '#4f7c63');
     const accentInk = readToken(style, '--mn-accent-ink', '#2d4f3c');
-    const accent = readToken(style, '--mn-accent', '#5b8a72');
-    const yellow = pickLightAnsiYellow(style, bg);
+    const yellow = pickLightAnsiYellow(style, bg, fg);
 
     return {
       ...base,
@@ -210,7 +123,7 @@ export function buildTerminalXtermTheme(style: CSSStyleDeclaration): ITheme {
     red: readToken(style, '--mn-danger', '#e07a6f'),
     green: readToken(style, '--mn-success', '#9ec5a7'),
     yellow: readToken(style, '--mn-warning', '#d4a574'),
-    blue: readToken(style, '--mn-accent', '#9ec5a7'),
+    blue: accent,
     magenta: readToken(style, '--mn-danger-ink', '#f5b5ae'),
     cyan: readToken(style, '--mn-accent-ink', '#cfe5d4'),
     white: readToken(style, '--mn-fg-muted', '#8a929c'),
@@ -220,7 +133,7 @@ export function buildTerminalXtermTheme(style: CSSStyleDeclaration): ITheme {
     brightYellow: readToken(style, '--mn-folder', '#c8b173'),
     brightBlue: readToken(style, '--mn-accent-ink', '#cfe5d4'),
     brightMagenta: readToken(style, '--mn-danger', '#e07a6f'),
-    brightCyan: readToken(style, '--mn-accent', '#9ec5a7'),
-    brightWhite: readToken(style, '--mn-fg', '#dfe3e8'),
+    brightCyan: accent,
+    brightWhite: fg,
   };
 }

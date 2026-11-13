@@ -15,6 +15,9 @@ mock.module('../../src/api/stream-event-source.ts', {
 });
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
+import { derive } from '../../server/orchestrator/core/derive.js';
+import { canonicalise } from '../../server/orchestrator/core/snapshot.js';
+import { focusableWithin } from '../../src/ui/components/internal.ts';
 const {
   openBoardsView,
   resetBoardsViewForTests,
@@ -79,7 +82,7 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-function setupDom(): void {
+function setupDom(boardState: unknown = BOARD_STATE): void {
   previousFetch = globalThis.fetch;
   activeWindow?.close();
   const win = new Window();
@@ -88,7 +91,7 @@ function setupDom(): void {
     fetch: (async (input: RequestInfo | URL) => {
       const url = requestUrl(input);
       if (/\/api\/boards\/[^/?#]+/.test(url)) {
-        return jsonResponse({ state: BOARD_STATE, seq: 1 });
+        return jsonResponse({ state: boardState, seq: 1 });
       }
       if (url.includes('/api/boards')) return jsonResponse({ boards: [BOARD_SUMMARY] });
       return jsonResponse({});
@@ -101,6 +104,7 @@ function setupDom(): void {
     MutationObserver: typeof MutationObserver;
   };
   g.sessionStorage = win.sessionStorage;
+  g.CSS = win.CSS;
   g.HTMLSelectElement = win.HTMLSelectElement;
   if (typeof g.MutationObserver === 'undefined') {
     g.MutationObserver = class {
@@ -165,6 +169,41 @@ afterEach(() => {
 });
 
 describe('V2 Boards last-opened resume', () => {
+  test('task dialog contains focus and restores the task when closed', async () => {
+    setupDom(canonicalise(derive([{
+      v: 1, seq: 1, type: 'board.created', boardId: BOARD_ID, name: BOARD_SUMMARY.name,
+      planPath: BOARD_SUMMARY.planPath, waves: [{ n: 1, name: 'Fixture' }],
+      tasks: [{ id: 'W1-A', title: 'Audit task', wave: 1, dependsOn: [], touches: ['README.md'] }],
+    }])));
+    const outside = document.createElement('button');
+    outside.textContent = 'Metrics';
+    document.body.append(outside);
+    await openBoardsView();
+    showBoard(BOARD_ID);
+    await waitForBoardHeader();
+
+    const taskSelector = '[data-focus-key="task:W1-A"]';
+    document.querySelector<HTMLButtonElement>(taskSelector)!.click();
+    const panel = document.querySelector<HTMLElement>('.ov2-detail[aria-modal="true"]')!;
+    assert.equal(panel.querySelector('summary button'), null);
+    const [first, ...rest] = focusableWithin(panel);
+    const last = rest.at(-1) ?? first;
+    assert.equal(outside.inert, true);
+    assert.ok(panel.contains(document.activeElement));
+
+    last.focus();
+    last.dispatchEvent(new activeWindow!.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.ok(document.activeElement === first);
+    first.dispatchEvent(new activeWindow!.KeyboardEvent('keydown', {
+      key: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    assert.ok(document.activeElement === last);
+    last.dispatchEvent(new activeWindow!.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(panel.isConnected, false);
+    assert.equal(outside.inert, false);
+    assert.ok(document.activeElement === document.querySelector(taskSelector));
+  });
+
   test('plan launch opens its board even when the list still predates creation', async () => {
     setupDom();
     const posted: string[] = [];

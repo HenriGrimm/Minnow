@@ -7,7 +7,7 @@ mock.module('../../src/chat/prompts/token-estimate.ts', { namedExports: {
   resolveOutboundPromptEstimate: async () => {
     estimates++;
     return { total: 1000, history: 700, composedSystem: 200, userRules: 0, tools: 100,
-      legacyFallback: false, trimAtShare: 0.8 };
+      trimAtShare: 0.8 };
   },
 } });
 const { getContextBudget } = await import('../../src/chat/context-usage.ts');

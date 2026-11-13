@@ -2,7 +2,6 @@ import '../../styles/models-cli.css';
 import '../../styles/settings-controls.css';
 import {
   listAgentClis,
-  prepareAgentCliUpdate,
   setAgentCliEnabled,
   updateAgentCliSettings,
   verifyAgentCli,
@@ -17,7 +16,9 @@ import { modelProducerLogoSvg } from '../../providers/model-producer';
 import { createSettingsSwitch } from '../settings-switch';
 import { el, skeletonRows } from './dom';
 import { accountUsageSummary, createAccountUsageView } from '../cli-account-usage';
+import { setModelsRailCount } from './graphite-chrome';
 import { createAgentCliSignIn } from '../agent-cli-sign-in';
+import { launchApp } from '../../os/router';
 
 const CLI_ORDER: AgentCliKind[] = ['claude', 'codex', 'cursor'];
 const LOGIN_COMMANDS: Record<AgentCliKind, string> = {
@@ -29,11 +30,6 @@ const INSTALL_COMMANDS: Record<AgentCliKind, string> = {
   claude: 'npm install -g @anthropic-ai/claude-code',
   codex: 'npm install -g @openai/codex',
   cursor: 'curl https://cursor.com/install -fsS | bash',
-};
-const UPDATE_COMMANDS: Record<AgentCliKind, string> = {
-  claude: 'claude update',
-  codex: 'codex update',
-  cursor: 'cursor-agent update',
 };
 const CURSOR_INSTALL_POWERSHELL = "irm 'https://cursor.com/install?win32=true' | iex";
 const CURSOR_INSTALL_CMD =
@@ -48,8 +44,6 @@ interface CliPanelDeps {
   updateSettings: typeof updateAgentCliSettings;
   launchSignIn: (status: AgentCliStatus) => Promise<boolean | void>;
   launchInstall: (status: AgentCliStatus) => Promise<void>;
-  prepareUpdate: typeof prepareAgentCliUpdate;
-  launchUpdate: (status: AgentCliStatus) => Promise<void>;
 }
 
 const LOGIN_ARGS: Record<AgentCliKind, string> = {
@@ -84,16 +78,6 @@ export function buildAgentCliLoginCommand(
   return status.binPath
     ? `${quoteExecutable(status.binPath, shell)} ${LOGIN_ARGS[status.kind]}`
     : LOGIN_COMMANDS[status.kind];
-}
-
-/** The CLI's own self-updater, run through the same executable Minnow detected. */
-export function buildAgentCliUpdateCommand(
-  status: Pick<AgentCliStatus, 'kind' | 'binPath'>,
-  shell?: string,
-): string {
-  return status.binPath
-    ? `${quoteExecutable(status.binPath, shell)} update`
-    : UPDATE_COMMANDS[status.kind];
 }
 
 /** Vendor install command matched to the destination terminal shell. */
@@ -144,10 +128,6 @@ async function defaultLaunchInstall(status: AgentCliStatus): Promise<void> {
   await runCommandInNewTerminal((shell) => buildAgentCliInstallCommand(status.kind, shell));
 }
 
-async function defaultLaunchUpdate(status: AgentCliStatus): Promise<void> {
-  await runCommandInNewTerminal((shell) => buildAgentCliUpdateCommand(status, shell));
-}
-
 const defaultDeps: CliPanelDeps = {
   login: agentCliLoginRequest,
   usage: fetchAgentCliAccountUsage,
@@ -157,8 +137,6 @@ const defaultDeps: CliPanelDeps = {
   updateSettings: updateAgentCliSettings,
   launchSignIn: defaultLaunchSignIn,
   launchInstall: defaultLaunchInstall,
-  prepareUpdate: prepareAgentCliUpdate,
-  launchUpdate: defaultLaunchUpdate,
 };
 
 let deps = defaultDeps;
@@ -217,7 +195,7 @@ function sortedStatuses(): AgentCliStatus[] {
 function authLabel(status: AgentCliStatus): string {
   switch (status.authStatus) {
     case 'signed-in': return 'Signed in';
-    case 'token': return 'Token configured';
+    case 'token': return 'API key or token';
     case 'signed-out': return 'Signed out';
     default: return 'Sign-in unverified';
   }
@@ -462,14 +440,34 @@ function renderCli(status: AgentCliStatus): CliView {
   identity.append(title, metadata);
   const enabledState = el('span', 'models-cli-row__state');
   const usageSummary = el('span', 'models-cli-row__usage');
+  const cardState = el('span', 'models-cli-card-state');
+  const cardPath = el('span', 'models-cli-card-path');
+  const cardUsage = el('span', 'models-cli-card-usage');
+  const allowance = el('span', 'models-cli-card-usage__label', 'Usage');
+  const percentage = el('span', 'models-cli-card-usage__value', '—');
+  const meter = el('span', 'models-cli-card-usage__meter');
+  meter.setAttribute('aria-hidden', 'true');
+  cardUsage.append(allowance, percentage, meter);
+  const actionLabel = el('span', 'models-cli-card-action');
   const usage = createAccountUsageView(status.kind, {
     request: (kind, options) => deps.usage(kind, options),
     visible: () => row.isConnected && host()?.classList.contains('is-active') === true,
-    onChange: (snapshot) => { usageSummary.textContent = accountUsageSummary(snapshot); },
+    onChange: (snapshot) => {
+      usageSummary.textContent = accountUsageSummary(snapshot);
+      const windows = snapshot && ['ready', 'stale'].includes(snapshot.status) ? snapshot.windows : [];
+      const window = windows.reduce<typeof windows[number] | undefined>(
+        (highest, item) => !highest || item.usedPercent > highest.usedPercent ? item : highest, undefined,
+      );
+      const used = window ? Math.min(100, Math.max(0, window.usedPercent)) : 0;
+      allowance.textContent = window ? `${window.label}${snapshot?.status === 'stale' ? ' · last known' : ''}` : 'Usage';
+      percentage.textContent = window ? `${Math.round(used)}% used` : '—';
+      meter.style.setProperty('--cli-used', `${used}%`);
+      meter.dataset.tone = used >= 90 ? 'danger' : used >= 70 ? 'warning' : 'normal';
+    },
   });
   const chevron = el('span', 'models-cli-chevron');
   chevron.setAttribute('aria-hidden', 'true');
-  summary.append(logo, identity, usageSummary, enabledState, chevron);
+  summary.append(logo, identity, usageSummary, enabledState, chevron, cardState, cardPath, cardUsage, actionLabel);
   const body = el('div', 'models-cli-card-body');
   const connection = el('div', 'models-cli-connection');
   const badges = el('div', 'models-cli-connection__status');
@@ -498,9 +496,8 @@ function renderCli(status: AgentCliStatus): CliView {
   install.addEventListener('click', () => void launchInstall(status.kind));
   const signIn = makeButton('Sign in', 'models-inline-btn is-primary');
   signIn.addEventListener('click', () => void launchSignIn(status.kind));
-  const updateCli = makeButton('Update');
-  updateCli.title = `Update ${status.label} to the latest version`;
-  updateCli.addEventListener('click', () => void launchUpdate(status.kind));
+  const updateCli = makeButton('Software updates');
+  updateCli.addEventListener('click', () => launchApp('settings', { settingsSection: 'updates' }));
   actions.append(verify, updateCli, install, signIn, enableLabel);
   connection.append(badges, actions);
   const info = el('p', 'models-cli-field__hint');
@@ -531,24 +528,30 @@ function renderCli(status: AgentCliStatus): CliView {
     if (next.installed && row.isConnected) usage.start();
     else usage.stop();
     const busy = pending.has(next.kind) || settings.busy() || Boolean(loadController);
+    const account = next.accountEmail || (next.authStatus === 'signed-in' ? 'Account email unavailable' : '');
     metadata.textContent = next.installed
-      ? [next.version, authLabel(next)].filter(Boolean).join(' · ')
+      ? [next.accountEmail || authLabel(next), next.version].filter(Boolean).join(' · ')
       : 'Not installed';
     enabledState.textContent = next.enabled ? 'Enabled' : 'Disabled';
     enabledState.dataset.enabled = String(next.enabled);
     installed.textContent = next.installed ? 'Installed' : 'Not installed';
-    auth.textContent = authLabel(next);
+    auth.textContent = next.accountEmail ? `Signed in as ${next.accountEmail}`
+      : account ? 'Signed in · email unavailable' : authLabel(next);
     auth.className = `models-cli-badge models-cli-badge--${authTone(next)}`;
     auth.hidden = !next.installed;
+    cardState.textContent = next.installed ? authLabel(next) : 'Not installed';
+    cardState.dataset.tone = next.installed ? authTone(next) : 'muted';
+    cardPath.textContent = next.installed ? [account, next.version].filter(Boolean).join(' · ') : 'Not found on PATH';
+    cardPath.title = cardPath.textContent;
+    actionLabel.textContent = next.installed ? 'Account usage and settings' : 'How to install';
     enable.checked = next.enabled;
     enable.disabled = busy || !next.installed;
     enableText.textContent = next.enabled ? 'Enabled' : 'Enable provider';
     setBusy(verify, pending.get(next.kind) === 'Verifying', 'Verifying…');
     verify.disabled = busy || !next.installed;
     verify.hidden = !next.installed;
-    updateCli.hidden = !next.installed;
+    updateCli.hidden = !next.installed || showCommandInstructions;
     updateCli.disabled = busy;
-    updateCli.textContent = pending.get(next.kind) === 'Updating' ? 'Opening…' : 'Update';
     install.hidden = next.installed;
     install.disabled = busy;
     install.textContent = pending.get(next.kind) === 'Opening terminal' ? 'Opening…' : 'Install';
@@ -580,6 +583,7 @@ function renderCli(status: AgentCliStatus): CliView {
 
 function render(): void {
   statusListener?.(statuses);
+  setModelsRailCount('clis', statuses.length);
   const mount = host();
   if (!mount || !mounted) return;
   if (!mount.querySelector('.models-cli-header')) {
@@ -587,8 +591,8 @@ function render(): void {
     const header = el('div', 'models-cli-header');
     const heading = el('div');
     heading.append(
-      el('h2', undefined, 'CLIs'),
-      el('p', 'models-lead', 'Connect your coding agents. Use their models and subscriptions in Minnow.'),
+      el('h2', undefined, 'Subscriptions'),
+      el('p', 'models-lead', 'Use your existing Claude Code, Codex, or Cursor account in Minnow.'),
     );
     const scan = makeButton('Scan again');
     scan.addEventListener('click', () => void scanAll());
@@ -648,7 +652,8 @@ async function load(): Promise<void> {
     if (sequence === loadSequence) loadController = null;
     render();
     if (!loadError && mounted && sequence === loadSequence
-      && statuses.some((status) => status.installed && status.authStatus === 'unknown')) {
+      && statuses.some((status) => status.installed && (status.authStatus === 'unknown' ||
+        (status.authStatus === 'signed-in' && !status.accountEmail && !status.verifiedAt)))) {
       void scanAll(true);
     }
   }
@@ -668,7 +673,8 @@ async function scanAll(onlyUnverified = false): Promise<void> {
   notice = '';
   render();
   const candidates = sortedStatuses().filter((status) =>
-    !onlyUnverified || (status.installed && status.authStatus === 'unknown'));
+    !onlyUnverified || (status.installed && (status.authStatus === 'unknown' ||
+      (status.authStatus === 'signed-in' && !status.accountEmail && !status.verifiedAt))));
   const results = await Promise.allSettled(
     candidates.map((status) => deps.verify(status.kind, controller.signal)),
   );
@@ -765,31 +771,6 @@ async function launchInstall(kind: AgentCliKind): Promise<void> {
     }
     await deps.launchInstall(status);
     notice = `${status.label} install started in Terminal. When it finishes, return and scan again.`;
-  } catch (error) {
-    itemErrors.set(kind, errorMessage(error));
-  } finally {
-    pending.delete(kind);
-    render();
-  }
-}
-
-async function launchUpdate(kind: AgentCliKind): Promise<void> {
-  if (loadController || pending.has(kind) || views.get(kind)?.busy()) return;
-  itemErrors.delete(kind);
-  notice = '';
-  pending.set(kind, 'Updating');
-  render();
-  try {
-    const status = statuses.find((row) => row.kind === kind);
-    if (!status) throw new Error('CLI status is unavailable. Scan again and retry.');
-    if (showCommandInstructions) {
-      const shell = /windows/i.test(navigator.userAgent) ? 'powershell' : undefined;
-      notice = `Run ${buildAgentCliUpdateCommand(status, shell)} in your terminal. When it finishes, scan again here.`;
-      return;
-    }
-    await deps.prepareUpdate(kind);
-    await deps.launchUpdate(status);
-    notice = `${status.label} update started in Terminal. When it finishes, return and scan again to pick up the new version and models.`;
   } catch (error) {
     itemErrors.set(kind, errorMessage(error));
   } finally {

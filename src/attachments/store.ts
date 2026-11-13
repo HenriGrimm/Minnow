@@ -413,7 +413,7 @@ export function onFileSelected(event: Event): void {
 }
 
 /**
- * Wires the shared file input and attachment actions on secondary surfaces.
+ * Wires the shared file input and attachment actions.
  * Safe to call before markup exists — no-op until elements are added.
  */
 export function initAttachments(): void {
@@ -421,16 +421,11 @@ export function initAttachments(): void {
 
   if (fileInput) {
     fileInput.addEventListener('change', onFileSelected);
-  }
-
-  const chatAttachBtn = document.getElementById('btnChatAppAttach');
-  if (chatAttachBtn && fileInput) {
-    chatAttachBtn.addEventListener('click', () => fileInput.click());
-  }
-
-  const desktopAttachBtn = document.getElementById('btnDesktopAttach');
-  if (desktopAttachBtn && fileInput) {
-    desktopAttachBtn.addEventListener('click', () => fileInput.click());
+    for (const id of ['btnComposerAttach', 'btnChatAppAttach', 'btnDesktopAttach']) {
+      document.getElementById(id)?.addEventListener('click', () => {
+        if (!fileInput.disabled) fileInput.click();
+      });
+    }
   }
 
   renderAttachPreview();

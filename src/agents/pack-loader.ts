@@ -102,7 +102,6 @@ export function normalizePackAgentEntry(
     packRoot,
     promptPaths: {
       full: entry.prompts.full,
-      lite: entry.prompts.lite,
     },
     contextStrategy: entry.contextStrategy,
   };

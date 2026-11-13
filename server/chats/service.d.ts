@@ -62,6 +62,10 @@ export interface ChatCommandService {
     chatId: string; messageId: string; expectedRevision: number; message?: string; selection?: ModelSelection; clientRequestId: string;
   }): Promise<{ chatId: string; sourceChatId: string; sourceMessageId: string; commandId: string; revision: number;
     disposition: string; link: string; replayed: boolean }>;
+  rewriteHistory(caller: ChatCaller, input: { chatId: string; index: number; expectedHistoryDigest: string; clientRequestId: string } & (
+    { action: 'delete' | 'replay' } | { action: 'edit'; message: string; text: string }
+  )): Promise<{ chatId: string; action: 'delete' | 'replay' | 'edit'; index: number; clientRequestId: string;
+    revision: number; commandId: string | null; replayed: boolean }>;
   configure(caller: ChatCaller, input: {
     chatId: string; action?: 'configure'; selection?: ModelSelection; modeId?: string;
     name?: string; expectedName?: string; pinned?: boolean; archived?: boolean; expectedProfileVersion?: number; clientRequestId: string;

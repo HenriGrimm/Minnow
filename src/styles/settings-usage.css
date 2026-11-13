@@ -78,7 +78,7 @@
 
 .usage-instrument__value {
   font-family: var(--font-mono);
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;

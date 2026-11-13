@@ -1276,6 +1276,7 @@ export function normalizeChatRow(raw) {
       out[key] = row[key];
     }
   }
+  if (typeof row.cliFastMode === 'boolean') out.cliFastMode = row.cliFastMode;
   if (Array.isArray(row.remoteCommandReceipts)) {
     out.remoteCommandReceipts = [...new Set(row.remoteCommandReceipts.filter(value => typeof value === 'string' && value.length <= 256))].slice(-256);
   }
@@ -1284,7 +1285,11 @@ export function normalizeChatRow(raw) {
     const parsed = validateAgentConversationMeta(row.agentConversation);
     if (parsed.ok && parsed.value.childChatId === out.id) out.agentConversation = parsed.value;
   }
-  if (row.chatCommandVersion === 1) out.chatCommandVersion = 1;
+  if (row.chatCommandVersion === 1) {
+    out.chatCommandVersion = 1;
+    if (typeof row.historyDigest === 'string' && /^[a-f0-9]{64}$/.test(row.historyDigest)) out.historyDigest = row.historyDigest;
+    if (Number.isSafeInteger(row.historyRewriteRevision) && row.historyRewriteRevision >= 0) out.historyRewriteRevision = row.historyRewriteRevision;
+  }
   if (Number.isSafeInteger(row.agentPresentationRevision) && row.agentPresentationRevision >= 0) out.agentPresentationRevision = row.agentPresentationRevision;
   if (validateChatId(row.agentTypeId).ok) out.agentTypeId = row.agentTypeId;
   if (row.profileReference !== undefined) {

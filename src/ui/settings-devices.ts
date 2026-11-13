@@ -38,17 +38,22 @@ function actionButton(label: string, primary = false): HTMLButtonElement {
   return node;
 }
 
-function card(title: string, icon: 'externalLink' | 'link'): { root: HTMLElement; status: HTMLElement; body: HTMLElement } {
-  const root = el('section', 'devices-card');
+function card(title: string, icon: 'externalLink' | 'link') {
+  const root = el('section', 'settings-row settings-row--actions');
+  const label = el('div', 'settings-row__label');
   const head = el('div', 'devices-card__head');
   const glyph = el('span', 'devices-card__icon');
   glyph.innerHTML = iconHtml(icon, { size: 16 });
-  const heading = el('h4', 'devices-card__title', title);
-  const status = el('span', 'devices-pill');
-  head.append(glyph, heading, status);
+  head.append(glyph, el('h4', 'settings-row__title devices-card__title', title));
   const body = el('div', 'devices-card__body');
-  root.append(head, body);
-  return { root, status, body };
+  label.append(head, body);
+
+  const controls = el('div', 'settings-actions');
+  const status = el('span', 'devices-pill');
+  const actions = el('div', 'devices-card__actions');
+  controls.append(status, actions);
+  root.append(label, controls);
+  return { root, status, body, actions };
 }
 
 function setPill(pill: HTMLElement, text: string, tone: 'on' | 'off' | 'busy' | 'error'): void {
@@ -56,9 +61,13 @@ function setPill(pill: HTMLElement, text: string, tone: 'on' | 'off' | 'busy' | 
   pill.dataset.tone = tone;
 }
 
-function renderLan(body: HTMLElement, pill: HTMLElement, lan: LanStatus, onChange: (status: RemoteStatus) => void): void {
+function renderLan(
+  { body, status: pill, actions }: ReturnType<typeof card>,
+  lan: LanStatus,
+  onChange: (status: RemoteStatus) => void,
+): void {
   body.replaceChildren();
-  const actions = el('div', 'devices-card__actions');
+  actions.replaceChildren();
   const toggle = (enabled: boolean, button: HTMLButtonElement) => {
     button.addEventListener('click', () => {
       button.disabled = true;
@@ -114,7 +123,6 @@ function renderLan(body: HTMLElement, pill: HTMLElement, lan: LanStatus, onChang
     toggle(true, on);
     actions.append(on);
   }
-  body.append(actions);
 }
 
 function anywherePill(pill: HTMLElement, status: RemoteStatus['anywhere']): void {
@@ -164,7 +172,7 @@ function renderDeviceRow(device: CompanionDevice, refresh: () => void): HTMLLIEl
   const via = viaLabel(device.lastIngress);
   identity.append(name, el('span', 'devices-row__meta', via && device.lastSeenAt ? `${seen} · via ${via}` : seen));
 
-  const actions = el('div', 'devices-row__actions');
+  const actions = el('div', 'settings-actions devices-row__actions');
   const rename = el('button', 'settings-inline-btn', 'Rename');
   rename.type = 'button';
   rename.addEventListener('click', () => {
@@ -210,21 +218,21 @@ export async function renderDevicesSettings(mount: HTMLElement): Promise<void> {
   const header = el('div', 'devices-header');
   const intro = el('div', 'devices-header__intro');
   intro.append(
-    el('h3', 'devices-header__title', 'Use Minnow on your phone'),
+    el('h3', 'devices-header__title', 'Phone access'),
     el('p', 'settings-section-lead', 'Chat, check on agents, and approve their work from a phone or tablet while this computer runs Minnow.'),
   );
   const connect = actionButton('Connect a phone', true);
   connect.id = 'devicesConnectButton';
   header.append(intro, connect);
 
-  const cards = el('div', 'devices-cards');
+  const cards = el('div', 'settings-group__body');
   const anywhere = card('Anywhere', 'externalLink');
   anywhere.root.dataset.settingsSearchKey = 'general.devices.anywhere';
   const lan = card('Home network', 'link');
   lan.root.dataset.settingsSearchKey = 'general.devices.lan';
-  cards.append(anywhere.root, lan.root);
+  cards.append(lan.root, anywhere.root);
 
-  const listHead = el('h4', 'devices-list__title', 'Your devices');
+  const listHead = el('h4', 'devices-list__title', 'Paired devices');
   const list = el('ul', 'devices-list');
   const empty = el('p', 'settings-field-hint devices-list__empty', 'No devices yet. Connect a phone to use Minnow away from your desk.');
   root.append(header, cards, listHead, empty, list);
@@ -235,9 +243,9 @@ export async function renderDevicesSettings(mount: HTMLElement): Promise<void> {
 
   const renderStatus = (next: RemoteStatus) => {
     status = next;
-    renderLan(lan.body, lan.status, next.lan, renderStatus);
+    renderLan(lan, next.lan, renderStatus);
     anywherePill(anywhere.status, next.anywhere);
-    renderAnywhereState(anywhere.body, next.anywhere, renderStatus);
+    renderAnywhereState(anywhere.body, next.anywhere, renderStatus, anywhere.actions);
     window.clearTimeout(statusTimer);
     if (!disposed && isAnywhereSettling(next.anywhere)) {
       statusTimer = window.setTimeout(() => void loadStatus(), STATUS_POLL_MS);

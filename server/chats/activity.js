@@ -13,7 +13,12 @@ export function readChatActivity(db, chatId) {
   const chat = db.prepare("SELECT name,unread,turn_error,json_type(meta_json,'$.agentConversation')='object' AS delegated FROM chats WHERE id=?").get(chatId);
   if (!chat) return null;
   const presentationRevision = readChatPresentationRevision(db, chatId), managed = presentationRevision !== null;
-  const execution = managed ? db.prepare("SELECT e.execution_id,e.command_id,e.run_id,e.status,e.created_at,e.updated_at,e.settled_at,e.activated_at,e.activity_json,COALESCE(json_extract(e.captured_json,'$.modelSelection'),json_extract(c.payload_json,'$.modelSelection'),json_extract(e.captured_json,'$.profile.snapshot.modelSelection')) AS model_selection FROM chat_executions e LEFT JOIN chat_commands c ON c.command_id=e.command_id WHERE e.chat_id=? ORDER BY e.rowid DESC LIMIT 1").get(chatId) : null;
+  const execution = managed ? db.prepare(`SELECT e.execution_id,e.command_id,e.run_id,e.status,e.created_at,e.updated_at,e.settled_at,e.activated_at,e.activity_json,
+    COALESCE(json_extract(e.captured_json,'$.modelSelection'),json_extract(c.payload_json,'$.modelSelection'),json_extract(e.captured_json,'$.profile.snapshot.modelSelection')) AS model_selection
+    FROM chat_executions e LEFT JOIN chat_commands c ON c.command_id=e.command_id
+    WHERE e.chat_id=? AND e.rowid>COALESCE((SELECT prior.rowid FROM chat_conversation_state s JOIN chat_executions prior
+      ON prior.execution_id=json_extract(s.meta_json,'$.historyRewrite.throughExecutionId') WHERE s.chat_id=e.chat_id),0)
+    ORDER BY e.rowid DESC LIMIT 1`).get(chatId) : null;
   const pending = managed ? db.prepare("SELECT command_id,run_id,state,held,json_extract(error_json,'$.code') AS error_code FROM chat_commands WHERE chat_id=? AND state IN ('accepted','queued','waiting_for_host') AND json_extract(effective_json,'$.kind') IN ('send','steer') ORDER BY position LIMIT 1").get(chatId) : null;
   const requests = db.prepare("SELECT request_id,json_extract(payload_json,'$.kind') AS kind FROM chat_requests WHERE chat_id=? AND state='pending' ORDER BY updated_at,request_id LIMIT 256").all(chatId);
   const incoming = db.prepare("SELECT seq FROM messages WHERE chat_id=? AND hidden=0 AND ((role='assistant' AND text_len>0) OR (role='user' AND json_extract(payload_json,'$.provenance.actor') IN ('agent','system'))) ORDER BY seq DESC LIMIT 1").get(chatId)?.seq ?? -1;

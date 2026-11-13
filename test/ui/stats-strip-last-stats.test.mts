@@ -12,7 +12,7 @@ import {
 } from '../os/dom-helpers.mts';
 
 const { setSessionStateForTests, getActiveChat } = await import('../../src/state/sessions.ts');
-const { refreshMetricsStripForChat, updateStatsExpandPreview } = await import('../../src/ui/stats.ts');
+const { refreshMetricsStripForChat, updateStatsExpandPreview, updateStrip } = await import('../../src/ui/stats.ts');
 const { showCachedModelInfo } = await import('../../src/api/models.ts');
 const { formatStatCount } = await import('../../src/usage/format-stat-count.ts');
 const { buildLastStatsSnapshot } = await import('../../src/usage/chat-turn-metrics.ts');
@@ -27,21 +27,27 @@ function setupStripDom() {
   installHappyDomGlobals(win);
   document.body.innerHTML = `
     <select id="modelSelect"><option value="local/qwen" selected>qwen</option></select>
-    <div id="stripTPS">—</div>
-    <div id="stripTTFT">—</div>
-    <div id="stripGen">—</div>
-    <div id="stripTotal">—</div>
-    <div id="stripCost">—</div>
-    <div id="barPrompt"></div>
-    <div id="barCompletion"></div>
-    <div id="cntPrompt">—</div>
-    <div id="cntCompletion">—</div>
-    <div id="iArch">—</div>
-    <div id="iQuant">—</div>
-    <div id="iCtx">—</div>
-    <div id="iStop">—</div>
+    <dl id="statsSummary" hidden>
+      <div class="stat-cell"><dd id="stripTPS"></dd></div>
+      <div class="stat-cell"><dd id="stripTTFT"></dd></div>
+      <div class="stat-cell"><dd id="stripGen"></dd></div>
+      <div class="stat-cell"><dd id="stripTotal"></dd></div>
+      <div class="stat-cell"><dd id="stripCost"></dd></div>
+    </dl>
+    <p id="statsEmpty">No generation metrics available yet.</p>
+    <details id="statsDetails">
+      <dl>
+        <div class="stats-details__field"><dd id="cntPrompt"></dd></div>
+        <div class="stats-details__field"><dd id="cntCompletion"></dd></div>
+        <div class="stats-details__field"><dd id="iArch"></dd></div>
+        <div class="stats-details__field"><dd id="iQuant"></dd></div>
+        <div class="stats-details__field"><dd id="iCtx"></dd></div>
+        <div class="stats-details__field"><dd id="iStop"></dd></div>
+      </dl>
+    </details>
     <div id="statsExpandPreview"></div>
     <span id="statusMetricPreview"></span>
+    <span id="statusMetricTokenPreview"></span>
   `;
 }
 
@@ -95,6 +101,59 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     assert.equal(document.getElementById('statsExpandPreview')!.textContent, '32.0 t/s · 1,250 tokens');
     assert.equal(document.getElementById('statusMetricPreview')!.textContent, '32.0 t/s');
     assert.equal(document.getElementById('statusMetricPreview')!.dataset.pluginSlot, 'chat.throughput');
+  });
+
+  test('shows measured zero cost and keeps unknown fields out of the disclosure', () => {
+    setupStripDom();
+    seedMinimalSession();
+    updateStrip(
+      { time_to_first_token: 1.25, stop_reason: 'length' },
+      { prompt_tokens: 1200, completion_tokens: 30 },
+      { arch: 'unknown', context_length: 1_000_000 },
+      { costUsd: 0 },
+    );
+
+    assert.equal(document.getElementById('stripTTFT')?.textContent, '1.25\u00a0s');
+    assert.equal(document.getElementById('stripCost')?.textContent, '$0.00');
+    assert.equal(document.getElementById('iCtx')?.textContent, '1M tokens');
+    assert.equal(document.getElementById('iCtx')?.title, '1,000,000 tokens');
+    assert.equal(document.getElementById('iStop')?.textContent, 'Token limit reached');
+    assert.equal(document.getElementById('iArch')?.parentElement?.hidden, true);
+    assert.equal(document.getElementById('stripTPS')?.parentElement?.hidden, true);
+    assert.equal(document.getElementById('statusMetricTokenPreview')?.textContent, '1,230 tokens');
+  });
+
+  test('output-only live metrics do not display a full token count or a stale cost', () => {
+    setupStripDom();
+    seedMinimalSession();
+    const usage = { completion_tokens: 56, total_tokens: 56 };
+    getActiveChat().tokenLedger = {
+      entries: [{
+        id: 'previous-generation',
+        at: 1,
+        source: { kind: 'main', modeId: 'general' },
+        providerId: 'local',
+        modelId: 'qwen',
+        usage,
+        costUsd: 0.03,
+      }],
+      totals: { promptTokens: 0, completionTokens: 56, totalTokens: 56, costUsd: 0.03, completionCount: 1 },
+      bySource: {},
+    };
+    updateStrip({ tokens_per_second: 12.4 }, usage, {});
+    assert.equal(document.getElementById('stripCost')?.textContent, '$0.0300');
+
+    updateStrip({ tokens_per_second: 12.4 }, usage, {}, { live: true });
+    assert.equal(document.getElementById('statsExpandPreview')?.textContent, '12.4 t/s');
+    assert.equal(document.getElementById('stripTotal')?.parentElement?.hidden, true);
+    assert.equal(document.getElementById('stripCost')?.parentElement?.hidden, true);
+    assert.equal(document.getElementById('cntCompletion')?.textContent, '56');
+
+    updateStrip({}, {}, {});
+    assert.equal(document.getElementById('statsSummary')?.hidden, true);
+    assert.equal(document.getElementById('statsDetails')?.hidden, true);
+    assert.equal(document.getElementById('statsEmpty')?.hidden, false);
+    assert.equal(document.getElementById('statsExpandPreview')?.textContent, '');
   });
 
   test('showCachedModelInfo does not blank last-turn tokens', () => {

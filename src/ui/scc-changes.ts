@@ -3,7 +3,8 @@ import { createCommitGenerationStatus } from './commit-generation-status';
 import { gitStatusRenderKey } from './git-status-render-key';
 import { getWorkspacePath } from '../state/workspace';
 import { pushWithPublishPrompt } from './git-publish-push';
-import { appConfirm } from './app-dialog';
+import { appChoice, appConfirm } from './app-dialog';
+import { openContextMenu } from './context-menu';
 import {
   gitCommit,
   gitDiff,
@@ -15,11 +16,14 @@ import {
   type GitFileEntry,
   type GitOpResult,
 } from '../state/git-api';
-import { fetchGitCommitMessage } from './git-commit-message-client';
+import { fetchGitChangeSummary, fetchGitCommitMessage, type GitCommitMessagePromptInput } from './git-commit-message-client';
 import { parseUnifiedPatchToDiffLines } from './git-patch-parse';
 import { renderUnifiedPromptDiff } from './prompt-diff-unified';
+import { renderSideBySidePatchDiff } from './side-by-side-patch-diff';
+import { paintGraphiteFileDiff } from './graphite-file-diff';
 import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
+import { createFileTypeIconElement } from './file-type-icons';
 import {
   button,
   diffStat,
@@ -66,6 +70,10 @@ export function createChangesView(ctx: SccContext): SccView {
 
   const listCol = el('div', 'scc-changes__list-col');
   const listToolbar = el('div', 'scc-changes__list-toolbar');
+  const listHeading = el('h2', 'scc-changes__heading', 'Changes');
+  const listCount = el('span');
+  listCount.dataset.count = '';
+  listHeading.append(listCount);
   const listScroll = el('div', 'scc-changes__list');
   const commitBox = el('form', 'scc-commit');
 
@@ -81,6 +89,9 @@ export function createChangesView(ctx: SccContext): SccView {
   let busy = false;
   let destroyed = false;
   let generateAbort: AbortController | null = null;
+  let summaryAbort: AbortController | null = null;
+  let diffLayout: 'unified' | 'split' = 'unified';
+  let showInitialDiff = true;
   let lastCounts = { staged: 0, unstaged: 0, untracked: 0 };
   let listKey: string | null = null;
   let diffKey: string | null = null;
@@ -129,9 +140,11 @@ export function createChangesView(ctx: SccContext): SccView {
   const commitHint = el('span', 'scc-commit__hint');
 
   const commitActions = el('div', 'scc-commit__actions');
-  commitActions.append(generateBtn, commitHint, commitPushBtn, commitBtn);
+  commitActions.append(commitHint, commitBtn, commitPushBtn);
   const generationStatus = createCommitGenerationStatus();
-  commitBox.append(messageInput, generationStatus, commitActions);
+  const messageField = el('div', 'scc-commit__field');
+  messageField.append(messageInput, generateBtn);
+  commitBox.append(messageField, generationStatus, commitActions);
   commitBox.addEventListener('submit', (event) => event.preventDefault());
 
   const stageAllBtn = button({
@@ -143,17 +156,29 @@ export function createChangesView(ctx: SccContext): SccView {
   const unstageAllBtn = button({
     label: 'Unstage all',
     variant: 'ghost',
+    className: 'scc-changes__legacy-action',
     onClick: () => void unstageAll(),
   });
 
   const discardAllBtn = button({
     label: 'Discard all',
     variant: 'ghost',
-    className: 'scc-btn--danger-hover',
+    className: 'scc-btn--danger-hover scc-changes__legacy-action',
     onClick: () => void discardAll(),
   });
 
-  listToolbar.append(stageAllBtn, unstageAllBtn, discardAllBtn);
+  const listMore = button({
+    icon: 'more',
+    title: 'Working tree actions',
+    variant: 'ghost',
+    className: 'scc-changes__graphite-action',
+    onClick: () => openContextMenu({ anchor: listMore, label: 'Working tree actions', items: [
+      { id: 'unstage-all', label: 'Unstage all', disabled: unstageAllBtn.disabled, onSelect: () => void unstageAll() },
+      { id: 'discard-all', label: 'Discard all', danger: true, disabled: discardAllBtn.disabled, onSelect: () => void discardAll() },
+    ] }),
+  });
+  listMore.setAttribute('aria-haspopup', 'menu');
+  listToolbar.append(listHeading, stageAllBtn, unstageAllBtn, discardAllBtn, listMore);
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
@@ -163,6 +188,7 @@ export function createChangesView(ctx: SccContext): SccView {
     if (renderedCwd !== cwd) {
       renderedCwd = cwd;
       selection = null;
+      showInitialDiff = true;
       changesSelection.clear();
       listKey = null;
       diffKey = null;
@@ -171,7 +197,8 @@ export function createChangesView(ctx: SccContext): SccView {
 
     if (!listScroll.firstChild) listScroll.appendChild(skeletonRows(7));
 
-    const status = await gitStatus(cwd || undefined);
+    const graphite = document.documentElement.classList.contains('mn-graphite-apps');
+    const status = graphite ? await gitStatus(cwd || undefined, undefined, { lineStats: true }) : await gitStatus(cwd || undefined);
     if (destroyed || sequence !== refreshSequence || cwd !== effectiveCwd()) return;
 
     if (!status.ok) {
@@ -189,13 +216,21 @@ export function createChangesView(ctx: SccContext): SccView {
 
     const total = staged.length + unstaged.length + untracked.length;
     ctx.setBadge('changes', total > 0 ? { kind: 'count', value: total } : null);
+    listCount.textContent = String(total);
+
+    if (showInitialDiff && total && graphite) {
+      showInitialDiff = false;
+      if (staged[0]) selection = { path: staged[0].path, bucket: 'staged' };
+      else if (unstaged[0]) selection = { path: unstaged[0].path, bucket: 'unstaged' };
+      else if (untracked[0]) selection = { path: untracked[0].path, bucket: 'untracked' };
+    }
 
     if (selection && !status[selection.bucket]?.some((entry) => entry.path === selection?.path)) {
       selection = null;
     }
     const nextListKey = gitStatusRenderKey(cwd, status);
     if (listKey !== nextListKey) {
-      renderList(staged, unstaged, untracked);
+      renderList(staged, unstaged, untracked, graphite);
       listKey = nextListKey;
     }
     syncCommitButtons();
@@ -206,6 +241,7 @@ export function createChangesView(ctx: SccContext): SccView {
     staged: GitFileEntry[],
     unstaged: GitFileEntry[],
     untracked: GitFileEntry[],
+    graphite: boolean,
   ): void {
     const total = staged.length + unstaged.length + untracked.length;
     stageAllBtn.disabled = unstaged.length + untracked.length === 0;
@@ -229,38 +265,38 @@ export function createChangesView(ctx: SccContext): SccView {
     }
 
     const frag = document.createDocumentFragment();
-    if (staged.length) frag.appendChild(buildGroup('Staged', staged, 'staged'));
-    if (unstaged.length) frag.appendChild(buildGroup('Changes', unstaged, 'unstaged'));
-    if (untracked.length) frag.appendChild(buildGroup('Untracked', untracked, 'untracked'));
+    if (staged.length) frag.appendChild(buildGroup('Staged', staged, 'staged', graphite));
+    if (unstaged.length || (graphite && untracked.length)) {
+      frag.appendChild(buildGroup('Changes', unstaged, 'unstaged', graphite, graphite ? untracked : []));
+    }
+    if (!graphite && untracked.length) frag.appendChild(buildGroup('Untracked', untracked, 'untracked', graphite));
     listScroll.replaceChildren(frag);
   }
 
-  function buildGroup(title: string, files: GitFileEntry[], bucket: Bucket): HTMLElement {
+  function buildGroup(title: string, files: GitFileEntry[], bucket: Bucket, graphite: boolean, extraUntracked: GitFileEntry[] = []): HTMLElement {
     const group = el('section', 'scc-filegroup');
     const head = el('div', 'scc-filegroup__head');
     head.append(
       el('span', 'scc-filegroup__title', title),
-      el('span', 'scc-filegroup__count', String(files.length)),
+      el('span', 'scc-filegroup__count', String(files.length + extraUntracked.length)),
     );
     group.appendChild(head);
 
     for (const entry of files) {
-      group.appendChild(buildRow(entry, bucket));
+      group.appendChild(buildRow(entry, bucket, graphite));
     }
+    for (const entry of extraUntracked) group.appendChild(buildRow(entry, 'untracked', graphite));
     return group;
   }
 
-  function buildRow(entry: GitFileEntry, bucket: Bucket): HTMLElement {
+  function buildRow(entry: GitFileEntry, bucket: Bucket, graphite: boolean): HTMLElement {
     const row = el('div', 'scc-filerow');
-    row.tabIndex = 0;
-    row.dataset.path = entry.path;
-    row.dataset.bucket = bucket;
-    row.setAttribute('role', 'group');
-    row.setAttribute('aria-label', `${entry.path}, ${bucket}`);
+    const trigger = el('button', 'scc-filerow__trigger');
+    trigger.type = 'button';
 
-    const letter = statusLetter(entry.status);
+    const letter = graphite && bucket === 'untracked' ? 'U' : statusLetter(entry.status);
     const badge = el('span', `scc-filerow__status scc-filerow__status--${letter.toLowerCase()}`, letter);
-    badge.title = STATUS_TITLE[letter] ?? 'Changed';
+    badge.title = bucket === 'untracked' ? 'Untracked' : STATUS_TITLE[letter] ?? 'Changed';
     badge.setAttribute('aria-label', badge.title);
 
     const actions = el('div', 'scc-filerow__actions');
@@ -268,7 +304,7 @@ export function createChangesView(ctx: SccContext): SccView {
 
     const toggleBtn = button({
       icon: staged ? 'clear' : 'plus',
-      title: staged ? 'Unstage' : 'Stage',
+      title: staged ? `Unstage ${entry.path}` : `Stage ${entry.path}`,
       variant: 'ghost',
       onClick: (event) => {
         event.stopPropagation();
@@ -278,7 +314,7 @@ export function createChangesView(ctx: SccContext): SccView {
 
     const discardBtn = button({
       icon: 'undo',
-      title: bucket === 'untracked' ? 'Delete file' : 'Discard changes',
+      title: bucket === 'untracked' ? `Delete ${entry.path}` : `Discard changes to ${entry.path}`,
       variant: 'ghost',
       className: 'scc-btn--danger-hover',
       onClick: (event) => {
@@ -288,9 +324,21 @@ export function createChangesView(ctx: SccContext): SccView {
     });
 
     actions.append(discardBtn, toggleBtn);
-    row.append(badge, pathLabel(entry.path), actions);
+    const path = pathLabel(entry.path);
+    if (graphite) {
+      const icon = createFileTypeIconElement(entry.path);
+      icon.classList.add('scc-filerow__file-icon');
+      path.prepend(icon);
+    }
+    trigger.append(badge, path);
+    if (graphite && ((entry.additions ?? 0) > 0 || (entry.deletions ?? 0) > 0)) {
+      const counts = diffStat(entry.additions ?? 0, entry.deletions ?? 0);
+      counts.classList.add('scc-filerow__counts');
+      trigger.append(counts);
+    }
+    row.append(trigger, actions);
 
-    changesSelection.bindRow(row, { path: entry.path, bucket }, actions);
+    changesSelection.bindRow(row, { path: entry.path, bucket }, trigger, actions);
     row.addEventListener('dblclick', (event) => {
       if (!actions.contains(event.target as Node) && !event.shiftKey && !event.ctrlKey && !event.metaKey) void toggleStage(entry.path, bucket);
     });
@@ -307,6 +355,13 @@ export function createChangesView(ctx: SccContext): SccView {
   async function renderDiff(): Promise<void> {
     const sequence = ++diffSequence;
     const cwd = effectiveCwd();
+    for (const row of listScroll.querySelectorAll<HTMLElement>('.scc-filerow')) {
+      const current = row.dataset.path === selection?.path && row.dataset.bucket === selection?.bucket;
+      row.classList.toggle('is-diff-current', current);
+      const trigger = row.querySelector('.scc-filerow__trigger');
+      if (current) trigger?.setAttribute('aria-current', 'true');
+      else trigger?.removeAttribute('aria-current');
+    }
     if (!selection) {
       if (diffKey === 'empty') return;
       diffKey = 'empty';
@@ -330,7 +385,8 @@ export function createChangesView(ctx: SccContext): SccView {
     if (destroyed || sequence !== diffSequence || cwd !== effectiveCwd()
       || selection?.path !== path || selection.bucket !== bucket) return;
 
-    const nextDiffKey = JSON.stringify([cwd, path, bucket, result.ok, result.patch ?? '', result.error ?? '']);
+    const graphite = document.documentElement.classList.contains('mn-graphite-apps');
+    const nextDiffKey = JSON.stringify([cwd, path, bucket, graphite, result.ok, result.patch ?? '', result.error ?? '']);
     // Status M can remain unchanged while the file is edited: fetch every time,
     // but retain the DOM (and accessible text ranges) when the patch is identical.
     if (diffKey === nextDiffKey) return;
@@ -353,17 +409,21 @@ export function createChangesView(ctx: SccContext): SccView {
       return;
     }
 
-    const lines = parseUnifiedPatchToDiffLines(result.patch ?? '');
+    const patch = result.patch ?? '';
+    const lines = parseUnifiedPatchToDiffLines(patch);
     if (lines.length === 0) {
-      diffBody.replaceChildren(
-        emptyState({
-          title: bucket === 'untracked' ? 'New file, not yet tracked' : 'No textual changes',
-          body:
-            bucket === 'untracked'
-              ? 'Stage it to see its contents as a diff.'
-              : 'This file changed in mode or is binary.',
-        }),
-      );
+      const binary = /^(?:Binary files .* differ|GIT binary patch)\r?$/m.test(patch);
+      const emptyAddition = !binary && /^new file mode \d+\r?$/m.test(patch);
+      const emptyDeletion = !binary && /^deleted file mode \d+\r?$/m.test(patch);
+      const title = bucket === 'untracked' ? 'New file, not yet tracked'
+        : binary ? 'Binary file changed'
+        : emptyAddition ? 'Empty file added'
+        : emptyDeletion ? 'Empty file removed'
+        : 'No textual changes';
+      diffBody.replaceChildren(emptyState({
+        title,
+        ...(bucket === 'untracked' ? { body: 'Stage it to see its contents as a diff.' } : {}),
+      }));
       return;
     }
 
@@ -371,9 +431,65 @@ export function createChangesView(ctx: SccContext): SccView {
     const removed = lines.filter((line) => line.type === 'remove').length;
     diffHead.appendChild(diffStat(added, removed));
 
-    const mount = el('div', 'scc-diff');
-    diffBody.replaceChildren(mount);
-    renderUnifiedPromptDiff(mount, lines, { lineNumbers: true });
+    if (graphite) {
+      const options = el('div', 'scc-changes__diff-options');
+      options.setAttribute('role', 'group');
+      options.setAttribute('aria-label', 'Diff layout');
+      for (const [mode, label] of [['unified', 'Unified'], ['split', 'Split']] as const) {
+        const control = button({ label, variant: 'ghost', onClick: () => {
+          if (diffLayout === mode) return;
+          diffLayout = mode;
+          for (const btn of options.querySelectorAll('button')) btn.setAttribute('aria-pressed', String(btn === control));
+          paintDiff();
+        } });
+        control.setAttribute('aria-pressed', String(diffLayout === mode));
+        options.append(control);
+      }
+      const summarize = button({ icon: 'sparkles', label: 'Summarize', variant: 'ghost', onClick: () => {
+        showChangeSummary({ changedPaths: [path], patch, scope: bucket === 'staged' ? 'staged' : 'working-tree' });
+      } });
+      const actions = el('div', 'scc-changes__diff-actions');
+      actions.append(options, summarize);
+      diffHead.append(actions);
+    }
+    paintDiff();
+
+    function paintDiff(): void {
+      const mount = el('div', 'scc-diff');
+      diffBody.replaceChildren(mount);
+      if (graphite && diffLayout === 'split') renderSideBySidePatchDiff(mount, patch);
+      else if (graphite) {
+        mount.classList.add('graphite-git-patch');
+        paintGraphiteFileDiff(mount, patch);
+      } else renderUnifiedPromptDiff(mount, lines, { lineNumbers: true });
+    }
+  }
+
+  function showChangeSummary(input: GitCommitMessagePromptInput): void {
+    if (summaryAbort || destroyed) return;
+    const controller = new AbortController();
+    summaryAbort = controller;
+    const body = el('p', 'scc-changes__summary', 'Summarizing changes…');
+    void appChoice({ title: 'Change summary', message: '', body, buttons: [{ id: 'close', label: 'Close' }], cancelId: 'close' })
+      .finally(() => {
+        controller.abort();
+        if (summaryAbort === controller) summaryAbort = null;
+      });
+    void fetchGitChangeSummary({
+      ...input,
+      signal: controller.signal,
+      onPartial: (text) => { if (!controller.signal.aborted) body.textContent = text; },
+    }).then(({ text, error }) => {
+      if (!controller.signal.aborted) {
+        body.setAttribute('role', 'status');
+        body.textContent = text || error || 'The model returned an empty response.';
+      }
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        body.setAttribute('role', 'status');
+        body.textContent = error instanceof Error ? error.message : 'The model request failed.';
+      }
+    });
   }
 
   async function run(
@@ -571,7 +687,7 @@ export function createChangesView(ctx: SccContext): SccView {
   }
 
   const navigate = listNavigator({
-    getRows: () => [...listScroll.querySelectorAll<HTMLElement>('.scc-filerow')],
+    getRows: () => [...listScroll.querySelectorAll<HTMLElement>('.scc-filerow__trigger')],
   });
 
   function onKey(event: KeyboardEvent): boolean {
@@ -605,14 +721,16 @@ export function createChangesView(ctx: SccContext): SccView {
     refresh,
     onKey,
     activate: () => {
-      const first = listScroll.querySelector<HTMLElement>('.scc-filerow');
-      if (!selection && first) { first.click(); first.focus(); }
+      const first = listScroll.querySelector<HTMLButtonElement>('.scc-filerow__trigger');
+      if (!selection) first?.click();
     },
     destroy: () => {
       destroyed = true;
       changesSelection.destroy();
       generateAbort?.abort();
       generateAbort = null;
+      summaryAbort?.abort();
+      summaryAbort = null;
       root.remove();
     },
   };

@@ -260,6 +260,7 @@ export function teardownOrchestratePlanScreenDom(
   resetPlanScreenDomMounts();
   removeOrchestratePlanScreenSuspendedBanner();
   document.getElementById(ORCHESTRATE_PLAN_SCREEN_ROOT_ID)?.remove();
+  document.querySelector('#chatArea > .orchestrate-plan-stage-header')?.remove();
   // Callers use this to clear #chatArea of every planning surface, Super Plan included.
   teardownSuperPlanPage();
   document
@@ -924,7 +925,11 @@ export function renderOrchestratePlanScreen(
   }
 
   area.replaceChildren();
-  area.appendChild(buildPlanScreenDom(opts));
+  const header = document.createElement('header');
+  header.className = 'orchestrate-plan-stage-header';
+  header.dataset.appTitlebar = '';
+  header.textContent = 'Plan';
+  area.append(header, buildPlanScreenDom(opts));
   area.classList.add(CHAT_AREA_PLAN_SCREEN_CLASS);
   document.getElementById('mainColumn')?.classList.add(MAIN_COLUMN_PLAN_SCREEN_CLASS);
   document.getElementById('mainColumn')?.classList.remove('main-column--board-view');

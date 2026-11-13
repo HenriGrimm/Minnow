@@ -79,3 +79,18 @@ test('merge state is read from a linked worktree git directory', async () => fix
   assert.equal(result.operation, 'merge');
   assert.equal(result.conflicted[0].path, filename);
 }));
+
+test('Graphite line totals distinguish staged, unstaged, and untracked files', async () => fixture(async ({ repo, git }) => {
+  await fs.appendFile(path.join(repo, filename), 'staged line\n');
+  await git('add', '--', filename);
+  await fs.appendFile(path.join(repo, filename), 'unstaged line\nsecond line\n');
+  const untracked = 'new café file.txt';
+  await fs.writeFile(path.join(repo, untracked), 'one\ntwo\nthree\n');
+
+  const legacy = await status({ cwd: repo });
+  assert.equal(legacy.staged[0].additions, undefined);
+  const graphite = await status({ cwd: repo, lineStats: true });
+  assert.deepEqual(graphite.staged[0], { path: filename, status: 'M', additions: 1, deletions: 0 });
+  assert.deepEqual(graphite.unstaged[0], { path: filename, status: 'M', additions: 2, deletions: 0 });
+  assert.deepEqual(graphite.untracked[0], { path: untracked, status: '?', additions: 3, deletions: 0 });
+}));

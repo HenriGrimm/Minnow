@@ -226,6 +226,27 @@ describe('column mapping', () => {
 // ── renderTaskList ───────────────────────────────────────────────────────────
 
 describe('renderTaskList', () => {
+  test('desktop waves render the same task actions in authored grid order', () => {
+    setupDom();
+    let selected: string | null = null;
+    const node = renderTaskList(board(), { ...NO_ACTIONS, select: (id) => { selected = id; } }, { ...OPTIONS, desktopLayout: true });
+    document.body.append(node);
+    const grid = node.querySelector('.ov2-wave-grid')!;
+    const cards = [...grid.querySelectorAll<HTMLElement>('.ov2-task')];
+    assert.deepEqual(cards.map((card) => card.dataset.taskId), ['W1-A', 'W1-B', 'W1-C', 'W1-D']);
+    assert.equal(node.querySelector('.ov2-kanban'), null);
+
+    const heads = [...grid.querySelectorAll<HTMLButtonElement>('.ov2-task__head')];
+    heads.forEach((head, index) => {
+      head.getBoundingClientRect = () => new window.DOMRect((index % 2) * 260, Math.floor(index / 2) * 100, 250, 95);
+    });
+    heads[0]!.focus();
+    heads[0]!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(document.activeElement, heads[1]);
+    heads[1]!.click();
+    assert.equal(selected, 'W1-B');
+  });
+
   test('renders one kanban grid per wave, with four lanes', () => {
     setupDom();
     const node = renderTaskList(board(), NO_ACTIONS, OPTIONS);

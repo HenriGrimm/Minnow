@@ -6,11 +6,13 @@ import { sendRemoteChatCommand, shouldRelayChat } from '../../src/chat/remote-ch
 import { setPairedDevice } from '../../src/api/session-token.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import { sendProgrammaticChatText } from '../../src/chat/messaging.ts';
-import { forkManagedChat, sendManagedChatAction } from '../../src/chat/managed-chat-client.ts';
+import { forkManagedChat, rewriteManagedChatHistory, sendManagedChatAction } from '../../src/chat/managed-chat-client.ts';
 import { registerPluginSlashCommand } from '../../src/chat/slash-commands/registry.ts';
 import { sendMessageWithTools } from '../../src/chat/messaging.ts';
 import { attachMessageActions, closeMessageActionsMenu } from '../../src/ui/message-actions.ts';
 import { readAgentConversationsCapability } from '../../src/config/agent-conversations-enabled.ts';
+import { startManagedChatBridge } from '../../src/chat/managed-chat-bridge.ts';
+import { syncComposerPinnedSkillFromActiveChat } from '../../src/ui/composer-pinned-skill.ts';
 
 const fetchBefore = globalThis.fetch;
 Object.assign(globalThis, { sessionStorage: window.sessionStorage });
@@ -190,6 +192,30 @@ test('managed archive and restore use authoritative configuration without changi
   assert.equal(chat.archivedAt, undefined);
 });
 
+test('archiving many unloaded background chats applies receipts without entering the transcript observer', async t => {
+  const active = setup();
+  const chats = Array.from({ length: 40 }, (_, i) => {
+    const chat = createEmptyChatObject('model');
+    Object.assign(chat, { id: `unloaded-${i}`, chatCommandVersion: 1, historyLoaded: false, messageCount: 5000 });
+    return chat;
+  });
+  setSessionStateForTests({ version: 6, activeId: active.id, sidebarCollapsed: false, chats: [active, ...chats] });
+  const source = { onopen: null as any, onmessage: null as any, close() {} };
+  let transcriptFrames = 0, requests = 0;
+  t.after(startManagedChatBridge({ receive: async () => { transcriptFrames++; }, reconnect() {} }, () => {}, { createSource: () => source }));
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options?.method, 'PATCH', 'archive must not fetch the full history');
+    requests++;
+    const id = String(url).split('/')[3];
+    return Response.json({ frame: { chatId: id, fields: { archivedAt: 100, chatCommandVersion: 1 } } });
+  };
+  for (const chat of chats) await sendManagedChatAction(chat.id, 'configure', { patch: { archived: true } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, chats.length);
+  assert.equal(transcriptFrames, 0);
+  assert.ok(chats.every(chat => chat.archivedAt === 100 && chat.historyLoaded === false && chat.history.length === 0));
+});
+
 
 test('managed programmatic options reach canonical admission as bounded intent rather than trusted prompts', async () => {
   const chat = setup(); let accepted = 0; const calls: any[] = [];
@@ -246,22 +272,74 @@ test('managed plugin slash commands stay local and preserve attached files witho
   finally { remove(); input.remove(); }
 });
 
-test('canonical root menu exposes replay into a new chat but no local rewrite actions', () => {
+test('canonical root message menu offers same-chat edit, replay, and delete', () => {
   const chat = setup(); chat.history = [{ role: 'user', content: 'Original', messageId: 'saved-user', commandId: 'saved-command' }];
   const wrap = document.createElement('div'); wrap.innerHTML = '<div class="msg-bubble">Original</div>'; document.body.append(wrap);
   attachMessageActions(wrap, { chatId, historyIndex: 0, turnKind: 'user' });
   wrap.querySelector<HTMLButtonElement>('.message-actions__trigger')!.click();
-  assert.deepEqual([...document.querySelectorAll('.message-actions__menu button')].map(button => button.textContent), ['Copy', 'Replay in new chat']);
+  assert.deepEqual([...document.querySelectorAll('.message-actions__menu button')].map(button => button.textContent),
+    ['Copy', 'Edit', 'Replay', 'Replay in new chat', 'Delete message']);
   closeMessageActionsMenu(); wrap.remove();
 });
 
-test('promoted historical messages without a captured command do not advertise unusable replay', () => {
+test('promoted historical messages offer same-chat actions without a captured command', () => {
   const chat = setup(); chat.history = [{ role: 'user', content: 'Historical text', messageId: 'legacy-row' }];
   const wrap = document.createElement('div'); document.body.append(wrap);
   attachMessageActions(wrap, { chatId, historyIndex: 0, turnKind: 'user' });
   wrap.querySelector<HTMLButtonElement>('.message-actions__trigger')!.click();
-  assert.deepEqual([...document.querySelectorAll('.message-actions__menu button')].map(button => button.textContent), ['Copy']);
+  assert.deepEqual([...document.querySelectorAll('.message-actions__menu button')].map(button => button.textContent), ['Copy', 'Edit', 'Replay', 'Delete message']);
   closeMessageActionsMenu(); wrap.remove();
+});
+
+test('history changes retry the observed transcript and apply only a matching same-chat receipt', async () => {
+  const chat = setup();
+  const requests: any[] = [];
+  const digest = 'a'.repeat(64);
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), `/api/chats/${chatId}/history`);
+    const request = JSON.parse(String(options?.body));
+    requests.push(request);
+    if (requests.length === 1) throw new TypeError('lost acknowledgement');
+    return Response.json({ receipt: { ...request, chatId, commandId: null },
+      frame: { chatId, hostId: 'minnow-server', history: { start: 0, length: 0, messages: [] } } });
+  };
+  await rewriteManagedChatHistory(chat.id, 4, digest, { action: 'delete' });
+  assert.deepEqual(requests[0], requests[1]);
+  assert.equal(requests[0].expectedHistoryDigest, digest);
+});
+
+test('editing from the message menu keeps the composer draft and attached file snapshot', async () => {
+  const chat = setup();
+  chat.historyDigest = 'c'.repeat(64);
+  chat.history = [{ role: 'user', content: 'Original\n\n<file name="saved.txt">\nfile contents\n</file>' }];
+  const wrap = document.createElement('div');
+  const composer = document.createElement('textarea');
+  composer.id = 'msgInput'; composer.value = 'Draft for a later turn';
+  document.body.append(wrap, composer);
+  attachMessageActions(wrap, { chatId, historyIndex: 0, turnKind: 'user' });
+  let receive!: (body: any) => void;
+  const request = new Promise(resolve => { receive = resolve; });
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), `/api/chats/${chatId}/history`);
+    const body = JSON.parse(String(options?.body));
+    receive(body);
+    return Response.json({ receipt: { ...body, chatId, commandId: 'new-command' },
+      frame: { chatId, hostId: 'minnow-server', history: { start: 0, length: 0, messages: [] } } });
+  };
+  try {
+    wrap.querySelector<HTMLButtonElement>('.message-actions__trigger')!.click();
+    [...wrap.querySelectorAll<HTMLButtonElement>('.message-actions__menu button')].find(button => button.textContent === 'Edit')!.click();
+    await Promise.resolve();
+    const input = document.querySelector<HTMLTextAreaElement>('#appDialogPanel textarea')!;
+    assert.equal(input.value, 'Original');
+    assert.equal(document.activeElement, input);
+    input.value = 'Edited first line\nEdited second line';
+    document.querySelector<HTMLButtonElement>('#appDialogPanel [data-dialog-action="confirm"]')!.click();
+    assert.deepEqual(await request, { action: 'edit', index: 0, expectedHistoryDigest: chat.historyDigest,
+      clientRequestId: JSON.parse(sessionStorage.getItem(`minnow.historyRewrite.${chatId}`)!).id,
+      text: input.value, message: `${input.value}\n\n<file name="saved.txt">\nfile contents\n</file>` });
+    assert.equal(composer.value, 'Draft for a later turn');
+  } finally { wrap.remove(); composer.remove(); }
 });
 
 
@@ -306,6 +384,46 @@ test('ordinary composer slash context is queued rather than discarded or sent as
     assert.equal(calls[0].intent.skill.id, 'git-commit'); assert.equal(calls[0].intent.context, 'App snapshot');
     assert.equal(input.value, '');
   } finally { input.remove(); }
+});
+
+test('composer /plan and a plain follow-up send distinct turn intents', async () => {
+  const chat = setup(); const calls: any[] = [];
+  const input = document.createElement('textarea'); document.body.append(input);
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(String(options?.body)));
+    return Response.json({ receipt: { commandId: `plan-turn-${calls.length}`, chatId, revision: calls.length, state: 'queued' } });
+  };
+  try {
+    input.value = '/plan Design the change';
+    await sendMessageWithTools({ inputEl: input });
+    input.value = 'Implement it';
+    await sendMessageWithTools({ inputEl: input });
+    assert.deepEqual(calls.map(call => call.intent.skill), [{ id: 'plan', source: 'slash', input: 'Design the change' }, null]);
+    assert.equal(calls[1].text, 'Implement it');
+    assert.equal(chat.pinnedSkill, undefined);
+  } finally { input.remove(); }
+});
+
+test('a saved plan pin can be dismissed in the composer during an in-flight send', async () => {
+  const chat = setup(); chat.pinnedSkill = { id: 'plan' };
+  const toolbar = document.createElement('div'); toolbar.id = 'composerControls'; document.body.append(toolbar);
+  const calls: any[] = [];
+  try {
+    syncComposerPinnedSkillFromActiveChat();
+    const strip = toolbar.querySelector<HTMLElement>('#pinnedSkillStrip')!;
+    const dismiss = strip.querySelector<HTMLButtonElement>('button[aria-label="Unpin /plan"]')!;
+    assert.equal(strip.classList.contains('hidden'), false);
+    globalThis.fetch = async (_url, options) => {
+      calls.push(JSON.parse(String(options?.body)));
+      if (calls.length === 1) dismiss.click();
+      return Response.json({ receipt: { commandId: `unpin-${calls.length}`, chatId, revision: calls.length, state: 'queued' } });
+    };
+    await sendRemoteChatCommand(chatId, 'send', { text: 'Finish the plan' });
+    assert.equal(chat.pinnedSkill, null);
+    assert.equal(strip.classList.contains('hidden'), true);
+    await sendRemoteChatCommand(chatId, 'send', { text: 'Implement it' });
+    assert.deepEqual(calls.map(call => call.intent.skill), [{ id: 'plan', source: 'pinned', input: 'Finish the plan' }, null]);
+  } finally { toolbar.remove(); }
 });
 
 test('direct remote ordinary entry point captures pinned skills and attachment reference metadata', async () => {

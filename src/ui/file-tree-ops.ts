@@ -4,7 +4,6 @@ import { appAlert, appConfirm, appPrompt } from './app-dialog';
  * File tree CRUD — executes workspace tools, updates panel state, syncs viewer.
  */
 
-import { getActiveChat, scheduleSaveSessions } from '../state/sessions';
 import { isLocalServerAvailable } from '../tools/config';
 import { getFilePanelState, patchFilePanelState } from '../state/file-panel';
 import { setStatus } from './status';
@@ -61,15 +60,9 @@ export async function runFileTreeTool(
   }
   const finishActivity = beginFileTreeActivity('Updating files…');
   try {
-    const { executeTool } = await import('../tools/client');
+    const { executeWorkspaceFileAction } = await import('../tools/client');
     const { buildFileTreeToolContext } = await import('./file-tree-listing-root');
-    const chatId = getActiveChat()?.id;
-    const toolContext = {
-      ...buildFileTreeToolContext(),
-      ...(chatId ? { chatId } : {}),
-    };
-    const { content } = await executeTool(name, args, toolContext);
-    if (chatId) scheduleSaveSessions();
+    const { content } = await executeWorkspaceFileAction(name, args, buildFileTreeToolContext());
     const parsed = parseToolResult(content);
     if (!parsed.ok) {
       setStatus('err', parsed.message);

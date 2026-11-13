@@ -59,21 +59,21 @@ const AA_LARGE = 3;
 export function warnContrastPairs(tokens: Record<string, string>): ContrastWarning[] {
   const warnings: ContrastWarning[] = [];
   const pairs: Array<{ label: string; fg: string; bg: string; min: number }> = [
-    { label: 'Body text on background', fg: tokens.fg ?? '', bg: tokens.bg ?? '', min: AA_NORMAL },
+    { label: 'Main text on workspace background', fg: tokens.fg ?? '', bg: tokens.bg ?? '', min: AA_NORMAL },
     {
-      label: 'Muted text on background',
+      label: 'Secondary text on workspace background',
       fg: tokens['fg-muted'] ?? '',
       bg: tokens.bg ?? '',
       min: AA_NORMAL,
     },
     {
-      label: 'Text on accent',
+      label: 'Text on primary buttons',
       fg: tokens['fg-on-accent'] ?? '',
       bg: tokens.accent ?? '',
       min: AA_NORMAL,
     },
     {
-      label: 'Accent ink on surface',
+      label: 'Links on raised surfaces',
       fg: tokens['accent-ink'] ?? '',
       bg: tokens['surface-1'] ?? tokens.bg ?? '',
       min: AA_LARGE,

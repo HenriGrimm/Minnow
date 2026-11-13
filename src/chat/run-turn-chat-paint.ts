@@ -113,6 +113,7 @@ export interface ChatTurnPaintSnapshot {
   lastDelta: string;
   lastThinking: string;
   toolCallCount: number;
+  reasoningFormat?: 'summary';
 }
 
 export interface ChatTurnEventPainter {
@@ -635,7 +636,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
 
   return {
     onEvent,
-    snapshot: () => ({ lastDelta, lastThinking, toolCallCount }),
+    snapshot: () => ({ lastDelta, lastThinking, toolCallCount, ...(reasoningFormat ? { reasoningFormat } : {}) }),
     flush: flushPaint,
     retarget,
     dispose: () => {

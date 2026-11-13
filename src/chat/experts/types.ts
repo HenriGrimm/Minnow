@@ -31,7 +31,6 @@ export interface ExpertMeta {
 export interface ExpertRecord {
   meta: ExpertMeta;
   fullBody: string;
-  liteBody?: string;
   source: 'builtin' | 'user';
 }
 

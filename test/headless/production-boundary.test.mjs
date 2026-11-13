@@ -63,7 +63,7 @@ async function until(predicate) {
   assert.fail('production boundary condition did not settle');
 }
 function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture', builder = false } = {}) {
-  const child = spawn(process.execPath, [cliBundle, 'run', '--json', '--profile', 'lite', '--stdin',
+  const child = spawn(process.execPath, [cliBundle, 'run', '--json', '--stdin',
     '--workspace', runWorkspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', modelId,
     '--persist-chat', '--chat-id', chatId, ...(builder ? ['--agent', 'builder', '--mode', 'build'] : [])], {
     cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
@@ -246,7 +246,7 @@ async function spawnChild(parentChatId, runId) {
 test('actual Builder CLI recovers a failed tool, streams both results and persists its independent context', { timeout: 30000 * SLOW }, async () => {
   const outputFile = path.join(home, 'builder-json-stream-result.json');
   const child = spawn(process.execPath, [cliBundle, 'run', '--stream-json', '--quiet', '--json-out', outputFile,
-    '--agent', 'builder', '--mode', 'build', '--profile', 'lite', '--prompt', '[recover-tool-error] Read README.md and confirm.',
+    '--agent', 'builder', '--mode', 'build', '--prompt', '[recover-tool-error] Read README.md and confirm.',
     '--workspace', workspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture',
     '--persist-chat', '--chat-id', 'boundary-builder-json'], {
     cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
@@ -268,6 +268,8 @@ test('actual Builder CLI recovers a failed tool, streams both results and persis
     const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
     assert.equal(result.workAgentId, 'builder'); assert.equal(result.chatId, 'boundary-builder-json');
     assert.equal(result.ok, true); assert.ok(!stdout.includes('"assistantFinal"'));
+    assert.match(lastModelText, /You are Minnow/, 'headless includes the shared base prompt');
+    assert.equal(JSON.parse(lastModelText).filter(row => row.role === 'system').length, 1);
     assert.equal(result.turns.length, 3);
     const generations = await states();
     for (const turn of result.turns) {
@@ -394,7 +396,7 @@ test('actual CLI streams partial text, then Stop cancels it and writes a separat
   modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
   const outputFile = path.join(home, 'stream-result.json');
   const child = spawn(process.execPath, [cliBundle, 'run', '--stream', '--quiet', '--json-out', outputFile,
-    '--profile', 'lite', '--stdin', '--persist-chat', '--chat-id', 'boundary-cancel', '--workspace', workspace,
+    '--stdin', '--persist-chat', '--chat-id', 'boundary-cancel', '--workspace', workspace,
     '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture'], {
     cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
   });

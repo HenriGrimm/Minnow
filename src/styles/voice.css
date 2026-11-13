@@ -224,5 +224,5 @@
 
 /* Live local STT dictation — interim text uses muted foreground */
 .composer-dictating {
-  color: color-mix(in srgb, var(--mn-fg) 88%, var(--mn-muted));
+  color: color-mix(in srgb, var(--mn-fg) 88%, var(--mn-fg-muted));
 }

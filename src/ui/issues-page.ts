@@ -1018,10 +1018,14 @@ function linkCounts(issue: IssueCard): string {
 
 function paintRowState(row: HTMLElement, issue: IssueCard): void {
   const isMultiSelected = selectedIssueIds.has(issue.id);
+  const isOpen = getSelectedIssueId() === issue.id;
   row.classList.toggle('is-checked', isMultiSelected);
-  row.classList.toggle('is-selected', getSelectedIssueId() === issue.id);
+  row.classList.toggle('is-selected', isOpen);
   row.classList.toggle('is-focused', focusedIssueId === issue.id);
-  row.setAttribute('aria-selected', isMultiSelected || focusedIssueId === issue.id ? 'true' : 'false');
+  if (isOpen) row.setAttribute('aria-current', 'true');
+  else row.removeAttribute('aria-current');
+  if (isMultiSelected) row.setAttribute('aria-description', 'Selected for bulk actions');
+  else row.removeAttribute('aria-description');
 }
 
 function buildIssueRow(
@@ -1186,7 +1190,7 @@ function buildIssueRow(
   });
   row.tabIndex = focusedIssueId === issue.id ? 0 : -1;
   row.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
+    if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault();
       navigateToIssueDetail(issue.id);
     }
@@ -1216,7 +1220,6 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
   const ordered = visibleIssueOrder();
   const list = document.createElement('div');
   list.className = 'issues-list';
-  list.setAttribute('role', 'list');
 
   for (const group of grouped) {
     const section = document.createElement('section');
@@ -1227,6 +1230,12 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
     head.type = 'button';
     head.className = 'issues-group__head';
     head.setAttribute('aria-expanded', collapsedGroups.has(group.id) ? 'false' : 'true');
+    if (groupBy === 'status' && group.rows[0]) {
+      const icon = createStatusChip(group.rows[0].issue.status);
+      icon.classList.add('issues-group__status');
+      icon.setAttribute('aria-hidden', 'true');
+      head.append(icon);
+    }
     const label = document.createElement('span');
     label.className = 'issues-group__label';
     label.textContent = group.label;
@@ -1245,6 +1254,8 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
     if (!collapsedGroups.has(group.id)) {
       const body = document.createElement('div');
       body.className = 'issues-group__body';
+      body.setAttribute('role', 'list');
+      body.setAttribute('aria-label', group.label);
       for (const nested of group.rows) {
         const index = ordered.findIndex((row) => row.id === nested.issue.id);
         body.appendChild(
@@ -1539,7 +1550,10 @@ export function renderIssuesPanel(): void {
   syncIssuesScreenNavigation();
   if (currentScreen === 'projects') {
     const next = document.createElement('div');
-    renderIssuesProjectsScreen(next, { onViewProject: showProjectIssues });
+    renderIssuesProjectsScreen(next, {
+      onViewProject: showProjectIssues,
+      onOpenIssue: (issueId) => { void openIssues({ issueId, screen: 'issues' }); },
+    });
     mount.replaceChildren(...next.childNodes);
     if (summaryEl) {
       const projects = listIssueProjects({ includeArchived: true });
@@ -1584,7 +1598,8 @@ export function renderIssuesPanel(): void {
   if (summaryEl) {
     const openAll = countOpenIssues({ scope: 'all' });
     const triageCount = countUnreviewedTriageIssues();
-    summaryEl.textContent = `${issues.length} shown · ${openAll} open`;
+    summaryEl.textContent = document.documentElement.classList.contains('mn-graphite-apps') && issues.length === openAll
+      ? `${openAll} open` : `${issues.length} shown · ${openAll} open`;
     if (triageCount > 0) {
       summaryEl.textContent += ` · ${triageCount} to triage`;
     }
@@ -1937,6 +1952,7 @@ function syncIssuesScreenNavigation(): void {
   const entries: Array<[IssuesScreen, string]> = [
     ['issues', 'btnIssuesScreenIssues'],
     ['projects', 'btnIssuesScreenProjects'],
+    ['projects', 'btnIssuesHeaderProjects'],
   ];
   for (const [screen, id] of entries) {
     const button = document.getElementById(id);
@@ -1945,6 +1961,7 @@ function syncIssuesScreenNavigation(): void {
     if (active) button?.setAttribute('aria-current', 'page');
     else button?.removeAttribute('aria-current');
   }
+  syncIssueViewButtons();
 }
 
 function setIssuesScreen(screen: IssuesScreen, updateRoute = true): void {
@@ -1995,23 +2012,26 @@ function navigateToIssueDetail(issueId: string): void {
   setIssuesRouteHash(`#/app/issues/${issueId}`);
   document.querySelectorAll('.issues-row.is-selected, .issues-card.is-selected').forEach((el) => {
     el.classList.remove('is-selected');
+    el.removeAttribute('aria-current');
   });
-  document
-    .querySelector(`.issues-row[data-issue-id="${CSS.escape(issueId)}"], .issues-card[data-issue-id="${CSS.escape(issueId)}"]`)
-    ?.classList.add('is-selected');
+  const row = document.querySelector(`.issues-row[data-issue-id="${CSS.escape(issueId)}"], .issues-card[data-issue-id="${CSS.escape(issueId)}"]`);
+  row?.classList.add('is-selected');
+  row?.setAttribute('aria-current', 'true');
+}
+
+function syncIssueViewButtons(): void {
+  for (const [id, mode] of [['issuesViewList', 'list'], ['issuesViewBoard', 'board']] as const) {
+    const button = document.getElementById(id);
+    const active = currentScreen === 'issues' && viewMode === mode;
+    button?.classList.toggle('is-active', active);
+    button?.setAttribute('aria-pressed', String(active));
+  }
 }
 
 function syncControlsFromState(): void {
   setControlValue('issuesScope', filters.scope);
   setControlValue('issuesSearch', filters.search);
-  document.getElementById('issuesViewList')?.classList.toggle('is-active', viewMode === 'list');
-  document.getElementById('issuesViewBoard')?.classList.toggle('is-active', viewMode === 'board');
-  document
-    .getElementById('issuesViewList')
-    ?.setAttribute('aria-pressed', viewMode === 'list' ? 'true' : 'false');
-  document
-    .getElementById('issuesViewBoard')
-    ?.setAttribute('aria-pressed', viewMode === 'board' ? 'true' : 'false');
+  syncIssueViewButtons();
   syncIssuesGithubSyncAllButton();
 }
 
@@ -2747,6 +2767,7 @@ function onIssuesKeydown(event: KeyboardEvent): void {
   if (!isIssuesPageOpen()) return;
   if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey) return;
   if (isContextMenuOpen() || isAppDialogOpen() || isNewFormOpen()) return;
+  if (document.querySelector('.auxiliary-model-popover:not(.hidden)')) return;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest('[role="menu"], [role="listbox"], [role="combobox"], .issues-labels-popover, .issues-labels-add-popover, .issues-labels-overflow, .issues-label-color-picker')) return;
   if (getSelectedIssueId() && event.key === 'Escape' && !isIssueExpandOverlayOpen()) {
@@ -2793,6 +2814,7 @@ function onIssuesKeydown(event: KeyboardEvent): void {
     return;
   }
   if (event.key === 'Enter') {
+    if (target?.closest('button, a[href], [role="button"], [role="tab"], summary')) return;
     event.preventDefault();
     const issue = focusedIssue();
     if (issue) navigateToIssueDetail(issue.id);
@@ -2942,16 +2964,26 @@ function bindStaticControls(): void {
       setIssuesScreen('issues');
       return;
     }
-    if (target.closest('#btnIssuesScreenProjects')) {
+    if (target.closest('#btnIssuesScreenProjects, #btnIssuesHeaderProjects')) {
       setIssuesScreen('projects');
       return;
     }
-    if (target.closest('#issuesViewList')) {
-      setViewMode('list');
+    if (target.closest('#issuesViewList, #issuesViewBoard')) {
+      const mode = target.closest('#issuesViewList') ? 'list' : 'board';
+      if (currentScreen === 'issues') setViewMode(mode);
+      else {
+        viewMode = mode;
+        setIssuesScreen('issues');
+      }
       return;
     }
-    if (target.closest('#issuesViewBoard')) {
-      setViewMode('board');
+    if (target.closest('#btnIssuesFilters, #btnIssuesSearch')) {
+      const shell = target.closest('.issues-shell');
+      const search = Boolean(target.closest('#btnIssuesSearch'));
+      const open = search || !shell?.classList.contains('is-filter-open');
+      shell?.classList.toggle('is-filter-open', open);
+      document.getElementById('btnIssuesFilters')?.setAttribute('aria-expanded', String(open));
+      if (search) document.getElementById('issuesSearch')?.focus();
       return;
     }
     if (target.closest('#btnIssuesNew')) {
@@ -3081,6 +3113,10 @@ export async function openIssues(options?: {
 
   pendingIssueId = options?.issueId;
   currentScreen = options?.screen ?? 'issues';
+  if (currentScreen === 'projects') {
+    closeIssueDetail();
+    closeIssuesFileDrawer();
+  }
   ensureIssuesChrome(root);
   root.classList.add('is-open');
   mountHeaderIcon();

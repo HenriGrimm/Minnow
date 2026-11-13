@@ -1288,6 +1288,9 @@ export function mergeConfigMeta(existing, patch) {
           layoutVersion: 1,
         };
 
+  delete base.activePromptProfile;
+  delete base.activePromptConfigId;
+
   if (!patch || typeof patch !== 'object') return base;
 
   const p = /** @type {Record<string, unknown>} */ (patch);
@@ -2150,16 +2153,6 @@ export function mergeConfigMeta(existing, patch) {
     base.planning = existingPlanning;
   }
 
-  if (
-    p.activePromptProfile === 'full' ||
-    p.activePromptProfile === 'lite' ||
-    p.activePromptProfile === 'custom'
-  ) {
-    base.activePromptProfile = p.activePromptProfile;
-  }
-  if (p.activePromptConfigId === null || typeof p.activePromptConfigId === 'string') {
-    base.activePromptConfigId = p.activePromptConfigId;
-  }
   if (typeof p.activeInfoPresetId === 'string' && p.activeInfoPresetId.trim()) {
     base.activeInfoPresetId = p.activeInfoPresetId.trim();
   }
@@ -3076,7 +3069,6 @@ export function normalizeMemoryConfig(raw, existing = {}) {
   const base = {
     enabled: true,
     maxInjectCharsFull: 8000,
-    maxInjectCharsLite: 800,
     retrieveLimit: 20,
     defaultTags: [],
     embeddings: {
@@ -3091,6 +3083,7 @@ export function normalizeMemoryConfig(raw, existing = {}) {
     ...existing,
   };
   delete base.maxEntries;
+  delete base.maxInjectCharsLite;
 
   if (!raw || typeof raw !== 'object') return base;
   const row = /** @type {Record<string, unknown>} */ (raw);
@@ -3098,9 +3091,6 @@ export function normalizeMemoryConfig(raw, existing = {}) {
   if (typeof row.enabled === 'boolean') base.enabled = row.enabled;
   if (typeof row.maxInjectCharsFull === 'number' && Number.isFinite(row.maxInjectCharsFull)) {
     base.maxInjectCharsFull = Math.min(32_000, Math.max(200, Math.floor(row.maxInjectCharsFull)));
-  }
-  if (typeof row.maxInjectCharsLite === 'number' && Number.isFinite(row.maxInjectCharsLite)) {
-    base.maxInjectCharsLite = Math.min(8000, Math.max(100, Math.floor(row.maxInjectCharsLite)));
   }
   if (typeof row.retrieveLimit === 'number' && Number.isFinite(row.retrieveLimit)) {
     base.retrieveLimit = Math.min(100, Math.max(1, Math.floor(row.retrieveLimit)));

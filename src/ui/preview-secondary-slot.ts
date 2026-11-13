@@ -20,6 +20,7 @@ let secondaryFrame: HTMLIFrameElement | null = null;
 let activeSecondaryTabId: string | null = null;
 /** URL the secondary guest currently holds — guards redundant reloads on relayout. */
 let loadedSecondaryUrl: string | null = null;
+const loadedSecondaryGuests = new WeakSet<NonNullable<ReturnType<typeof getPreviewTab>>>();
 let secondaryControlsBound = false;
 let unsubscribeSecondaryNavigation: (() => void) | null = null;
 
@@ -287,6 +288,7 @@ export function bindSecondaryPreviewControls(): void {
       },
       instanceId: WORKSPACE_PREVIEW_SECONDARY_INSTANCE,
       onClose: scheduleSecondaryPreviewHostLayoutSync,
+      onNewTab: () => void import('./preview-panel').then(m => m.openNewPreviewTabUi()),
     },
   );
 
@@ -307,7 +309,9 @@ export function hideSecondaryPreviewSlot(): void {
   }
 }
 
-async function loadSecondaryElectron(tabId: string, url: string): Promise<void> {
+async function loadSecondaryElectron(
+  tabId: string, url: string, options?: { reuse?: boolean; isCurrent?: () => boolean },
+): Promise<void> {
   const api = window.minnow?.preview;
   const body = getBody();
   if (!api || !body) return;
@@ -322,16 +326,24 @@ async function loadSecondaryElectron(tabId: string, url: string): Promise<void> 
     setPreviewInstanceVisible(WORKSPACE_PREVIEW_SECONDARY_INSTANCE, true);
   }
 
+  let existing = true;
   if (api.tabs?.create) {
     const listed = await api.tabs.list(WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
-    if (!listed.some((t) => t.id === tabId)) {
+    if (options?.isCurrent?.() === false) return;
+    existing = listed.some((t) => t.id === tabId);
+    if (!existing) {
       await api.tabs.create(tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
     }
   }
+  if (options?.isCurrent?.() === false) return;
   if (api.tabs?.activate) {
     await api.tabs.activate(tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
   }
+  if (options?.isCurrent?.() === false) return;
+  const tab = getPreviewTab(tabId);
+  if (existing && options?.reuse && tab && loadedSecondaryGuests.has(tab)) return;
   await api.loadURL(url, tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
+  if (tab) loadedSecondaryGuests.add(tab);
 }
 
 function loadSecondaryIframe(url: string): void {
@@ -351,37 +363,42 @@ function loadSecondaryIframe(url: string): void {
 }
 
 /** Show preview tab in secondary slot. */
-export async function renderSecondaryPreviewSlot(tabId: string | null): Promise<void> {
+export async function renderSecondaryPreviewSlot(
+  tabId: string | null, options?: { forceLoad?: boolean; isCurrent?: () => boolean },
+): Promise<void> {
   if (!tabId) {
     hideSecondaryPreviewSlot();
     return;
   }
   const tab = getPreviewTab(tabId);
-  if (!tab?.source) {
+  if (!tab || (!tab.source && !options)) {
     hideSecondaryPreviewSlot();
     return;
   }
+  const previous = activeSecondaryTabId;
   activeSecondaryTabId = tabId;
   syncSecondaryPreviewUrlInput(tab.source);
   let url: string;
   try {
-    url = await resolveIsolatedPreviewLoadUrl(tab.source, undefined, getFileTreeListingWorkspaceRoot());
+    url = tab.source ? await resolveIsolatedPreviewLoadUrl(tab.source, undefined, getFileTreeListingWorkspaceRoot()) : 'about:blank';
   } catch (error) {
     showToast(error instanceof Error ? error.message : String(error));
     return;
   }
-  if (loadedSecondaryUrl === url) return;
+  if (options?.isCurrent?.() === false || activeSecondaryTabId !== tabId) return;
+  if (!options?.forceLoad && previous === tabId && loadedSecondaryUrl === url) return;
   loadedSecondaryUrl = url;
   if (usesElectron()) {
     hideFrame();
-    await loadSecondaryElectron(tabId, url);
+    await loadSecondaryElectron(tabId, url, { reuse: Boolean(options && !options.forceLoad), isCurrent: options?.isCurrent });
     return;
   }
   if (secondaryBound) {
     unbindPreviewInstance(WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
     secondaryBound = false;
   }
-  loadSecondaryIframe(url);
+  if (tab.source) loadSecondaryIframe(url);
+  else hideFrame();
 }
 
 /** When primary slot shows preview during split, keep primary Electron host on #previewBody. */

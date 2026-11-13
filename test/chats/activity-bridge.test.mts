@@ -3,12 +3,42 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createEmptyChatObject, resetSessionPersistenceForTests, setSessionStateForTests, sessionState, applySharedChatFrame } from '../../src/state/sessions.ts';
 import { startManagedChatBridge } from '../../src/chat/managed-chat-bridge.ts';
-import { notifyManagedChatView, subscribeManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
+import { notifyManagedChatView, setEmbeddedManagedChatView, subscribeManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
 import { createManagedChatNotificationProducer } from '../../src/notifications/managed-chat.ts';
 import type { PushNotificationInput } from '../../src/notifications/types.ts';
 import { isChatRunningRemotely, setRemoteChatTurns } from '../../src/chat/remote-turn-state.ts';
 
-afterEach(() => { notifyManagedChatView(''); setRemoteChatTurns([], 'managed'); resetSessionPersistenceForTests(); setSessionStateForTests(null); });
+afterEach(() => { notifyManagedChatView(''); setEmbeddedManagedChatView(''); setRemoteChatTurns([], 'managed'); resetSessionPersistenceForTests(); setSessionStateForTests(null); });
+
+test('the Agents panel watches only its selected child without replacing the main transcript subscription', async t => {
+  const parent = createEmptyChatObject('model'), child = createEmptyChatObject('model');
+  parent.chatCommandVersion = child.chatCommandVersion = 1;
+  setSessionStateForTests({ version: 6, activeId: parent.id, sidebarCollapsed: false, chats: [parent, child] });
+  const sources: { url: string; onopen: any; onmessage: any; closed: boolean; close(): void }[] = [];
+  const received: string[] = [];
+  t.after(startManagedChatBridge({ receive: async frame => { received.push(frame.chatId); }, reconnect() {} }, () => {}, {
+    createSource: url => {
+      const source = { url, onopen: null, onmessage: null, closed: false, close() { this.closed = true; } };
+      sources.push(source);
+      return source;
+    },
+  }));
+  setEmbeddedManagedChatView(child.id);
+  assert.deepEqual(sources.map(source => source.url), [`/api/chats/events?chatId=${parent.id}`, `/api/chats/events?chatId=${child.id}`]);
+  const frame = (chatId: string) => ({ data: JSON.stringify({ kind: 'frame', frame: { chatId, running: true } }) });
+  sources[1].onmessage(frame(parent.id));
+  sources[1].onmessage(frame(child.id));
+  await new Promise(done => setImmediate(done));
+  assert.deepEqual(received, [child.id]);
+  assert.equal(sessionState?.activeId, parent.id);
+
+  setEmbeddedManagedChatView('');
+  assert.equal(sources[1].closed, true);
+  assert.equal(sources[0].closed, false);
+  sources[1].onmessage(frame(child.id));
+  await new Promise(done => setImmediate(done));
+  assert.deepEqual(received, [child.id], 'a hidden panel ignores late output');
+});
 
 test('completion metadata listeners see settled remote activity before refreshing the composer', async t => {
   const chat = createEmptyChatObject('model'); chat.chatCommandVersion = 1;

@@ -21,7 +21,7 @@
  * @property {string} packId
  * @property {string} agentKey
  * @property {string} packRoot
- * @property {{ full: string, lite?: string }} promptPaths
+ * @property {{ full: string }} promptPaths
  */
 
 export {};

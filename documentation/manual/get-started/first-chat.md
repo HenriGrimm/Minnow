@@ -10,7 +10,7 @@ This page walks through one real turn: send a message, watch it stream, approve 
 
 | Area | What it is |
 |------|------------|
-| **App rail** (left edge) | Switch between Code, Dashboard, Source Control, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
+| **App rail** (left edge) | Switch between Code, Source Control, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
 | **Menubar** (top) | Workspace control, Activity, Models, update pill, Settings, help (**?**) |
 | **Chat rail** (inside Code, left) | Your conversations. Search and start new chats from here. |
 | **Composer** (centre) | Where you type. Permission level, run target, reasoning, settings, model, attachments, microphone, send. |
@@ -40,7 +40,7 @@ Most interesting requests make the model call a tool. Under the default **Auto**
 
 Digits work whenever the card is open and you are not typing in a field. Type in the card's field and press **Enter** to deny and tell the agent what to do instead.
 
-The permission pill in the composer switches between **Manual**, **Auto** and **Full access** (or press **Shift+Tab**). It is one setting for every chat. Read [Tools and permissions](../concepts/tools-and-permissions.md) before choosing Full access.
+Select the permission icon in the composer to choose **Manual**, **Auto** or **Full access**. Press **Shift+Tab** in the composer to cycle through the levels. It is one setting for every chat. Read [Tools and permissions](../concepts/tools-and-permissions.md) before choosing Full access.
 
 ## Asking, planning and debugging
 

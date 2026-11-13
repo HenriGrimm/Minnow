@@ -31,14 +31,14 @@ const LEGACY_SECTION_ALIASES: Record<string, BrainSectionId> = {
 
 const SECTIONS: BrainSectionId[] = [
   'graph',
-  'edit',
-  'log',
-  'schema',
   'proposals',
   'memories',
   'ingest',
   'lint',
   'code',
+  'log',
+  'schema',
+  'edit',
   'settings',
 ];
 
@@ -261,7 +261,7 @@ function setActiveSection(section: BrainSectionId, options?: { editPath?: string
   }
 
   const nextHash = `#/app/brain/${section}`;
-  if (window.location.hash !== nextHash) {
+  if (!getBrainRoot()?.closest('.m-native-app-host') && window.location.hash !== nextHash) {
     window.location.hash = nextHash;
   }
 
@@ -277,10 +277,22 @@ function bindStaticSections(): void {
     closeBrain();
   });
 
-  for (const id of SECTIONS) {
-    document
-      .querySelector(`[data-brain-nav="${id}"]`)
-      ?.addEventListener('click', () => setActiveSection(id));
+  const rail = getBrainRoot()?.querySelector<HTMLElement>('.brain-rail');
+  if (rail) {
+    for (const id of SECTIONS) {
+      const control = rail.querySelector(`[data-brain-nav="${id}"]`);
+      if (!control) continue;
+      control.addEventListener('click', () => setActiveSection(id));
+      if (id === 'code') {
+        const label = control.querySelector('.brain-rail__label');
+        if (label) label.textContent = 'Code map';
+      }
+      rail.append(control);
+    }
+    const metrics = document.createElement('div');
+    metrics.className = 'brain-graphite-metrics';
+    metrics.id = 'brainGraphRailMetrics';
+    rail.append(metrics);
   }
 }
 
@@ -318,7 +330,7 @@ export function openBrain(section?: BrainSectionId, options?: { editPath?: strin
   const shell = getChatShell();
   if (!root || !shell) return;
 
-  closeOtherFullPages();
+  if (!root.closest('.m-native-app-host')) closeOtherFullPages();
   void import('./code-brain-map').then((m) => m.closeCodeBrainMap());
 
   const wasAlreadyOpen = root.classList.contains('is-open');
@@ -337,6 +349,8 @@ export function openBrain(section?: BrainSectionId, options?: { editPath?: strin
 
   const target = section ?? parseHashSection();
   if (wasAlreadyOpen && target === activeSection && !options?.editPath) {
+    // Suspending Brain hides the graph canvas while leaving the section open.
+    root.classList.toggle('is-graph-canvas-bg', target === 'graph');
     updatePageHeader(target);
     void renderBrainSection(target, options);
     return;
@@ -346,7 +360,7 @@ export function openBrain(section?: BrainSectionId, options?: { editPath?: strin
 
 /** Jump to Edit with a pre-filled wiki path. */
 export function openBrainEditForPath(relPath: string): void {
-  if (isOsEmbedded()) {
+  if (isOsEmbedded() && !getBrainRoot()?.closest('.m-native-app-host')) {
     launchApp('brain', { brainSection: 'edit', brainEditPath: relPath });
   }
   openBrain('edit', { editPath: relPath });
@@ -362,7 +376,7 @@ export function openBrainNewPage(): void {
 /** Brain stayed open in the OS layer stack (e.g. user opened Settings from the menubar). */
 export function suspendBrainAppSurface(): void {
   getBrainRoot()?.classList.remove('is-graph-canvas-bg');
-  teardownGraphSection();
+  teardownGraphSection({ clearSelection: true });
   document.body.style.removeProperty('cursor');
 }
 
@@ -374,7 +388,7 @@ export function closeBrain(options?: { skipNavigate?: boolean }): void {
 
   root.classList.remove('is-open');
 
-  teardownGraphSection();
+  teardownGraphSection({ clearSelection: true });
 
   if (!isOsEmbedded()) {
     shell.classList.remove('hidden');

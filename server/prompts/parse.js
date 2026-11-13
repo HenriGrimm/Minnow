@@ -119,7 +119,6 @@ export function parsePromptMarkdown(raw, relativePath) {
 
   const body =
     record.fullBody ?? record.body ?? markdownBody;
-  const liteBody = record.liteBody ?? null;
 
   return {
     id,
@@ -129,7 +128,6 @@ export function parsePromptMarkdown(raw, relativePath) {
     version: typeof record.version === 'number' ? record.version : 1,
     description: record.description ? String(record.description) : undefined,
     body: String(body),
-    liteBody: liteBody ? String(liteBody) : undefined,
     relativePath,
   };
 }

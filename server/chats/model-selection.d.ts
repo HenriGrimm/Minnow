@@ -22,6 +22,7 @@ export interface AgentCatalogContext {
 }
 export interface ModelOptionSupport {
   readonly reasoningEffort: readonly string[];
+  readonly fastMode?: boolean;
   readonly thinkingMode: readonly string[];
   readonly thinkingBudgetTokens: { readonly supported: boolean; readonly enforcement: 'native' | 'runner' | null };
   readonly sendCapabilities: {

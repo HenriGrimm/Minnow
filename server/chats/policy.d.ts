@@ -12,6 +12,7 @@ export type ChatPolicyErrorReason =
   | 'project_scope_denied' | 'cross_project_denied' | 'capability_denied' | 'broader_target_denied'
   | 'tool_denied' | 'plan_write_denied' | 'approval_required' | 'self_target_denied';
 
+export function isChatToolDenial(error: unknown): error is ChatPolicyError;
 export class ChatPolicyError extends ChatContractError {
   constructor(reason: ChatPolicyErrorReason, message: string, details?: Record<string, unknown>);
   readonly reason: ChatPolicyErrorReason;

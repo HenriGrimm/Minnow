@@ -11,7 +11,7 @@ export function isOnboardingCliReady(status: AgentCliStatus): boolean {
 
 export const providerCliStep: OnboardingStep = {
   id: 'provider-cli',
-  title: 'CLI agents',
+  title: 'Subscriptions',
   canSkip: true,
   isApplicable: (ctx) => ctx.providerPath === 'cli',
   render(container, ctx, actions) {
@@ -20,9 +20,9 @@ export const providerCliStep: OnboardingStep = {
     renderStepHeader(container, providerCliStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(el('p', 'mn-onboarding-step-desc',
       'Connect your account in the browser, then enable the agent you want to use.'));
-    const label = el('label', 'mn-onboarding-muted', 'Default CLI agent');
+    const label = el('label', 'mn-onboarding-muted', 'Default agent');
     const select = el('select', 'mn-onboarding-field') as HTMLSelectElement;
-    select.setAttribute('aria-label', 'Default CLI agent');
+    select.setAttribute('aria-label', 'Default agent');
     label.appendChild(select);
     const panel = el('div', 'mn-onboarding-cli-panel');
     container.append(label, panel);
@@ -47,7 +47,7 @@ export const providerCliStep: OnboardingStep = {
         if (!ready.length) {
           const option = document.createElement('option');
           option.value = '';
-          option.textContent = 'Enable a verified CLI agent to continue';
+          option.textContent = 'Enable a verified agent to continue';
           select.appendChild(option);
         }
         for (const status of ready) {

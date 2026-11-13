@@ -146,7 +146,7 @@ function buildShell(): HTMLElement {
     ? workspacePath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || 'workspace'
     : 'workspace';
   root.innerHTML = `
-    <header class="dev-server-screen__toolbar">
+    <header class="dev-server-screen__toolbar" data-app-titlebar>
       <div class="dev-server-screen__heading">
         <span class="dev-server-screen__heading-icon" aria-hidden="true">${iconHtml('appDevServer', { size: 18 })}</span>
         <div class="dev-server-screen__heading-copy">

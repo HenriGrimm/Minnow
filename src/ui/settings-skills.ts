@@ -44,13 +44,6 @@ function sourceBadgeLabel(source: SkillSource): string {
   return source === 'user' ? 'Custom' : 'Built-In';
 }
 
-function createSwitch(
-  checked: boolean,
-  onChange: (enabled: boolean) => void,
-): HTMLLabelElement {
-  return createSettingsSwitch({ checked, onChange }).root;
-}
-
 // ── Editor ───────────────────────────────────────────────────────────────────
 
 export function mountSkillEditor(
@@ -135,13 +128,15 @@ function buildSkillRow(
   const description = skill.description?.trim() || 'No description provided.';
   meta.appendChild(el('p', 'settings-skill-card__desc', description));
 
-  head.appendChild(meta);
-  head.appendChild(
-    createSwitch(isSkillEnabled(skill.id), (enabled) => {
+  const { root: toggle } = createSettingsSwitch({
+    checked: isSkillEnabled(skill.id),
+    ariaLabel: `Enable /${skill.id}`,
+    onChange: (enabled) => {
       setSkillEnabled(skill.id, enabled);
       onCatalogChange();
-    }),
-  );
+    },
+  });
+  head.append(meta, toggle);
 
   const details = document.createElement('details');
   details.className = 'settings-entity-details settings-skill-card__editor';

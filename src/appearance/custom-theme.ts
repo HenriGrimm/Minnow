@@ -122,6 +122,10 @@ export function applyCustomTheme(tokens?: CustomThemeTokens): void {
       root.style.removeProperty(cssVar);
     }
   }
+  if (map.accent) root.style.setProperty('--mn-graphite-button', 'var(--mn-accent)');
+  else root.style.removeProperty('--mn-graphite-button');
+  if (map['fg-on-accent']) root.style.setProperty('--mn-graphite-button-text', 'var(--mn-fg-on-accent)');
+  else root.style.removeProperty('--mn-graphite-button-text');
   updateThemeColorMetaFromCustom();
   emitChange();
 }
@@ -132,6 +136,8 @@ export function clearCustomTheme(): void {
   for (const key of CORE_THEME_TOKEN_KEYS) {
     root.style.removeProperty(tokenKeyToCssVar(key));
   }
+  root.style.removeProperty('--mn-graphite-button');
+  root.style.removeProperty('--mn-graphite-button-text');
 }
 
 function updateThemeColorMetaFromCustom(): void {
@@ -220,26 +226,37 @@ export function exportCustomThemeJson(): string {
   );
 }
 
-/** Import custom theme JSON; returns false on invalid input. */
-export function importCustomThemeJson(raw: string): boolean {
+/** Parse a palette without changing the active colors. */
+export function parseCustomThemeJson(raw: string): { tokens: CustomThemeTokens; enabled: boolean } | null {
   try {
     const data = JSON.parse(raw) as {
       version?: number;
       enabled?: boolean;
       tokens?: Record<string, string>;
     };
-    if (!data.tokens || typeof data.tokens !== 'object') return false;
+    if (!data?.tokens || typeof data.tokens !== 'object' || Array.isArray(data.tokens)) return null;
     const tokens: CustomThemeTokens = {};
     for (const [k, v] of Object.entries(data.tokens)) {
-      if (isCoreTokenKey(k) && typeof v === 'string') tokens[k] = v.trim();
+      if (isCoreTokenKey(k) && typeof v === 'string' && v.trim()) tokens[k] = v.trim();
     }
-    replaceCustomThemeTokens(tokens);
-    setCustomThemeEnabled(data.enabled !== false);
-    setCustomThemeAdvanced(true);
-    return true;
+    return { tokens, enabled: data.enabled !== false };
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function saveCustomThemeOverrides(tokens: CustomThemeTokens, enabled: boolean): void {
+  setCustomThemeAdvanced(true);
+  writeStorage(APPEARANCE_STORAGE_KEYS.customTokens, JSON.stringify(tokens));
+  setCustomThemeEnabled(enabled);
+}
+
+/** Import custom theme JSON; returns false on invalid input. */
+export function importCustomThemeJson(raw: string): boolean {
+  const palette = parseCustomThemeJson(raw);
+  if (!palette) return false;
+  saveCustomThemeOverrides(palette.tokens, palette.enabled);
+  return true;
 }
 
 /** Subscribe to custom theme changes. */

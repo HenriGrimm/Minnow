@@ -254,7 +254,9 @@ function createServerRow(
   const logsRefresh = el('button', 'settings-inline-btn', 'Refresh logs');
   logsRefresh.type = 'button';
   logsRefresh.dataset.serverLogsRefresh = server.id;
-  logsPanel.append(logsSummary, logsRefresh, logsPre);
+  const logActions = el('div', 'settings-actions');
+  logActions.append(logsRefresh);
+  logsPanel.append(logsSummary, logActions, logsPre);
   body.append(logsPanel);
 
   row.append(body);

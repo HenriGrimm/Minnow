@@ -12,8 +12,10 @@ import { resetRegisteredWorktreePathCache } from '../lib/worktree-allowlist-clie
 import { issueWorkOperation, type IssueWorkRequest, type IssueWorkSnapshot } from '../state/git-api';
 import { getChatRunActivity, subscribeChatRunActivity } from '../state/chat-run-activity';
 import { isChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
+import { getForegroundAppId, subscribeInstances } from '../os/instances';
 import { createIcon } from './icon';
 import { createDetailTextButton } from './issues-detail-section';
+import { showToast } from './toast';
 import '../styles/issues-work.css';
 
 export type IssueWorkspaceTab = 'Issue' | 'Work' | 'Chat' | 'Activity';
@@ -31,6 +33,7 @@ interface MountOptions {
 }
 
 const operations = new Set<string>();
+const planApprovals = new Set<string>();
 const commitDrafts = new Map<string, string>();
 let mountSequence = 0;
 const text = (tag: string, value: string, className = ''): HTMLElement => {
@@ -54,6 +57,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   let error = '';
   let confirming = false;
   let cleanup = false;
+  let approvalError = '';
   const current = () => findIssueById(id) ?? options.issue;
   const chat = () => (selectedChat ? findChatById(selectedChat) : undefined) ?? issueWorkChat(current());
   const busy = () => operations.has(id);
@@ -75,6 +79,13 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   const footer = document.createElement('footer');
   footer.className = 'issues-work-footer';
   let sharedChat: ReturnType<typeof mountSharedChatHost> | undefined;
+
+  function canBorrowComposer(): boolean {
+    const app = getForegroundAppId();
+    if (panel.closest('#mainColumn')) return app === 'code' || app === null;
+    if (panel.closest('#issuesView')) return app === 'issues';
+    return true;
+  }
 
   function action(label: string, icon: 'appChat' | 'gitMerge' | 'gitCommit' | 'refresh' | 'arrowUp' | 'close' | 'gitWorktree', handler: () => void, primary = false, disabled = false): HTMLButtonElement {
     return createDetailTextButton({ label, icon, onClick: handler, primary, disabled });
@@ -190,7 +201,39 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   function paintWork(): void {
     if (tab !== 'Work') return;
     content.replaceChildren();
-    const delivery = issueDelivery(current());
+    const issue = current();
+    const plan = issue.agent?.home;
+    if (plan?.mode === 'plan' && plan.state === 'planned') {
+      const pending = planApprovals.has(plan.groupId);
+      const section = document.createElement('section');
+      section.className = 'issues-work-plan-approval';
+      section.append(text('h3', 'Plan ready for review'));
+      if (issue.planPath) section.append(text('p', issue.planPath, 'issues-work-path'));
+      const controls = document.createElement('div');
+      controls.className = 'issues-work-actions';
+      if (issue.planPath && options.onOpenPlan) controls.append(action('Review plan', 'appChat', () => options.onOpenPlan?.(issue.planPath!, chat()?.worktreeRoot || issue.workspacePath)));
+      controls.append(action(pending ? 'Approving…' : 'Approve plan', 'arrowUp', () => {
+        if (planApprovals.has(plan.groupId)) return;
+        planApprovals.add(plan.groupId);
+        approvalError = '';
+        paintWork();
+        void import('../home/flow-actions').then(({ approveHomePlan }) => approveHomePlan(current())).catch((failure: unknown) => {
+          approvalError = failure instanceof Error ? failure.message : String(failure);
+          if (disposed) showToast(approvalError, 'error');
+        }).finally(() => {
+          planApprovals.delete(plan.groupId);
+          if (!disposed) paintWork();
+        });
+      }, true, pending));
+      section.append(controls);
+      if (approvalError) {
+        const message = text('p', approvalError, 'issues-work-error');
+        message.setAttribute('role', 'alert');
+        section.append(message);
+      }
+      content.append(section);
+    }
+    const delivery = issueDelivery(issue);
     const linked = chat();
     if (delivery && (!linked || delivery.data?.chatId === linked.id) && !linked?.worktreeRoot) {
       content.append(text('h3', 'Merged into ' + String(delivery.data?.targetBranch || 'the workspace')));
@@ -251,9 +294,9 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
         await launchCodeWithChat(linked.id);
       });
     }));
-    else tools.append(text('p', 'No chat attached yet.'), action('Send to chat', 'appChat', options.onStartChat, true));
+    else tools.append(text('p', 'No chat attached yet.'), action('Set up a thread', 'appChat', options.onStartChat, true));
     content.append(tools);
-    if (linked && !disposed && tab === 'Chat') sharedChat = mountSharedChatHost(content, linked, 'issues', {
+    if (linked && !disposed && tab === 'Chat' && canBorrowComposer()) sharedChat = mountSharedChatHost(content, linked, 'issues', {
       openPlan: options.onOpenPlan ? path => { select('Issue'); options.onOpenPlan?.(path, linked.worktreeRoot || linked.workspacePath); } : undefined,
     });
   }
@@ -378,6 +421,15 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     paintFooter();
   });
   const unsubscribeQuestions = subscribeIssueChatQuestions(paintSummary);
+  const unsubscribeForeground = subscribeInstances(() => {
+    if (disposed || tab !== 'Chat') return;
+    if (canBorrowComposer()) {
+      if (!sharedChat) void paintChat();
+    } else {
+      sharedChat?.dispose();
+      sharedChat = undefined;
+    }
+  });
   const unsubscribeEnd = subscribeChatStreamEnd((chatId) => {
     if (chatId !== chat()?.id) return;
     queueMicrotask(() => {
@@ -390,5 +442,5 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   cleanup = chat()?.chatWorktreeManaged === true;
   paintSummary();
   select(tab);
-  return { select, dispose: () => { disposed = true; generation++; sharedChat?.dispose(); queueMicrotask(notifyAskQuestionDisplayContextChanged); unsubscribe(); unsubscribeEnd(); unsubscribeQuestions(); } };
+  return { select, dispose: () => { disposed = true; generation++; sharedChat?.dispose(); queueMicrotask(notifyAskQuestionDisplayContextChanged); unsubscribe(); unsubscribeEnd(); unsubscribeQuestions(); unsubscribeForeground(); } };
 }

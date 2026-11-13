@@ -43,6 +43,10 @@ export class ChatPolicyError extends ChatContractError {
   }
 }
 
+export function isChatToolDenial(error) {
+  return error instanceof ChatPolicyError && (error.reason === 'tool_denied' || error.reason === 'plan_write_denied');
+}
+
 function invalid(message) {
   throw new ChatPolicyError('invalid_policy', message);
 }
@@ -199,8 +203,14 @@ export function compareChatPolicies(ceiling, target) {
   assertChatPolicy(target);
   const violations = [];
   for (const name of Object.keys(target.toolPermissions)) {
-    if (permission(target, name) !== 'off' && permission(ceiling, name) === 'off') violations.push(`tool:${name}`);
-    if (permission(target, name) !== 'off' && effect(target, name) !== effect(ceiling, name)) violations.push(`tool_effect:${name}`);
+    if (permission(target, name) === 'off') continue;
+    if (permission(ceiling, name) === 'off') violations.push(`tool:${name}`);
+    const targetEffect = effect(target, name);
+    const ceilingEffect = effect(ceiling, name);
+    // Saved integrations may predate read-only annotations. Unknown effects
+    // keep the mutating classification and stricter approval/clamp checks.
+    const conservativeIntegration = targetEffect === 'unknown' && ceilingEffect === 'read' && /^(?:mcp__|plugin__)/.test(name);
+    if (targetEffect !== ceilingEffect && !conservativeIntegration) violations.push(`tool_effect:${name}`);
   }
   for (const id of target.workspaceIds) if (!ceiling.workspaceIds.includes(id)) violations.push(`workspace:${id}`);
   for (const name of target.capabilities) if (!ceiling.capabilities.includes(name)) violations.push(`capability:${name}`);

@@ -29,11 +29,11 @@
   word-break: break-word;
   font-family: var(--font-mono);
   font-size: var(--mn-text-sm);
-  color: var(--mn-text-primary);
+  color: var(--mn-fg);
 }
 
 .context-notice__empty {
   margin: 0;
   font-size: var(--mn-text-sm);
-  color: var(--mn-text-muted);
+  color: var(--mn-fg-muted);
 }

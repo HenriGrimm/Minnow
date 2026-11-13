@@ -1,4 +1,3 @@
-import { runSettingsAction } from './settings-controls';
 import { showToast } from './toast';
 import { appConfirm } from './app-dialog';
 /**
@@ -19,14 +18,16 @@ import {
 import {
   appendSettingsOfflineHint,
   createSettingsActionsRow,
+  runSettingsAction,
 } from './settings-controls';
 import { setStatus } from './status';
 import { createSettingsToggleRow } from './settings-switch';
 import {
   fetchDiagnosticsHealth,
-  renderHealthStrip,
+  healthRowsFromPayload,
   type DiagnosticsHealthPayload,
 } from './health-strip';
+import { createIcon } from './icon';
 
 type DiagnosticErrorGroup = {
   signature: string;
@@ -87,6 +88,37 @@ async function fetchDiagnosticLogs(source: SourceFilter): Promise<Record<string,
   if (!res.ok) throw new Error('Could not load logs');
   const body = (await res.json()) as { lines?: Record<string, unknown>[] };
   return body.lines ?? [];
+}
+
+async function fetchDiagnosticReport(): Promise<string> {
+  const res = await fetch('/api/diagnostics/report', { cache: 'no-store' });
+  if (!res.ok) throw new Error('Report unavailable');
+  const { markdown } = (await res.json()) as { markdown?: string };
+  if (!markdown) throw new Error('Report is empty');
+  return markdown;
+}
+
+function renderChecks(host: HTMLElement, health: DiagnosticsHealthPayload | null, onLastError: () => void): void {
+  const list = el('ul', 'settings-health-checks');
+  list.setAttribute('aria-label', 'Subsystem checks');
+  for (const { label, detail, ok } of healthRowsFromPayload(health)) {
+    const item = el('li', 'settings-health-checks__row');
+    item.dataset.status = ok === true ? 'ok' : ok === false ? 'error' : 'unknown';
+    const icon = createIcon(ok === true ? 'check' : ok === false ? 'warning' : 'help');
+    const text = el('span', 'settings-health-checks__label');
+    text.appendChild(el('span', '', label));
+    if (detail) text.appendChild(el('span', 'settings-health-checks__detail', detail));
+    const status = ok === true ? 'OK' : ok === false ? 'Unavailable' : 'Unknown';
+    item.append(icon, text, el('span', 'settings-health-checks__status', status));
+    list.appendChild(item);
+  }
+  host.replaceChildren(list);
+  if (health?.lastError?.message) {
+    const lastError = el('button', 'settings-inline-link settings-health-checks__last', 'View last error');
+    lastError.type = 'button';
+    lastError.addEventListener('click', onLastError);
+    host.appendChild(lastError);
+  }
 }
 
 // ── Lists ────────────────────────────────────────────────────────────────────
@@ -194,15 +226,7 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
 
-  const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'Local subsystem checks and captured errors. Nothing leaves this device. Version details are under ',
-    linkToSettingsSection('About', 'about'),
-    '.',
-  );
-  shell.appendChild(lead);
-
-  const serverUp = await detectConfigServer();
+  const serverUp = (await detectConfigServer()) === 'server';
   if (!serverUp) {
     appendSettingsOfflineHint(
       shell,
@@ -213,20 +237,21 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
 
-  let health: DiagnosticsHealthPayload | null = null;
-  if (serverUp) {
-    health = await fetchDiagnosticsHealth();
-  }
-
-  const healthGroup = appendSettingsGroup(
-    content,
-    'Subsystem health',
-    'Same probes as the status strip: server, tools, memory, Brain, LSP, and PTY.',
-    'advanced.diagnostics.health',
-    { emphasis: true },
-  );
+  const checks = el('div', 'settings-health');
+  checks.dataset.settingsSearchKey = 'advanced.diagnostics.health';
+  const toolbar = el('div', 'settings-health__toolbar');
+  const checkButton = el('button', 'settings-inline-btn settings-health__primary');
+  checkButton.type = 'button';
+  checkButton.append(createIcon('refresh'), 'Run checks');
+  checkButton.disabled = !serverUp;
+  const exportButton = el('button', 'settings-inline-btn', 'Export diagnostics');
+  exportButton.type = 'button';
+  exportButton.disabled = !serverUp;
+  toolbar.append(checkButton, exportButton);
   const healthHost = el('div', 'diagnostics-health-host');
-  healthGroup.appendChild(healthHost);
+  healthHost.setAttribute('aria-live', 'polite');
+  checks.append(toolbar, healthHost);
+  content.appendChild(checks);
 
   const issuesPrefs = loadDiagnosticsPrefs();
   const issuesGroup = appendSettingsGroup(
@@ -252,6 +277,8 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
     'advanced.diagnostics',
     { emphasis: true },
   );
+  const installLink = linkToSettingsSection('View version and runtime details', 'about');
+  installLink.classList.add('settings-health-checks__last');
 
   let activeFilter: SourceFilter = 'all';
   const filterHost = el('div', 'diagnostics-filter-host');
@@ -275,11 +302,7 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
         onClick: () => {
           void (async () => {
             try {
-              const res = await fetch('/api/diagnostics/report', { cache: 'no-store' });
-              if (!res.ok) throw new Error('Report unavailable');
-              const body = (await res.json()) as { markdown?: string };
-              const text = body.markdown ?? '';
-              await navigator.clipboard.writeText(text);
+              await navigator.clipboard.writeText(await fetchDiagnosticReport());
               showToast('Diagnostic report copied');
             } catch {
               setStatus('err', 'Could not copy report');
@@ -323,7 +346,7 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
     ],
     { searchKey: 'advanced.diagnostics.actions' },
   );
-  diagnostics.appendChild(actions);
+  diagnostics.append(actions, installLink);
 
   const scrollToErrors = (): void => {
     errorsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -339,23 +362,23 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
     void refreshViewer();
   }
 
+  let refreshVersion = 0;
   async function refreshViewer(): Promise<void> {
-    if (serverUp) {
-      health = await fetchDiagnosticsHealth();
-      renderHealthStrip(healthHost, health, { onErrorClick: scrollToErrors });
-    } else {
-      healthHost.replaceChildren();
-      healthHost.appendChild(el('p', 'diagnostics-empty', 'Server offline'));
-    }
-
+    const version = ++refreshVersion;
+    const filter = activeFilter;
+    const health = serverUp ? await fetchDiagnosticsHealth() : null;
+    if (version !== refreshVersion) return;
+    renderChecks(healthHost, health, scrollToErrors);
     try {
       const [errors, logs] = await Promise.all([
-        serverUp ? fetchDiagnosticErrors(activeFilter) : Promise.resolve([]),
-        serverUp ? fetchDiagnosticLogs(activeFilter) : Promise.resolve([]),
+        serverUp ? fetchDiagnosticErrors(filter) : Promise.resolve([]),
+        serverUp ? fetchDiagnosticLogs(filter) : Promise.resolve([]),
       ]);
+      if (version !== refreshVersion) return;
       renderErrorList(errorsHost, errors);
       renderLogTail(logsHost, logs);
     } catch {
+      if (version !== refreshVersion) return;
       errorsHost.replaceChildren();
       errorsHost.appendChild(el('p', 'diagnostics-empty', 'Could not load diagnostics.'));
     }
@@ -364,6 +387,21 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
   filterHost.replaceChildren();
   filterHost.appendChild(renderFilterRow(setActiveFilter, activeFilter));
 
-  renderHealthStrip(healthHost, health, { onErrorClick: scrollToErrors });
+  checkButton.addEventListener('click', () => {
+    void runSettingsAction(checkButton, 'Running checks…', refreshViewer);
+  });
+  exportButton.addEventListener('click', () => {
+    void runSettingsAction(exportButton, 'Preparing diagnostics…', async () => {
+      const report = await fetchDiagnosticReport();
+      const url = URL.createObjectURL(new Blob([report], { type: 'text/markdown' }));
+      const link = el('a');
+      link.href = url;
+      link.download = 'minnow-diagnostics.md';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  });
   await refreshViewer();
 }

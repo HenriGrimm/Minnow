@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events';
 import { runRequestWork } from '../../server/runtime/request-work.js';
 import {
   detectAgentCli,
+  parseAgentCliAccountEmail,
   parseAgentCliAuthStatus,
   resetAgentCliDetectionCacheForTests,
 } from '../../server/models/agent-cli-detect.js';
@@ -42,6 +43,12 @@ afterEach(async () => {
 });
 
 describe('agent CLI passive detection', () => {
+  test('only exposes an account email from an explicitly signed-in status', () => {
+    assert.equal(parseAgentCliAccountEmail('{"loggedIn":true,"email":"builder@example.com","token":"hidden"}'), 'builder@example.com');
+    assert.equal(parseAgentCliAccountEmail('Logged in as builder@example.com'), 'builder@example.com');
+    assert.equal(parseAgentCliAccountEmail('{"loggedIn":false,"email":"old@example.com"}'), undefined);
+    assert.equal(parseAgentCliAccountEmail('diagnostic for builder@example.com'), undefined);
+  });
   test('concurrent chat preflights share one version subprocess and refresh remains explicit', async () => {
     const { options, trace } = await versionFixture();
     const statuses = await Promise.all(Array.from({ length: 5 }, () => detectAgentCli('codex', options)));

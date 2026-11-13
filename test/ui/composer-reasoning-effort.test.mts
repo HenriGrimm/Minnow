@@ -372,6 +372,7 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     trigger.click();
     const menu = document.querySelector<HTMLElement>('.composer-model-menu:not(.hidden)')!;
     assert.ok(menu);
+    assert.equal(menu.querySelector<HTMLElement>('.composer-model-speed')?.hidden, true);
     const choices = [...menu.querySelectorAll<HTMLButtonElement>('[data-composer-reasoning]')];
     assert.deepEqual(choices.map(item => item.textContent), ['Default', 'Off', 'Low', 'Medium', 'High']);
     choices.find(item => item.dataset.composerReasoning === 'low')!.click();
@@ -386,6 +387,79 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.equal(trigger.textContent, 'GPT 5 preview · High');
     assert.equal(chat.modelId, 'gpt-5-preview');
     assert.equal(chat.providerId, 'openai');
+  });
+
+  test('the CLI picker changes speed without changing the selected model or reasoning', () => {
+    setupDom();
+    const chat = seedChat({ providerId: 'codex-cli', modelId: 'gpt-6.1-sol', reasoningEffort: 'high' });
+    const key = encodeModelSelectKey('codex-cli', chat.modelId);
+    const row = { id: chat.modelId, api: 'agent-cli-v1' as const, supportsFastMode: true,
+      reasoning: { allowed_options: ['medium', 'high'], default: 'medium' } };
+    modelCache.set(key, { ...row, capabilities: catalogCapabilitiesFromRow(row, row.api) });
+    document.body.insertAdjacentHTML('beforeend', `<select id="modelSelect"><option value="${key}">GPT 6.1 Sol — Codex</option></select><div id="codeComposerModelAnchor"></div>`);
+    initComposerModelTriggers();
+    const trigger = document.querySelector<HTMLButtonElement>('#codeComposerModelAnchor .composer-model-trigger')!;
+    trigger.click();
+    const speed = document.querySelector<HTMLButtonElement>('.composer-model-menu:not(.hidden) [role="switch"]')!;
+    assert.equal(speed.hidden, false);
+    assert.equal(speed.getAttribute('aria-checked'), 'false');
+    speed.focus();
+    speed.click();
+    assert.equal(chat.cliFastMode, true);
+    assert.equal(speed.getAttribute('aria-checked'), 'true');
+    assert.equal(document.activeElement, speed);
+    assert.match(trigger.textContent!, /High · Fast/);
+    assert.equal(chat.modelId, row.id);
+    assert.equal(chat.reasoningEffort, 'high');
+
+    speed.click();
+    assert.equal(chat.cliFastMode, false);
+    assert.equal(speed.getAttribute('aria-checked'), 'false');
+    assert.equal(trigger.textContent, 'GPT 6.1 Sol · High');
+    speed.click();
+
+    modelCache.get(key)!.supportsFastMode = false;
+    syncComposerReasoningEffortFromActiveChat();
+    assert.equal(speed.hidden, false, 'a saved Fast preference can still be cleared');
+    speed.click();
+    assert.equal(chat.cliFastMode, false);
+    assert.equal(speed.hidden, true);
+  });
+
+  test('the managed Fast switch keeps focus while saving standard speed', async t => {
+    setupDom();
+    const selection = { providerId: 'codex-cli', modelId: 'gpt-6.1-sol', options: { reasoningEffort: 'high', fastMode: true } };
+    const chat = seedChat({
+      providerId: selection.providerId, modelId: selection.modelId,
+      chatCommandVersion: 1, agentModelSelection: selection, reasoningEffort: 'high',
+    });
+    const key = encodeModelSelectKey(selection.providerId, selection.modelId);
+    modelCache.set(key, { id: selection.modelId, supportsFastMode: true });
+    document.body.insertAdjacentHTML('beforeend', `<select id="modelSelect"><option value="${key}">GPT 6.1 Sol — Codex</option></select><div id="codeComposerModelAnchor"></div>`);
+    initComposerModelTriggers();
+    document.querySelector<HTMLButtonElement>('#codeComposerModelAnchor .composer-model-trigger')!.click();
+    const speed = document.querySelector<HTMLButtonElement>('.composer-model-menu:not(.hidden) [role="switch"]')!;
+    const saved = Promise.withResolvers<void>();
+    const request = t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      chat.agentModelSelection = JSON.parse(String(options?.body)).selection;
+      return Response.json({});
+    });
+    window.addEventListener('minnow:managed-model-state', () => {
+      if (speed.getAttribute('aria-disabled') === 'false') saved.resolve();
+    });
+
+    assert.equal(speed.getAttribute('aria-checked'), 'true');
+    speed.focus();
+    speed.click();
+    assert.equal(speed.getAttribute('aria-disabled'), 'true');
+    assert.ok(document.activeElement === speed);
+    speed.click();
+    await saved.promise;
+
+    assert.equal(request.mock.callCount(), 1);
+    assert.deepEqual(chat.agentModelSelection, { ...selection, options: { reasoningEffort: 'high', fastMode: false } });
+    assert.equal(speed.getAttribute('aria-checked'), 'false');
+    assert.ok(document.activeElement === speed);
   });
 
   test('brain off hides dropdown and sets reasoningEffort to off', () => {

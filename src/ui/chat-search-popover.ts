@@ -1,4 +1,4 @@
-import { markPreviewOccluder } from './preview-occlusion';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import {
   filterChatsByWorkspacePath,
   searchChats,
@@ -10,11 +10,17 @@ import { getChatsWorkspacePath } from '../lib/chats-workspace';
 import { isMinnowSandboxWorkspacePath } from '../lib/workspace-sandbox';
 import { findChatById, sessionState } from '../state/sessions';
 import { getWorkspacePath } from '../state/workspace';
-import type { Chat } from '../types';
+import { isChatArchived } from '../state/chat-archive';
+import { listIssues } from '../state/issues-store';
+import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import type { Chat, IssueCard } from '../types';
+import { createIcon } from './icon';
 import { createSettingsToggleRow } from './settings-switch';
 
 /** Where the popover was opened from — drives default search scope. */
 type ChatSearchContext = 'code' | 'desktop';
+type SearchFilter = 'all' | 'title' | 'message' | 'issue';
+type SearchResult = ChatSearchResult | { issue: IssueCard };
 
 const ALL_WORKSPACES_STORAGE_KEY = 'minnow.chatSearch.allWorkspaces';
 
@@ -24,13 +30,18 @@ function isDesktopSurfaceChat(chat: Chat): boolean {
 }
 
 let popoverEl: HTMLDivElement | null = null;
+let backdropEl: HTMLButtonElement | null = null;
 let anchorEl: HTMLElement | null = null;
+let returnFocusEl: HTMLElement | null = null;
 let inputEl: HTMLInputElement | null = null;
 let resultsEl: HTMLDivElement | null = null;
 let searchAllWorkspaces = false;
 let searchContext: ChatSearchContext = 'code';
 let open = false;
-let results: ChatSearchResult[] = [];
+let results: SearchResult[] = [];
+let filter: SearchFilter = 'all';
+let includeArchived = false;
+let countEl: HTMLElement | null = null;
 let activeIndex = -1;
 let outsidePointerHandler: ((e: PointerEvent) => void) | null = null;
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -50,12 +61,8 @@ function persistSearchAllWorkspacesPreference(value: boolean): void {
   }
 }
 
-function resolveSearchContext(anchor: HTMLElement): ChatSearchContext {
-  return anchor.id === 'btnDesktopChatSearch' ? 'desktop' : 'code';
-}
-
 function chatsForCurrentScope(): Chat[] {
-  const all = sessionState?.chats ?? [];
+  const all = (sessionState?.chats ?? []).filter(chat => !chat.background && (includeArchived || !isChatArchived(chat)));
   if (searchAllWorkspaces) return all;
   if (searchContext === 'desktop') {
     return all.filter(isDesktopSurfaceChat);
@@ -64,7 +71,7 @@ function chatsForCurrentScope(): Chat[] {
 }
 
 function searchPlaceholder(): string {
-  if (searchAllWorkspaces) return 'Search all chats…';
+  if (searchContext === 'code') return 'Search every thread and message';
   if (searchContext === 'desktop') return 'Search desktop chats…';
   return 'Search this workspace…';
 }
@@ -95,17 +102,26 @@ function detachGlobalListeners(): void {
 /** Close the chat search popover if open. */
 export function closeChatSearchPopover(): void {
   if (!open) return;
+  const restoreFocus = popoverEl?.contains(document.activeElement);
   open = false;
+  searchSeq += 1;
   detachGlobalListeners();
   anchorEl?.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) returnFocusEl?.focus();
   anchorEl = null;
+  returnFocusEl = null;
   inputEl = null;
   resultsEl = null;
   searchContext = 'code';
   results = [];
   activeIndex = -1;
+  countEl = null;
+  if (popoverEl) unmarkPreviewOccluder(popoverEl);
   popoverEl?.remove();
   popoverEl = null;
+  if (backdropEl) unmarkPreviewOccluder(backdropEl);
+  backdropEl?.remove();
+  backdropEl = null;
 }
 
 /** Whether the chat search popover is visible. */
@@ -114,6 +130,7 @@ export function isChatSearchPopoverOpen(): boolean {
 }
 
 function positionPopover(anchor: HTMLElement, popover: HTMLElement): void {
+  if (searchContext === 'code') return;
   const rect = anchor.getBoundingClientRect();
   const margin = 8;
   const popoverWidth = popover.offsetWidth || 320;
@@ -129,29 +146,50 @@ function positionPopover(anchor: HTMLElement, popover: HTMLElement): void {
 function attachGlobalListeners(): void {
   outsidePointerHandler = (e: PointerEvent) => {
     const target = e.target as Node | null;
-    if (!popoverEl || !anchorEl) return;
-    if (popoverEl.contains(target) || anchorEl.contains(target)) return;
+    if (!popoverEl || popoverEl.contains(target) || anchorEl?.contains(target)) return;
     closeChatSearchPopover();
   };
   document.addEventListener('pointerdown', outsidePointerHandler, true);
 
   escapeHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
     closeChatSearchPopover();
   };
   document.addEventListener('keydown', escapeHandler, true);
 }
 
 /** Foreground the surface that owns the chat (desktop assistant vs Code workspace). */
-function openSearchResult(chat: Chat): void {
+function openSearchResult(result: SearchResult): void {
+  if ('issue' in result) {
+    closeChatSearchPopover();
+    void import('./issues-page').then(({ openIssues }) => openIssues({ issueId: result.issue.id }));
+    return;
+  }
+  const { chat, messageIndex } = result;
   const isDesktop = isDesktopSurfaceChat(chat);
   closeChatSearchPopover();
-  void import('../os/chat-launch').then((m) => {
-    if (isDesktop) {
-      void m.launchChatWithThread(chat.id);
-    } else {
-      void m.launchCodeWithChat(chat.id);
-    }
+  void import('../os/chat-launch').then(async (m) => {
+    if (isDesktop) await m.launchChatWithThread(chat.id);
+    else await m.launchCodeWithChat(chat.id);
+    if (messageIndex === undefined || sessionState?.activeId !== chat.id) return;
+    const mount = document.getElementById('chatArea');
+    if (!mount) return;
+    const selector = `.msg[data-history-index="${messageIndex}"]`;
+    const show = () => {
+      if (sessionState?.activeId !== chat.id) return true;
+      const row = mount.querySelector<HTMLElement>(selector);
+      if (!row) return false;
+      row.scrollIntoView({ block: 'center' });
+      row.classList.add('chat-search-hit');
+      setTimeout(() => row.classList.remove('chat-search-hit'), 1_600);
+      return true;
+    };
+    if (show()) return;
+    const observer = new MutationObserver(() => { if (show()) observer.disconnect(); });
+    observer.observe(mount, { childList: true, subtree: true });
+    setTimeout(() => observer.disconnect(), 3_000);
   });
 }
 
@@ -173,7 +211,8 @@ function setActiveIndex(next: number): void {
     row.classList.toggle('is-active', i === activeIndex);
     row.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
   });
-  rows[activeIndex].scrollIntoView({ block: 'nearest' });
+  inputEl?.setAttribute('aria-activedescendant', rows[activeIndex].id);
+  rows[activeIndex].scrollIntoView?.({ block: 'nearest' });
 }
 
 function syncSearchInputPlaceholder(): void {
@@ -197,6 +236,7 @@ function mapServerHitsToResults(
       chat,
       score: hit.score,
       matchedIn: hit.matchedIn,
+      messageIndex: hit.messageIndex,
       role: hit.role,
       snippet: hit.snippet ?? '',
     });
@@ -206,11 +246,13 @@ function mapServerHitsToResults(
 
 let searchSeq = 0;
 
-function paintResults(query: string, next: ChatSearchResult[]): void {
+function paintResults(query: string, next: SearchResult[]): void {
   if (!resultsEl) return;
   resultsEl.replaceChildren();
   activeIndex = -1;
+  inputEl?.removeAttribute('aria-activedescendant');
   results = next;
+  if (countEl) countEl.textContent = query.trim() ? `${results.length} ${results.length === 1 ? 'result' : 'results'}` : '';
 
   if (!query.trim()) {
     const hint = document.createElement('div');
@@ -229,11 +271,30 @@ function paintResults(query: string, next: ChatSearchResult[]): void {
   }
 
   results.forEach((result, index) => {
+    if ('issue' in result) {
+      const row = document.createElement('div');
+      row.id = `chat-search-result-${index}`;
+      row.className = 'chat-search-result';
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', 'false');
+      const head = document.createElement('div');
+      head.className = 'chat-search-result__head';
+      const name = document.createElement('span');
+      name.className = 'chat-search-result__name';
+      name.textContent = result.issue.title;
+      head.append(createIcon('appIssues', { size: 14 }), name, result.issue.id);
+      row.append(head);
+      row.addEventListener('click', () => openSearchResult(result));
+      row.addEventListener('pointerenter', () => setActiveIndex(index));
+      resultsEl?.append(row);
+      return;
+    }
     const { chat } = result;
     const isDesktop = isDesktopSurfaceChat(chat);
 
     const row = document.createElement('div');
     row.className = 'chat-search-result';
+    row.id = `chat-search-result-${index}`;
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', 'false');
     row.dataset.chatId = chat.id;
@@ -273,35 +334,46 @@ function paintResults(query: string, next: ChatSearchResult[]): void {
       row.appendChild(snippet);
     }
 
-    row.addEventListener('click', () => openSearchResult(chat));
+    row.addEventListener('click', () => openSearchResult(result));
     row.addEventListener('pointerenter', () => setActiveIndex(index));
     resultsEl?.appendChild(row);
   });
+  if (searchContext === 'code') setActiveIndex(0);
 }
 
 /** Run search — server FTS when file-backed; pure scorer for localStorage fallback. */
 function renderResults(query: string): void {
+  const seq = ++searchSeq;
   const trimmed = query.trim();
   if (!trimmed) {
     paintResults(query, []);
     return;
   }
 
+  const match = filter === 'title' || filter === 'message' ? filter : undefined;
+  const workspace = searchAllWorkspaces || searchContext === 'desktop' ? undefined : getWorkspacePath();
+  const issues: SearchResult[] = filter === 'all' || filter === 'issue'
+    ? listIssues().filter(issue => {
+      if (workspace && normalizeWorkspacePath(issue.workspacePath) !== normalizeWorkspacePath(workspace)) return false;
+      const haystack = `${issue.id} ${issue.title} ${issue.description}`.toLowerCase();
+      return trimmed.toLowerCase().split(/\s+/).every(term => haystack.includes(term));
+    }).slice(0, 20).map(issue => ({ issue }))
+    : [];
+  const local = () => searchChats(chatsForCurrentScope().map(chat => chat.historyLoaded === false
+    ? { ...chat, history: [] } : chat), query, { match });
+  if (filter === 'issue') {
+    paintResults(query, issues);
+    return;
+  }
   if (!isServerStorageMode()) {
-    paintResults(query, searchChats(chatsForCurrentScope(), query));
+    paintResults(query, [...local(), ...issues]);
     return;
   }
 
-  const seq = ++searchSeq;
-  const workspace = searchAllWorkspaces
-    ? undefined
-    : searchContext === 'desktop'
-      ? undefined
-      : getWorkspacePath();
-
   void searchSessions(trimmed, {
-    workspace: searchAllWorkspaces || searchContext === 'desktop' ? undefined : workspace,
+    workspace,
     limit: 30,
+    match,
   })
     .then((hits) => {
       if (seq !== searchSeq || !resultsEl) return;
@@ -309,11 +381,11 @@ function renderResults(query: string): void {
       if (searchContext === 'desktop' && !searchAllWorkspaces) {
         mapped = mapped.filter((r) => isDesktopSurfaceChat(r.chat));
       }
-      paintResults(query, mapped);
+      paintResults(query, [...mapped, ...issues]);
     })
     .catch(() => {
       if (seq !== searchSeq || !resultsEl) return;
-      paintResults(query, searchChats(chatsForCurrentScope(), query));
+      paintResults(query, [...local(), ...issues]);
     });
 }
 
@@ -331,7 +403,7 @@ function onInputKeydown(e: KeyboardEvent): void {
   if (e.key === 'Enter') {
     e.preventDefault();
     const target = results[activeIndex] ?? results[0];
-    if (target) openSearchResult(target.chat);
+    if (target) openSearchResult(target);
   }
 }
 
@@ -361,11 +433,59 @@ function buildPopover(): HTMLDivElement {
   scopeRow.classList.add('chat-search-scope-toggle');
 
   const list = document.createElement('div');
+  list.id = 'chatSearchResults';
   list.className = 'chat-search-results';
   list.setAttribute('role', 'listbox');
   list.setAttribute('aria-label', 'Matching chats');
 
-  popover.append(input, scopeRow, list);
+  if (searchContext === 'code') {
+    popover.classList.add('chat-search-popover--graphite');
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-controls', list.id);
+    const searchBar = document.createElement('div');
+    searchBar.className = 'chat-search-bar';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'chat-search-close';
+    close.textContent = 'esc';
+    close.setAttribute('aria-label', 'Close search');
+    close.addEventListener('click', closeChatSearchPopover);
+    searchBar.append(createIcon('search', { size: 16 }), input, close);
+    const toolbar = document.createElement('div');
+    toolbar.className = 'chat-search-toolbar';
+    const filters = document.createElement('div');
+    filters.className = 'chat-search-filters';
+    filters.setAttribute('role', 'group');
+    filters.setAttribute('aria-label', 'Search in');
+    for (const [id, label] of [['all', 'All'], ['title', 'Threads'], ['message', 'Messages'], ['issue', 'Issues']] as const) {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.textContent = label;
+      option.setAttribute('aria-pressed', String(filter === id));
+      option.addEventListener('click', () => {
+        filter = id;
+        for (const button of filters.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button === option));
+        renderResults(input.value);
+      });
+      filters.append(option);
+    }
+    const archived = document.createElement('label');
+    archived.className = 'chat-search-archived';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = includeArchived;
+    checkbox.addEventListener('change', () => { includeArchived = checkbox.checked; renderResults(input.value); });
+    archived.append(checkbox, 'Include archived');
+    toolbar.append(filters, archived);
+    const footer = document.createElement('div');
+    footer.className = 'chat-search-footer';
+    countEl = document.createElement('span');
+    footer.append('↑ ↓ Move', '↵ Open at the message', countEl);
+    popover.append(searchBar, toolbar, list, footer, scopeRow);
+  } else {
+    popover.append(input, scopeRow, list);
+  }
   inputEl = input;
   resultsEl = list;
   syncSearchInputPlaceholder();
@@ -373,32 +493,46 @@ function buildPopover(): HTMLDivElement {
   return popover;
 }
 
-/** Open the chat search popover anchored to a sidebar / rail button. */
-export function openChatSearchPopover(anchor: HTMLElement): void {
+/** Open centered Code search or position desktop search beside its trigger. */
+export function openChatSearchPopover(anchor?: HTMLElement): void {
   closeChatSearchPopover();
 
   void getChatsWorkspacePath();
 
-  searchContext = resolveSearchContext(anchor);
+  searchContext = anchor?.id === 'btnDesktopChatSearch' ? 'desktop' : 'code';
+  const focused = document.activeElement;
+  returnFocusEl = anchor ?? (focused instanceof HTMLElement ? focused : null);
   searchAllWorkspaces = readSearchAllWorkspacesPreference();
+  filter = 'all';
+  includeArchived = searchContext === 'desktop';
 
   popoverEl = buildPopover();
+  if (searchContext === 'code') {
+    backdropEl = document.createElement('button');
+    backdropEl.type = 'button';
+    backdropEl.className = 'chat-search-scrim';
+    backdropEl.tabIndex = -1;
+    backdropEl.setAttribute('aria-label', 'Close search');
+    backdropEl.addEventListener('click', closeChatSearchPopover);
+    document.body.append(backdropEl);
+    markPreviewOccluder(backdropEl, 'panel');
+  }
   document.body.appendChild(popoverEl);
-  anchorEl = anchor;
+  anchorEl = anchor ?? null;
   open = true;
   markPreviewOccluder(popoverEl, 'panel');
-  anchor.setAttribute('aria-expanded', 'true');
+  anchor?.setAttribute('aria-expanded', 'true');
 
   renderResults('');
-  positionPopover(anchor, popoverEl);
+  if (anchor) positionPopover(anchor, popoverEl);
   attachGlobalListeners();
 
   requestAnimationFrame(() => inputEl?.focus());
 }
 
-/** Toggle the popover from its anchor button. */
-export function toggleChatSearchPopover(anchor: HTMLElement): void {
-  if (open && anchorEl === anchor) {
+/** Toggle search from a shortcut or its anchor button. */
+export function toggleChatSearchPopover(anchor?: HTMLElement): void {
+  if (open && anchorEl === (anchor ?? null)) {
     closeChatSearchPopover();
     return;
   }

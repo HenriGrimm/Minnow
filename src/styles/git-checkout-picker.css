@@ -90,7 +90,7 @@
   overflow-wrap: anywhere;
 }
 
-.git-checkout__tab { flex: 1; justify-content: center; }
+.git-checkout__tab { flex: 1; justify-content: center; text-align: center; }
 .git-checkout__tab[aria-selected='true'] { background: var(--mn-accent-soft); color: var(--mn-accent-ink); }
 .git-checkout__search { display: flex; flex-direction: column; flex-shrink: 0; gap: 4px; margin: 10px 2px 6px; }
 .git-checkout__list { min-height: 0; overflow: auto; overscroll-behavior: contain; }
@@ -117,6 +117,7 @@
   text-align: left;
 }
 
+.git-checkout__item > .icon-svg { flex-shrink: 0; }
 .git-checkout__tag { max-width: 85px; font-size: 11px; color: var(--mn-fg-muted); }
 .git-checkout__footer { display: flex; flex-direction: column; flex-shrink: 0; gap: 2px; border-top: 1px solid var(--mn-border); margin-top: 6px; padding-top: 6px; }
 .git-checkout__footer > .git-checkout__detail { padding: 6px 8px; }

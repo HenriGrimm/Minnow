@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
 
-test('Wiki has no close button; toggle, Escape, outside click and replacement restore the caller', async () => {
+test('Wiki close, toggle, Escape, outside click and replacement restore the caller', async () => {
   const win = new Window({ url: 'http://localhost/#/app/code/chat' });
   const page = {
     path: 'documentation/manual/README.md', title: 'User manual', summary: 'Help',
@@ -14,7 +14,7 @@ test('Wiki has no close button; toggle, Escape, outside click and replacement re
     { headers: { 'Content-Type': 'application/json' } },
   );
   installHappyDomGlobals(win, { fetch: fetchMock as typeof fetch });
-  win.document.body.innerHTML = '<button id="wikiTrigger"></button><div id="osStage"></div>';
+  win.document.body.innerHTML = '<button id="wikiTrigger"></button><button id="caption" data-above-shell-overlay></button><div id="osStage"></div>';
   const state = await import('../../src/ui/shell-overlay-state.ts');
   const wiki = await import('../../src/ui/product-wiki.ts');
   const trigger = win.document.getElementById('wikiTrigger')!;
@@ -28,12 +28,20 @@ test('Wiki has no close button; toggle, Escape, outside click and replacement re
   try {
     trigger.click();
     await flush();
-    assert.equal(win.document.getElementById('productWikiClose'), null);
+    const close = win.document.getElementById('productWikiClose')!;
     assert.equal(trigger.getAttribute('aria-expanded'), 'true');
     assert.equal(win.document.getElementById('productWikiOverlay')!.classList.contains('hidden'), false);
     // Heading navigation must preserve the Wiki route and therefore its toggle state.
     win.document.querySelector<HTMLAnchorElement>('.product-wiki__toc-link')?.click();
     assert.match(win.location.hash, /^#\/wiki/);
+    win.document.getElementById('caption')!.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true }));
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    close.click();
+    await flush();
+    assert.equal(win.location.hash, '#/app/code/chat');
+
+    trigger.click();
+    await flush();
     trigger.click();
     await flush();
     assert.equal(trigger.getAttribute('aria-pressed'), 'false');

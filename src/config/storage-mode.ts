@@ -92,6 +92,16 @@ export async function detectConfigServer(): Promise<StorageMode> {
   return storageMode;
 }
 
+let configMetaRequest: Promise<Record<string, unknown> | null> | undefined;
+
+/** Share a single GET among concurrent settings readers, without caching its result. */
+export function readConfigMeta(): Promise<Record<string, unknown> | null> {
+  configMetaRequest ??= fetch('/api/config/meta', { cache: 'no-store' })
+    .then(async (response) => response.ok ? await response.json() as Record<string, unknown> : null)
+    .finally(() => { configMetaRequest = undefined; });
+  return configMetaRequest;
+}
+
 /** Show or hide the settings banner for Vite-only mode. */
 export function refreshConfigStorageBanner(): void {
   if (typeof document === 'undefined') return;

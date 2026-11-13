@@ -27,11 +27,11 @@ Two things happen behind the scenes:
 - Minnow creates its home folder, `%USERPROFILE%\.minnow` on Windows or `~/.minnow` elsewhere, and scaffolds the folders it uses. Empty directories in there are normal; they are waiting for things that have not happened to you yet. See [Where your data lives](../reference/configuration.md).
 - A local tool server starts on port **9473**. It is what lets chat read files, run git, open a terminal, and save your sessions. It listens on loopback only unless you deliberately turn on LAN access.
 
-The **setup wizard** guides you through appearance, a model provider, web search, optional extras, GitHub, the global permission mode, and memory. The appearance page includes **Interface zoom** in the desktop app; theme and zoom changes apply immediately. In a browser, use the browser’s zoom controls. You can skip any optional step and run setup again from **Settings → General → Run setup again**. Setup actions stay within the wizard.
+The **Minnow setup** dialog opens over the workspace picker. Connect a provider and choose a default chat model, or select **Set up later** to open a workspace right away. To reopen the dialog, go to **Settings → General → Run setup again**. To bring an existing Minnow profile with you, choose **Restore from a backup**.
 
-Choose **Minnow**, **Cloud API**, **CLI**, or **External Local Server** for models. Minnow can download a model for your hardware or scan an existing model folder and load a GGUF file in place. CLI supports Claude Code, Codex, and Cursor. Enable an installed, signed-in agent, then choose its default model. **Sign in** keeps setup open while you approve access in your browser, then verifies your login automatically. You can cancel or retry here. Installation shows a command to run in your own terminal; return to setup and scan after installing.
+Choose **Subscriptions**, **Run with Minnow**, **Cloud API**, or **Local server**. Minnow can download a model for your hardware or load a GGUF file from an existing model folder. For Claude Code, Codex, or Cursor, enable an installed, signed-in agent and choose a model. **Sign in** keeps setup open while you approve access in your browser. If you need to install the CLI first, setup shows the command and lets you scan again after installing.
 
-**Web search** recommends Tavily. Create a free account at [tavily.com](https://www.tavily.com/), copy an API key from your [dashboard](https://app.tavily.com/), and paste it into setup. Brave, DuckDuckGo, SearXNG, and turning search off are also available. SearXNG is an optional local install. Extras show each service’s status and progress, with technical details available when needed.
+Use **Settings** to change appearance, permissions, web search, GitHub, or memory. Use **Models → Routing** to choose models for specific tasks.
 
 ## Closing, quitting, and the tray
 

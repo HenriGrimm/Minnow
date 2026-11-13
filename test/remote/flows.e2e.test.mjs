@@ -145,4 +145,33 @@ describe('remote device flows', () => {
       assert.equal(jar.cookie, '', 'the server cleared the cookie');
     }
   });
+
+  test('paired phones can disconnect themselves while another phone remains connected', async () => {
+    await setLanEnabled(true);
+    const origin = `127.0.0.1:${lanPort}`;
+    async function pair(name) {
+      const session = (await host({ method: 'POST', path: '/api/auth/connect-sessions' })).json();
+      const ticket = new URL(session.targets.find(target => target.kind === 'lan').url).hash.slice(3);
+      const jar = new Jar(lanPort, origin);
+      const result = await jar.request({ method: 'POST', path: '/api/auth/claim', body: { ticket, name } });
+      assert.equal(result.status, 200);
+      return { jar, id: result.json().device.id };
+    }
+    const a = await pair('First phone');
+    const b = await pair('Second phone');
+    assert.equal((await host({ method: 'DELETE', path: '/api/auth/session' })).status, 403);
+    assert.equal((await a.jar.request({ method: 'DELETE', path: `/api/auth/devices/${b.id}` })).status, 403);
+    const offOrigin = await rawRequest(lanPort, {
+      method: 'DELETE',
+      path: '/api/auth/session',
+      headers: { Host: origin, Origin: 'https://other.example', Cookie: `minnow_device=${encodeURIComponent(a.jar.cookie)}` },
+    });
+    assert.equal(offOrigin.status, 403);
+    const result = await a.jar.request({ method: 'DELETE', path: '/api/auth/session', body: { deviceId: b.id } });
+    assert.equal(result.status, 200);
+    assert.equal(a.jar.cookie, '');
+    assert.equal((await a.jar.request({ path: '/api/auth/session' })).status, 401);
+    assert.equal((await b.jar.request({ path: '/api/auth/session' })).status, 200);
+    assert.equal(listDevices().some(device => device.id === a.id), false);
+  });
 });

@@ -48,7 +48,8 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
         await assertIdentity();
         const uncertain = db.prepare("SELECT execution_id FROM chat_workspace_checkpoints WHERE workspace_key=? AND state IN ('executing','uncertain') AND NOT (execution_id=? AND checkpoint_id=? AND state='executing') LIMIT 1")
           .get(workspaceKey, executionId, activeId);
-        if (uncertain) throw new ChatContractError('recovery_required', 'An interrupted checkout mutation needs explicit recovery before another write');
+        if (uncertain) throw new ChatContractError(uncertain.execution_id === executionId ? 'recovery_required' : 'ownership_conflict',
+          'Interrupted work in this checkout is still being resolved. Try the edit again once it has stopped.');
       };
       const write = (id, state, payload) => {
         repository.assertFence(chatId, fence);

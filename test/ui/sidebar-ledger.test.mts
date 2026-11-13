@@ -101,26 +101,43 @@ test('Today and Older sections; finished work archives in one go and Undo brings
   assert.equal(toast.hidden, true);
 });
 
-test('row archive button archives with Undo; the Archive view searches, groups and bulk-restores', () => {
+test('Graphite archives with Undo and searches, groups and bulk-restores in the sidebar', () => {
   const recent = chat('recent', 10);
-  const old = chat('old', 9, { archivedAt: Date.now() - 30 * 24 * 60 * 60 * 1000 });
+  const old = chat('old', 9, { archivedAt: Date.now() - 30 * 24 * 60 * 60 * 1000, gitBranch: 'feat/voice-over' });
   const other = chat('other', 8, { archivedAt: Date.now() - 1000, name: 'Spike voice composer' });
   const list = setup([recent, old, other]);
+  document.documentElement.classList.add('mn-graphite-workspace', 'mn-graphite-sidebar-open');
+  document.body.insertAdjacentHTML('beforeend', `
+    <footer id="osGraphiteSidebarFooter"></footer>
+    <main id="mainColumn"><div id="chatArea">Current transcript</div></main>
+  `);
+  const stage = document.getElementById('mainColumn')!;
+  const stageBefore = stage.outerHTML;
+  const routeBefore = window.location.hash;
   renderSidebar();
   list.querySelector<HTMLButtonElement>('[data-chat-id="recent"] .chat-item-archive')!.click();
   assert.equal(isChatArchived(recent), true);
   assert.match(document.getElementById('chatListToast')!.textContent!, /Archived “recent”/);
 
-  document.querySelector<HTMLButtonElement>('#chatListViews [data-chat-view="archive"]')!.click();
+  const archive = document.querySelector<HTMLButtonElement>('#osGraphiteSidebarFooter [data-chat-view="archive"]')!;
+  archive.focus();
+  archive.click();
+  assert.equal(stage.outerHTML, stageBefore);
+  assert.equal(window.location.hash, routeBefore);
+  assert.equal(archive.getAttribute('aria-controls'), list.id);
+  assert.equal(archive.getAttribute('aria-pressed'), 'true');
   assert.deepEqual(sections(list), ['this week', 'earlier']);
   assert.deepEqual(rowIds(list), ['recent', 'other', 'old']);
   assert.equal(list.querySelector<HTMLElement>('[data-chat-id="old"] .chat-item-archive')!.textContent, 'Restore');
 
   const search = list.querySelector<HTMLInputElement>('#chatArchiveSearch')!;
   assert.equal(search.placeholder, 'Search 3 archived chats');
-  search.value = 'voice'; search.dispatchEvent(new win!.Event('input'));
+  assert.equal(document.activeElement, search);
+  search.value = 'voice composer'; search.dispatchEvent(new win!.Event('input'));
   assert.deepEqual(rowIds(list), ['other']);
   assert.equal(list.querySelector('#chatArchiveSearch'), search, 'the search box survives repaint');
+  search.value = 'FEAT/VOICE'; search.dispatchEvent(new win!.Event('input'));
+  assert.deepEqual(rowIds(list), ['old']);
   search.value = ''; search.dispatchEvent(new win!.Event('input'));
 
   const bar = list.querySelector<HTMLElement>('.chat-archive-bulk')!;
@@ -134,6 +151,13 @@ test('row archive button archives with Undo; the Archive view searches, groups a
   assert.equal(isChatArchived(old), false); assert.equal(isChatArchived(other), false);
   assert.deepEqual(rowIds(list), ['recent']);
   assert.match(document.getElementById('chatListToast')!.textContent!, /Restored 2 chats to Working/);
+
+  const working = document.querySelector<HTMLButtonElement>('#chatListViews [data-chat-view="working"]')!;
+  working.focus();
+  working.click();
+  assert.deepEqual(rowIds(list), ['old', 'other']);
+  assert.equal(document.activeElement, archive);
+  assert.equal(stage.outerHTML, stageBefore);
 });
 
 test('Needs you answers a single-choice question from the sidebar and leaves a resuming receipt', async () => {
@@ -174,39 +198,4 @@ test('Needs you answers a single-choice question from the sidebar and leaves a r
   assert.deepEqual(asking.agentRequestSummary, []);
   assert.equal(section.querySelector('.needs-you-card'), null);
   assert.match(section.querySelector('.needs-you-done')!.textContent!, /Answered: Remove it now.*resuming/);
-});
-
-test('header: the checked-out branch with push / pull counts and changed files', () => {
-  const list = setup([chat('one')]);
-  document.body.insertAdjacentHTML('afterbegin', '<button id="sidebarBranch" hidden><span class="chat-sidebar-branch__name"></span><span class="chat-sidebar-branch__sync"></span><span class="chat-sidebar-branch__changed"></span></button>');
-  renderSidebar();
-  const branch = document.getElementById('sidebarBranch')!;
-  assert.equal(branch.hidden, true, 'hidden until git facts land');
-
-  resetSidebarGitStateForTests({ cwd: WS, current: 'codex/persistent-agent-chats', ahead: 2, behind: 0, changed: 3 });
-  renderSidebar();
-  assert.equal(branch.hidden, false);
-  assert.equal(branch.querySelector('.chat-sidebar-branch__name')!.textContent, 'codex/persistent-agent-chats');
-  assert.equal(branch.querySelector('.chat-sidebar-branch__sync')!.textContent, '↑2');
-  assert.equal(branch.querySelector('.chat-sidebar-branch__changed')!.textContent, '3 changed');
-  assert.equal(branch.getAttribute('aria-label'), 'Branch codex/persistent-agent-chats, 2 commits to push, 3 changed files. Switch branch or worktree');
-
-  resetSidebarGitStateForTests({ cwd: WS, current: 'main', ahead: 0, behind: 0, changed: 0 });
-  renderSidebar();
-  assert.equal(branch.querySelector('.chat-sidebar-branch__sync')!.textContent, '');
-  assert.match(branch.getAttribute('aria-label')!, /Branch main, up to date\./);
-  assert.ok(list);
-});
-
-test('header outside git: the Chats title holds the slot; inside git the branch replaces it', () => {
-  setup([chat('one')]);
-  document.body.insertAdjacentHTML('afterbegin', '<span id="sidebarTitle">Chats</span><button id="sidebarBranch" hidden><span class="chat-sidebar-branch__name"></span><span class="chat-sidebar-branch__sync"></span><span class="chat-sidebar-branch__changed"></span></button>');
-  resetSidebarGitStateForTests({ cwd: WS });
-  renderSidebar();
-  assert.equal(document.getElementById('sidebarBranch')!.hidden, true);
-  assert.equal(document.getElementById('sidebarTitle')!.hidden, false);
-  resetSidebarGitStateForTests({ cwd: WS, current: 'main' });
-  renderSidebar();
-  assert.equal(document.getElementById('sidebarBranch')!.hidden, false);
-  assert.equal(document.getElementById('sidebarTitle')!.hidden, true);
 });

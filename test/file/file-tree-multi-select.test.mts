@@ -338,3 +338,57 @@ describe('dropNestedEntries', () => {
     );
   });
 });
+
+test('keyboard navigation keeps one tab stop and restores focus on rebuilt rows', async (t) => {
+  setupDom();
+  launchInstance('code');
+  setFileTreeServerAvailable(true);
+  await renderTree();
+  const { initFileTreeCrud, renderFileTree } = await import('../../src/ui/file-tree.ts');
+  initFileTreeCrud();
+
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({ result: '[file] a.ts\n[file] b.ts\n[file] c.ts' });
+
+  const press = (key: string, options: KeyboardEventInit = {}) =>
+    document.activeElement!.dispatchEvent(new testWindow!.KeyboardEvent('keydown', {
+      key, bubbles: true, cancelable: true, ...options,
+    }));
+  const assertFocused = (path: string) => {
+    assert.equal(document.activeElement, rowFor(path));
+    assert.deepEqual(Array.from(document.querySelectorAll('#fileTreeHost [tabindex="0"]')), [rowFor(path)]);
+  };
+
+  rowFor('src').focus();
+  assertFocused('src');
+  assert.equal(rowFor('src').querySelector('.file-tree-expand')?.getAttribute('aria-hidden'), 'true');
+  const children = document.getElementById(rowFor('src').getAttribute('aria-owns')!);
+  assert.equal(children?.getAttribute('role'), 'group');
+  assert.equal(rowFor('src/a.ts').getAttribute('aria-level'), '2');
+
+  press('ArrowLeft');
+  assertFocused('src');
+  assert.equal(rowFor('src').getAttribute('aria-expanded'), 'false');
+  press('ArrowRight');
+  assertFocused('src');
+  assert.equal(rowFor('src').getAttribute('aria-expanded'), 'true');
+  press('ArrowRight');
+  assertFocused('src/a.ts');
+  press(' ');
+  assert.equal(rowFor('src/a.ts').getAttribute('aria-selected'), 'true');
+  press('ArrowDown', { shiftKey: true });
+  press('ArrowDown', { shiftKey: true });
+  assert.deepEqual(getSelectedTreePaths(), ['src/a.ts', 'src/b.ts', 'src/c.ts']);
+  renderFileTree();
+  assertFocused('src/c.ts');
+  press('ArrowLeft');
+  assertFocused('src');
+  press('End');
+  assertFocused('package.json');
+  press('Home');
+  assertFocused('src');
+  // Leave the async directory refresh settled before removing the browser globals.
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assertFocused('src');
+});

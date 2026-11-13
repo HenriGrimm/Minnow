@@ -586,7 +586,7 @@ details[open] > .settings-routing-fallback__summary::before {
 }
 @container (max-width: 520px) {
   .settings-routing-page { gap: 20px; }
-  .settings-routing-page h2.settings-routing-page__title { font-size: 23px; }
+  .settings-routing-page h2.settings-routing-page__title { font-size: var(--mn-type-4xl); }
   .settings-routing-page .model-routing-form__columns { display: none; }
   .settings-routing-page .model-routing-form__row { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .settings-routing-page .model-routing-form__row .model-select-inner { margin-left: 40px; width: calc(100% - 40px); }

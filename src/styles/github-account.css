@@ -17,8 +17,6 @@
 .github-account { gap: 24px; max-width: 72ch; }
 .github-account__intro { display: flex; align-items: center; gap: 16px; }
 .github-account__intro p { margin-top: 8px; color: var(--mn-fg-muted); }
-.github-account__mark { flex: 0 0 40px; }
-.github-account__mark svg { display: block; width: 40px; height: 40px; }
 .github-account__features { display: grid; gap: 16px; padding: 0; margin: 0; list-style: none; }
 .github-account__features li { display: grid; grid-template-columns: 110px 1fr; gap: 12px; }
 .github-account__features strong { font-size: 13px; font-weight: 600; }

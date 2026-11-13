@@ -117,7 +117,7 @@ test('incomplete successful promotion cannot send a model message, clear the dra
 });
 
 
-for (const bindingSource of ['catalog', 'remembered'] as const) test(`real send resolves its ${bindingSource} provider, saves, promotes and admits without a renderer generation`, async t => {
+for (const scenario of ['catalog', 'remembered', 'overlapping-save', 'competing-save'] as const) test(`real send handles ${scenario} through saved chat promotion`, async t => {
   const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path'), http = await import('node:http');
   const { getSessionsDb, closeSessionsDb } = await import('../../server/config/sessions-db.js');
   const { resetMinnowHomeCache } = await import('../../server/config/home.js');
@@ -128,7 +128,7 @@ for (const bindingSource of ['catalog', 'remembered'] as const) test(`real send 
   const { createChatPresentation } = await import('../../server/chats/presentation.js');
   const { createChatPolicy } = await import('../../server/chats/policy.js');
   const { createChatCaller, createChatProjectRegistry, resolveProjectScope } = await import('../../server/chats/caller.js');
-  const { loadSessionsFromStorage, findChatById } = await import('../../src/state/sessions.ts');
+  const { loadSessionsFromStorage, findChatById, touchChat, saveSessionsNow } = await import('../../src/state/sessions.ts');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-route-send-')), prior = process.env.MINNOW_HOME;
   process.env.MINNOW_HOME = root; resetMinnowHomeCache();
   const db = getSessionsDb(), repository = createChatRepository({ db });
@@ -141,9 +141,30 @@ for (const bindingSource of ['catalog', 'remembered'] as const) test(`real send 
   repository.createChat({ id: 'ordinary', name: 'New root', workspacePath: root, providerId: '', modelId: 'model', modeId: 'build' });
   db.prepare('DELETE FROM chat_conversation_state WHERE chat_id=?').run('ordinary');
   const presentation = createChatPresentation({ repository });
+  let firstCapture = true;
+  let holdSaveResponse = false;
+  let saveCommitted!: () => void, releaseSaveResponse!: () => void;
+  const committed = new Promise<void>(resolve => { saveCommitted = resolve; });
+  const release = new Promise<void>(resolve => { releaseSaveResponse = resolve; });
+  t.after(releaseSaveResponse);
   const service = createChatCommandService({ repository, context,
     resolveModelSelection: ({ selection }: any) => selection,
-    captureProfile: ({ target, selection }: any) => ({ profileId: 'profile-' + target.chat.id, profileVersion: 1, snapshot: { policy, modelSelection: selection } }) });
+    captureProfile: async ({ target, selection }: any) => {
+      if (firstCapture) {
+        firstCapture = false;
+        if (scenario === 'overlapping-save') {
+          const chat = findChatById(target.chat.id)!;
+          touchChat(chat);
+          holdSaveResponse = true;
+          saveSessionsNow();
+          await committed;
+        } else if (scenario === 'competing-save') {
+          // A different viewer's commit is invisible to this window's save receipts.
+          db.prepare('UPDATE chat_revisions SET revision=revision+1, write_revision=revision+1 WHERE chat_id=?').run(target.chat.id);
+        }
+      }
+      return { profileId: 'profile-' + target.chat.id, profileVersion: 1, snapshot: { policy, modelSelection: selection } };
+    } });
   let executions = 0;
   service.registerHost({ id: 'server', kind: 'server', execute: async ({ command, fence }: any) => {
     executions++;
@@ -160,7 +181,21 @@ for (const bindingSource of ['catalog', 'remembered'] as const) test(`real send 
     resetMinnowHomeCache(); fs.rmSync(root, { recursive: true, force: true });
   });
   const base = `http://127.0.0.1:${(server.address() as any).port}`, calls: { url: string; method: string }[] = [];
-  globalThis.fetch = (input, init) => { calls.push({ url: String(input), method: init?.method ?? 'GET' }); return realFetch(new URL(String(input), base), init); };
+  globalThis.fetch = async (input, init) => {
+    const url = String(input), method = init?.method ?? 'GET';
+    calls.push({ url, method });
+    const response = await realFetch(new URL(url, base), init);
+    if (holdSaveResponse && url === '/api/config/sessions' && method === 'PATCH') {
+      holdSaveResponse = false;
+      saveCommitted();
+      await release;
+    }
+    if (scenario === 'overlapping-save' && url.endsWith('/ordinary-routing') && response.status === 409) {
+      // The save has committed, but the viewer receives its receipt just after the rejection.
+      setTimeout(releaseSaveResponse, 20);
+    }
+    return response;
+  };
   setStorageModeForTests('server');
   const advertised = await (await fetch('/api/chats/capabilities')).json();
   assert.equal(advertised.ordinaryExecution.reason, 'released');
@@ -168,8 +203,17 @@ for (const bindingSource of ['catalog', 'remembered'] as const) test(`real send 
   await loadSessionsFromStorage({ force: true });
   const value = findChatById('ordinary')!; value.composerDraft = 'Hello server';
   assert.equal(Boolean(value.providerId), false, 'fresh roots may retain only the inherited model id');
-  if (bindingSource === 'catalog') setModelCatalogValues([encodeModelSelectKey('provider', 'model')]);
+  if (scenario !== 'remembered') setModelCatalogValues([encodeModelSelectKey('provider', 'model')]);
   else await persistDefaultModelValue(encodeModelSelectKey('provider', 'model'));
+  if (scenario === 'competing-save') {
+    await assert.rejects(sendProgrammaticChatText(value, 'Hello server'), /Your draft is kept/);
+    assert.equal(value.composerDraft, 'Hello server');
+    assert.equal(repository.getChat('ordinary').chatCommandVersion, undefined);
+    assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/ordinary-routing')).length, 1);
+    assert.equal(calls.some(call => /\/(commands|generations)/.test(call.url)), false);
+    assert.equal(executions, 0);
+    return;
+  }
   await sendProgrammaticChatText(value, 'Hello server'); await service.idle('ordinary');
   assert.equal(repository.getChat('ordinary')?.providerId, 'provider', 'resolved binding is durably saved before promotion');
   assert.equal(value.chatCommandVersion, 1); assert.equal(value.composerDraft, undefined);
@@ -177,5 +221,7 @@ for (const bindingSource of ['catalog', 'remembered'] as const) test(`real send 
   const promote = calls.findIndex(call => call.method === 'POST' && call.url.endsWith('/ordinary-routing'));
   assert.ok(promote > 0 && calls.slice(0, promote).some(call => call.method === 'PATCH' || call.method === 'PUT'), 'durable session reconciliation precedes promotion');
   assert.equal(calls.filter(call => call.url.includes('/commands') && call.method === 'POST').length, 1);
+  assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/ordinary-routing')).length,
+    scenario === 'overlapping-save' ? 2 : 1);
   assert.equal(calls.some(call => call.url.includes('/api/generations')), false);
 });

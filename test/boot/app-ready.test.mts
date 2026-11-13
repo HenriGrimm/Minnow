@@ -142,6 +142,27 @@ function applyAppCss(win: Window): void {
   win.document.head.appendChild(style);
 }
 
+test('an occluded renderer can become ready when animation frames are paused', async () => {
+  const win = new Window();
+  installWindow(win);
+  const nextFrame = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = () => 0;
+  try {
+    applyAppCss(win);
+    scheduleMarkAppReady({ styleTimeoutMs: 0 });
+    markChromeReady();
+    const deadline = Date.now() + 1500;
+    while (!win.document.documentElement.classList.contains('app-ready') && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.ok(win.document.documentElement.classList.contains('app-ready'));
+  } finally {
+    globalThis.requestAnimationFrame = nextFrame;
+    resetAppReadyForTests();
+    win.close();
+  }
+});
+
 describe('isAppShellStyled', () => {
   let win: Window;
 

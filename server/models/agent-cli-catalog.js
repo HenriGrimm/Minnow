@@ -385,8 +385,11 @@ export function claudeCatalogRows(models, fallback = []) {
       ?? (/^claude-(?:opus|sonnet|haiku)-5-5/.test(resolved) ? 'medium' : known?.reasoning?.default ?? 'high');
     const label = typeof model.displayName === 'string' ? model.displayName.trim() : '';
     const name = label ? (/^Claude\b/i.test(label) ? label : `Claude ${label}`) : undefined;
+    // Fable 5.2 requires an explicit native /fast opt-in even with fastMode set.
+    const supportsFastMode = model.supportsFastMode === true && !/^claude-fable-5-2\b/i.test(resolved);
     const row = { id, type: 'llm', state: 'loaded', owned_by: 'anthropic', api: 'agent-cli-v1',
       catalogVision: true,
+      ...(supportsFastMode ? { supportsFastMode: true } : {}),
       max_context_length: Number.isFinite(advertisedContext) && advertisedContext > 0
         ? advertisedContext : known?.max_context_length ?? (native1m ? 1_000_000 : 200_000),
       ...(name ? { display_name: `${name}${id !== resolved || /^(?:sonnet|opus|haiku|fable)$/.test(id) ? ' (CLI default)' : ''}` } : {}),
@@ -407,6 +410,10 @@ export function codexCatalogRows(models) {
       const id = typeof model.slug === 'string' ? model.slug.trim() : '';
       if (!id) return null;
       const context = Number(model.context_window);
+      const tiers = model.service_tiers;
+      const supportsFastMode = Array.isArray(tiers) && tiers.length
+        ? tiers.some(tier => tier?.id === 'priority')
+        : Array.isArray(model.additional_speed_tiers) && model.additional_speed_tiers.includes('fast');
       return {
         id,
         ...(typeof model.display_name === 'string' ? { display_name: model.display_name } : {}),
@@ -415,6 +422,7 @@ export function codexCatalogRows(models) {
         owned_by: 'openai',
         api: 'agent-cli-v1',
         catalogVision: !Array.isArray(model.input_modalities) || model.input_modalities.includes('image'),
+        ...(supportsFastMode ? { supportsFastMode: true } : {}),
         ...(Number.isFinite(context) && context > 0 ? { max_context_length: context } : {}),
         reasoning: normalizeCodexReasoning(model.supported_reasoning_levels, model.default_reasoning_level),
         ...(Number.isFinite(model.priority) ? { priority: model.priority } : {}),

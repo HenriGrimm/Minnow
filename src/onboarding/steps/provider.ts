@@ -7,6 +7,7 @@ import {
   updateProvider,
   updateProviderSecrets,
   listProviders,
+  testDraftProviderConnection,
   type CreateProviderPayload,
 } from '../../providers/store';
 import type { ProviderPublic } from '../../providers/types';
@@ -26,10 +27,11 @@ import {
   recordStepProgress,
 } from '../state-core';
 
-let selectedPath: OnboardingContext['providerPath'] = null;
 let probeResults: ProviderProbeResult[] = [];
+let providerProbes: Promise<ProviderProbeResult[]> | null = null;
 let localProviderId = '';
 let localBaseUrl = '';
+let verifiedLocalProvider: CreateProviderPayload | null = null;
 let cloudPreset = 'openrouter';
 let cloudBaseUrl = 'https://openrouter.ai/api';
 let cloudApiKey = '';
@@ -41,18 +43,18 @@ let cloudProviderLoadGen = 0;
 let connectionGen = 0;
 
 function choosePath(path: OnboardingContext['providerPath'], actions: OnboardingStepActions): void {
-  selectedPath = path;
   connectionGen += 1;
   connectionStatus = 'idle';
   connectionError = '';
   localProviderId = '';
+  verifiedLocalProvider = null;
   actions.patchContext({ providerPath: path, providerId: null, modelId: null });
   actions.next();
 }
 
 export const providerChoiceStep: OnboardingStep = {
   id: 'provider-choice',
-  title: 'How will you run models?',
+  title: 'Connect a provider',
   canSkip: true,
 
   isApplicable() {
@@ -62,27 +64,29 @@ export const providerChoiceStep: OnboardingStep = {
   render(container, ctx, actions) {
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
-    selectedPath = ctx.providerPath;
-
     renderStepHeader(container, providerChoiceStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(
       el(
         'p',
         'mn-onboarding-step-desc',
-        'Choose what powers your agents. You can add more connections later.',
+        'Choose how you want to run your first agent.',
       ),
     );
 
-    const grid = el('div', 'mn-onboarding-choice-grid');
-    const detected = probeResults.find((p) => p.reachable);
-    const detectBadge = detected ? `${detected.label} detected` : undefined;
+    const grid = el('div', 'mn-onboarding-choice-grid mn-onboarding-provider-grid');
+
+    grid.appendChild(createChoiceCard({
+      title: 'Subscriptions',
+      description: 'Use Claude Code, Codex, or Cursor with your existing account.',
+      selected: ctx.providerPath === 'cli',
+      onSelect: () => choosePath('cli', actions),
+    }));
 
     grid.appendChild(
       createChoiceCard({
-        title: 'Minnow',
-        description: 'Run models on this machine. Download a model or use your existing collection.',
-        recommended: ctx.serverAvailable && !detected,
-        selected: selectedPath === 'managed',
+        title: 'Run with Minnow',
+        description: 'Download a model or use one you already have.',
+        selected: ctx.providerPath === 'managed',
         onSelect: () => {
           choosePath('managed', actions);
         },
@@ -92,36 +96,36 @@ export const providerChoiceStep: OnboardingStep = {
     grid.appendChild(
       createChoiceCard({
         title: 'Cloud API',
-        description: 'OpenAI-compatible hosted models with an API key.',
-        selected: selectedPath === 'cloud',
+        description: 'Use a hosted model with an API key.',
+        selected: ctx.providerPath === 'cloud',
         onSelect: () => {
           choosePath('cloud', actions);
         },
       }),
     );
 
-    grid.appendChild(createChoiceCard({
-      title: 'CLI',
-      description: 'Claude Code, Codex, or Cursor with your existing account.',
-      selected: selectedPath === 'cli',
-      onSelect: () => choosePath('cli', actions),
-    }));
-    grid.appendChild(createChoiceCard({
-      title: 'External Local Server',
-      description: 'Connect to LM Studio, Ollama, or another local model server.',
-      badge: detectBadge,
-      selected: selectedPath === 'local',
+    const local = createChoiceCard({
+      title: 'Local server',
+      description: 'Connect to LM Studio, Ollama, or another server.',
+      selected: ctx.providerPath === 'local',
       onSelect: () => choosePath('local', actions),
-    }));
+    });
+    grid.append(local);
     container.appendChild(grid);
+    void providerProbes?.then((results) => {
+      const hit = firstReachableProbe(results);
+      if (hit) local.querySelector('.mn-onboarding-choice__head')?.append(
+        el('span', 'mn-onboarding-choice__badge', `${hit.label} detected`),
+      );
+    });
     actions.setPrimaryEnabled(false);
     actions.setPrimaryLabel('Continue');
   },
 
   async commit(ctx) {
     ctx.state = recordStepProgress(ctx.state, 'provider-choice', {
-      done: Boolean(selectedPath),
-      data: { path: selectedPath },
+      done: Boolean(ctx.providerPath),
+      data: { path: ctx.providerPath },
     });
   },
 };
@@ -135,7 +139,7 @@ export const providerLocalStep: OnboardingStep = {
     return ctx.providerPath === 'local';
   },
 
-  render(container, ctx, actions) {
+  render(container, _ctx, actions) {
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
 
@@ -146,22 +150,27 @@ export const providerLocalStep: OnboardingStep = {
         'p',
         'mn-onboarding-step-desc',
         hit
-          ? `We found ${hit.label} at ${hit.baseUrl}. Confirm to register it.`
-          : 'No server detected on common ports. Enter your base URL below.',
+          ? `Found ${hit.label}. Confirm the connection to continue.`
+          : 'Enter the address of your model server.',
       ),
     );
 
     const statusRow = el('div', 'mn-onboarding-status-row');
-    const status = createStatusPill(
-      connectionStatus === 'ok' ? 'ok' : connectionStatus === 'err' ? 'err' : 'pending',
-      connectionStatus === 'ok'
-        ? 'Reachable'
-        : connectionStatus === 'err'
-          ? connectionError || 'Unreachable'
-          : 'Not tested',
-    );
+    statusRow.setAttribute('role', 'status');
+    const status = createStatusPill('pending', 'Not tested');
+    const recovery = el('p', 'mn-onboarding-notice',
+      'Check that your model server is running and that its address and port match the URL below. Then test again.');
+    recovery.id = 'onboarding-local-connection-help';
+    const paintStatus = (testing = false) => {
+      const failed = connectionStatus === 'err';
+      const connected = connectionStatus === 'ok';
+      status.className = `mn-onboarding-status mn-onboarding-status--${failed ? 'err' : connected ? 'ok' : 'pending'}`;
+      status.textContent = failed ? 'Could not connect to the model server'
+        : connected ? 'Connected' : testing ? 'Testing connection…' : 'Not tested';
+      recovery.hidden = !failed;
+    };
     statusRow.appendChild(status);
-    container.appendChild(statusRow);
+    container.append(statusRow, recovery);
 
     if (!localBaseUrl) {
       localBaseUrl = hit?.baseUrl ?? 'http://localhost:1234';
@@ -172,44 +181,66 @@ export const providerLocalStep: OnboardingStep = {
     urlInput.placeholder = 'http://localhost:1234';
     urlInput.value = localBaseUrl;
     urlInput.autocomplete = 'off';
+    urlInput.required = true;
     urlInput.setAttribute('aria-label', 'Local server base URL');
+    urlInput.setAttribute('aria-describedby', recovery.id);
     urlInput.addEventListener('input', () => {
       localBaseUrl = urlInput.value.trim();
       connectionGen += 1;
       connectionStatus = 'idle';
       localProviderId = '';
-      status.textContent = 'Not tested';
-      status.className = 'mn-onboarding-status mn-onboarding-status--pending';
+      verifiedLocalProvider = null;
+      paintStatus();
       actions.setPrimaryEnabled(false);
     });
     container.appendChild(urlInput);
 
     const testBtn = el('button', 'mn-onboarding-secondary-btn', 'Test connection');
     testBtn.type = 'button';
-    testBtn.addEventListener('click', () => {
+    const checkConnection = async () => {
+      if (!urlInput.reportValidity()) return;
       localBaseUrl = urlInput.value.trim();
       testBtn.disabled = true;
-      void testLocalConnection(localBaseUrl, actions, container, ctx).finally(() => { testBtn.disabled = false; });
-    });
+      const connection = testLocalConnection(localBaseUrl, actions, container);
+      paintStatus(true);
+      try {
+        await connection;
+      } finally {
+        testBtn.disabled = false;
+        paintStatus();
+      }
+    };
+    testBtn.addEventListener('click', () => void checkConnection());
     container.appendChild(testBtn);
 
     actions.setPrimaryLabel('Continue');
     actions.setPrimaryEnabled(connectionStatus === 'ok');
+    paintStatus();
 
     if (hit && connectionStatus === 'idle') {
-      void testLocalConnection(localBaseUrl, actions, container, ctx);
+      void checkConnection();
+    } else if (!hit && connectionStatus === 'idle') {
+      const generation = connectionGen;
+      void providerProbes?.then((results) => {
+        const detected = firstReachableProbe(results);
+        if (!detected || connectionGen !== generation || !urlInput.isConnected) return;
+        urlInput.value = detected.baseUrl;
+        void checkConnection();
+      });
     }
     const view = container.firstElementChild;
     return () => { if (container.firstElementChild === view) connectionGen += 1; };
   },
 
   async commit(ctx) {
-    if (!localProviderId) return;
+    if (!verifiedLocalProvider) return;
+    const result = await ensureOnboardingProvider(verifiedLocalProvider);
+    if (!result.ok) throw new Error(result.error);
     ctx.state = recordStepProgress(ctx.state, 'provider-local', {
       done: true,
-      data: { path: 'local', providerId: localProviderId },
+      data: { path: 'local', providerId: result.provider.id },
     });
-    ctx.providerId = localProviderId;
+    ctx.providerId = result.provider.id;
   },
 };
 
@@ -327,14 +358,6 @@ export const providerCloudStep: OnboardingStep = {
   },
 };
 
-function rerenderLocal(
-  container: HTMLElement,
-  ctx: OnboardingContext,
-  actions: OnboardingStepActions,
-): void {
-  providerLocalStep.render(container, ctx, actions);
-}
-
 function rerenderCloud(
   container: HTMLElement,
   ctx: OnboardingContext,
@@ -421,12 +444,11 @@ async function ensureOnboardingProvider(
 async function testLocalConnection(
   baseUrl: string,
   actions: OnboardingStepActions,
-  container?: HTMLElement,
-  ctx?: OnboardingContext,
+  container: HTMLElement,
 ): Promise<void> {
   const gen = ++connectionGen;
-  const view = container?.firstElementChild;
-  const current = () => gen === connectionGen && (!container || container.isConnected && container.firstElementChild === view);
+  const view = container.firstElementChild;
+  const current = () => gen === connectionGen && container.isConnected && container.firstElementChild === view;
   connectionStatus = 'idle';
   connectionError = '';
   localBaseUrl = baseUrl;
@@ -437,43 +459,36 @@ async function testLocalConnection(
       id: `onboarding-local-${Date.now()}`,
       label: 'Local server',
       baseUrl,
-      apiKind: baseUrl.includes('1234') ? 'lm-studio-v0' : 'openai-v1',
+      apiKind: 'openai-v1',
       reachable: false,
     } as ProviderProbeResult);
 
   const paths = getDefaultPaths(match.apiKind);
+  const payload: CreateProviderPayload = {
+    id: match.id,
+    label: match.label,
+    baseUrl,
+    apiKind: match.apiKind,
+    enabled: true,
+    modelsPath: paths.modelsPath,
+    chatCompletionsPath: paths.chatCompletionsPath,
+  };
+  verifiedLocalProvider = null;
   try {
-    const result = await ensureOnboardingProvider({
-      id: match.id,
-      label: match.label,
+    await testDraftProviderConnection({
       baseUrl,
       apiKind: match.apiKind,
-      enabled: true,
       modelsPath: paths.modelsPath,
-      chatCompletionsPath: paths.chatCompletionsPath,
     });
     if (!current()) return;
-
-    if (result.ok === false) {
-      connectionStatus = 'err';
-      connectionError = result.error;
-      actions.setPrimaryEnabled(false);
-      if (container && ctx) rerenderLocal(container, ctx, actions);
-      return;
-    }
-
-    await fetchModelsForProvider(result.provider, new AbortController().signal);
-    if (!current()) return;
     connectionStatus = 'ok';
-    localProviderId = result.provider.id;
+    verifiedLocalProvider = payload;
     actions.setPrimaryEnabled(true);
-  } catch (err) {
+  } catch {
     if (!current()) return;
     connectionStatus = 'err';
-    connectionError = err instanceof Error ? err.message : 'Connection failed';
     actions.setPrimaryEnabled(false);
   }
-  if (container && ctx) rerenderLocal(container, ctx, actions);
 }
 
 async function testCloudConnection(
@@ -549,14 +564,19 @@ async function testCloudConnection(
   if (container && ctx) rerenderCloud(container, ctx, actions);
 }
 
-/** Warm probe cache before provider-choice renders. */
-export async function warmProviderProbes(): Promise<void> {
+/** Start discovery without delaying the first screen. */
+export function warmProviderProbes(): void {
   connectionGen += 1;
   connectionStatus = 'idle';
   connectionError = '';
   localProviderId = '';
   localBaseUrl = '';
+  verifiedLocalProvider = null;
   cloudApiKey = '';
   configuredCloudPresets.clear();
-  probeResults = await probeLocalProviders();
+  probeResults = [];
+  providerProbes = probeLocalProviders().then((results) => {
+    probeResults = results;
+    return results;
+  });
 }

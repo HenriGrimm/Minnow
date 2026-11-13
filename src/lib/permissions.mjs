@@ -269,6 +269,10 @@ const READ_ONLY_GIT = new Set([
   'shortlog', 'grep', 'reflog', 'cat-file', 'merge-base', 'name-rev', 'whatchanged',
 ]);
 
+function isGitVersionProbe(args) {
+  return args.length === 1 && ['--version', '-v', 'version'].includes(args[0]);
+}
+
 /** Reject shell forms that can change state even when the leading command
  * looks like discovery to the general approval classifier. */
 function isClampedShellRead(command) {
@@ -278,6 +282,7 @@ function isClampedShellRead(command) {
     const [bin, sub, ...args] = tokenize(text);
     if (!bin || !/^[\w-]+$/.test(bin)) return false;
     if (bin === 'git') {
+      if (isGitVersionProbe([sub, ...args])) return true;
       if (sub === 'reflog') return args.length === 0 || args[0] === 'show';
       if (sub === 'branch' || sub === 'remote') return args.length === 0;
       if (sub === 'config') return args[0] === '--get';
@@ -408,7 +413,7 @@ export function classifyShellCommand(command, { workspaceRoot = '', homeDir = ''
     let segmentReadOnly = READ_ONLY_COMMANDS.has(bin) || isVersionProbe(tokens);
     if (bin === 'git') {
       const sub = tokens.find((t, i) => i > 0 && !t.startsWith('-')) ?? '';
-      segmentReadOnly = READ_ONLY_GIT.has(sub) ||
+      segmentReadOnly = isGitVersionProbe(tokens.slice(1)) || READ_ONLY_GIT.has(sub) ||
         (sub === 'branch' && !tokens.some((t) => /^-(d|D|m|M|c|C)$|^--(delete|move|copy)$/.test(t))) ||
         (sub === 'remote' && tokens.length <= 3) || (sub === 'config' && tokens.includes('--get'));
     } else if (bin === 'find') {

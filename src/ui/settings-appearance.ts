@@ -9,6 +9,7 @@ import { getChatView, setChatView } from '../appearance/chat-view';
 import { mountDesktopZoomControl } from './desktop-zoom-control';
 
 let cleanupZoom: (() => void) | undefined;
+let cleanupColors: (() => void) | undefined;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -21,51 +22,33 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Miniature chat bench that reflects live theme tokens. */
-function appendAppearanceLivePreview(mount: HTMLElement): void {
-  const figure = el('figure', 'settings-appearance-preview');
-  figure.setAttribute('aria-label', 'Theme preview');
-
-  figure.appendChild(el('figcaption', 'settings-appearance-preview__label', 'Live preview'));
-
-  const bench = el('div', 'settings-appearance-preview__bench');
-
-  const thread = el('div', 'settings-appearance-preview__thread');
-  thread.append(
-    el('div', 'settings-appearance-preview__msg settings-appearance-preview__msg--user', 'Summarize this diff'),
-    el(
-      'div',
-      'settings-appearance-preview__msg settings-appearance-preview__msg--asst',
-      'Three files changed, mostly styling.',
-    ),
-  );
-
-  const composer = el('div', 'settings-appearance-preview__composer');
-  composer.append(
-    el('span', 'settings-appearance-preview__input', 'Message…'),
-    el('span', 'settings-appearance-preview__send', 'Send'),
-    el('span', 'settings-appearance-preview__chip', '42 t/s'),
-  );
-
-  bench.append(thread, composer);
-  figure.appendChild(bench);
-  mount.appendChild(figure);
-}
-
 /** Render full Appearance settings section. */
 export function renderAppearanceSettingsSection(mount: HTMLElement): void {
   cleanupZoom?.();
+  cleanupColors?.();
   mount.replaceChildren();
 
   const shell = el('div', 'settings-general');
+  shell.classList.add('graphite-appearance');
   mount.appendChild(shell);
 
-  const lead = el('p', 'settings-section-lead');
-  lead.textContent = 'Make Minnow comfortable to read and work in.';
-  shell.appendChild(lead);
+  const cleanupAccents = appendAppearanceThemePresets(shell);
 
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
+
+  const customColors = appendSettingsGroup(
+    content,
+    'Advanced colors',
+    'Adjust individual interface colors.',
+    'appearance.customColors',
+    { emphasis: true },
+  );
+  const cleanupOverrides = appendAppearanceCustomColors(customColors);
+  cleanupColors = () => {
+    cleanupAccents();
+    cleanupOverrides();
+  };
 
   const zoom = appendSettingsGroup(content, 'Interface size',
     undefined, 'general.desktop.zoom',
@@ -96,16 +79,6 @@ export function renderAppearanceSettingsSection(mount: HTMLElement): void {
   }
   chat.append(choices);
 
-  const presets = appendSettingsGroup(
-    content,
-    'Theme presets',
-    'Eight palette families with dark and light modes, or follow the system appearance.',
-    'appearance.theme',
-    { emphasis: true },
-  );
-  appendAppearanceLivePreview(presets);
-  appendAppearanceThemePresets(presets);
-
   const fonts = appendSettingsGroup(
     content,
     'Fonts',
@@ -115,12 +88,4 @@ export function renderAppearanceSettingsSection(mount: HTMLElement): void {
   );
   appendAppearanceFonts(fonts);
 
-  const customColors = appendSettingsGroup(
-    content,
-    'Custom colors',
-    'Pick four colors or expand advanced mode to override every palette token.',
-    'appearance.customColors',
-    { emphasis: true },
-  );
-  appendAppearanceCustomColors(customColors);
 }

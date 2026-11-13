@@ -1,0 +1,1 @@
+{"code":"import{SUITE_LABELS}from\"./benchmark/copy.ts\";export{SUITE_LABELS};\n","warnings":[],"map":{"version":3,"mappings":"AAAA,OAAS,iBAAoB","names":[],"ignoreList":[],"sources":["C:\\Users\\dukky\\Documents\\Development\\Minnow\\src\\ui\\benchmark-transcript-labels.ts"],"sourcesContent":["export { SUITE_LABELS } from './benchmark/copy.ts';\r\n"]}}

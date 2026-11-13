@@ -4,12 +4,25 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { test } from 'node:test';
-import { checkoutSwitch, checkoutSavedChanges, checkoutRestoreChanges } from '../../server/git/checkout-switch.js';
+import { mock, test } from 'node:test';
 import { stashList } from '../../server/git/git-ops.js';
 import { acquireActionWorktree, releaseActionWorktree } from '../../server/git/action-run-lock.js';
 
 const exec = promisify(execFile);
+const pullCheckouts = [];
+mock.module('../../server/git/gh-cli.js', {
+  namedExports: {
+    runGh: async (args, { cwd }) => {
+      if (args[0] === '--version') return { code: 0, stdout: 'gh version 2.0.0' };
+      if (args[0] === 'api') return { code: 0, stdout: 'minnow-test' };
+      pullCheckouts.push(args);
+      if (args[2] !== '43') await exec('git', ['checkout', 'feature'], { cwd, windowsHide: true });
+      return args[2] === '42' ? { code: 0, stdout: '' } : { code: 1, stderr: 'Checkout failed' };
+    },
+  },
+});
+const { checkoutSwitch, checkoutSavedChanges, checkoutRestoreChanges } = await import('../../server/git/checkout-switch.js');
+
 async function fixture(t) {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-checkout-'));
   t.after(() => fs.rm(cwd, { recursive: true, force: true }));
@@ -127,6 +140,47 @@ test('remote checkout creates a local branch with its upstream after a dirty-fil
   assert.equal((await checkoutSwitch({ ...input, dirtyHandling: 'leave' })).ok, true);
   assert.equal(await git('branch', '--show-current'), 'fix/search');
   assert.equal(await git('rev-parse', '--abbrev-ref', '@{upstream}'), 'upstream/fix/search');
+  assert.equal(await git('status', '--porcelain'), '');
+  assert.equal((await checkoutSavedChanges({ cwd })).savedChanges[0].branch, 'main');
+});
+
+test('pull request checkout waits for dirty-file consent and returns the actual local branch', async (t) => {
+  const { cwd, git, dirty } = await fixture(t);
+  await git('remote', 'add', 'origin', 'https://github.com/owner/repo.git');
+  await dirty();
+  const input = {
+    cwd, branch: 'fork-head', expectedBranch: 'main',
+    pullRequest: { number: 42, url: 'https://github.com/owner/repo/pull/42' },
+  };
+  assert.equal((await checkoutSwitch(input)).needsChoice, true);
+  assert.equal(await git('branch', '--show-current'), 'main');
+  const checkout = { ...input, dirtyHandling: 'leave' };
+  const mismatched = await checkoutSwitch({ ...checkout, pullRequest: { ...input.pullRequest, url: 'https://github.com/other/repo/pull/42' } });
+  assert.match(mismatched.error, /different repository/);
+  assert.equal(pullCheckouts.length, 0);
+  assert.deepEqual((await checkoutSavedChanges({ cwd })).savedChanges, []);
+  assert.deepEqual(await checkoutSwitch(checkout), { ok: true, branch: 'feature' });
+  assert.deepEqual(pullCheckouts.at(-1), ['pr', 'checkout', '42', '--repo', 'github.com/owner/repo']);
+  assert.equal(await git('status', '--porcelain'), '');
+  assert.equal((await checkoutSavedChanges({ cwd })).savedChanges[0].branch, 'main');
+});
+
+test('failed PR checkout restores saved changes only if still on the original branch', async (t) => {
+  const { cwd, git, dirty } = await fixture(t);
+  await git('remote', 'add', 'origin', 'https://github.com/owner/repo.git');
+  await dirty();
+  const before = await git('status', '--porcelain');
+  const checkout = (number) => checkoutSwitch({
+    cwd, branch: 'fork-head', expectedBranch: 'main', dirtyHandling: 'leave',
+    pullRequest: { number, url: `https://github.com/owner/repo/pull/${number}` },
+  });
+  assert.equal((await checkout(43)).ok, false);
+  assert.equal(await git('status', '--porcelain'), before);
+  assert.deepEqual((await checkoutSavedChanges({ cwd })).savedChanges, []);
+  const partial = await checkout(44);
+  assert.equal(partial.ok, false);
+  assert.equal(partial.branch, 'feature');
+  assert.match(partial.error, /changes remain saved on main/);
   assert.equal(await git('status', '--porcelain'), '');
   assert.equal((await checkoutSavedChanges({ cwd })).savedChanges[0].branch, 'main');
 });

@@ -265,7 +265,7 @@ function markDelegated(anchor: HTMLElement): void {
   const batch = anchor.closest<HTMLElement>('.tool-call-batch');
   if (!batch) return;
   const rows = Array.from(
-    batch.querySelectorAll<HTMLElement>(':scope > .tool-call-batch__body > .tool-call-msg'),
+    batch.querySelectorAll<HTMLElement>(':scope > .tool-call-batch__body > .tool-call-msg:not([hidden])'),
   );
   batch.classList.toggle(
     DELEGATED_BATCH,
@@ -389,7 +389,15 @@ export function upsertSubAgentCardForRun(
     cards.set(run.runId, el);
 
     const open = (): void => {
-      openSubAgentDrawer(run.runId, chatId);
+      const header = document.getElementById('graphiteThreadHeader');
+      if (!header || header.hidden || !el?.closest('#chatArea')) {
+        void openSubAgentDrawer(run.runId, chatId);
+        return;
+      }
+      void import('./surfaces/surfaces-column').then(({ openSurface }) => {
+        if (!el?.isConnected || header.hidden) return;
+        if (!openSurface('agents', { target: run.runId })) void openSubAgentDrawer(run.runId, chatId);
+      });
     };
     el.addEventListener('click', open);
     el.addEventListener('keydown', (ev) => {

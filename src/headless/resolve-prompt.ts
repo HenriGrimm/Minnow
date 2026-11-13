@@ -1,61 +1,68 @@
-/**
- * Resolve system + user rules for headless without SPA compose UI deps.
- */
-
-import { getSystemPrompt } from '../config/api-client';
-import { getUserRulesPayloadForSend, loadUserRules } from '../config/user-rules';
+import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
+import { composeSystemPrompt } from '../chat/prompts/prompt-composer';
+import { setUserPromptRegistry } from '../chat/prompts/prompt-loader';
+import type { ParsedPrompt } from '../chat/prompts/types';
 import { defaultUserRulesSettings } from '../config/defaults';
-import { resolveActiveWorkAgentId } from '../agents/resolve-work-agent';
+import { loadPromptMetaSettings } from '../config/prompt-meta';
+import { getToolSecurityMetaCached } from '../config/tool-security-meta';
+import { getUserRulesPayloadForSend, loadUserRules } from '../config/user-rules';
+import { isLocalProvider } from '../providers/provider-host';
+import { resolveProvider } from '../providers/store';
 import type { Chat } from '../types';
 import { headlessApiUrl } from './server-context';
 
-export interface HeadlessOutboundSystemMessages {
-  composed: string;
-  userRules: string | null;
-}
-
-async function fetchWorkAgentPromptBody(
-  agentId: string,
-  profile: string,
-): Promise<string> {
-  const prof = profile === 'lite' ? 'lite' : 'full';
-  const res = await fetch(
-    headlessApiUrl(
-      `/api/work-agents/${encodeURIComponent(agentId)}/prompt?profile=${prof}`,
-    ),
-    { cache: 'no-store' },
-  );
-  if (!res.ok) return '';
-  const body = (await res.json()) as { content?: string; markdownBody?: string };
-  const text =
-    typeof body.content === 'string'
-      ? body.content
-      : typeof body.markdownBody === 'string'
-        ? body.markdownBody
-        : '';
-  return text.trim();
-}
-
-/** Headless outbound system messages (legacy textarea + work-agent prompt + rules). */
+/** Compose with the same prompt files and workspace settings used by Code. */
 export async function resolveHeadlessOutboundSystemMessages(
   chat: Chat,
-  profile: string,
-): Promise<HeadlessOutboundSystemMessages> {
-  const legacy = await getSystemPrompt().catch(() => ({ text: '' }));
-  const legacySysPrompt = typeof legacy.text === 'string' ? legacy.text.trim() : '';
-
-  let composed = legacySysPrompt;
-  const agentId = resolveActiveWorkAgentId(chat);
-  if (agentId) {
-    const agentPrompt = await fetchWorkAgentPromptBody(agentId, profile);
-    if (agentPrompt) {
-      composed = agentPrompt;
-    }
+  enabledToolIds: string[],
+  cwd: string,
+): Promise<{ composed: string; userRules: string | null }> {
+  const workAgent = resolveActiveWorkAgent(chat);
+  const [registry, role, meta, rules, provider] = await Promise.all([
+    fetch(headlessApiUrl('/api/prompts/registry'), { cache: 'no-store' }),
+    workAgent && workAgent.id !== 'default'
+      ? fetch(headlessApiUrl(`/api/work-agents/${encodeURIComponent(workAgent.id)}/prompt`), { cache: 'no-store' })
+      : null,
+    loadPromptMetaSettings(),
+    loadUserRules().catch(() => defaultUserRulesSettings()),
+    resolveProvider(chat.providerId),
+  ]);
+  if (!registry.ok) throw new Error('Could not load the system prompt registry');
+  const { prompts } = await registry.json() as { prompts: ParsedPrompt[] };
+  if (workAgent && role?.ok) {
+    const { content } = await role.json() as { content: string };
+    prompts.push({
+      id: workAgent.id,
+      kind: 'work-agent',
+      part: 'work-agent',
+      label: workAgent.label,
+      version: 1,
+      body: content,
+      relativePath: `work-agents/${workAgent.id}/agent.full.md`,
+      source: 'user',
+    });
   }
-
-  await loadUserRules().catch(() => undefined);
-  const rulesSettings = await loadUserRules().catch(() => defaultUserRulesSettings());
-  const userRules = getUserRulesPayloadForSend(rulesSettings);
-
-  return { composed: composed.trim() || legacySysPrompt, userRules };
+  setUserPromptRegistry(prompts);
+  const security = getToolSecurityMetaCached();
+  const composed = composeSystemPrompt({
+    cwd,
+    modeId: chat.modeId ?? null,
+    expertId: null,
+    workAgentId: workAgent?.id ?? null,
+    workAgentLabel: workAgent?.label,
+    skillBody: null,
+    memoryBlock: null,
+    codeMapBlock: null,
+    contextDocumentsBlock: null,
+    enabledToolIds,
+    infoPresetId: meta.activeInfoPresetId,
+    planGranularity: meta.planGranularity,
+    flaticonIconGuidanceEnabled: meta.flaticonIconGuidanceEnabled,
+    localModelGuidance: meta.localModelGuidance,
+    providerIsLocal: isLocalProvider(provider),
+    permissionLevel: security.permissionLevel,
+    shellSandboxMode: security.shellSandbox,
+  });
+  if (!composed.trim()) throw new Error('No composed chat system prompt is available');
+  return { composed, userRules: getUserRulesPayloadForSend(rules) };
 }

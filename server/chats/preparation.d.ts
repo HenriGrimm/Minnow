@@ -12,16 +12,18 @@ export interface ChatPreparationAdapters {
   loadComposer(): Promise<any>;
   loadSkill(id: string): Promise<{ id: string; body: string }>;
   composeImpeccable(body: string, userText: string, composer: any): Promise<string>;
-  readSettings(): Promise<{ meta: any; tools: any; rules: any; legacySystemPrompt?: string }>;
-  listTools(): Promise<TurnToolDefinition[]>;
+  readSettings(): Promise<{ meta: any; tools: any; rules: any }>;
+  listTools(): Promise<TurnToolDefinition[] | {
+    definitions: TurnToolDefinition[];
+    mcpHints: Record<string, 'read' | 'write' | 'destructive'>;
+  }>;
   loadWorkAgents(): Promise<any>;
   loadSubAgentTypes(): Promise<any>;
   isServerToolAvailable(name: string): Promise<boolean>;
   resolveModelContextLimit(model: TurnModel): Promise<number | null>;
   bindLibraryModel(model: { providerId: string; id: string }, options?: { signal?: AbortSignal }): Promise<{ providerId: string; id: string }>;
   loadPromptSources(agents: any[]): Promise<{ builtinRaw: Record<string, string>; userRaw?: Record<string, string> }>;
-  loadTypePrompt(typeId: string, type: any, profile: 'full' | 'lite'): Promise<string>;
-  loadCustomPrompt(id: string): Promise<any>;
+  loadTypePrompt(typeId: string, type: any): Promise<string>;
   readTranscript(chatId: string): Promise<any>;
   readProfile(reference: import('./contracts.js').AgentProfileReference): Promise<import('./repository.js').ProfileRecord | null>;
   retrieveMemory(input: any): Promise<string>;

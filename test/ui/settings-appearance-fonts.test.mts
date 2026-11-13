@@ -39,7 +39,9 @@ describe('settings appearance fonts', () => {
 
     assert.ok(uiOptions.length >= 31, `UI options ${uiOptions.length}`);
     assert.ok(monoOptions.length >= 21, `mono options ${monoOptions.length}`);
-    assert.equal(uiOptions[0], 'system');
+    assert.equal(uiOptions[0], 'bundled-geist');
+    assert.equal(monoOptions[0], 'bundled-geist');
+    assert.ok(uiOptions.includes('system'));
     assert.ok(uiOptions.includes('inter'));
     assert.ok(!uiOptions.includes('geist'));
     assert.ok(monoOptions.includes('fira-code'));

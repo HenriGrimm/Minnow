@@ -1,0 +1,1014 @@
+@property --mn-graphite-side-reveal {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --mn-graphite-bottom-reveal {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+.workspace-split.graphite-surfaces {
+  --mn-graphite-side-reveal: 0;
+  --mn-graphite-bottom-reveal: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1 1 auto;
+  isolation: isolate;
+  transition-property: none;
+}
+
+.workspace-split.graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) {
+  /* The dock starts at the moving grid line. Its content stays full size as
+     the chat reflows beside it. Resizing the dock itself remains immediate. */
+  grid-template-columns: minmax(0, 1fr) calc(var(--mn-graphite-side-size, 440px) * var(--mn-graphite-side-reveal));
+  grid-template-rows: auto minmax(0, 1fr) calc(var(--mn-graphite-bottom-size, 320px) * var(--mn-graphite-bottom-reveal));
+}
+
+.graphite-surfaces[data-surface-side="true"] {
+  --mn-graphite-side-reveal: 1;
+}
+
+.graphite-surfaces[data-surface-bottom="true"] {
+  --mn-graphite-bottom-reveal: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-reduce-motion]) .graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) {
+    transition:
+      --mn-graphite-side-reveal var(--mn-graphite-side-motion, 0s) var(--ease-out),
+      --mn-graphite-bottom-reveal var(--mn-graphite-bottom-motion, 0s) var(--ease-out);
+  }
+
+  .graphite-surfaces:is([data-surface-side="true"], :has(> .graphite-surface-panel--side.graphite-surface-panel--closing)) {
+    --mn-graphite-side-motion: var(--duration-normal);
+  }
+
+  .graphite-surfaces:is([data-surface-bottom="true"], :has(> .graphite-surface-panel--bottom.graphite-surface-panel--closing)) {
+    --mn-graphite-bottom-motion: var(--duration-normal);
+  }
+
+  .graphite-surfaces:has(> .graphite-surface-panel--sliding) {
+    overflow: clip;
+  }
+}
+
+.graphite-surfaces > .graphite-thread-header {
+  grid-area: 1 / 1 / 2 / -1;
+  min-width: 0;
+}
+
+.graphite-surfaces > .main-column {
+  grid-area: 2 / 1 / 3 / 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+html:not(.mn-narrow) .graphite-surfaces > .main-column > #codeViews {
+  display: none;
+}
+
+/* Graphite's header and launcher replace the desktop footer controls. */
+html:not(.mn-narrow) .mn-os-code-layer:has(.graphite-surfaces) > #codeStatusBar {
+  display: none;
+}
+
+.workspace-split.graphite-surfaces.viewer-open:not([data-surface-max="side"], [data-surface-max="bottom"]) > .main-column {
+  display: flex;
+}
+
+.graphite-surfaces:is([data-surface-max="side"], [data-surface-max="bottom"]) > .main-column,
+.graphite-surfaces > #splitResizer,
+.graphite-surfaces > #rightPaneColumn,
+.graphite-surfaces > #fileSidebar:not(.mobile-open, .file-sidebar--issues),
+.app-body:has(> .graphite-surfaces) > #fileSidebar:not(.mobile-open, .file-sidebar--issues),
+.graphite-surfaces > .main-column > #terminalPanel {
+  display: none;
+}
+
+.graphite-surface-panel {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  position: relative;
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  color: var(--mn-fg);
+}
+
+.graphite-surface-panel[hidden],
+.graphite-surface-header > [hidden],
+.graphite-surface-launcher[hidden],
+.graphite-surface-resizer[hidden],
+.graphite-surface-pane[hidden],
+.graphite-surface-backdrop[hidden] {
+  display: none;
+}
+
+.graphite-surface-panel--side {
+  grid-area: 2 / 2 / -1 / 3;
+  border-inline-start: 1px solid var(--mn-border);
+}
+
+.graphite-surface-panel--bottom {
+  grid-area: 3 / 1 / 4 / 2;
+  border-block-start: 1px solid var(--mn-border);
+}
+
+.graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) > .graphite-surface-panel--side {
+  inline-size: var(--mn-graphite-side-size, 440px);
+  justify-self: start;
+}
+
+.graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) > .graphite-surface-panel--bottom {
+  block-size: var(--mn-graphite-bottom-size, 320px);
+  align-self: start;
+}
+
+.graphite-surfaces:is([data-surface-max="side"], [data-surface-max="bottom"]) > .graphite-surface-panel:not([hidden]) {
+  grid-area: 2 / 1 / 3 / 2;
+  border: 0;
+}
+
+.graphite-surface-panel--split-dock {
+  --mn-graphite-split-gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, calc((100% - var(--mn-graphite-split-gap)) * var(--mn-graphite-split-ratio, 0.5))) minmax(0, 1fr);
+  grid-template-rows: var(--mn-workbench-band-h, 40px) minmax(0, 1fr);
+  column-gap: var(--mn-graphite-split-gap);
+}
+
+.graphite-surface-panel--split-dock > .graphite-surface-header {
+  grid-area: 1 / 1;
+}
+
+.graphite-surface-panel--split-dock > .graphite-surface-body {
+  grid-area: 2 / 1;
+}
+
+.graphite-surface-panel--split {
+  grid-area: 1 / 2 / 3 / 3;
+}
+
+.graphite-surface-content-limit {
+  margin: auto;
+  padding: var(--mn-space-4);
+  color: var(--mn-fg-muted);
+  text-align: center;
+}
+
+.graphite-surface-header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex: 0 0 40px;
+  min-width: 0;
+  gap: 2px;
+  padding: 0 6px 0 8px;
+  border-block-end: 1px solid var(--mn-border);
+}
+
+.graphite-surface-tabs {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+
+.graphite-surface-tabs:empty {
+  display: none;
+}
+
+.graphite-surface-tab-wrap {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  max-width: min(100%, 208px);
+  border-radius: 6px;
+}
+
+.graphite-surface-tab-wrap:has([aria-selected="true"]) {
+  background: var(--mn-sel, var(--mn-surface-2));
+}
+
+.graphite-surface-tab-wrap:has(> .graphite-surface-tab:focus-visible) {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: calc(-1 * var(--mn-focus-ring-width));
+}
+
+.graphite-surface-tab:focus-visible {
+  outline: none;
+}
+
+.graphite-surface-tab,
+.graphite-surface-icon {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--mn-fg-muted);
+  cursor: pointer;
+}
+
+.graphite-surface-tab {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 26px;
+  gap: 6px;
+  padding: 0 6px 0 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.graphite-surface-tab > :first-child {
+  flex: none;
+}
+
+.graphite-surface-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graphite-surface-tab-dirty {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-accent);
+}
+
+.graphite-surface-tab.is-loading > :first-child {
+  opacity: 0.55;
+}
+
+.graphite-surface-tab:is(:hover, [aria-selected="true"]) {
+  color: var(--mn-fg);
+}
+
+.graphite-surface-tab-count {
+  color: var(--mn-fg-subtle);
+  font: 11px var(--font-mono);
+}
+
+.graphite-surface-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  padding: 0;
+}
+
+.graphite-surface-icon:is(:hover, [aria-pressed="true"]) {
+  color: var(--mn-fg);
+  background: var(--mn-sel, var(--mn-surface-2));
+}
+
+.graphite-surface-icon--bottom .icon-svg {
+  transform: rotate(90deg);
+}
+
+.graphite-surface-close-tab {
+  opacity: 0;
+  width: 20px;
+  height: 20px;
+  margin-inline-end: 3px;
+  outline-offset: calc(-1 * var(--mn-focus-ring-width));
+}
+
+.graphite-surface-tab-wrap:is(:hover, :focus-within, :has([aria-selected="true"])) .graphite-surface-close-tab {
+  opacity: 1;
+}
+
+.graphite-surface-controls {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-inline-start: auto;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-surface-controls .graphite-surface-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.graphite-surface-body,
+.graphite-surface-pane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.graphite-surface-body:has(> .graphite-surface-launcher:not([hidden])) {
+  container-type: inline-size;
+  padding: var(--mn-space-5);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.graphite-surface-launcher {
+  --launcher-action-size: var(--mn-control-h-sm);
+  --launcher-key-size: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mn-space-4);
+  width: 100%;
+  max-width: 400px;
+  margin: auto;
+}
+
+.graphite-surface-launcher-header {
+  display: grid;
+  gap: var(--mn-space-1);
+}
+
+.graphite-surface-launcher-header[hidden],
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-launcher-note {
+  display: none;
+}
+
+.graphite-surface-launcher-title {
+  color: var(--mn-fg);
+  font-size: var(--mn-type-3xl);
+  font-weight: var(--mn-weight-semibold);
+  line-height: var(--mn-leading-tight);
+  letter-spacing: var(--mn-tracking-title);
+}
+
+.graphite-surface-launcher-note {
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
+}
+
+.graphite-surface-launcher-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--mn-space-0-5);
+  min-width: 0;
+}
+
+.graphite-surface-launcher-group[data-group="workspace"] {
+  --launcher-choice-inset: var(--mn-space-3);
+  gap: var(--mn-space-2);
+}
+
+.graphite-surface-launcher-caption {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-xs);
+  font-weight: var(--mn-weight-semibold);
+  letter-spacing: var(--mn-tracking-label);
+  text-transform: uppercase;
+  margin-block-end: var(--mn-space-1);
+}
+
+.graphite-surface-launcher-caption::after {
+  content: '';
+  flex: 1;
+  border-block-start: 1px solid var(--mn-border);
+}
+
+.graphite-surface-body:has(> .graphite-surface-launcher--compact:not([hidden])) {
+  padding: var(--mn-space-3) var(--mn-space-4);
+}
+
+.graphite-surface-launcher--compact {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+@container (min-width: 380px) {
+  .graphite-surface-launcher-group[data-group="workspace"],
+  .graphite-surface-launcher--compact .graphite-surface-launcher-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 800px) {
+  .graphite-surface-launcher--compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.graphite-surface-choice {
+  appearance: none;
+  display: grid;
+  grid-template: "icon copy key" / 16px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--mn-space-2);
+  min-width: 0;
+  padding: var(--mn-space-1-5) var(--launcher-choice-inset, var(--mn-space-2));
+  border: 1px solid transparent;
+  border-radius: var(--mn-radius-sm);
+  background: transparent;
+  color: var(--mn-fg);
+  text-align: start;
+  font: inherit;
+  font-size: var(--mn-type-md);
+  line-height: var(--mn-leading-snug);
+  cursor: pointer;
+}
+
+.graphite-surface-launcher-group[data-group="workspace"] .graphite-surface-choice {
+  padding-block: var(--mn-space-2-5);
+  border-color: var(--mn-border);
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-surface-launcher-group[data-group="workspace"] .graphite-surface-choice[aria-disabled="true"] {
+  background: transparent;
+}
+
+.graphite-surface-choice-with-action {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.graphite-surface-choice-with-action > .graphite-surface-choice {
+  padding-inline-end: calc(var(--launcher-action-size) + var(--launcher-choice-inset, var(--mn-space-2)));
+}
+
+.graphite-surface-choice-action {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: calc(var(--launcher-choice-inset, var(--mn-space-2)) - var(--mn-space-1));
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  inline-size: var(--launcher-action-size);
+  block-size: var(--launcher-action-size);
+  padding: 0;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-xs);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  cursor: pointer;
+}
+
+@media not all and (hover: none) and (pointer: coarse) {
+  .graphite-surface-choice-with-action:has(.graphite-surface-key) > .graphite-surface-choice {
+    grid-template: "icon copy action key" / 16px minmax(0, 1fr) var(--launcher-action-size) var(--launcher-key-size);
+    padding-inline-end: var(--launcher-choice-inset, var(--mn-space-2));
+  }
+
+  .graphite-surface-choice-with-action:has(.graphite-surface-key) > .graphite-surface-choice-action {
+    inset-inline-end: calc(1px + var(--launcher-choice-inset, var(--mn-space-2)) + var(--launcher-key-size) + var(--mn-space-2));
+  }
+}
+
+.graphite-surface-choice-action:is(:active, :focus-visible) {
+  border-color: var(--mn-accent-border);
+  background: var(--mn-sel, var(--mn-accent-soft));
+  color: var(--mn-accent-ink);
+}
+
+.graphite-surface-choice-action:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: 1px;
+}
+
+.graphite-surface-launcher .graphite-surface-choice:is(:focus-visible, :active):not([aria-disabled="true"]) {
+  border-color: var(--mn-accent-border);
+  background: var(--mn-sel, var(--mn-accent-soft));
+}
+
+@media (hover: hover) {
+  .graphite-surface-launcher .graphite-surface-choice:hover:not([aria-disabled="true"]) {
+    border-color: var(--mn-accent-border);
+    background: var(--mn-sel, var(--mn-accent-soft));
+  }
+
+  .graphite-surface-choice-action:hover {
+    border-color: var(--mn-accent-border);
+    background: var(--mn-sel, var(--mn-accent-soft));
+    color: var(--mn-accent-ink);
+  }
+}
+
+.graphite-surface-choice:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: 1px;
+}
+
+.graphite-surface-choice[aria-disabled="true"] {
+  color: var(--mn-fg-muted);
+  cursor: default;
+}
+
+.graphite-surface-choice-icon {
+  grid-area: icon;
+  align-self: center;
+  justify-self: center;
+  color: var(--mn-fg-muted);
+}
+
+.graphite-surface-choice-copy {
+  grid-area: copy;
+  display: grid;
+  gap: var(--mn-space-0-5);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.graphite-surface-choice-label {
+  font-weight: var(--mn-weight-semibold);
+}
+
+.graphite-surface-choice-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--mn-space-1-5);
+}
+
+.graphite-surface-choice-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 var(--mn-space-1);
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.graphite-surface-choice-added {
+  color: var(--mn-success-ink);
+}
+
+.graphite-surface-choice-deleted {
+  color: var(--mn-danger-ink);
+}
+
+.graphite-surface-choice-hint {
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
+}
+
+.graphite-surface-key {
+  grid-area: key;
+  display: grid;
+  min-width: var(--launcher-key-size);
+  height: 18px;
+  place-items: center;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-xs);
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-2xs);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .graphite-surface-launcher {
+    --launcher-action-size: 44px;
+  }
+
+  .graphite-surface-choice {
+    min-height: 44px;
+  }
+
+  .graphite-surface-key {
+    display: none;
+  }
+}
+
+.graphite-surface-resizer {
+  position: absolute;
+  z-index: var(--mn-z-raised);
+  touch-action: none;
+  inset: 0 auto 0 -5px;
+  width: 9px;
+  cursor: col-resize;
+}
+
+.graphite-surface-resizer:is(:hover, :focus-visible, .is-dragging) {
+  background: var(--mn-accent-soft);
+}
+
+.graphite-surface-panel--bottom > .graphite-surface-resizer {
+  inset: -5px 0 auto;
+  width: auto;
+  height: 9px;
+  cursor: row-resize;
+}
+
+/* Keep the divider in the gap, clear of both native browser guests. */
+.graphite-surface-panel--split > .graphite-surface-resizer {
+  inset: 0 auto 0 calc(-1 * var(--mn-graphite-split-gap));
+  width: var(--mn-graphite-split-gap);
+}
+
+.graphite-surface-panel--split > .graphite-surface-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 50% 0 auto;
+  border-inline-start: 1px solid var(--mn-border);
+}
+
+.graphite-surface-pane > :is(.file-viewer-pane, .git-panel-root, .terminal-panel, .graphite-files-host, .graphite-browser-host) {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+}
+
+.graphite-surface-pane > .terminal-panel {
+  height: auto !important;
+}
+
+.graphite-surface-pane .terminal-resize-handle,
+.graphite-surface-pane .terminal-header-expand,
+.graphite-surface-pane .terminal-header-collapse {
+  display: none;
+}
+
+/* The surface header owns expand and close. Only reserve space for agent actions. */
+.graphite-surface-pane .terminal-header-actions:not(:has(> .terminal-header-btn:not(.hidden))) {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Clear output is also hidden at this width. */
+  .graphite-surface-pane .terminal-header-actions:not(:has(> .terminal-header-btn--danger:not(.hidden))) {
+    display: none;
+  }
+}
+
+.graphite-files-host,
+.graphite-browser-host {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.graphite-files-host {
+  flex-direction: column;
+}
+
+.graphite-browser-host > .preview-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  border-inline-start: 0;
+}
+
+.graphite-browser-host .preview-header {
+  box-sizing: border-box;
+  min-height: 44px;
+  gap: 4px;
+  padding: 4px 7px;
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+}
+
+.graphite-browser-host .preview-header .icon-btn {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.graphite-browser-host .preview-header .icon-btn:is(:hover, [aria-pressed="true"]) {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+  color: var(--mn-fg);
+}
+
+.graphite-browser-host .preview-url {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 999px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-surface-pane :is(#btnFileViewerClose, #btnFileViewerCloseSecondary, #btnRightPaneSplit),
+.graphite-browser-host :is(.preview-full-width, #btnPreviewClose, #btnPreviewCloseSecondary),
+html:not(.mn-phone) .graphite-browser-host .preview-go {
+  display: none;
+}
+
+.graphite-files-host > .file-sidebar {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  transform: none;
+  visibility: visible;
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  max-width: none;
+  border: 0;
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  box-shadow: none;
+}
+
+.graphite-files-host > .file-sidebar .sidebar-resizer--file,
+.graphite-files-host > .file-sidebar:not(.collapsed, .file-sidebar--issues) > .file-sidebar-header {
+  display: none;
+}
+
+.graphite-files-host > .file-sidebar.collapsed {
+  flex: none;
+}
+
+.graphite-files-host .file-tree-search-wrap {
+  display: flex;
+  align-items: center;
+  margin: 10px 10px 6px;
+  padding: 0 5px 0 9px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 7px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+  color: var(--mn-fg-muted);
+}
+
+.graphite-files-host .file-tree-search-wrap:focus-within {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: 2px;
+}
+
+.graphite-files-host .file-tree-search {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding-inline: 8px 22px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.graphite-files-host .file-tree-search-clear {
+  right: 34px;
+}
+
+.graphite-files-host .file-tree-host {
+  padding: 2px 6px 10px;
+}
+
+.graphite-files-host .file-tree-row {
+  min-height: 26px;
+  border-radius: 7px;
+}
+
+#fileSidebar:not(.graphite-files-host > *) :is(.graphite-file-search-icon, .graphite-file-tools) {
+  display: none;
+}
+
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-panel {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: var(--mn-z-dialog);
+  width: 100%;
+  height: min(88%, var(--mn-viewport-height, 100dvh));
+  padding-bottom: env(safe-area-inset-bottom);
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 18px 18px 0 0;
+  overflow: hidden;
+}
+
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-header {
+  min-height: 52px;
+}
+
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-body:has(> .graphite-surface-launcher:not([hidden])) {
+  padding: var(--mn-space-3) var(--mn-space-4);
+}
+
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-choice,
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) :is(.graphite-surface-icon, .graphite-surface-tab) {
+  min-height: 44px;
+}
+
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-icon {
+  min-width: 44px;
+}
+
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-close-tab {
+  display: none;
+}
+
+:is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-panel--changes-sheet {
+  height: min(72dvh, var(--mn-viewport-height, 100dvh));
+}
+
+.graphite-surface-panel--changes-sheet .graphite-surface-header {
+  padding-inline: 16px 8px;
+}
+
+.graphite-surface-sheet-title {
+  margin: 0;
+  color: var(--mn-fg);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.graphite-surface-panel--changes-sheet .graphite-surface-controls {
+  padding: 0;
+  background: transparent;
+}
+
+.graphite-surface-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--mn-z-menu);
+  background: var(--mn-overlay);
+  border: 0;
+}
+
+.graphite-preview-servers[hidden],
+.graphite-preview-devices,
+.graphite-preview-agent {
+  display: none;
+}
+
+.graphite-browser-host--expanded .graphite-preview-devices {
+  display: flex;
+  flex: none;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--mn-border);
+  border-radius: 7px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-browser-host--expanded .graphite-preview-devices > button {
+  width: 29px;
+  height: 24px;
+  border-radius: 5px;
+}
+
+.graphite-preview-devices > [aria-pressed="true"] {
+  background: var(--mn-graphite-ground, var(--mn-bg));
+}
+
+.graphite-browser-host .preview-header .graphite-preview-agent {
+  display: inline-grid;
+  place-items: center;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-browser-host--expanded .preview-pane {
+  background: var(--mn-graphite-ground, var(--mn-bg));
+}
+
+.graphite-browser-host--expanded .preview-body {
+  align-self: center;
+  width: calc(100% - 32px);
+  max-width: var(--mn-graphite-preview-width, 100%);
+  margin: 16px;
+  border-radius: 10px;
+}
+
+.graphite-browser-host[data-preview-width="tablet"] {
+  --mn-graphite-preview-width: 768px;
+}
+
+.graphite-browser-host[data-preview-width="phone"] {
+  --mn-graphite-preview-width: 390px;
+}
+
+.graphite-preview-servers {
+  display: flex;
+  width: min(300px, 34%);
+  min-width: 156px;
+  min-height: 0;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+  border-inline-end: 1px solid var(--mn-border);
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+}
+
+.graphite-preview-servers__heading,
+.graphite-preview-servers__row,
+.graphite-preview-servers__select {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.graphite-preview-servers__heading,
+.graphite-preview-servers__log-label,
+.graphite-preview-servers__notice {
+  padding-inline: 8px;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+}
+
+.graphite-preview-servers__list {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.graphite-preview-servers__row {
+  min-height: 52px;
+  padding-inline-end: 8px;
+  border-radius: 8px;
+}
+
+.graphite-preview-servers__row:hover,
+.graphite-preview-servers__row:has([aria-pressed="true"]) {
+  background: var(--mn-sel, var(--mn-surface-1));
+}
+
+.graphite-preview-servers__select {
+  flex: 1;
+  min-height: 52px;
+  gap: 10px;
+  padding: 8px 0 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.graphite-preview-servers__select[aria-pressed="true"] {
+  color: var(--mn-fg);
+}
+
+.graphite-preview-servers__identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  text-align: start;
+}
+
+.graphite-preview-servers__identity > :is(span, code) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphite-preview-servers__identity > code {
+  color: var(--mn-fg-subtle);
+  font: 11px var(--font-mono);
+}
+
+.graphite-preview-servers__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--mn-fg-subtle);
+}
+
+.graphite-preview-servers__dot[data-state="running"] {
+  background: var(--mn-success);
+}
+
+.graphite-preview-servers__dot:is([data-state="starting"], [data-state="stopping"]) {
+  background: var(--mn-warning);
+}
+
+.graphite-preview-servers__dot[data-state="error"] {
+  background: var(--mn-danger);
+}
+
+.graphite-preview-servers__log-label {
+  margin: 10px 0 0;
+}
+
+.graphite-preview-servers__log {
+  min-height: 70px;
+  flex: 1;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--mn-border);
+  border-radius: 8px;
+  background: var(--mn-graphite-ground, var(--mn-bg));
+  color: var(--mn-fg-muted);
+  font: 11px/1.6 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

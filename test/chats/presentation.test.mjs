@@ -45,6 +45,26 @@ test('diagnostic timings do not schedule presentation frames or read transcript/
   assert.deepEqual(frames, []);
 });
 
+test('archive configuration broadcasts metadata to all project viewers without reading history', async t => {
+  const f = fixture(t), own = [], sibling = [], foreign = [];
+  f.presentation.subscribe({ projectId: 'project', chatId: 'chat', send: value => own.push(value) });
+  f.presentation.subscribe({ projectId: 'project', chatId: 'sibling', send: value => sibling.push(value) });
+  f.presentation.subscribe({ projectId: 'other-project', send: value => foreign.push(value) });
+  own.length = sibling.length = foreign.length = 0;
+  f.repository.readTranscript = () => { throw new Error('Archive must not read history'); };
+  f.repository.configureChat('chat', { archived: true });
+  f.presentation.onServiceEvent({ type: 'configuration', chatId: 'chat' });
+  await new Promise(resolve => setTimeout(resolve, 15));
+  for (const messages of [own, sibling]) {
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].kind, 'chat-changed');
+    assert.equal(messages[0].fields.archivedAt, 1000);
+    assert.equal(messages[0].frame, undefined);
+    assert.equal(messages[0].history, undefined);
+  }
+  assert.deepEqual(foreign, []);
+});
+
 test('raw renderer approvals publish scoped request attention and reconnect without claiming or replacing its history', t => {
   const f = fixture(t);
   f.db.prepare('DELETE FROM chat_conversation_state WHERE chat_id=?').run('chat');

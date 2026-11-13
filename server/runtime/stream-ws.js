@@ -6,7 +6,7 @@ import { getRequestRelayHeaders } from '../network/ingress.js';
 
 /** POST routes allowed through the tunnel: chat leases must renew and tool calls
  * may run for minutes, so neither may queue behind (or occupy) the HTTP pool. */
-export const STREAM_RPC_PATHS = new Set(['/api/chat-turns', '/api/tools']);
+export const STREAM_RPC_PATHS = new Set(['/api/chat-turns', '/api/tools', '/api/tools/workspace-files']);
 export const STREAM_WS_MAX_PAYLOAD = 1024 * 1024;
 
 /** Multiplex API streams and long-lived RPCs, keeping Chromium's HTTP pool free.

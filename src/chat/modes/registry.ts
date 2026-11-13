@@ -1,5 +1,4 @@
 import { loadPromptById } from '../prompts/prompt-loader';
-import type { PromptProfile } from '../prompts/types';
 import {
   DEFAULT_MODE_ID,
   MODE_IDS,
@@ -98,17 +97,16 @@ export function getMode(id: ModeId): ModeDefinition {
 /**
  * Logical relative path for built-in mode prompt files (used in tests).
  */
-export function resolveModePromptPath(id: ModeId, profile: 'full' | 'lite'): string {
+export function resolveModePromptPath(id: ModeId): string {
   const resolvedId = id === 'desktop' || id === 'email' ? 'general' : id;
-  return `modes/${resolvedId}.${profile}.md`;
+  return `modes/${resolvedId}.full.md`;
 }
 
 /**
  * Load mode prompt body for compose / tests.
  */
-export function loadModePromptBody(id: ModeId, profile: 'full' | 'lite'): string {
+export function loadModePromptBody(id: ModeId): string {
   const resolvedId = id === 'desktop' || id === 'email' ? 'general' : id;
-  const loadProfile: PromptProfile = profile;
-  const loaded = loadPromptById('mode', resolvedId, loadProfile);
+  const loaded = loadPromptById('mode', resolvedId);
   return loaded?.body?.trim() ?? '';
 }

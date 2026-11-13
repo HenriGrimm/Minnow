@@ -12,11 +12,10 @@ const PROJECT_ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url
  * @param {string} typeId
  * @param {Record<string, unknown>} typeRow
  * @param {string} task
- * @param {'full' | 'lite'} [profile]
  * @returns {Promise<string>}
  */
-export async function loadSubAgentSystemPrompt(typeId, typeRow, task, profile = 'full') {
-  const base = await resolveBasePrompt(typeId, typeRow, profile);
+export async function loadSubAgentSystemPrompt(typeId, typeRow, task) {
+  const base = await resolveBasePrompt(typeId, typeRow);
   return `${base}
 
 ---
@@ -32,11 +31,12 @@ ${task}`;
 /**
  * @param {string} typeId
  * @param {Record<string, unknown>} typeRow
- * @param {'full' | 'lite'} profile
  * @returns {Promise<string>}
  */
-async function resolveBasePrompt(typeId, typeRow, profile) {
-  const overridePath = typeof typeRow.systemPromptPath === 'string' ? typeRow.systemPromptPath.trim() : '';
+async function resolveBasePrompt(typeId, typeRow) {
+  const overridePath = typeof typeRow.systemPromptPath === 'string'
+    ? typeRow.systemPromptPath.trim().replace(/(^|[./\\])lite\.md$/i, '$1full.md')
+    : '';
   if (overridePath) {
     const fromPath = await readPromptPath(overridePath);
     if (fromPath) return fromPath;
@@ -44,12 +44,12 @@ async function resolveBasePrompt(typeId, typeRow, profile) {
 
   const workAgentId = typeof typeRow.workAgentId === 'string' ? typeRow.workAgentId.trim() : '';
   if (workAgentId) {
-    const fromWork = await readWorkAgentPrompt(workAgentId, profile);
+    const fromWork = await readWorkAgentPrompt(workAgentId);
     if (fromWork) return fromWork;
   }
 
   try {
-    const shipped = await readPromptFile(PROJECT_ROOT, 'sub-agents', typeId, profile);
+    const shipped = await readPromptFile(PROJECT_ROOT, 'sub-agents', typeId);
     if (shipped?.content?.trim()) return shipped.content.trim();
   } catch {
     /* unknown type id, or no markdown on disk */
@@ -86,10 +86,9 @@ async function readPromptPath(rawPath) {
 
 /**
  * @param {string} workAgentId
- * @param {'full' | 'lite'} profile
  * @returns {Promise<string | null>}
  */
-async function readWorkAgentPrompt(workAgentId, profile) {
+async function readWorkAgentPrompt(workAgentId) {
   const file = path.join(
     PROJECT_ROOT,
     'src',
@@ -97,7 +96,7 @@ async function readWorkAgentPrompt(workAgentId, profile) {
     'prompts',
     'work-agents',
     workAgentId,
-    `agent.${profile}.md`,
+    `agent.full.md`,
   );
   try {
     const text = await fs.readFile(file, 'utf8');

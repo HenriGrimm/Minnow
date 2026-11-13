@@ -36,7 +36,7 @@ import { appConfirm } from './app-dialog';
 import { createBoardCategoryIcon } from './board-category-icons';
 import { createIcon } from './icon';
 import { agentMarkStateFromLabel, fillProducerLogo, type AgentMarkState } from './agent-model-mark';
-import { chatGitState, getWorkspaceGitSummary, initSidebarGitState, isChatWorkFinished, subscribeSidebarGitState, syncChatGitState } from './sidebar-git-state';
+import { chatGitState, initSidebarGitState, isChatWorkFinished, subscribeSidebarGitState, syncChatGitState } from './sidebar-git-state';
 import { syncSidebarNeedsYou } from './sidebar-needs-you';
 import { formatWorkDuration } from '../chat/transcript-turns';
 import { isChatAppForeground } from './chat-mount';
@@ -75,10 +75,11 @@ import {
   renderExpertScopeHeader,
 } from './experts/experts-scope';
 import { getWorkspacePath } from '../state/workspace';
+import { getCurrentRoute } from '../os/router';
 import { getChatLastMessageAt } from '../state/session-workspace-scope';
 import { normalizeModeId, workflowSkillForMode, type ModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
-import type { BoardCategory, Chat, ChatGroup, LeftoverBoardTask } from '../types';
+import type { BoardCategory, Chat, ChatGroup, LeftoverBoardTask, Message } from '../types';
 import {
   applySidebarVisuals,
   closeMobileSidebar,
@@ -175,6 +176,8 @@ import {
   switchComposerDraft,
 } from './composer-draft';
 import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
+import { isShellOverlayOpen } from './shell-overlay-state';
+import { isTypingTarget } from './a11y/typing-target';
 
 // ── Board waves ──────────────────────────────────────────────────────────────
 
@@ -500,13 +503,14 @@ function syncChatItemLogo(row: HTMLElement, chat: Chat): void {
 function syncChatItemTrailing(row: HTMLElement, chat: Chat): void {
   syncChatItemLogo(row, chat);
   const titleRow = row.querySelector<HTMLElement>('.chat-item-title-row');
-  const git = row.querySelector<HTMLElement>('.chat-item-git');
+  const trailing = titleRow?.querySelector<HTMLElement>('.chat-item-trailing');
+  const git = trailing?.querySelector<HTMLElement>('.chat-item-git');
   if (git) syncChatGitState(git, chatGitState(chat, chat.workspacePath || getWorkspacePath()));
   const archived = isChatArchived(chat);
   const archivable = !chat.agentConversation && !isBoardOwnedChat(chat);
   let action = row.querySelector<HTMLButtonElement>('.chat-item-archive');
   let select = row.querySelector<HTMLButtonElement>('.chat-item-select');
-  if (!archivable || !titleRow) {
+  if (!archivable || !titleRow || !trailing) {
     action?.remove();
     select?.remove();
     return;
@@ -520,7 +524,7 @@ function syncChatItemTrailing(row: HTMLElement, chat: Chat): void {
       const current = findChatById(chat.id) ?? chat;
       setChatsArchivedWithUndo([current], !isChatArchived(current));
     });
-    titleRow.append(action);
+    trailing.append(action);
   }
   if (action.dataset.mode !== (archived ? 'restore' : 'archive')) {
     action.dataset.mode = archived ? 'restore' : 'archive';
@@ -590,7 +594,7 @@ function hideSidebarToast(): void {
 }
 
 /** Archive or restore, then offer Undo — the row leaves the list immediately. */
-function setChatsArchivedWithUndo(chats: readonly Chat[], archived: boolean, label?: string): void {
+export function setChatsArchivedWithUndo(chats: readonly Chat[], archived: boolean, label?: string): void {
   const targets = chats.filter(chat => isChatArchived(chat) !== archived);
   if (!targets.length) return;
   for (const chat of targets) setChatArchived(chat, archived);
@@ -610,6 +614,18 @@ export function appendChatRow(
   options?: AppendChatRowOptions,
 ): void {
   list.appendChild(buildChatRow(chat, highlightChatId, options));
+}
+
+async function openSidebarChat(id: string): Promise<void> {
+  if (document.documentElement.classList.contains('mn-graphite-sidebar-open')) {
+    const route = getCurrentRoute();
+    if (route.appId !== 'code' || (route.codeSection ?? 'chat') !== 'chat') {
+      const { launchCodeWithChat } = await import('../os/chat-launch');
+      await launchCodeWithChat(id);
+      return;
+    }
+  }
+  await switchChat(id);
 }
 
 function buildChatRow(
@@ -677,7 +693,7 @@ function buildChatRow(
       options.onActivate(currentChat());
       return;
     }
-    switchChat(chat.id);
+    void openSidebarChat(chat.id);
   });
   row.addEventListener('keydown', (e) => {
     if ((e.target as Element).closest('.chat-rename-input, button, a')) return;
@@ -696,7 +712,7 @@ function buildChatRow(
         options.onActivate(currentChat());
         return;
       }
-      switchChat(chat.id);
+      void openSidebarChat(chat.id);
     }
     if (e.key === 'Escape') {
       clearChatSelection();
@@ -748,7 +764,10 @@ function buildChatRow(
   git.className = 'chat-item-git';
   git.setAttribute('role', 'img');
   git.hidden = true;
-  titleRow.appendChild(git);
+  const trailing = document.createElement('span');
+  trailing.className = 'chat-item-trailing';
+  trailing.append(git);
+  titleRow.append(trailing);
 
   head.appendChild(titleRow);
 
@@ -964,35 +983,58 @@ function beginRenameGroup(groupId: string, nameSpan: HTMLSpanElement): void {
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
-/** Wire "+ New group" and chat drag-drop (call once at init). */
-export function wireSidebarNewGroupButton(): void {
+export function createSidebarChatGroup(): void {
+  setSidebarChatView('working');
+  const group = createGroup('New group', getWorkspacePath());
+  renderSidebar();
+  const name = document.querySelector<HTMLSpanElement>(
+    `#chatList .chat-group-header[data-group-id="${group.id}"] .chat-group-header__name`,
+  );
+  if (name) beginRenameGroup(group.id, name);
+}
+
+/** Wire chat drag-drop, keyboard interactions and git updates once at boot. */
+export function initChatSidebarInteractions(): void {
   void import('./sidebar-chat-dnd').then((m) => m.wireSidebarChatDragDrop());
-
-  const btn = document.getElementById('btnNewChatGroup');
-  if (!btn || btn.dataset.wired === '1') return;
-  btn.dataset.wired = '1';
-
+  let switchingByKeyboard = false;
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && selectedChatIds.size > 0) clearChatSelection();
-  });
-  btn.addEventListener('click', () => {
-    const g = createGroup('New group', getWorkspacePath());
-    renderSidebar();
-    const head = document.querySelector(
-      `.chat-group-header[data-group-id="${g.id}"] .chat-group-header__name`,
-    );
-    if (head instanceof HTMLSpanElement) beginRenameGroup(g.id, head);
+    if (e.defaultPrevented || e.isComposing || !e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    const route = getCurrentRoute();
+    if (route.appId !== 'code' || (route.codeSection ?? 'chat') !== 'chat') return;
+    if (isMainColumnOverlaySuppressingChatDom() || isShellOverlayOpen()) return;
+    const target = e.target;
+    if (target instanceof Element && target.closest(
+      '.cm-editor, .xterm, [role="menu"], [role="dialog"], [role="alertdialog"]',
+    )) return;
+    if (isTypingTarget(target) && target !== document.getElementById('msgInput')) return;
+
+    const activeId = sidebarHighlightChatId();
+    const list = document.getElementById('chatList');
+    if (!activeId || !list) return;
+    const rows = [...list.querySelectorAll<HTMLElement>('.chat-item-row[data-chat-id]')];
+    const index = rows.findIndex((row) => row.dataset.chatId === activeId);
+    if (index < 0) return;
+
+    e.preventDefault();
+    const next = rows[index + (e.key === 'ArrowUp' ? -1 : 1)];
+    const nextId = next?.dataset.chatId;
+    // Let a lazy transcript load finish before switching away from its draft.
+    if (!nextId || switchingByKeyboard) return;
+
+    switchingByKeyboard = true;
+    clearChatSelection();
+    lastSelectedChatId = nextId;
+    if (target instanceof Element && target.closest('.chat-item-row')) next.focus({ preventScroll: true });
+    next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    void openSidebarChat(nextId)
+      .catch((error) => reportBackgroundError('sidebar-chat-navigation', error))
+      .finally(() => { switchingByKeyboard = false; });
   });
 
-  // The branch opens the Git panel's checkout picker, which owns switching and worktrees.
-  document.getElementById('sidebarBranch')?.addEventListener('click', () => {
-    void import('./git-panel').then(async (module) => {
-      await module.openGitSidePanel();
-      const trigger = document.getElementById('gitCheckoutTrigger');
-      if (trigger?.getAttribute('aria-expanded') !== 'true') trigger?.click();
-    });
-  });
-  // Fresh git facts repaint rows and the branch.
+  // Fresh git facts repaint the chat rows.
   subscribeSidebarGitState(scheduleRenderSidebar);
   initSidebarGitState();
 }
@@ -1227,29 +1269,6 @@ function syncArchiveBulkBar(bar = document.querySelector<HTMLElement>('#chatList
   }
 }
 
-/** Header: the checked-out branch, its push / pull counts and uncommitted files; "Chats" outside git. */
-function syncSidebarHeader(): void {
-  const button = document.getElementById('sidebarBranch');
-  if (!button) return;
-  const summary = getWorkspaceGitSummary(getWorkspacePath());
-  button.hidden = !summary;
-  const title = document.getElementById('sidebarTitle');
-  if (title) title.hidden = Boolean(summary);
-  if (!summary) return;
-  const { branch, ahead, behind, changed } = summary;
-  button.querySelector('.chat-sidebar-branch__name')!.textContent = branch;
-  button.querySelector('.chat-sidebar-branch__sync')!.textContent = [ahead ? `↑${ahead}` : '', behind ? `↓${behind}` : ''].filter(Boolean).join(' ');
-  button.querySelector('.chat-sidebar-branch__changed')!.textContent = changed ? `${changed} changed` : '';
-  const spoken = [
-    `Branch ${branch}`,
-    ahead ? `${ahead} ${ahead === 1 ? 'commit' : 'commits'} to push` : '',
-    behind ? `${behind} to pull` : '',
-    ahead === 0 && behind === 0 ? 'up to date' : '',
-    changed ? `${changed} changed ${changed === 1 ? 'file' : 'files'}` : '',
-  ].filter(Boolean).join(', ');
-  button.setAttribute('aria-label', `${spoken}. Switch branch or worktree`);
-}
-
 let sidebarRenderFrame: number | null = null;
 
 /** Coalesce hot-path sidebar paints onto one animation frame (MIN-584). */
@@ -1342,13 +1361,13 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
         let clock = row.querySelector<HTMLElement>('.chat-item-agent-clock');
         if (!clock && titleRow) {
           clock = document.createElement('span'); clock.className = 'chat-item-agent-clock';
-          titleRow.insertBefore(clock, titleRow.querySelector('.chat-item-git'));
+          titleRow.insertBefore(clock, titleRow.querySelector('.chat-item-trailing'));
         }
         if (clock) syncAgentClock(clock, chat, state, status);
         let done = row.querySelector<HTMLElement>('.chat-item-agent-done');
         if (state === 'done' && !done && titleRow) {
           done = createIcon('check', { className: 'chat-item-agent-done', size: 12 });
-          titleRow.insertBefore(done, titleRow.querySelector('.chat-item-git'));
+          titleRow.insertBefore(done, titleRow.querySelector('.chat-item-trailing'));
         } else if (state !== 'done') done?.remove();
         const described = [chat.agentTypeId, routerChatModelLabel(chat) || null, status, missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
         row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${described}`);
@@ -1369,7 +1388,7 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
       toggle.classList.add('chat-agent-toggle');
       toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${children.length} agents of ${chat.name}`);
       const titleRow = row.querySelector<HTMLElement>('.chat-item-title-row');
-      if (titleRow && toggle.parentElement !== titleRow) titleRow.insertBefore(toggle, titleRow.querySelector('.chat-item-git'));
+      if (titleRow && toggle.parentElement !== titleRow) titleRow.insertBefore(toggle, titleRow.querySelector('.chat-item-trailing'));
       if (!expanded) continue;
       const group = take(`children:${chat.id}`);
       group.className = 'chat-agent-children'; group.style.setProperty('--agent-depth', String(Math.min(depth, AGENT_VISUAL_DEPTH_LIMIT))); group.setAttribute('role', 'group'); group.setAttribute('aria-label', `Agents of ${chat.name}`);
@@ -1452,12 +1471,24 @@ function syncSidebarChatViews(list: HTMLElement, workingCount: number, archivedC
       count.className = 'chat-list-view__count';
       button.append(createIcon(view === 'archive' ? 'archive' : 'appChat'), text, count);
       button.addEventListener('click', () => {
+        // The Graphite footer hides the selected button, so move focus to a visible control.
+        const moveFocus = document.activeElement === button && button.closest('#osGraphiteSidebarFooter');
         setSidebarChatView(view);
         renderSidebar();
+        if (moveFocus) {
+          const target = view === 'archive'
+            ? list.querySelector<HTMLElement>('#chatArchiveSearch')
+            : button.parentElement?.querySelector<HTMLElement>('[data-chat-view="archive"]');
+          target?.focus({ preventScroll: true });
+        }
       });
       nav.appendChild(button);
     }
-    list.after(nav);
+    const footer = document.documentElement.classList.contains('mn-graphite-sidebar-open')
+      ? document.getElementById('osGraphiteSidebarFooter')
+      : null;
+    if (footer) footer.prepend(nav);
+    else list.after(nav);
   }
   const selected = list.dataset.chatView ?? 'working';
   list.setAttribute('aria-label', selected === 'archive' ? 'Archived chats' : 'Working chats');
@@ -1491,7 +1522,6 @@ export function renderSidebar(): void {
 
   const list = document.getElementById('chatList');
   if (!list || !sessionState) return;
-  syncSidebarHeader();
 
   const existingRows = new Map<string, HTMLElement>();
   list.querySelectorAll<HTMLElement>('.chat-item-row[data-chat-id]').forEach((el) => {
@@ -1571,7 +1601,7 @@ export function renderSidebar(): void {
     desired.push(takeArchiveSearch(list, archivedCount), takeArchiveBulkBar(list));
     const query = archiveQuery.trim().toLowerCase();
     const archived = [...listedRoots]
-      .filter(chat => !query || chat.name.toLowerCase().includes(query))
+      .filter(chat => !query || `${chat.name} ${chat.gitBranch || ''}`.toLowerCase().includes(query))
       .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
     // Newest archive first, split where it stops being this week's work.
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -1595,7 +1625,7 @@ export function renderSidebar(): void {
   syncSidebarNeedsYou(needsYou, candidates, {
     rerender: scheduleRenderSidebar,
     openChat: (chatId, requestId) => {
-      void switchChat(chatId).then(async () => {
+      void openSidebarChat(chatId).then(async () => {
         if (!requestId) return;
         const { focusManagedChatRequest } = await import('./managed-chat-requests');
         await focusManagedChatRequest(chatId, requestId);
@@ -2130,6 +2160,13 @@ export async function deleteChat(chatId: string, evt?: Event, isCurrent: () => b
   const victim = sessionState!.chats[idx];
   const family = projectChatRelationships(sessionState!.chats);
   const descendants = sessionState!.chats.filter(chat => family.ancestors(chat.id).some(parent => parent.id === chatId));
+  const interrupted = [victim, ...descendants].find(chat => chat.agentExecution?.status === 'recovery_required');
+  if (interrupted) {
+    showToast(interrupted.agentExecution?.needsManualRecovery
+      ? `Open "${interrupted.name}" to confirm its interrupted work has stopped.`
+      : `Minnow is waiting for interrupted work in "${interrupted.name}" to stop. Try deleting again in a moment.`);
+    return;
+  }
   if ([victim, ...descendants].some(chat => hasUnsettledAgentWork(chat, id => isChatStreaming(id) || isChatRunningRemotely(id)))) {
     showToast('Stop this conversation and its agents, and resolve pending requests before deleting it.');
     return;
@@ -2335,6 +2372,8 @@ export interface CreateChatWithModeOptions {
   workspacePath?: string;
   /** Pin a recovery handoff to the checkout where the action failed, before its first turn. */
   gitRecoveryTarget?: { cwd: string; branch?: string };
+  /** Start a draft branch from already-loaded history, without replaying a turn. */
+  fork?: { sourceChatId: string; name: string; history: Message[]; checkout?: string; branch?: string };
 }
 
 // ── Create ───────────────────────────────────────────────────────────────────
@@ -2408,6 +2447,9 @@ export async function createChatWithMode(
   try { await loadDefaultModelValue(); }
   catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Could not read the last selected model' }; }
   if (options.gitRecoveryTarget && originWorkspace !== getWorkspacePath()) return { ok: false, error: 'The workspace changed. Reopen Source Control and try again.' };
+  if (options.fork && (originWorkspace !== getWorkspacePath() || options.fork.sourceChatId !== sessionState?.activeId)) {
+    return { ok: false, error: 'The source thread changed. Open Fork again.' };
+  }
   if (!options.workspacePath && (originWorkspace !== getWorkspacePath() || originChatId !== sessionState?.activeId)) return { ok: false, error: 'The chat context changed. Try New chat again.' };
   if (document.getElementById('codeMapChatSidebar')) {
     teardownCodeBrainMapBeforeChatPaint();
@@ -2501,13 +2543,22 @@ export async function createChatWithMode(
     if (normalized) chat.orchestratePlanPath = normalized;
   }
 
-  const initial = options.initialUserMessage?.trim();
+  const initial = options.fork ? undefined : options.initialUserMessage?.trim();
+  if (options.fork) {
+    chat.name = options.fork.name;
+    chat.history = options.fork.history;
+    recordChatMessage(chat);
+  }
   if (initial) {
     chat.history.push({ role: 'user', content: initial });
     recordChatMessage(chat);
   }
 
-  if (options.gitRecoveryTarget) {
+  if (options.fork?.checkout) {
+    chat.worktreeRoot = options.fork.checkout;
+    chat.gitBranch = options.fork.branch;
+    chat.chatWorktreeManaged = false;
+  } else if (options.gitRecoveryTarget) {
     chat.worktreeRoot = options.gitRecoveryTarget.cwd;
     chat.gitBranch = options.gitRecoveryTarget.branch;
     chat.chatWorktreeManaged = false;
@@ -2556,5 +2607,13 @@ export async function createChat(): Promise<void> {
   const result = await createChatWithMode({
     modeId: leavingOrchestrate ? 'general' : normalizeModeId(active.modeId),
   });
-  if (!result.ok) setStatus('err', result.error || 'Could not create chat');
+  if (!result.ok) {
+    setStatus('err', result.error || 'Could not create chat');
+    return;
+  }
+  const { launchApp } = await import('../os/router');
+  const route = getCurrentRoute();
+  if (route.appId !== 'code' || route.codeSection !== 'chat' || route.chatId) {
+    launchApp('code', { codeSection: 'chat' });
+  }
 }

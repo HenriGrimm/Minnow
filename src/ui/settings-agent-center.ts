@@ -5,7 +5,7 @@ import '../styles/settings-agent-center.css';
  * Settings → Agents. One agent runs every chat, sub-agent and board task, so
  * this page edits that agent: its prompts (base, tool usage, local-model
  * guidance), the /ask, /plan and /debug skill prompts, the Boards prompt, and
- * sub-agent limits. Permissions live under Settings → Permissions.
+ * sub-agent limits, and the global permission level.
  */
 
 import {
@@ -16,6 +16,7 @@ import type { ContextEnforcementPolicy } from '../chat/context-budget';
 import { createIcon, type IconName } from './icon';
 import { isServerStorageMode } from '../config/storage-mode';
 import { appendSettingsGroup, linkToSettingsSection } from './settings-layout';
+import { renderPermissionSettings } from './settings-filesystem';
 import {
   appendSettingsOfflineHint,
   createSettingsKvList,
@@ -90,7 +91,6 @@ function openPromptFileLightbox(options: {
         mountPromptFileEditor(panel, {
           family: options.family,
           entityId: options.entityId,
-          singleProfile: true,
           rows: 18,
         });
       });
@@ -476,16 +476,6 @@ export async function renderAgentCenterPanel(
   const shell = el('div', 'settings-general settings-agent-center');
   mount.appendChild(shell);
 
-  const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'One agent runs every chat, sub-agent and board task, with the same tools. What it may do without asking is set by the ',
-    linkToSettingsSection('permission level', 'filesystem'),
-    '. Standing rules live under ',
-    linkToSettingsSection('Rules', 'rules'),
-    '.',
-  );
-  shell.appendChild(lead);
-
   if (!isServerStorageMode()) {
     appendSettingsOfflineHint(
       shell,
@@ -495,6 +485,23 @@ export async function renderAgentCenterPanel(
 
   const content = el('div', 'settings-general__content settings-agent-center__content');
   shell.appendChild(content);
+
+  const permissions = appendSettingsGroup(content, 'Permission level', undefined, 'agents.permissions');
+  const permissionCards = el('div');
+  permissions.appendChild(permissionCards);
+  void renderPermissionSettings(permissionCards, { searchKey: 'agents.permissions', showRules: false });
+  const safeguards = el('div', 'settings-permissions__safeguards');
+  const safeguardsText = el('span');
+  safeguardsText.append(
+    'The same level covers chats, boards and Scheduler runs. ',
+    el('code', '', '~/.minnow/.key'),
+    ' and secret stores stay protected at every level.',
+  );
+  const accessLink = linkToSettingsSection('How access and safeguards work', 'access');
+  accessLink.classList.add('settings-permissions__help');
+  safeguardsText.append(' ', accessLink);
+  safeguards.append(createIcon('lock', { size: 14 }), safeguardsText);
+  permissions.appendChild(safeguards);
 
   void refreshSkillCatalog().catch(() => undefined);
   const cards = loadAgentCenterCards();
@@ -526,5 +533,5 @@ export async function renderAgentCenterPanel(
 
 /** Prompt preview text for a shipped agent part (tests, previews). */
 export function shippedAgentPrompt(kind: 'base' | 'tool-usage' | 'info', id: string): string {
-  return loadPromptById(kind, id, 'full')?.body?.trim() ?? '';
+  return loadPromptById(kind, id)?.body?.trim() ?? '';
 }

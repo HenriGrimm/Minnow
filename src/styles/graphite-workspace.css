@@ -1,0 +1,1148 @@
+/* Graphite workspace ground, rail and inset application sheet. */
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) .mn-os {
+  --mn-graphite-sidebar-width: 291px;
+  --mn-graphite-window-inset: 8px;
+  --os-menubar-h: 52px;
+  --mn-caption-top: calc(var(--mn-graphite-window-inset) + (var(--mn-workbench-band-h) - var(--os-window-btn-size)) / 2);
+  background: var(--mn-graphite-ground, var(--mn-bg));
+}
+
+html.is-electron-shell:not([data-platform='darwin']):is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) .mn-os {
+  --mn-window-controls-width: calc(3 * var(--os-window-btn-size) + 2 * var(--mn-window-controls-gap));
+  --mn-titlebar-end-inset: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding));
+}
+
+html.is-electron-shell[data-platform='win32']:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) .mn-os {
+  --mn-window-controls-width: calc(3 * var(--os-window-btn-size) + 3 * var(--mn-window-controls-gap) + 1px);
+}
+
+.mn-graphite-workspace .mn-os-menubar {
+  background: var(--mn-graphite-ground, var(--mn-bg));
+  border: 0;
+}
+
+.mn-graphite-workspace #osMenubar[data-view='app'] {
+  transition: none;
+}
+
+.mn-graphite-workspace .mn-os-mb-logo {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  color: var(--mn-accent);
+  box-shadow: none;
+}
+
+.mn-graphite-workspace .mn-os-mb-logo .minnow-glyph {
+  width: 20px;
+  height: 20px;
+}
+
+.mn-graphite-workspace .mn-os-mb-brand {
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.mn-graphite-workspace .mn-os-menubar[data-view='app'] .mn-os-mb-chat-toggle {
+  display: grid;
+}
+
+.mn-graphite-workspace:not(.os-workspace-gate-open) .mn-os-stage.is-in-app {
+  min-width: 0;
+  margin: 0 var(--mn-graphite-window-inset) var(--mn-graphite-window-inset);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -10px var(--mn-shadow);
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+}
+
+.mn-graphite-workspace:not(.mn-graphite-sidebar-open, .os-workspace-gate-open) #osMenubar[data-view='app'] {
+  position: absolute;
+  inset: var(--mn-graphite-window-inset) var(--mn-graphite-window-inset) auto;
+  height: calc(var(--os-menubar-h) - var(--mn-graphite-window-inset));
+  box-sizing: border-box;
+  padding-bottom: var(--mn-graphite-window-inset);
+  background: transparent;
+}
+
+/* Keep the title bar out of the workspace flow in both states. Its background
+   sits behind the stage so it can blend in without covering the thread header. */
+.mn-graphite-workspace:not(.os-workspace-gate-open) .mn-os:has(> #osMenubar[data-view='app']) > #osWorkspace::before {
+  content: '';
+  position: absolute;
+  inset: var(--mn-graphite-window-inset) var(--mn-graphite-window-inset) auto;
+  height: calc(var(--os-menubar-h) - var(--mn-graphite-window-inset));
+  border-radius: 12px 12px 0 0;
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+  pointer-events: none;
+}
+
+.mn-graphite-sidebar-open #osWorkspace::before {
+  opacity: 0;
+}
+
+.mn-graphite-workspace:not(.mn-graphite-sidebar-open, .os-workspace-gate-open) .mn-os-stage.is-in-app {
+  margin-block-start: var(--os-menubar-h);
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* Keep the logo and controls aligned with the native traffic lights. */
+html.mn-graphite-workspace.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true'], .mn-graphite-sidebar-open, .os-workspace-gate-open) #osMenubar[data-view='app'] {
+  padding-left: calc(var(--mn-mac-traffic-lights-end) / var(--mn-shell-zoom, 1) + var(--mn-mac-traffic-lights-gap) - var(--mn-graphite-window-inset));
+}
+
+.mn-graphite-workspace:not(.os-workspace-gate-open) .mn-os-app-layer.is-active {
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+}
+
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-stage.is-in-app {
+  margin-block-start: var(--mn-graphite-window-inset);
+  margin-inline-start: var(--mn-graphite-sidebar-width);
+  /* Cast the shadow behind the rail so it follows the sheet's rounded corners. */
+  box-shadow: -10px 0 20px 0 var(--mn-shadow);
+}
+
+/* Keep the dark rail and sheet close in tone to soften their shared edge. */
+.mn-graphite-sidebar-open[data-theme$='-dark']:not(.os-workspace-gate-open) .mn-os {
+  background: color-mix(in srgb, var(--mn-graphite-ground, var(--mn-bg)) 70%, var(--mn-graphite-sheet, var(--mn-surface-0)));
+}
+
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: var(--mn-graphite-sidebar-width);
+  box-sizing: border-box;
+  padding-inline-end: 10px;
+  background: transparent;
+}
+
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-mb-left {
+  width: 100%;
+  flex: 1;
+  gap: 6px;
+  overflow: visible;
+}
+
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-brand {
+  display: inline !important;
+}
+
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-app-sep,
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-appname,
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-right {
+  display: none !important;
+}
+
+/* Caption buttons stay at the window edge while the menubar shrinks to the rail. */
+html.is-electron-shell:is(.mn-graphite-workspace:not(.os-workspace-gate-open), .mn-graphite-apps[data-app-window])
+  #osMenubar[data-view='app'] > .mn-os-mb-window-controls {
+  position: fixed;
+  top: var(--mn-caption-top);
+  right: calc(var(--mn-graphite-window-inset) + var(--mn-menubar-inline-padding));
+}
+
+/* App headers use the same surface as the sheet, including the space behind shell controls. */
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window])
+  #osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar) {
+  position: relative;
+  min-height: var(--mn-workbench-band-h);
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  padding-left: var(--mn-titlebar-start-inset, var(--mn-workbench-gutter));
+  padding-right: calc(var(--mn-titlebar-end-inset, var(--mn-workbench-gutter)) + var(--mn-titlebar-actions-width, 0px) + var(--mn-space-2));
+}
+
+html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window])
+  #osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar)::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc(var(--mn-titlebar-end-inset, 0px) + var(--mn-titlebar-actions-width, 0px)) 0 0;
+  pointer-events: none;
+  -webkit-app-region: drag;
+}
+
+html.is-electron-shell :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active)
+  [data-app-titlebar] :is(button, a, label, input, select, textarea, summary, [contenteditable='true'], [role='button']) {
+  -webkit-app-region: no-drag;
+}
+
+/* Keep the sheet and its chrome on one row, even when the workspace rail is collapsed. */
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]):not(.os-workspace-gate-open)
+  .mn-os:has(> #osMenubar[data-view='app']):has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar)) {
+  > #osWorkspace::before { content: none; }
+  #osStage.is-in-app {
+    margin-block-start: var(--mn-graphite-window-inset);
+    border-radius: 12px;
+  }
+  > #osMenubar[data-view='app'] {
+    border: 0;
+    background: transparent;
+  }
+}
+
+.mn-graphite-apps[data-app-window] .mn-os:has(#osStage [data-app-titlebar]) {
+  #osStage.is-in-app {
+    margin-inline: var(--mn-graphite-window-inset);
+    margin-block-end: var(--mn-graphite-window-inset);
+  }
+  > #osMenubar[data-view='app'] {
+    position: absolute;
+    inset: var(--mn-graphite-window-inset) var(--mn-graphite-window-inset) auto;
+    height: var(--mn-workbench-band-h);
+    pointer-events: none;
+    -webkit-app-region: no-drag;
+    > .mn-os-mb-left { display: none; }
+    > .mn-os-mb-right, > .mn-os-mb-window-controls { pointer-events: auto; }
+    > .mn-os-mb-right {
+      position: fixed;
+      gap: var(--mn-space-1);
+      top: var(--mn-caption-top);
+      right: calc(var(--mn-graphite-window-inset) + var(--mn-titlebar-end-inset, var(--mn-menubar-inline-padding)) + var(--mn-space-2));
+    }
+  }
+  --mn-titlebar-actions-width: calc(6 * var(--os-window-btn-size) + 6 * var(--mn-space-1));
+}
+
+.mn-graphite-workspace:not(.mn-graphite-sidebar-open, .os-workspace-gate-open)
+  .mn-os:has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar)) {
+  --mn-titlebar-navigation-width: calc(var(--os-window-btn-size) + 9rem + var(--mn-space-5));
+  --mn-titlebar-start-inset: calc(var(--mn-titlebar-navigation-width) + var(--mn-menubar-inline-padding));
+  --mn-titlebar-actions-width: calc(7 * var(--os-window-btn-size) + 7 * var(--mn-space-1));
+  > #osMenubar[data-view='app'] {
+    inset-inline-end: auto;
+    width: max-content;
+    padding-bottom: 0;
+    .mn-os-mb-left > :not(.mn-os-mb-chat-toggle, .mn-os-mb-workspace-slot) { display: none; }
+    .mn-os-mb-workspace-slot {
+      max-width: 9rem;
+      margin-inline: 0;
+    }
+    > .mn-os-mb-right {
+      gap: var(--mn-space-1);
+      display: flex;
+      position: fixed;
+      top: var(--mn-caption-top);
+      right: calc(var(--mn-graphite-window-inset) + var(--mn-titlebar-end-inset, var(--mn-menubar-inline-padding)) + var(--mn-space-2));
+    }
+  }
+}
+
+html.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true'], .mn-graphite-sidebar-open)
+  .mn-os:has(#osStage [data-app-titlebar]) {
+  --mn-titlebar-start-inset: calc(var(--mn-mac-traffic-lights-end) / var(--mn-shell-zoom, 1) + var(--mn-mac-traffic-lights-gap) + var(--mn-titlebar-navigation-width, 0px));
+}
+
+/* Give the graph toolbar the full top row so the inspector starts below it. */
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) #osAppsLayer > .brain-page.is-graph-canvas-bg {
+  --brain-graphite-inspector-top: var(--brain-graph-below-toolbar);
+  --brain-graphite-toolbar-inset: 0px;
+}
+
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) #osAppsLayer .brain-section--graph.is-active {
+  animation: none;
+}
+
+/* The Brain rail already clears the left cluster. Keep graph and utility controls in the content column. */
+.mn-graphite-workspace #osAppsLayer > .brain-page {
+  --mn-titlebar-start-inset: var(--mn-workbench-gutter);
+}
+
+/* A planning view can replace the transcript without leaving the chat route. */
+.mn-graphite-workspace #workspaceSplit:has(.sp-stage-header, .orchestrate-plan-stage-header, .ov2__stage-header, .issues-page--embedded) > #graphiteThreadHeader {
+  display: none;
+}
+
+:is(.sp-stage-header, .orchestrate-plan-stage-header) {
+  display: none;
+}
+
+.mn-graphite-workspace :is(.sp-stage-header, .orchestrate-plan-stage-header) {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  font-size: var(--mn-type-md);
+  font-weight: var(--mn-weight-medium);
+  border-bottom: 1px solid var(--mn-border);
+}
+
+@container code-map-stage (width > 760px) {
+  .mn-graphite-workspace #codeBrainMapRoot:has(.code-map-chat) .code-map-chat__header {
+    padding-right: calc(var(--mn-titlebar-end-inset, var(--mn-workbench-gutter)) + var(--mn-titlebar-actions-width, 0px) + var(--mn-space-2));
+    min-height: var(--mn-workbench-band-h);
+    background: var(--mn-graphite-sheet, var(--mn-bg));
+  }
+  .mn-graphite-workspace #codeBrainMapRoot:has(.code-map-chat) .code-map-bar[data-app-titlebar] {
+    --mn-titlebar-end-inset: var(--mn-workbench-gutter);
+    --mn-titlebar-actions-width: 0px;
+  }
+}
+
+/* The menubar supplies a drag region for stages without a titlebar header. */
+html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:not(.os-workspace-gate-open)
+  .mn-os:not(:has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar))) > #osMenubar {
+  width: 100%;
+  padding-inline-end: calc(100% - var(--mn-graphite-sidebar-width) + 10px);
+}
+
+html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:not(.os-workspace-gate-open)
+  .mn-os-stage.is-in-app:not(:has(:is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar))) {
+  margin-block-start: var(--os-menubar-h);
+}
+
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-mb-chat-toggle {
+  margin-inline-start: auto;
+}
+
+.mn-graphite-menubar--moving .mn-os-mb-left {
+  overflow: visible;
+}
+
+.mn-graphite-menubar--moving .mn-os-mb-chat-toggle {
+  position: relative;
+  z-index: var(--mn-z-raised);
+}
+
+.mn-graphite-workspace:not(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion) #osAppRail,
+.mn-graphite-workspace.os-workspace-gate-open #osAppRail {
+  display: none;
+}
+
+:is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion) #osAppRail:not([hidden]) {
+  --mn-graphite-rail-gutter: 10px;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--mn-graphite-sidebar-width);
+  min-height: 0;
+  padding: 54px var(--mn-graphite-rail-gutter) 10px;
+  box-sizing: border-box;
+  align-items: stretch;
+  background: transparent;
+  border: 0;
+  gap: 0;
+}
+
+.mn-graphite-workspace .mn-os-stage.is-in-app {
+  z-index: 31;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-reduce-motion]).mn-graphite-sidebar-motion .mn-os-stage.is-in-app {
+    transition:
+      margin-inline-start var(--duration-normal) var(--ease-out),
+      margin-block-start var(--duration-normal) var(--ease-out),
+      border-radius var(--duration-normal) var(--ease-out),
+      box-shadow var(--duration-normal) var(--ease-out);
+  }
+
+  :root:not([data-reduce-motion]).mn-graphite-sidebar-motion #osWorkspace::before {
+    transition: opacity var(--duration-normal) var(--ease-out);
+  }
+
+  :root:not([data-reduce-motion]).mn-graphite-sidebar-motion .mn-os {
+    transition: background-color var(--duration-normal) var(--ease-out);
+  }
+}
+
+/* The stage covers the fixed-width rail while the rail leaves the tab order. */
+.mn-graphite-sidebar-motion #osAppRail .chat-sidebar.collapsed:not(.mobile-open) > * {
+  visibility: visible;
+}
+
+.mn-graphite-workspace #osAppRail .chat-sidebar {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+  border: 0;
+  overflow: visible;
+}
+
+.mn-graphite-workspace #osAppRail .chat-sidebar-main {
+  overflow: visible;
+}
+
+.mn-graphite-workspace #osAppRail .sidebar-resizer--chat {
+  /* Keep the full drag target in the rail gutter, clear of the app sheet. */
+  right: calc(-1 * var(--mn-graphite-rail-gutter));
+  width: var(--mn-graphite-rail-gutter);
+  background: transparent;
+  outline: none;
+}
+
+.mn-graphite-workspace #osAppRail .sidebar-resizer--chat:is(:hover, :focus-visible, .dragging)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 3px;
+  height: min(32px, 100%);
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-fg-muted);
+  pointer-events: none;
+}
+
+.mn-graphite-workspace #osAppRail .sidebar-resizer--chat.dragging::after {
+  background: var(--mn-accent);
+}
+
+.mn-graphite-workspace #osAppRail .sidebar-resizer--chat:focus-visible::after {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: 1px;
+}
+
+.mn-graphite-workspace #osAppRail .chat-list {
+  margin-top: 10px;
+  padding: 0;
+  scrollbar-width: thin;
+}
+
+.mn-graphite-workspace #osAppRail .chat-list-section-head {
+  height: 30px;
+  margin: 0;
+  align-items: flex-end;
+  padding: 0 8px 6px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.mn-graphite-workspace #osAppRail .chat-sidebar-title {
+  display: none;
+}
+
+.mn-graphite-workspace #osAppRail .chat-item-row,
+.mn-graphite-workspace #osAppRail .chat-item-row--in-group {
+  border-color: transparent;
+  border-radius: 7px;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+}
+
+.mn-graphite-workspace #osAppRail .chat-item-row.active {
+  background: var(--mn-sel, var(--mn-graphite-active, var(--mn-surface-2)));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.mn-graphite-workspace #osAppRail .chat-item-name {
+  font-weight: 400;
+}
+
+.mn-graphite-workspace #osAppRail .chat-item-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.mn-graphite-workspace-slot {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.mn-graphite-workspace-slot .workspace-control {
+  width: 100%;
+  max-width: none;
+}
+
+.mn-graphite-workspace-slot .workspace-btn.icon-btn {
+  width: 100%;
+  max-width: none;
+  min-height: 34px;
+  height: 34px;
+  display: flex;
+  gap: 9px;
+  padding-inline: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+}
+
+.mn-graphite-workspace-slot .workspace-btn:hover,
+.mn-graphite-workspace-slot .workspace-btn[aria-expanded='true'] {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+}
+
+.mn-graphite-workspace-slot .workspace-btn .workspace-path-label {
+  max-width: min(45%, 140px);
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font: 500 13px/1.45 var(--font-ui);
+}
+
+.mn-graphite-workspace-slot .mn-graphite-workspace-parent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font: 400 11.5px/1.45 var(--font-mono);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mn-graphite-workspace-chevron,
+.mn-graphite-workspace-parent {
+  display: none;
+}
+
+.mn-graphite-workspace-slot .mn-graphite-workspace-chevron,
+.mn-graphite-workspace-slot .mn-graphite-workspace-parent {
+  display: inline-block;
+}
+
+.mn-graphite-thread-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.mn-graphite-thread-actions[hidden],
+.mn-graphite-auxiliary[hidden],
+.mn-graphite-workspace-slot[hidden] {
+  display: none;
+}
+
+.mn-graphite-thread-new {
+  height: 32px;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  min-width: 0;
+  font: 500 13px/1.45 var(--font-ui);
+  cursor: pointer;
+}
+
+.mn-graphite-thread-new:hover {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+}
+
+.mn-graphite-thread-new span {
+  flex: 1;
+  text-align: start;
+}
+
+.mn-graphite-thread-new kbd {
+  padding: 3px 4px;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: 4px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font: 400 10.5px/1 var(--font-mono);
+}
+
+.mn-os-app-rail__label,
+.mn-os-app-rail__btn.mn-os-app-rail__boards {
+  display: none;
+}
+
+.mn-graphite-workspace #osAppRail .mn-os-app-rail__nav {
+  flex-shrink: 0;
+  padding: 0;
+  gap: 1px;
+  align-items: stretch;
+  max-height: 34vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__btn {
+  width: 100%;
+  height: 30px;
+  display: flex;
+  gap: 9px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font: 400 13px/1.45 var(--font-ui);
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__btn[data-app-id='code'] {
+  display: none;
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__btn:is(:hover, .is-active) {
+  color: var(--mn-graphite-text, var(--mn-fg));
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__btn.is-active {
+  background: var(--mn-sel, var(--mn-graphite-active, var(--mn-surface-2)));
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__label {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .icon-svg {
+  --mn-icon-size: 14px;
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__badge {
+  position: static;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  background: none;
+  font: 400 11.5px/1.45 var(--font-mono);
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__badge.is-urgent {
+  color: var(--mn-danger);
+}
+
+.mn-graphite-workspace .mn-os-app-rail__btn[data-app-id='issues'] { order: -5; }
+.mn-graphite-workspace .mn-os-app-rail__boards { order: -4; }
+.mn-graphite-workspace .mn-os-app-rail__btn[data-app-id='source-control'] { order: -3; }
+.mn-graphite-workspace .mn-os-app-rail__btn[data-app-id='brain'] { order: -2; }
+.mn-graphite-workspace .mn-os-app-rail__btn[data-app-id='scheduler'] { order: -1; }
+
+.mn-graphite-sidebar-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid var(--mn-graphite-line, var(--mn-border));
+}
+
+.mn-graphite-sidebar-footer .chat-list-views {
+  flex: 1 0 82px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+
+.mn-graphite-sidebar-footer .chat-list-view {
+  justify-content: flex-start;
+  min-height: 28px;
+  padding-inline: 8px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.mn-graphite-sidebar-footer .chat-list-view__count {
+  margin-inline-start: auto;
+}
+
+.mn-graphite-sidebar-footer .chat-list-views:has([data-chat-view='working'][aria-pressed='true']) [data-chat-view='working'],
+.mn-graphite-sidebar-footer .chat-list-views:has([data-chat-view='archive'][aria-pressed='true']) [data-chat-view='archive'] {
+  display: none;
+}
+
+.mn-graphite-sidebar-footer .mn-os-workspace-actions {
+  margin-inline-start: auto;
+  gap: 2px;
+}
+
+.mn-graphite-sidebar-footer :is(.mn-os-mb-icon, .activity-trigger) {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+}
+
+.mn-graphite-sidebar-footer :is(.mn-os-mb-icon, .activity-trigger):hover {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.mn-graphite-local-model {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 11px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 10px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mn-graphite-local-model[hidden],
+.mn-graphite-local-model [hidden] { display: none; }
+.mn-graphite-local-model__rate { font: 11px var(--font-mono); color: var(--mn-fg-muted); }
+.mn-graphite-local-model__spark {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+  align-items: end;
+  gap: 2px;
+  height: 16px;
+}
+.mn-graphite-local-model__spark > span {
+  border-radius: var(--mn-radius-pill);
+  background: color-mix(in srgb, var(--mn-accent) 55%, transparent);
+}
+
+.mn-graphite-local-model[data-state='unavailable'] {
+  border-style: dashed;
+  background: transparent;
+}
+
+.mn-graphite-local-model:hover {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+}
+
+.mn-graphite-local-model__copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mn-graphite-local-model__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.mn-graphite-local-model__detail {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 11px;
+}
+
+.mn-graphite-local-model__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mn-fg-subtle);
+}
+
+.mn-graphite-local-model[data-state='running'] .mn-graphite-local-model__dot {
+  background: var(--mn-accent);
+}
+
+.mn-graphite-local-model:is([data-state='starting'], [data-state='unhealthy']) .mn-graphite-local-model__dot {
+  background: var(--mn-warning);
+}
+
+.welcome-page__intro,
+.welcome-page__recents-search,
+.welcome-page__recents-unavailable {
+  display: none;
+}
+
+.mn-graphite-workspace.os-workspace-gate-open .mn-os-mb-right > :not(.mn-os-workspace-actions),
+.mn-graphite-workspace.os-workspace-gate-open .mn-os-workspace-actions > :not([data-graphite-workspace-settings]) {
+  display: none;
+}
+
+.mn-graphite-workspace.os-workspace-gate-open #osMenubar .mn-os-mb-brand {
+  display: inline !important;
+}
+
+.mn-graphite-workspace.os-workspace-gate-open #osMenubar :is(.mn-os-mb-workspace-slot, .mn-os-mb-appname, .mn-os-mb-sep, .mn-os-mb-chat-toggle) {
+  display: none !important;
+}
+
+.mn-graphite-workspace #osWorkspaceGate,
+.mn-graphite-workspace #osWorkspaceGate .welcome-page {
+  background: var(--mn-graphite-ground, var(--mn-bg));
+}
+
+.mn-graphite-workspace .welcome-page__inner {
+  max-width: 892px;
+  padding: 40px 16px 32px;
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.mn-graphite-workspace .welcome-page__title {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.03em;
+}
+
+.mn-graphite-workspace .welcome-page__intro {
+  display: block;
+  margin: 0;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 13px;
+}
+
+.mn-graphite-workspace .welcome-page__actions {
+  gap: 12px;
+  margin: 28px 0;
+}
+
+.mn-graphite-workspace .welcome-page__action {
+  min-height: 87px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 12px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.mn-graphite-workspace .welcome-page__action:hover:not(:disabled),
+.mn-graphite-workspace .welcome-page__action[aria-expanded='true'] {
+  border-color: var(--mn-graphite-line-2, var(--mn-border-strong));
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+  transform: none;
+}
+
+.mn-graphite-workspace .welcome-page__action[aria-expanded='true'] {
+  border-color: var(--mn-accent-border);
+}
+
+.mn-graphite-workspace .welcome-page__action-icon {
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+}
+
+.mn-graphite-workspace .welcome-page__action-copy {
+  gap: 3px;
+}
+
+.mn-graphite-workspace .welcome-page__action-label {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.mn-graphite-workspace .welcome-page__action-desc {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mn-graphite-workspace .welcome-page__recents-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.mn-graphite-workspace .welcome-page__recents-title {
+  margin: 0;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.mn-graphite-workspace .welcome-page__recents-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 260px;
+  height: 30px;
+  padding-inline: 8px;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: 8px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+}
+
+.mn-graphite-workspace .welcome-page__recents-search:focus-within {
+  border-color: var(--mn-focus-ring);
+}
+
+.mn-graphite-workspace .welcome-page__recents-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.mn-graphite-workspace .welcome-page__recents-search input::placeholder {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+}
+
+.mn-graphite-workspace :is(.welcome-page__pinned-list, .welcome-page__recents-list) {
+  border: 0;
+  border-radius: 0;
+}
+
+.mn-graphite-workspace .welcome-page__pinned-list {
+  margin-bottom: 12px;
+}
+
+.mn-graphite-workspace .welcome-page__recents + .welcome-page__pinned-list {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.mn-graphite-workspace .welcome-page__recents-item {
+  min-height: 60px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+}
+
+.mn-graphite-workspace .welcome-page__recents-item:is(:hover, :focus-within) {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+}
+
+.mn-graphite-workspace .welcome-page__recents-row {
+  padding: 6px 10px;
+  gap: 14px;
+}
+
+.mn-graphite-workspace .welcome-page__recents-glyph {
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+}
+
+.mn-graphite-workspace .welcome-page__recents-item[data-open-in-window] .welcome-page__recents-glyph {
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent);
+}
+
+.mn-graphite-workspace .welcome-page__recents-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.welcome-page__recents-identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.welcome-page__recents-branch {
+  display: none;
+}
+
+.mn-graphite-workspace .welcome-page__recents-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 28ch;
+  min-width: 0;
+  padding-inline: 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font: 11px/18px var(--font-mono);
+  white-space: nowrap;
+}
+
+.mn-graphite-workspace .welcome-page__recents-path {
+  font-size: 11.5px;
+}
+
+.mn-graphite-workspace .welcome-page__recents-open {
+  border-color: var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: 7px;
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+}
+
+.mn-graphite-workspace .welcome-page__recents-unavailable {
+  display: inline;
+  color: var(--mn-warning);
+  font-size: 11.5px;
+}
+
+.mn-graphite-workspace .welcome-page__project-default {
+  margin-top: 28px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 12px;
+}
+
+.workspace-menu__mark {
+  display: none;
+}
+
+.workspace-menu__heading {
+  padding: 6px 8px 4px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 12px;
+}
+
+.workspace-menu--graphite {
+  min-width: 0;
+  padding: 6px;
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  border-radius: 12px;
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+  box-shadow: var(--mn-graphite-shadow, var(--shadow-popover-soft));
+}
+
+.workspace-menu--graphite .workspace-menu__item {
+  grid-template-columns: 24px minmax(0, 1fr) auto auto auto;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  min-height: 40px;
+}
+
+.workspace-menu--graphite .workspace-menu__item[aria-current='true'] {
+  background: var(--mn-sel, var(--mn-surface-2));
+}
+
+.workspace-menu--graphite .workspace-menu__mark {
+  grid-area: 1 / 1 / 3 / 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 6px;
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.workspace-menu--graphite .workspace-menu__check {
+  display: none;
+}
+
+.workspace-menu--graphite .workspace-menu__action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+}
+
+.workspace-picker-overlay--locations {
+  background: var(--mn-graphite-scrim, var(--mn-overlay));
+}
+
+.workspace-picker-overlay--locations .workspace-picker {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  width: min(820px, calc(100vw - 32px));
+  height: min(540px, calc(100dvh - 32px));
+  max-height: none;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: 12px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+  box-shadow: var(--mn-graphite-popup);
+  overflow: hidden;
+}
+
+.workspace-picker-overlay--locations .workspace-picker__header { grid-area: 1 / 1 / 2 / 3; }
+.workspace-picker-overlay--locations .workspace-picker__nav { grid-area: 2 / 2 / 3 / 3; }
+.workspace-picker-overlay--locations .workspace-picker__new-folder-panel { grid-area: 3 / 2 / 4 / 3; }
+.workspace-picker-overlay--locations .workspace-picker__error { grid-area: 4 / 2 / 5 / 3; }
+.workspace-picker-overlay--locations .workspace-picker__body { grid-area: 5 / 2 / 6 / 3; scrollbar-width: thin; }
+.workspace-picker-overlay--locations .workspace-picker__list { min-height: 0; }
+.workspace-picker-overlay--locations .workspace-picker__footer { grid-area: 6 / 1 / 7 / 3; }
+
+.workspace-picker-overlay--locations .workspace-picker__nav-actions {
+  display: contents;
+}
+
+.workspace-picker-overlay--locations [data-ws-picker-up] {
+  order: -1;
+}
+
+.workspace-picker-overlay--locations [data-ws-picker-new-folder] {
+  display: inline-flex;
+  width: auto;
+  gap: 6px;
+  padding-inline: 8px;
+}
+
+.workspace-picker-overlay--locations [data-ws-picker-new-folder]::after {
+  content: 'New folder';
+  font: 400 12.5px/1.45 var(--font-ui);
+}
+
+.workspace-picker-overlay--locations .workspace-picker__locations {
+  display: flex;
+  grid-area: 2 / 1 / 6 / 2;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  border-inline-end: 1px solid var(--mn-graphite-line, var(--mn-border));
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .workspace-picker-overlay--locations .workspace-picker { display: flex; }
+  .workspace-picker-overlay--locations .workspace-picker__locations {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--mn-border);
+    white-space: nowrap;
+  }
+  .workspace-picker-overlay--locations [data-ws-picker-new-folder]::after { content: none; }
+}
+
+.workspace-picker__locations[hidden] {
+  display: none;
+}
+
+.workspace-picker__locations-title {
+  padding: 4px 10px 6px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 12px;
+}
+
+.workspace-picker__location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.workspace-picker__location:is(:hover, [aria-current='true']) {
+  background: var(--mn-sel, var(--mn-surface-2));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.workspace-picker-overlay--locations .workspace-picker__footer {
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+}
+
+.workspace-picker-overlay--locations .workspace-picker__btn--primary {
+  background: var(--mn-graphite-button, var(--mn-accent));
+  color: var(--mn-graphite-button-text, var(--mn-fg-on-accent));
+}
+
+.mn-graphite-apps .mn-onboarding {
+  background: var(--mn-graphite-ground, var(--mn-bg));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.mn-graphite-apps .mn-onboarding.is-welcome::before {
+  content: none;
+}

@@ -100,7 +100,6 @@ function installIsolatedEffector() {
       boardId,
       worktrees: true,
       model: MODEL,
-      promptVariant: 'lite',
       runTurn: async () => ({ outcome: 'pass', summary: 'ok', evidence: [] }),
     }),
   );
@@ -235,7 +234,6 @@ describe('board git ensure at Start', { concurrency: false }, () => {
         boardId,
         worktrees: true,
         model: MODEL,
-        promptVariant: 'lite',
         runTurn: async ({ cwd, signal }) => {
           resolvePlan(await fs.readFile(path.join(cwd, ...planPath.split('/')), 'utf8'));
           await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
@@ -290,7 +288,6 @@ describe('board git ensure at Start', { concurrency: false }, () => {
       const effector = createRunnerEffector({
         cwd: sandbox,
         model: MODEL,
-        promptVariant: 'lite',
       });
       await effector.preflight();
       assert.equal(await isGitRepository(sandbox), false);

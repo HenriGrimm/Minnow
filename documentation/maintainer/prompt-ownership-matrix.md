@@ -15,7 +15,7 @@ Defines which layer owns which instruction so composed system prompts do not rep
 
 ## Suppression rules (composer)
 
-When `workAgentId` matches `defaultForModes` for the active mode, the **mode** part is omitted — the work-agent carries deliverable instructions (e.g. Build + Builder, Plan + Planner, Orchestrate + Orchestrator).
+Only Boards adds a mode prompt. Workflow skills supply turn-specific instructions for the shared agent.
 
 ## Dedupe checklist
 
@@ -25,10 +25,6 @@ When `workAgentId` matches `defaultForModes` for the active mode, the **mode** p
 - Memory save/search rules: **memory part** only (base = one-line pointer).
 - Shell/Windows/test guidance: **tool-usage default** only.
 - Plan schema with Build/Test/Accept: **planner work-agent** when auto-selected; **plan mode** when planner is not active.
-
-## Lite profile
-
-Every fragment that can be injected in lite profile must ship a `.lite.md` variant. Parts without a lite variant are **omitted** (not truncated mid-sentence).
 
 ## Compose-time hygiene
 

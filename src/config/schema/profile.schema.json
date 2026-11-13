@@ -31,15 +31,10 @@
     },
     "prompt": {
       "type": "object",
-      "required": ["promptProfile"],
       "additionalProperties": true,
       "properties": {
-        "promptProfile": { "enum": ["full", "lite", "custom"] },
-        "activePromptConfigId": { "type": ["string", "null"] },
         "activeInfoPresetId": { "type": "string" },
-        "planGranularity": { "enum": ["large", "medium", "small"] },
-        "source": { "enum": ["embedded", "prompt-config", "full", "lite"] },
-        "parts": { "type": "object" }
+        "planGranularity": { "enum": ["large", "medium", "small"] }
       }
     },
     "agents": {

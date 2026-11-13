@@ -26,10 +26,6 @@ async function loadGithubCliPromptMap() {
     path.join(toolDir, 'github-cli.md'),
     'utf8',
   );
-  map['./tool-usage/github-cli.lite.md'] = await fs.readFile(
-    path.join(toolDir, 'github-cli.lite.md'),
-    'utf8',
-  );
   map['./tool-usage/default.full.md'] = await fs.readFile(
     path.join(toolDir, 'default.full.md'),
     'utf8',
@@ -48,7 +44,7 @@ describe('github-cli prompts', () => {
 
   test('github-cli fragment loads with gh guidance', async () => {
     registerPromptFilesFromRaw(await loadGithubCliPromptMap());
-    const loaded = loadPromptById('tool-usage', 'github-cli', 'full');
+    const loaded = loadPromptById('tool-usage', 'github-cli');
     assert.ok(loaded?.body);
     assert.match(loaded.body, /`gh pr list`/);
     assert.match(loaded.body, /Do \*\*not\*\* open github\.com/);
@@ -58,8 +54,7 @@ describe('github-cli prompts', () => {
   test('composeSystemPrompt appends github-cli when execute_command is enabled', async () => {
     registerPromptFilesFromRaw(await loadGithubCliPromptMap());
     const out = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/proj',
+        cwd: '/proj',
       modeId: 'build',
       expertId: null,
       workAgentId: null,
@@ -74,8 +69,7 @@ describe('github-cli prompts', () => {
   test('composeSystemPrompt omits github-cli without execute_command', async () => {
     registerPromptFilesFromRaw(await loadGithubCliPromptMap());
     const out = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/proj',
+        cwd: '/proj',
       modeId: 'build',
       expertId: null,
       workAgentId: null,

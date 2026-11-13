@@ -180,9 +180,10 @@ function optional(row, key, path, parse, output) {
 }
 
 function modelOptions(value, path) {
-  const row = object(value, path, ['reasoningEffort', 'thinkingMode', 'thinkingBudgetTokens']);
+  const row = object(value, path, ['reasoningEffort', 'thinkingMode', 'thinkingBudgetTokens', 'fastMode']);
   const output = {};
   optional(row, 'reasoningEffort', path, (v, p) => label(v, p, 64), output);
+  optional(row, 'fastMode', path, bool, output);
   optional(row, 'thinkingMode', path, (v, p) => member(v, p, ['inherit', 'on', 'off']), output);
   optional(row, 'thinkingBudgetTokens', path, (v, p) => v === null ? null : integer(v, p), output);
   if (output.thinkingMode === 'off' && output.thinkingBudgetTokens > 0) {

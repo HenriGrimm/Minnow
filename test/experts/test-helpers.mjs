@@ -18,12 +18,6 @@ export async function loadExpertFixtureMap() {
     try {
       const raw = await fs.readFile(fullPath, 'utf8');
       map[`./experts/${dirent.name}/expert.full.md`] = raw;
-      const litePath = path.join(root, dirent.name, 'expert.lite.md');
-      try {
-        map[`./experts/${dirent.name}/expert.lite.md`] = await fs.readFile(litePath, 'utf8');
-      } catch {
-        /* lite optional in fixtures */
-      }
     } catch {
       /* skip dirs without full md */
     }

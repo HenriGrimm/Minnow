@@ -77,6 +77,8 @@ function matchSegment(segment: string): [string, SettingsSectionId] | null {
 /** The Settings page a message points at, or null when it names none we know. */
 export function findSettingsLink(text: string | undefined): SettingsLink | null {
   if (!text) return null;
+  const modelsProviders = /\bModels\s*(?:→|->)\s*Providers\b/.exec(text);
+  if (modelsProviders) return { section: 'providers', label: 'Models → Providers' };
   const match = PATH_RE.exec(text);
   if (!match) return null;
   const segments = match[1].split(/\s*(?:→|->)\s*/).filter(Boolean);

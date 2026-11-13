@@ -4,7 +4,7 @@ import { Window } from 'happy-dom';
 import fs from 'node:fs/promises';
 import { setLocalServerAvailable } from '../../src/tools/config.ts';
 
-function setupWelcomeDom() {
+function setupWelcomeDom(iconDataUrl) {
   const window = new Window();
   globalThis.window = window;
   globalThis.document = window.document;
@@ -78,6 +78,7 @@ function setupWelcomeDom() {
               label: 'old',
               exists: true,
               isCurrent: false,
+              iconDataUrl,
             },
           ],
         }),
@@ -122,6 +123,24 @@ const { resetWorkspaceStateForTests, setWorkspaceFromServer } = await import(
 );
 
 describe('welcome-page recents open state', { concurrency: false }, () => {
+  test('uses the project favicon once loaded and keeps initials if it fails', async () => {
+    const glyph = () => document.querySelector('#welcomeRecentsList .welcome-page__recents-glyph');
+    const icon = () => glyph().querySelector('img');
+
+    setupWelcomeDom('http://[');
+    resetWorkspaceStateForTests();
+    await renderWelcomeRecentsForTest();
+    assert.equal(icon(), null);
+    assert.equal(glyph().textContent, 'ol');
+
+    const iconDataUrl = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiLz4=';
+    setupWelcomeDom(iconDataUrl);
+    await renderWelcomeRecentsForTest();
+    assert.equal(icon().getAttribute('src'), iconDataUrl);
+    assert.equal(glyph().textContent, '');
+    assert.equal(icon().hidden, false);
+  });
+
   test('badges a folder that already has a window and closes it from the row', async () => {
     setupWelcomeDom();
     resetWelcomeStateForTests();
@@ -134,8 +153,8 @@ describe('welcome-page recents open state', { concurrency: false }, () => {
     const row = document.querySelector('[data-open-in-window="true"]');
     assert.ok(row, 'the open folder should be marked');
     assert.equal(row.querySelector('.welcome-page__recents-badge')?.textContent, 'Open');
-    // The secondary action becomes "focus that window", not "open another".
-    assert.equal(row.querySelector('.welcome-page__recents-new-window')?.textContent, 'Focus');
+    assert.equal(row.querySelector('.welcome-page__recents-open')?.textContent, 'Focus window');
+    assert.equal(row.querySelector('.welcome-page__recents-new-window'), null);
 
     row.querySelector('.welcome-page__recents-close').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -156,7 +175,7 @@ describe('welcome-page recents open state', { concurrency: false }, () => {
     const row = document.querySelector('[data-workspace-backgrounded="true"]');
     assert.ok(row);
     assert.equal(row.querySelector('.welcome-page__recents-badge')?.textContent, 'Running in background');
-    assert.equal(row.querySelector('.welcome-page__recents-new-window')?.textContent, 'Show');
+    assert.equal(row.querySelector('.welcome-page__recents-open')?.textContent, 'Show window');
 
     delete globalThis.window.minnow;
   });

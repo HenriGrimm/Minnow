@@ -10,7 +10,7 @@ import { getAppRoot } from '../workspace/root.js';
 import { getRequestClientAddress, getRequestIngress, ingressScheme } from '../network/ingress.js';
 import { getConnectTargets, getRemoteStatus } from '../remote/ingress-manager.js';
 import { getHostDisplayName } from '../remote/host-name.js';
-import { setDeviceCookie } from './cookie.js';
+import { clearDeviceCookie, setDeviceCookie } from './cookie.js';
 import { getDevice, listDevices, renameDevice, revokeDevice } from './device-store.js';
 import { createHandoffTicket, peekHandoffTicket } from './handoff.js';
 import {
@@ -232,6 +232,14 @@ export function createAuthRoutesMiddleware(deps = {}) {
       }
 
       // ── Paired device ───────────────────────────────────────────────────
+      if (pathname === '/api/auth/session' && method === 'DELETE') {
+        if (!requireDevice(req, res)) return;
+        revokeDevice(req.minnowAuth.deviceId, res);
+        clearDeviceCookie(res, { secure: isSecure(req) });
+        sendJson(res, 200, { revoked: true });
+        return;
+      }
+
       if (pathname === '/api/auth/adopt' && method === 'POST') {
         if (!requireDevice(req, res)) return;
         // A pairing saved by an older build in localStorage arrives as a header;

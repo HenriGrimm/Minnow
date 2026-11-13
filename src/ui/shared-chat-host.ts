@@ -13,8 +13,13 @@ import '../styles/shared-chat-host.css';
 
 let releaseCurrent: (() => void) | undefined;
 
+interface SharedChatHostOptions {
+  openPlan?: (path: string) => void;
+  showJumpToLatest?: boolean;
+}
+
 /** Move the actual composer, approval slots and metrics; never clone controls or handlers. */
-export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<AppId, 'home' | 'issues' | 'code'>, options: { openPlan?: (path: string) => void } = {}): { dispose: () => void; focus: (text?: string) => void } {
+export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<AppId, 'issues' | 'code'>, options: SharedChatHostOptions = {}): { dispose: () => void; focus: (text?: string) => Promise<boolean> } {
   releaseCurrent?.();
   teardownHub();
   const shell = document.createElement('section');
@@ -33,14 +38,14 @@ export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<
   for (const name of promptClasses) {
     column?.classList.remove(name);
   }
-  for (const node of column?.querySelectorAll<HTMLElement>(':scope > #toolApprovalHost, :scope > #questionHost, :scope > #composerRunStatus, :scope > .input-bar, :scope > #statsStrip') ?? []) {
+  for (const node of column?.querySelectorAll<HTMLElement>(':scope > :is(.input-bar, #btnStats, #statsStrip)') ?? []) {
     const marker = document.createComment('shared chat return slot');
     node.before(marker); parked.push({ node, marker }); shell.append(node);
   }
-  const jumpDock = column?.querySelector<HTMLElement>(':scope > .chat-viewport > .chat-viewport-dock');
-  if (jumpDock) {
-    const marker = document.createComment('shared chat jump return slot');
-    jumpDock.before(marker); parked.push({ node: jumpDock, marker }); viewport.append(jumpDock);
+  for (const node of column?.querySelectorAll<HTMLElement>(':scope > .chat-viewport > :is(.chat-viewport-dock, .composer-notices)') ?? []) {
+    if (options.showJumpToLatest === false && node.matches('.chat-viewport-dock')) continue;
+    const marker = document.createComment('shared chat return slot');
+    node.before(marker); parked.push({ node, marker }); viewport.append(node);
   }
   setSharedChatHost({ chatId: chat.id, transcript, shell, openPlan: options.openPlan });
   const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
@@ -64,19 +69,20 @@ export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<
   releaseCurrent = dispose;
   shell.inert = true;
   const ready = import('./sidebar').then(async ({ switchChat }) => {
-    if (disposed) return;
+    if (disposed) return false;
     await switchChat(chat.id);
-    if (disposed) return;
+    if (disposed || getActiveChat().id !== chat.id) return false;
     shell.inert = false;
     notifyAskQuestionDisplayContextChanged();
+    return true;
   }).catch(error => {
     if (!disposed) transcript.textContent = `Could not open conversation: ${error instanceof Error ? error.message : String(error)}`;
+    return false;
   });
-  return { dispose, focus(text) {
-    void ready.then(() => {
-      if (!input || disposed) return;
-      if (text !== undefined) { input.value = text; input.dispatchEvent(new Event('input', { bubbles: true })); }
-      input.focus();
-    });
+  return { dispose, async focus(text) {
+    if (!(await ready) || !input || disposed) return false;
+    if (text !== undefined) { input.value = text; input.dispatchEvent(new Event('input', { bubbles: true })); }
+    input.focus();
+    return true;
   } };
 }

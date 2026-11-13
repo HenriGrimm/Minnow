@@ -3,22 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0f1216">
+<meta name="theme-color" content="#09090b">
 <script>
   window.__MINNOW_BOOT_ORIGIN_MS = performance.now();
 </script>
 <script>
 (function () {
-  var THEME_BG = {
-    'swamp-dark': '#0f1216', 'swamp-light': '#f7f7f4',
-    'desert-dark': '#16140f', 'desert-light': '#f7f4ec',
-    'ocean-dark': '#0d1117', 'ocean-light': '#f4f6f9',
-    'coral-dark': '#141416', 'coral-light': '#fafaf8',
-    'mono-dark': '#2b2b2b', 'mono-light': '#f7f7f7',
-    'matrix-dark': '#040604', 'matrix-light': '#eef2ee',
-    'human-dark': '#0f0f0f', 'human-light': '#fbf1ea',
-    'mint-dark': '#141615', 'mint-light': '#f2faf6'
-  };
   var LEGACY_FAMILY = {
     sage: 'swamp', amber: 'desert', cyan: 'ocean', salt: 'mono', retro: 'matrix', ember: 'human'
   };
@@ -48,14 +38,18 @@
     }
     if (boot.customAdvanced) localStorage.setItem('minnow.appearance.customAdvanced', '1');
     else localStorage.removeItem('minnow.appearance.customAdvanced');
+    localStorage.setItem('minnow.appearance.colorIntensity', String(boot.colorIntensity ?? 50));
+    localStorage.setItem('minnow.appearance.graphiteAccent', boot.graphiteAccent || 'teal');
+    localStorage.setItem('minnow.appearance.density', boot.density || 'cozy');
+    localStorage.setItem('minnow.appearance.reduceMotion', boot.reduceMotion ? '1' : '0');
     if (boot.fonts) localStorage.setItem('minnow.appearance.fonts', JSON.stringify(boot.fonts));
   }
   function resolveThemeId() {
     try {
       seedFromBootPayload();
       var follow = localStorage.getItem('minnow.theme.followSystem') === '1';
-      var family = normalizeFamily(localStorage.getItem('minnow.theme.family') || 'swamp');
-      if (!/^(swamp|desert|ocean|coral|mono|matrix|human|mint)$/.test(family)) family = 'swamp';
+      var family = normalizeFamily(localStorage.getItem('minnow.theme.family') || 'graphite');
+      if (!/^(graphite|swamp|desert|ocean|coral|mono|matrix|human|mint)$/.test(family)) family = 'graphite';
       if (follow) {
         var light = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
         return family + (light ? '-light' : '-dark');
@@ -70,7 +64,7 @@
         var l = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
         return 'swamp-' + (l ? 'light' : 'dark');
       }
-      if (/^(swamp|desert|ocean|coral|mono|matrix|human|mint)-(dark|light)$/.test(v || '')) return v;
+      if (/^(graphite|swamp|desert|ocean|coral|mono|matrix|human|mint)-(dark|light)$/.test(v || '')) return v;
       if (/^(sage|amber|cyan|salt|retro|ember)-(dark|light)$/.test(v || '')) {
         var parts = v.split('-');
         var mode = parts.pop();
@@ -80,18 +74,36 @@
         return id;
       }
     } catch (e) { /* private mode */ }
-    return 'swamp-dark';
+    return 'graphite-dark';
   }
   try {
     var id = resolveThemeId();
     var mode = id.indexOf('-light') > 0 ? 'light' : 'dark';
     var root = document.documentElement;
-    root.setAttribute('data-theme', id);
+    root.setAttribute('data-theme', 'graphite-' + mode);
+    root.setAttribute('data-tint', '50');
     root.style.colorScheme = mode;
     root.classList.add('theme-no-transition');
     var meta = document.querySelector('meta[name="theme-color"]');
     var customBg = null;
     try {
+      var tint = localStorage.getItem('minnow.appearance.colorIntensity');
+      // Match normalizeColorIntensity before the app module loads.
+      var tintPercent = tint === 'none' ? 0 : tint === 'rich' ? 100 : Number(tint);
+      if (tint === 'none' || tint === 'rich' || (/^\d{1,3}$/.test(tint || '') && tintPercent <= 100)) {
+        root.setAttribute('data-tint', String(tintPercent));
+        root.style.setProperty('--mn-graphite-tint', String(tintPercent / 50));
+      }
+      var accent = localStorage.getItem('minnow.appearance.graphiteAccent');
+      var family = id.slice(0, id.lastIndexOf('-'));
+      if (family !== 'graphite') accent = family;
+      if (/^(teal|blue|amber|violet|rose|swamp|ocean|desert|coral|human|mint|mono|matrix|#[\da-f]{6})$/i.test(accent || '')) {
+        root.setAttribute('data-graphite-accent', accent.toLowerCase());
+        if (accent.charAt(0) === '#') root.style.setProperty('--mn-graphite-picked-accent', accent);
+      }
+      var density = localStorage.getItem('minnow.appearance.density');
+      if (/^(compact|cozy|roomy)$/.test(density || '')) root.setAttribute('data-density', density);
+      if (localStorage.getItem('minnow.appearance.reduceMotion') === '1') root.setAttribute('data-reduce-motion', '');
       if (localStorage.getItem('minnow.appearance.customEnabled') === '1') {
         var raw = localStorage.getItem('minnow.appearance.customTokens');
         if (raw) {
@@ -108,10 +120,11 @@
         }
       }
     } catch (e) { /* ignore */ }
-    if (meta) meta.setAttribute('content', customBg || THEME_BG[id] || '#0f1216');
+    if (meta) meta.setAttribute('content', customBg || (mode === 'light' ? '#ececee' : '#09090b'));
   } catch (e) { /* private mode */ }
 })();
 </script>
+<link rel="stylesheet" href="/src/styles/graphite-fonts.css">
 <link rel="stylesheet" href="/src/styles/tokens.css">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -145,9 +158,9 @@
     justify-content: center;
     gap: 14px;
     padding: max(16px, env(safe-area-inset-top)) 24px max(16px, env(safe-area-inset-bottom));
-    background: var(--mn-bg, #f7f7f4);
-    color: var(--mn-fg, #1c2127);
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: var(--mn-bg, Canvas);
+    color: var(--mn-fg, CanvasText);
+    font-family: var(--font-ui, system-ui, sans-serif);
     transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
   html.app-ready .app-loader {
@@ -165,15 +178,12 @@
     width: 56px;
     height: 56px;
     border-radius: 10px;
-    background: var(--mn-accent, #5b8a72);
-    color: var(--mn-fg-on-accent, #0d1a13);
+    background: var(--mn-accent, Highlight);
+    color: var(--mn-fg-on-accent, HighlightText);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-  }
-  html[data-theme$="-dark"] .app-loader__mark {
-    color: var(--mn-fg-on-accent, #0b1410);
   }
   .app-loader__mark svg {
     width: 32px;
@@ -189,7 +199,7 @@
   .app-loader__status {
     margin: 0;
     font-size: 12px;
-    color: var(--mn-fg-muted, #5a626c);
+    color: var(--mn-fg-muted, CanvasText);
     letter-spacing: 0.02em;
     max-width: 42ch;
     text-align: center;
@@ -216,8 +226,8 @@
   .app-loader__spinner {
     width: 20px;
     height: 20px;
-    border: 2px solid var(--mn-border, rgba(15,18,22,0.12));
-    border-top-color: var(--mn-accent, #5b8a72);
+    border: 2px solid var(--mn-border, color-mix(in srgb, CanvasText 12%, transparent));
+    border-top-color: var(--mn-accent, Highlight);
     border-radius: 50%;
     animation: app-loader-spin 0.75s linear infinite;
   }
@@ -232,8 +242,8 @@
   body {
     display: flex;
     flex-direction: column;
-    color: var(--mn-fg, #1c2127);
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color: var(--mn-fg, CanvasText);
+    font-family: var(--font-ui, system-ui, sans-serif);
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -246,8 +256,8 @@
     height: 52px;
     min-height: 52px;
     padding: 0 14px;
-    border-bottom: 1px solid var(--mn-border, rgba(15,18,22,0.08));
-    background: var(--mn-bg, #f7f7f4);
+    border-bottom: 1px solid var(--mn-border, color-mix(in srgb, CanvasText 8%, transparent));
+    background: var(--mn-bg, Canvas);
     flex-shrink: 0;
   }
   .app-body {
@@ -366,15 +376,6 @@
         <p class="field-hint">Upper bound for a single assistant message.</p>
       </div>
     </div>
-    <div class="field">
-      <label for="systemPromptPreset">Prompt preset</label>
-      <select id="systemPromptPreset">
-        <option value="">Custom prompt</option>
-      </select>
-      <p class="field-hint" id="systemPromptHint">Choose the shipped default or enter a custom fallback below.</p>
-      <label for="systemPrompt" class="visually-hidden">System prompt</label>
-      <textarea id="systemPrompt" placeholder="Example: You are a helpful assistant." rows="12"></textarea>
-    </div>
     <section class="tools-section" id="expertsSection" aria-labelledby="expertsSectionTitle">
       <h2 class="tools-section-title" id="expertsSectionTitle">Experts</h2>
       <div class="field-row">
@@ -420,7 +421,7 @@
 <button type="button" class="file-sidebar-backdrop" id="fileSidebarBackdrop" aria-label="Close file tree" aria-hidden="true"></button>
 
 <main id="settingsView" class="settings-page" aria-label="Settings">
-  <header class="settings-page-header">
+  <header class="settings-page-header" data-app-titlebar>
     <button type="button" class="icon-btn" id="btnSettingsPageBack" aria-label="Back to Code">
       <i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>
     </button>
@@ -465,7 +466,7 @@
     <nav class="settings-nav" aria-label="Settings">
     <details class="settings-nav-group" data-settings-nav-group="app" open>
       <summary class="settings-nav-group__label">General</summary>
-      <button type="button" class="settings-nav__item" data-area-jump="general" data-settings-nav-area="general" aria-current="page"><span class="settings-nav__item-label">Startup &amp; setup</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="general" data-settings-nav-area="general" aria-current="page"><span class="settings-nav__item-label">Startup and setup</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="appearance" data-settings-nav-area="appearance"><span class="settings-nav__item-label">Appearance</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="notifications" data-settings-nav-area="notifications"><span class="settings-nav__item-label">Notifications</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="audio" data-settings-nav-area="audio"><span class="settings-nav__item-label">Audio</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
@@ -473,7 +474,7 @@
       <button type="button" class="settings-nav__item" data-area-jump="updates" data-settings-nav-area="updates"><span class="settings-nav__item-label">Updates</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="apps">
-      <summary class="settings-nav-group__label">Code &amp; workspace</summary>
+      <summary class="settings-nav-group__label">Code and workspace</summary>
       <button type="button" class="settings-nav__item" data-area-jump="editor" data-settings-nav-area="editor"><span class="settings-nav__item-label">Editor</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="terminal" data-settings-nav-area="terminal"><span class="settings-nav__item-label">Terminal</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="lsp" data-settings-nav-area="lsp"><span class="settings-nav__item-label">Language servers</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
@@ -482,14 +483,14 @@
       <button type="button" class="settings-nav__item" data-area-jump="issues" data-settings-nav-area="issues"><span class="settings-nav__item-label">Issues</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="agents">
-      <summary class="settings-nav-group__label">AI &amp; agents</summary>
-      <button type="button" class="settings-nav__item" data-settings-models="providers"><span class="settings-nav__item-label">Models &amp; connections ↗</span></button>
-      <button type="button" class="settings-nav__item" data-area-jump="agent-center" data-settings-nav-area="agent-center"><span class="settings-nav__item-label">Agents</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <summary class="settings-nav-group__label">AI and agents</summary>
+      <button type="button" class="settings-nav__item" data-settings-models="providers"><span class="settings-nav__item-label">Models and connections ↗</span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="agent-center" data-settings-nav-area="agent-center"><span class="settings-nav__item-label">Agents and permissions</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="injection" data-settings-nav-area="injection"><span class="settings-nav__item-label">Chat context</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="rules" data-settings-nav-area="rules"><span class="settings-nav__item-label">Rules</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="tools" data-settings-nav-area="tools"><span class="settings-nav__item-label">Tools</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="autopilot" data-settings-nav-area="autopilot"><span class="settings-nav__item-label">Autopilot</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
-      <button type="button" class="settings-nav__item" data-area-jump="watchdog" data-settings-nav-area="watchdog"><span class="settings-nav__item-label">Timeouts &amp; recovery</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="watchdog" data-settings-nav-area="watchdog"><span class="settings-nav__item-label">Timeouts and recovery</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="integrations">
       <summary class="settings-nav-group__label">Extensions</summary>
@@ -504,22 +505,22 @@
       <button type="button" class="settings-nav__item" data-area-jump="webhooks" data-settings-nav-area="webhooks"><span class="settings-nav__item-label">Webhooks</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="data">
-      <summary class="settings-nav-group__label">Data &amp; privacy</summary>
+      <summary class="settings-nav-group__label">Data and privacy</summary>
       <button type="button" class="settings-nav__item" data-area-jump="backups" data-settings-nav-area="backups"><span class="settings-nav__item-label">Backups</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="access" data-settings-nav-area="access"><span class="settings-nav__item-label">Access</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="advanced">
-      <summary class="settings-nav-group__label">About &amp; troubleshooting</summary>
+      <summary class="settings-nav-group__label">About</summary>
       <button type="button" class="settings-nav__item" data-area-jump="about" data-settings-nav-area="about"><span class="settings-nav__item-label">About</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
-      <button type="button" class="settings-nav__item" data-area-jump="diagnostics" data-settings-nav-area="diagnostics"><span class="settings-nav__item-label">Health &amp; diagnostics</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="diagnostics" data-settings-nav-area="diagnostics"><span class="settings-nav__item-label">Health and diagnostics</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     </nav>
     <div class="settings-content">
-      <p id="settingsLocation" class="settings-location" aria-live="polite">General / Startup &amp; setup</p>
+      <p id="settingsLocation" class="settings-location" aria-live="polite">General / Startup and setup</p>
       <div class="settings-category is-active" data-category="general">
 
       <section id="settingsSection-general" class="settings-section settings-area settings-area--title-suppressed is-active" data-area="general">
-        <h2>Startup &amp; setup</h2>
+        <h2>Startup and setup</h2>
         <div id="settingsGeneralBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-terminal" class="settings-section settings-area settings-area--title-suppressed" data-area="terminal">
@@ -605,11 +606,11 @@
       <div class="settings-category" data-category="agents">
 
       <section id="settingsSection-agent-center" class="settings-section settings-section--wide settings-area settings-area--title-suppressed" data-area="agent-center">
-        <h2>Agents</h2>
+        <h2>Agents and permissions</h2>
         <div id="settingsAgentCenterBody" class="settings-section-body settings-agent-center-body"></div>
         <details class="settings-agent-base-prompt" id="settingsBasePromptPanel" data-settings-search-key="agents.prompting">
-          <summary class="settings-agent-base-prompt__summary">Composed prompt &amp; profiles</summary>
-          <p class="settings-field-hint settings-agent-base-prompt__hint">Preview everything the agent is sent, estimate its size, or build a Custom layout that replaces individual parts.</p>
+          <summary class="settings-agent-base-prompt__summary">System prompt settings</summary>
+          <p class="settings-field-hint settings-agent-base-prompt__hint">Review the estimated tokens for the system prompt, rules, and available tools.</p>
           <div id="settingsFlaticonIconGuidanceMount" data-settings-search-key="agents.prompting.interfaceIcons"></div>
           <p
             id="settingsPromptTokenBreakdown"
@@ -618,19 +619,6 @@
             aria-live="polite"
           >Computing estimate…</p>
           <div id="settingsSetupProfilesMount"></div>
-          <div class="settings-profile-tabs" role="group" aria-label="Prompt profile">
-            <button type="button" data-profile-tab="full" class="is-active">Full</button>
-            <button type="button" data-profile-tab="lite">Lite</button>
-            <button type="button" data-profile-tab="custom">Custom</button>
-          </div>
-          <div id="settingsCustomConfigBar" class="settings-custom-bar hidden">
-            <select id="settingsCustomConfigSelect" aria-label="Custom configuration"></select>
-            <button type="button" id="settingsCustomConfigNew">New</button>
-            <button type="button" id="settingsCustomConfigSave">Save</button>
-            <button type="button" id="settingsCustomConfigDuplicate">Duplicate</button>
-            <button type="button" id="settingsCustomConfigDelete">Delete</button>
-          </div>
-          <div id="settingsPromptParts" class="settings-parts-mount"></div>
         </details>
       </section>
       <section id="settingsSection-injection" class="settings-section settings-area settings-area--title-suppressed" data-area="injection">
@@ -651,7 +639,7 @@
         <div id="settingsAutopilotBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-watchdog" class="settings-section settings-area settings-area--title-suppressed" data-area="watchdog">
-        <h2>Timeouts &amp; recovery</h2>
+        <h2>Timeouts and recovery</h2>
         <div id="settingsWatchdogBody" class="settings-section-body"></div>
       </section>
       </div>
@@ -728,7 +716,7 @@
       <div class="settings-category" data-category="advanced">
 
       <section id="settingsSection-diagnostics" class="settings-section settings-area settings-area--title-suppressed" data-area="diagnostics">
-        <h2>Health &amp; diagnostics</h2>
+        <h2>Health and diagnostics</h2>
         <div id="settingsDiagnosticsBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-capability-matrix" hidden class="settings-section settings-section--wide settings-section--matrix settings-area settings-area--title-suppressed" data-area="capability-matrix">
@@ -1188,7 +1176,7 @@
 </main>
 
 <main id="modelsView" class="models-page is-workbench" aria-label="Models">
-  <header class="models-page-header">
+  <header class="models-page-header" data-app-titlebar>
     <h1 class="models-page-header__title">Models</h1>
     <div class="models-header-status" id="modelsHeaderStatus" role="status" aria-live="polite"></div>
     <button
@@ -1225,7 +1213,7 @@
       <div class="models-nav__group" role="group" aria-labelledby="modelsNavInference">
         <span id="modelsNavInference" class="models-nav__group-label">Inference</span>
         <button type="button" data-models-nav="providers">Providers</button>
-        <button type="button" data-models-nav="clis">CLIs</button>
+        <button type="button" data-models-nav="clis">Subscriptions</button>
         <button type="button" data-models-nav="routing">Routing</button>
         <button type="button" data-models-nav="routers">Model pools</button>
         <button type="button" data-models-nav="sampler">Sampler</button>
@@ -1272,7 +1260,7 @@
 
 <main id="brainView" class="brain-page is-graph-canvas-bg" aria-label="Brain">
   <div class="brain-page-chrome">
-  <header class="brain-page-header brain-overlay-surface">
+  <header class="brain-page-header brain-overlay-surface" data-app-titlebar>
     <button type="button" class="icon-btn brain-page-header__back" id="btnBrainPageBack" aria-label="Back">
       <i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>
     </button>
@@ -1292,6 +1280,7 @@
   </header>
   <div class="brain-page-body">
     <nav class="brain-rail brain-overlay-surface" aria-label="Brain sections">
+      <span class="brain-rail__title" aria-hidden="true">Brain</span>
       <button type="button" class="brain-rail__btn" data-brain-nav="graph" aria-current="page" title="Graph">
         <i class="fi fi-rr-chart-network icon-svg" aria-hidden="true"></i>
         <span class="brain-rail__label">Graph</span>
@@ -1339,7 +1328,7 @@
         <p id="brainGraphOffline" class="brain-state-banner brain-card hidden">Start npm start to load the brain.</p>
         <p id="brainGraphEmpty" class="brain-state-banner brain-card hidden">No pages yet. Create one or run Ingest.</p>
         <div id="brainGraphStage" class="brain-graph-stage brain-graph-overlays">
-          <div class="brain-graph-toolbar brain-overlay-card" role="toolbar" aria-label="Graph controls">
+          <div class="brain-graph-toolbar brain-overlay-card" data-app-titlebar role="toolbar" aria-label="Graph controls">
             <div class="brain-graph-toolbar__group brain-graph-toolbar__search">
               <label class="brain-graph-search">
                 <span class="visually-hidden">Search nodes</span>
@@ -1375,7 +1364,7 @@
             ></div>
             <aside id="brainGraphTreePanel" class="brain-graph-tree-panel brain-overlay-card">
               <div class="brain-graph-tree-head">
-                <h3 class="brain-section-subtitle">Pages</h3>
+                <h2 class="brain-section-subtitle">Pages</h2>
                 <button type="button" class="brain-action-btn brain-graph-tree-toggle icon-btn" id="brainGraphTreeToggle" aria-expanded="true" aria-label="Collapse page tree">
                   <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
                 </button>
@@ -1384,7 +1373,7 @@
             </aside>
             <aside id="brainGraphLegend" class="brain-graph-readout brain-overlay-card" aria-label="Graph readout">
               <div class="brain-graph-readout__head">
-                <h3 class="brain-section-subtitle">Structure</h3>
+                <h2 class="brain-section-subtitle">Structure</h2>
                 <button type="button" class="brain-action-btn brain-graph-readout__toggle icon-btn" id="brainGraphReadoutToggle" aria-expanded="true" aria-label="Collapse structure panel">
                   <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
                 </button>
@@ -1584,17 +1573,17 @@
               </div>
             </div>
             <aside class="brain-edit-pane brain-edit-pane--preview brain-ingest-guide" aria-label="Ingest guide">
-              <p class="brain-edit-pane__eyebrow">How it works</p>
+              <h2 class="brain-edit-pane__eyebrow">How it works</h2>
               <div class="brain-edit-preview-scroll">
                 <p>The utility model extracts facts and drafts wiki pages. Review output in <strong>Proposals</strong> before it lands in the graph.</p>
-                <h4>Workflow</h4>
+                <h3>Workflow</h3>
                 <ol>
                   <li>Paste source content and optional title hint.</li>
                   <li>Submit — synthesis runs against your configured utility model.</li>
                   <li>Review proposals before they merge into the wiki.</li>
                   <li>Open new pages from the graph or Edit section.</li>
                 </ol>
-                <h4>Tips</h4>
+                <h3>Tips</h3>
                 <p>Shorter, focused sources produce cleaner pages. Define tags in Schema first.</p>
               </div>
             </aside>
@@ -1615,7 +1604,7 @@
       </section>
       <section id="brainSection-code" class="brain-section brain-section--code" aria-label="Code map">
         <div class="code-map" id="codeMap">
-          <header class="code-map-bar">
+          <header class="code-map-bar" data-app-titlebar>
             <button type="button" class="code-map-icon-btn code-map-bar__back" id="btnCodeBrainMapBack" aria-label="Back to chat"><i class="fi fi-rr-arrow-left" aria-hidden="true"></i></button>
             <nav class="code-map-crumbs" id="codeMapCrumbs" aria-label="Breadcrumb"><span class="code-map-crumbs__title">Code map</span></nav>
             <div class="code-map-search" role="search">
@@ -2049,7 +2038,7 @@
 </main>
 
 <main id="schedulerView" class="scheduler-page" aria-label="Scheduler">
-  <header class="scheduler-header">
+  <header class="scheduler-header" data-app-titlebar>
     <div class="scheduler-header__brand">
       <span id="schedulerPageIcon" class="scheduler-header__icon" aria-hidden="true"></span>
       <div class="scheduler-header__titles">
@@ -2136,10 +2125,6 @@
             <label class="experts-field-label experts-mono" for="expertsEditGreeting">GREETING</label>
             <input type="text" id="expertsEditGreeting" class="experts-edit-input" autocomplete="off" />
           </div>
-          <div class="experts-edit-profile-tabs" role="tablist" aria-label="Prompt profile">
-            <button type="button" class="experts-profile-tab is-active" data-profile="full" role="tab" aria-selected="true">Full</button>
-            <button type="button" class="experts-profile-tab" data-profile="lite" role="tab" aria-selected="false">Lite</button>
-          </div>
           <div class="experts-edit-row">
             <label class="experts-field-label experts-mono" for="expertsEditBody">SYSTEM PROMPT</label>
             <textarea id="expertsEditBody" class="experts-brief-input experts-edit-body" rows="12"></textarea>
@@ -2181,46 +2166,8 @@
       <div id="expertScopeChatList" class="chat-list" role="list"></div>
     </div>
     <div id="chatSidebarMain" class="chat-sidebar-main">
-    <div class="chat-sidebar-header">
-      <span class="chat-sidebar-title" id="sidebarTitle">Chats</span>
-      <button type="button" class="chat-sidebar-branch" id="sidebarBranch" title="Switch branch or worktree" hidden>
-        <i class="fi fi-sr-code-branch icon-svg" aria-hidden="true"></i>
-        <span class="chat-sidebar-branch__name"></span>
-        <span class="chat-sidebar-branch__sync" aria-hidden="true"></span>
-        <span class="chat-sidebar-branch__changed" aria-hidden="true"></span>
-      </button>
-      <div class="chat-sidebar-header-actions">
-        <button
-          class="icon-btn"
-          type="button"
-          id="btnChatSearch"
-          aria-label="Search chats"
-          title="Search chats"
-          aria-expanded="false"
-        >
-          <i class="fi fi-rr-search icon-svg" aria-hidden="true"></i>
-        </button>
-        <button
-          class="icon-btn"
-          type="button"
-          id="btnNewChatGroup"
-          aria-label="New group"
-          title="New group"
-        >
-          <i class="fi fi-rr-add-folder icon-svg" aria-hidden="true"></i>
-        </button>
-        <button
-          class="icon-btn"
-          type="button"
-          id="btnSidebarNewChat"
-          aria-label="New chat"
-          title="New chat"
-        >
-          <i class="fi fi-rr-edit icon-svg" aria-hidden="true"></i>
-        </button>
-      </div>
-    </div>
-    <div class="chat-list" id="chatList" role="list"></div>
+      <div class="chat-sidebar-title">Chats</div>
+      <div class="chat-list" id="chatList" role="list"></div>
     </div>
     <div
       class="sidebar-resizer sidebar-resizer--chat"
@@ -2237,6 +2184,7 @@
   </aside>
 
   <div id="workspaceSplit" class="workspace-split">
+  <header id="graphiteThreadHeader" class="graphite-thread-header" data-app-titlebar hidden></header>
   <div class="main-column" id="mainColumn">
     <!--
       Code view switcher. View buttons replace what the stage shows; Chats toggles
@@ -2293,20 +2241,17 @@
       <div class="chat-viewport-dock">
         <button type="button" id="chatJumpLatest" class="chat-jump-latest hidden" aria-label="Jump to latest messages">Jump to latest</button>
       </div>
-    </div>
 
-    <!-- Tool approval: mounted here by showToolApprovalModal (above composer, not a full-screen popup) -->
-    <div id="toolApprovalHost" class="tool-approval-host" aria-live="polite" hidden></div>
-
-    <!-- Ask question: structured Q&A strip (below tool approval, above composer) -->
-    <div id="questionHost" class="question-host" aria-live="polite" hidden></div>
-
-    <!-- Run status: sits above the composer card only while the active chat's run is live (chat-work.ts) -->
-    <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
-      <span class="composer-run-status__dot" aria-hidden="true"></span>
-      <span class="composer-run-status__label">Working</span>
-      <span class="composer-run-status__time"></span>
-      <span class="composer-run-status__count"></span>
+      <div class="composer-notices">
+        <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
+          <span class="composer-run-status__dot" aria-hidden="true"></span>
+          <span class="composer-run-status__label">Working</span>
+          <span class="composer-run-status__time"></span>
+          <span class="composer-run-status__count"></span>
+        </div>
+        <div id="toolApprovalHost" class="tool-approval-host" aria-live="polite" hidden></div>
+        <div id="questionHost" class="question-host" aria-live="polite" hidden></div>
+      </div>
     </div>
 
     <!-- Input bar -->
@@ -2315,7 +2260,17 @@
       <div class="input-bar-composer">
         <div id="chatLinkChips" class="chat-link-chips hidden" aria-live="polite" aria-label="Linked files and URLs"></div>
         <div id="attachPreview" class="attach-preview hidden" aria-live="polite" aria-label="Attached files"></div>
+        <div class="input-row">
+          <div class="input-wrap input-wrap--inset-actions">
+            <label for="msgInput" class="visually-hidden">Message</label>
+            <textarea id="msgInput" placeholder="Describe a change, paste an error, or @ an issue" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+          </div>
+        </div>
         <div class="composer-controls" id="composerControls" role="toolbar" aria-label="Composer options">
+          <button type="button" class="input-inset-btn composer-attach-btn" id="btnComposerAttach"
+            aria-label="Attach files" title="Attach files">
+            <i class="fi fi-rr-plus-small icon-svg" aria-hidden="true"></i>
+          </button>
           <div id="modeSelector" class="mode-segmented" role="radiogroup" aria-label="Operating mode"></div>
           <div id="composerPermissionAnchor" class="composer-control permission-pill-anchor"></div>
           <div id="composerThinkingWrap" class="composer-control thinking-control-wrap" hidden>
@@ -2404,12 +2359,6 @@
             </div>
           </div>
         </div>
-        <div class="input-row">
-          <div class="input-wrap input-wrap--inset-actions">
-            <label for="msgInput" class="visually-hidden">Message</label>
-            <textarea id="msgInput" placeholder="Ask Minnow to plan, build, or debug…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-          </div>
-        </div>
       </div>
       <div class="input-bar-send-stack">
         <div class="input-inset-actions" id="composerInsetActions" aria-label="Voice and prompt actions"></div>
@@ -2421,54 +2370,62 @@
       </div>
     </div>
 
-    <!-- Stats strip -->
-    <div class="stats-strip is-collapsed" id="statsStrip">
+    <!-- Composer metrics -->
+    <button
+      class="graphite-metrics-trigger"
+      type="button"
+      id="btnStats"
+      aria-expanded="false"
+      aria-controls="statsStrip"
+      title="Inference metrics"
+    >
+      <span>Metrics</span>
+      <span class="graphite-metrics-trigger__value"><span id="statusMetricPreview" data-plugin-slot="chat.throughput"></span><span id="statusMetricTokenPreview"></span></span>
+      <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
+    </button>
+    <section class="stats-strip is-collapsed" id="statsStrip" aria-label="Inference metrics">
       <button type="button" class="stats-expand-btn" id="statsExpandBtn" aria-label="Show inference metrics" aria-expanded="false" aria-controls="statsPanel">
         <span class="stats-expand-label">Metrics</span>
-        <span class="stats-expand-preview" id="statsExpandPreview">— t/s · — tokens</span>
+        <span class="stats-expand-preview" id="statsExpandPreview"></span>
         <i class="fi fi-rr-angle-small-down icon-svg stats-expand-chevron" aria-hidden="true"></i>
       </button>
       <div class="stats-panel" id="statsPanel">
-      <div class="stat-cell cyan">
-        <div class="stat-name"><span class="stat-icon" aria-hidden="true"><i class="fi fi-rr-bolt icon-svg" aria-hidden="true"></i></span>Tokens / Second</div>
-        <div class="stat-val blank" id="stripTPS">—</div>
+        <dl class="stats-summary" id="statsSummary" hidden>
+          <div class="stat-cell" hidden>
+            <dt class="stat-name">Tokens / second</dt>
+            <dd class="stat-val" id="stripTPS" data-plugin-slot="chat.throughput"></dd>
+          </div>
+          <div class="stat-cell" hidden>
+            <dt class="stat-name">First token</dt>
+            <dd class="stat-val" id="stripTTFT"></dd>
+          </div>
+          <div class="stat-cell" hidden>
+            <dt class="stat-name">Generation</dt>
+            <dd class="stat-val" id="stripGen"></dd>
+          </div>
+          <div class="stat-cell" hidden>
+            <dt class="stat-name">Total tokens</dt>
+            <dd class="stat-val" id="stripTotal"></dd>
+          </div>
+          <div class="stat-cell" hidden>
+            <dt class="stat-name">Est. cost</dt>
+            <dd class="stat-val" id="stripCost"></dd>
+          </div>
+        </dl>
+        <p class="stats-empty" id="statsEmpty">No generation metrics available yet.</p>
+        <details class="stats-details" id="statsDetails" hidden>
+          <summary>Turn details <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i></summary>
+          <dl class="stats-details__fields">
+            <div class="stats-details__field" hidden><dt>Input tokens</dt><dd id="cntPrompt"></dd></div>
+            <div class="stats-details__field" hidden><dt>Output tokens</dt><dd id="cntCompletion"></dd></div>
+            <div class="stats-details__field" hidden><dt>Context window</dt><dd id="iCtx"></dd></div>
+            <div class="stats-details__field" hidden><dt>Finish reason</dt><dd id="iStop"></dd></div>
+            <div class="stats-details__field" hidden><dt>Architecture</dt><dd id="iArch"></dd></div>
+            <div class="stats-details__field" hidden><dt>Quantization</dt><dd id="iQuant"></dd></div>
+          </dl>
+        </details>
       </div>
-      <div class="stat-cell green">
-        <div class="stat-name"><span class="stat-icon" aria-hidden="true"><i class="fi fi-rr-play icon-svg" aria-hidden="true"></i></span>Time to First Token</div>
-        <div class="stat-val blank" id="stripTTFT">—</div>
-      </div>
-      <div class="stat-cell yellow">
-        <div class="stat-name"><span class="stat-icon" aria-hidden="true"><i class="fi fi-rr-clock icon-svg" aria-hidden="true"></i></span>Generation Time</div>
-        <div class="stat-val blank" id="stripGen">—</div>
-      </div>
-      <div class="stat-cell red">
-        <div class="stat-name"><span class="stat-icon" aria-hidden="true"><i class="fi fi-rr-layers icon-svg" aria-hidden="true"></i></span>Total Tokens</div>
-        <div class="stat-val blank" id="stripTotal">—</div>
-      </div>
-      <div class="stat-cell purple">
-        <div class="stat-name"><span class="stat-icon" aria-hidden="true"><i class="fi fi-rr-scale icon-svg" aria-hidden="true"></i></span>Est. cost</div>
-        <div class="stat-val blank" id="stripCost">—</div>
-      </div>
-      <div class="token-cell">
-        <div class="token-bar-row">
-          <span class="tbl">Prompt</span>
-          <div class="token-track"><div class="token-fill prompt" id="barPrompt"></div></div>
-          <span class="token-count" id="cntPrompt">—</span>
-        </div>
-        <div class="token-bar-row">
-          <span class="tbl">Completion</span>
-          <div class="token-track"><div class="token-fill completion" id="barCompletion"></div></div>
-          <span class="token-count" id="cntCompletion">—</span>
-        </div>
-      </div>
-      <div class="minfo-cell">
-        <div class="irow"><span class="ikey">arch</span><span class="ival" id="iArch">—</span></div>
-        <div class="irow"><span class="ikey">quant</span><span class="ival" id="iQuant">—</span></div>
-        <div class="irow"><span class="ikey">ctx</span><span class="ival" id="iCtx">—</span></div>
-        <div class="irow"><span class="ikey">stop</span><span class="ival lit" id="iStop">—</span></div>
-      </div>
-      </div>
-    </div>
+    </section>
 
     <section class="terminal-panel hidden" id="terminalPanel" aria-label="Terminal">
       <div class="terminal-resize-handle" id="terminalResize" role="separator" aria-orientation="horizontal" aria-label="Resize terminal"></div>
@@ -2761,17 +2718,6 @@
     </button>
   </div>
   <div class="code-status-bar__spacer"></div>
-  <button
-    class="code-status-bar__btn code-status-bar__btn--metrics"
-    type="button"
-    id="btnStats"
-    aria-expanded="false"
-    aria-controls="statsStrip"
-    title="Inference metrics"
-  >
-    <i class="fi fi-rr-stats icon-svg" aria-hidden="true"></i>
-    <span class="code-status-bar__metric" id="statusMetricPreview">— t/s</span>
-  </button>
 </div>
 <script id="minnowBootGuard">
   /* Runs independently of the module bundle, including on a failed import. */

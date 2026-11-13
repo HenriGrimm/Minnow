@@ -221,7 +221,12 @@ export function updateSettingsNavActive(
       if (details.dataset.settingsNavGroup === group?.id) details.open = true;
     });
     const breadcrumb = document.getElementById('settingsLocation');
-    if (breadcrumb) breadcrumb.textContent = `${group?.label ?? 'Settings'} / ${SETTINGS_SECTION_LABELS[area]}`;
+    if (breadcrumb) {
+      const section = document.createElement('span');
+      section.className = 'settings-location__section';
+      section.textContent = ` / ${SETTINGS_SECTION_LABELS[area]}`;
+      breadcrumb.replaceChildren(group?.label ?? 'Settings', section);
+    }
     const estimate = document.getElementById('settingsPromptTokenEstimate');
     if (estimate) estimate.hidden = area !== 'agent-center';
   }

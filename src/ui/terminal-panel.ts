@@ -50,6 +50,7 @@ import {
   isTerminalXtermReady,
 } from './terminal-xterm';
 import { initTerminalWorkspaceDrop } from './terminal-workspace-drop';
+import { isGraphiteSurfaceLayout, requestGraphiteSurface } from './surfaces/surface-bridge';
 import { appendConsoleOutputWithLinks } from './terminal-console-links';
 import {
   shouldShowAgentTabActivityBadge,
@@ -409,7 +410,7 @@ function bumpAgentRunHint(delta: number): void {
 
 // ── Panel visibility ─────────────────────────────────────────────────────────
 
-function setPanelOpen(open: boolean): void {
+function setPanelOpen(open: boolean, options: { surface?: boolean } = {}): void {
   if (!panelEl) return;
   const currentlyOpen = isTerminalPanelOpen();
   const btn = document.getElementById('btnTerminal');
@@ -423,19 +424,20 @@ function setPanelOpen(open: boolean): void {
 
   panelEl.classList.toggle('hidden', !open);
   panelEl.classList.toggle('is-collapsed', !open);
-  void saveTerminalMeta({ open });
+  if (!options.surface) void saveTerminalMeta({ open });
   if (open) {
     agentRunHintDepth = 0;
     syncTerminalAgentRunHint();
     void ensureTerminalTabsWhenOpen();
     requestAnimationFrame(() => {
       onTerminalPanelResize();
-      focusTerminalXterm();
+      if (!options.surface) focusTerminalXterm();
     });
   }
 }
 
 function ensureTerminalPanelVisible(): void {
+  if (requestGraphiteSurface('terminal', 'show')) return;
   if (!isTerminalPanelOpen()) {
     setPanelOpen(true);
   }
@@ -615,11 +617,35 @@ export function attachAgentBackgroundRun(options: {
 }
 
 export function closeTerminalPanel(): void {
+  if (requestGraphiteSurface('terminal', 'hide')) return;
   setPanelOpen(false);
 }
 
 export function toggleTerminalPanel(): void {
+  if (requestGraphiteSurface('terminal', 'toggle')) {
+    if (isTerminalPanelOpen()) {
+      void ensureTerminalTabsWhenOpen().then(() => {
+        if (isTerminalPanelOpen()) focusTerminalXterm();
+      });
+    }
+    return;
+  }
   setPanelOpen(!isTerminalPanelOpen());
+}
+
+export function setTerminalSurfaceVisible(visible: boolean): void {
+  setPanelOpen(visible, { surface: true });
+  if (visible) {
+    requestAnimationFrame(onTerminalPanelResize);
+    void refreshTerminalHistoryForActiveChat();
+  }
+}
+
+export async function openTerminalSurfaceRun(chatId: string, runId: string): Promise<void> {
+  await refreshTerminalHistoryForActiveChat();
+  if (!sessionState || getActiveChat()?.id !== chatId) return;
+  if (!getActiveChat().terminalHistory?.some(run => run.id === runId)) return;
+  await loadHistoryRun(runId, chatId);
 }
 
 function applyPanelHeight(px: number): void {
@@ -707,12 +733,12 @@ function wireAgentRunSelect(): void {
   });
 }
 
-async function loadHistoryRun(runId: string): Promise<void> {
+async function loadHistoryRun(runId: string, chatId = sessionState ? getActiveChat()?.id : undefined): Promise<void> {
   maybeFollowAgentTab(true);
   clearOutput();
   setActiveHistoryRun(runId);
   const text = await fetchTerminalLog(runId);
-  if (text) {
+  if (text && (!chatId || (sessionState && getActiveChat()?.id === chatId && agentRunSelectEl?.value === runId))) {
     appendOutputText(text, 'stdout');
   }
 }
@@ -734,7 +760,7 @@ export async function refreshTerminalHistoryForActiveChat(): Promise<void> {
   }
   const merged = mergeTerminalHistory(local, remote);
   chat.terminalHistory = merged.length ? merged : undefined;
-  renderHistoryList(merged);
+  if (getActiveChat()?.id === chat.id) renderHistoryList(merged);
 }
 
 function setupResizeHandle(): void {
@@ -983,7 +1009,7 @@ function wireTerminalPanelButtons(): void {
   });
 
   document.getElementById('btnTerminalMaximize')?.addEventListener('click', () => {
-    toggleTerminalMaximized();
+    if (!requestGraphiteSurface('terminal', 'maximize')) toggleTerminalMaximized();
   });
 
   syncTerminalMaximizeButton();
@@ -1032,7 +1058,8 @@ export async function initTerminalPanel(): Promise<void> {
 
 export function registerTerminalKeyboardShortcut(): void {
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === '`') {
+    if (!e.defaultPrevented && !e.isComposing && e.ctrlKey && !e.metaKey && e.key === '`') {
+      if (isGraphiteSurfaceLayout() && !document.getElementById('workspaceSplit')?.getClientRects().length) return;
       e.preventDefault();
       toggleTerminalPanel();
     }

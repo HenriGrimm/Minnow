@@ -26,6 +26,7 @@ Open **Search** from the magnifying glass in the header or with the command pale
 
 | Keys | Action |
 |------|--------|
+| **Mod+N** | Start a new chat in the current project |
 | **Enter** | Send a message, or steer the current run at its next step; empty input does nothing |
 | **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) | Queue a follow-up until the current reply finishes |
 | **Shift+Enter** | New line |
@@ -33,13 +34,25 @@ Open **Search** from the magnifying glass in the header or with the command pale
 | **Escape** | Dismiss the suggested follow-up |
 | **/** | Open the skill picker (at the start of an empty composer) |
 | **Mod+M** | Per-chat model picker, with search focused |
+| **Ctrl+↑** / **Ctrl+↓** | Open the previous or next chat in the sidebar while a listed chat is open |
 | **↑** / **↓** | Previous / next prompt at the start / end of a single-line composer; Down returns to your saved draft |
 | **Alt+↑** / **Alt+↓** | Browse prompt history from anywhere, including long or multiline text |
 | **1** / **2** / **3** | Tool approval: allow once, always allow, cancel |
 
 While the skill picker is open: **↑ ↓** to move, **Enter** or **Tab** to choose, **Escape** to close.
 
-In the chat search popover: **↑ ↓** to move, **Enter** to open, **Escape** to close.
+In Code, press **Mod+F** outside the editor to search threads, messages, and issues. Use **↑ ↓** to move, **Enter** to open, and **Escape** to close.
+
+## Thread surfaces
+
+| Keys | Action |
+|------|--------|
+| **Mod+.** | Open or close the thread card |
+| **Mod+J** | Toggle the side panel |
+| **Ctrl+`** | Toggle Terminal in its current panel |
+| **D T F B A P I S** | Open Diff, Terminal, Files, Browser, Agents, Pull request, Issue, or Side chat from the focused launcher |
+| **←** / **→** | Cycle tabs in the focused panel |
+| **Delete** | Close the active tab when the tab strip has focus |
 
 ## Code editor
 

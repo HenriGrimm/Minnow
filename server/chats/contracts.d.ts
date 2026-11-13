@@ -60,6 +60,7 @@ export class ChatContractError extends Error {
 
 /** Semantic options only; the model catalog still validates actual support. */
 export interface ModelOptions {
+  fastMode?: boolean;
   reasoningEffort?: string;
   thinkingMode?: 'inherit' | 'on' | 'off';
   thinkingBudgetTokens?: number | null;

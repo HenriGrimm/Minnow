@@ -7,7 +7,8 @@ import { isLocalRuntimeCatalogProviderId } from '../models/model-select-library'
 import { parseModelOptionLabels } from './composer-model-button';
 import { closePoolTaskTypeChoices, createPoolEntry, poolStrategyChoices, poolTaskTypeChoices, poolTaskTypeBadges, POOL_POLICIES } from './model-pool-fields';
 import { formatRouterTaskTypeLabel } from '../models/router-task-types.mjs';
-import { iconHtml } from './icon';
+import { createIcon, iconHtml } from './icon';
+import { createButton } from './components/button';
 import { openContextMenu, type ContextMenuHandle } from './context-menu';
 
 interface PoolBrowserOptions {
@@ -157,16 +158,17 @@ export function mountModelPoolBrowser(host: HTMLElement, options: PoolBrowserOpt
     } finally { if (alive) { saving = false; render(); } }
   }
 
-  function renderList(): void {
-    const heading = node('div', '', 'pool-picker-heading');
-    const identity = node('div'); identity.append(node('h3', 'Model pools'), node('p', 'Shared across projects'));
-    const add = button('New pool', create, 'pool-picker-action pool-picker-primary');
-    add.disabled = loading || Boolean(error); heading.append(identity, add); root.append(heading);
-    if (loading) { root.append(node('p', 'Loading model pools…', 'pool-picker-empty')); return; }
+  function renderList(): HTMLButtonElement | undefined {
+    const body = node('div', '', 'pool-picker-browse-body');
+    root.append(body);
+    if (loading) { body.append(node('p', 'Loading model pools…', 'pool-picker-empty')); return; }
     if (error) {
+      const empty = node('div', '', 'pool-picker-empty');
       const message = node('p', error, 'pool-picker-error'); message.setAttribute('role', 'alert');
-      root.append(message, button('Retry', () => { void load(); })); return;
+      empty.append(message, createButton({ label: 'Retry', size: 'sm', onClick: () => { void load(); } }));
+      body.append(empty); return;
     }
+    const add = createButton({ label: 'New pool', icon: 'plus', size: 'sm', variant: 'ghost', onClick: create });
     const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const pools = config.routers.filter(pool => {
       const text = [pool.name, ...pool.entries.flatMap(entry => [label(entry), provider(entry), entry.modelId, ...(pool.policy === 'evaluate' ? (entry.taskTypes?.length ? entry.taskTypes.map(formatRouterTaskTypeLabel) : ['Any task']) : [])])].join(' ').toLowerCase();
@@ -174,27 +176,37 @@ export function mountModelPoolBrowser(host: HTMLElement, options: PoolBrowserOpt
     });
     if (!pools.length) {
       const empty = node('div', '', 'pool-picker-empty');
-      empty.append(node('strong', config.routers.length ? 'No matching pools' : 'Your models, working together'),
-        node('p', config.routers.length ? 'Try a pool, model, or provider name.' : 'Create a pool with one or more models.'));
-      if (!config.routers.length) empty.append(button('Create a pool', create));
-      root.append(empty); return;
+      empty.append(node('strong', config.routers.length ? 'No matching pools' : 'No model pools yet'),
+        node('p', config.routers.length ? 'Try a pool, model, or provider name.' : 'Create a pool to route chats across your models.'));
+      empty.append(add);
+      body.append(empty); return;
     }
     const pool = pools.find(pool => pool.id === inspected) || pools[0]; inspected = pool.id;
-    const columns = node('div', '', 'pool-picker-columns');
-    const rail = node('div', '', 'pool-picker-rail'); rail.setAttribute('role', 'group'); rail.setAttribute('aria-label', 'Model pools');
+    const selected = selectedId();
+    body.classList.add('pool-picker-columns');
+    const rail = node('div', '', 'pool-picker-rail');
+    const poolList = node('div', '', 'pool-picker-list'); poolList.setAttribute('role', 'group'); poolList.setAttribute('aria-label', 'Model pools');
+    rail.append(add, poolList);
     for (const candidate of pools) {
-      const row = button('', () => { inspected = candidate.id; render(); root.querySelector<HTMLButtonElement>(`[data-pool-id="${candidate.id}"]`)?.focus(); }, 'pool-picker-row');
+      const row = button('', () => {
+        inspected = candidate.id; render();
+        root.querySelector<HTMLButtonElement>('.pool-picker-row[aria-pressed="true"]')?.focus();
+      }, 'pool-picker-row');
       row.dataset.poolId = candidate.id; row.setAttribute('aria-pressed', String(candidate.id === pool.id));
-      const name = node('span', candidate.name, 'pool-picker-name');
-      if (candidate.id === selectedId()) name.append(node('span', 'Selected', 'pool-picker-selected'));
-      row.append(name, node('span', candidate.enabled
-        ? `${POOL_POLICIES.find(policy => policy.id === candidate.policy)?.title} · ${candidate.entries.filter(entry => entry.enabled).length} ${candidate.entries.filter(entry => entry.enabled).length === 1 ? 'model' : 'models'}`
-        : 'Paused', 'pool-picker-caption'));
-      rail.append(row);
+      const count = candidate.entries.filter(entry => entry.enabled).length;
+      const summary = candidate.enabled ? `${count} ${count === 1 ? 'model' : 'models'}` : 'Paused';
+      const copy = node('span', '', 'pool-picker-row-copy');
+      copy.append(node('span', candidate.name, 'pool-picker-name'), node('span', summary, 'pool-picker-caption'));
+      row.append(copy);
+      if (candidate.id === selected) {
+        row.append(createIcon('check', { size: 13, className: 'pool-picker-selected' }));
+        row.setAttribute('aria-label', `${candidate.name}, ${summary}, selected for chat`);
+      }
+      poolList.append(row);
     }
-    rail.addEventListener('keydown', event => {
+    poolList.addEventListener('keydown', event => {
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-      const rows = [...rail.querySelectorAll<HTMLButtonElement>('button')];
+      const rows = [...poolList.querySelectorAll<HTMLButtonElement>('button')];
       const index = rows.indexOf(event.target as HTMLButtonElement); if (index < 0) return;
       event.preventDefault();
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, index + (event.key === 'ArrowUp' ? -1 : 1)));
@@ -203,24 +215,35 @@ export function mountModelPoolBrowser(host: HTMLElement, options: PoolBrowserOpt
     const detail = node('section', '', 'pool-picker-detail'); detail.setAttribute('aria-label', pool.name);
     const title = node('div', '', 'pool-picker-detail-heading');
     const policy = POOL_POLICIES.find(policy => policy.id === pool.policy)!;
-    const labelWrap = node('div'); labelWrap.append(node('h3', pool.name), node('span', policy.title, 'pool-picker-caption'));
-    title.append(labelWrap, button('Edit', () => edit(pool))); detail.append(title, node('p', policy.detail, 'pool-picker-description'));
+    const routing = node('span', policy.title, 'pool-picker-caption');
+    routing.title = policy.detail;
+    if (pool.policy === 'evaluate') routing.append(pool.evaluator ? ` · Evaluator: ${label(pool.evaluator)}` : ' · No evaluator set. Uses model order.');
+    const identity = node('div'); identity.append(node('h3', pool.name), routing);
+    title.append(identity, createButton({ label: 'Edit', size: 'sm', onClick: () => edit(pool) }));
+    detail.append(title);
+    const canUse = pool.enabled && pool.entries.some(entry => entry.enabled);
+    if (!canUse) detail.append(node('p', pool.enabled ? 'Enable a model before using this pool.' : 'This pool is paused. Edit it to enable.', 'pool-picker-caption'));
     const entries = node('ol', '', 'pool-picker-preview');
-    pool.entries.forEach(entry => {
+    entries.setAttribute('aria-label', 'Model lineup');
+    pool.entries.forEach((entry, index) => {
       const row = node('li');
-      row.append(node('strong', label(entry)), node('span', `${provider(entry)} · ${entry.concurrencyLimit} ${entry.concurrencyLimit === 1 ? 'slot' : 'slots'}${!entry.enabled ? ' · Paused' : ''}`, 'pool-picker-caption'));
+      const rank = node('span', String(index + 1), 'pool-picker-rank'); rank.setAttribute('aria-hidden', 'true');
+      const copy = node('div');
+      const modelLabel = label(entry);
+      const meta = [provider(entry), `${entry.concurrencyLimit} ${entry.concurrencyLimit === 1 ? 'slot' : 'slots'}`];
       if (pool.policy === 'evaluate') {
-        row.append(node('span', `${formatRouterTierLabel(entry.tier || guessRouterTier(label(entry)))} tier${entry.tier ? '' : ' · Auto'}`, 'pool-picker-caption'), poolTaskTypeBadges(entry));
+        const tier = formatRouterTierLabel(entry.tier || guessRouterTier(modelLabel));
+        meta.push(`${tier} tier${entry.tier ? '' : ' (auto)'}`);
       }
+      if (!entry.enabled) meta.push('Paused');
+      copy.append(node('strong', modelLabel), node('span', meta.join(' · '), 'pool-picker-caption'));
+      if (pool.policy === 'evaluate') copy.append(poolTaskTypeBadges(entry));
+      row.append(rank, copy);
       entries.append(row);
     });
     detail.append(entries);
-    if (pool.policy === 'evaluate') detail.append(node('p', pool.evaluator ? `Evaluator: ${label(pool.evaluator)}` : 'No evaluator set. Uses model order.', 'pool-picker-caption'));
-    const canUse = pool.enabled && pool.entries.some(entry => entry.enabled);
-    const useButton = button(pool.id === selectedId() ? 'Selected' : 'Use pool', () => use(pool), 'pool-picker-action pool-picker-primary');
-    useButton.disabled = !canUse; detail.append(useButton);
-    if (!canUse) detail.append(node('p', pool.enabled ? 'Enable a model before using this pool.' : 'This pool is paused. Edit it to enable.', 'pool-picker-caption'));
-    columns.append(rail, detail); root.append(columns);
+    body.append(rail, detail);
+    return createButton({ label: pool.id === selected ? 'Selected' : 'Use pool', size: 'sm', variant: 'primary', disabled: !canUse, onClick: () => use(pool) });
   }
 
   function addModels(pool: ModelRouter): void {
@@ -381,16 +404,25 @@ export function mountModelPoolBrowser(host: HTMLElement, options: PoolBrowserOpt
     if (!alive) return;
     closePoolTaskTypeChoices(root); entryMenu?.close(); entryMenu = undefined;
     const scrollTop = host.scrollTop;
+    const poolListScrollTop = root.querySelector('.pool-picker-list')?.scrollTop ?? 0;
     root.replaceChildren(); options.onEditing(Boolean(draft));
-    if (draft) renderEditor(); else renderList();
-    if (!draft) {
-      const footer = node('div', '', 'pool-picker-footer');
+    root.classList.toggle('pool-picker--browse', !draft);
+    if (draft) renderEditor();
+    else {
+      const useButton = renderList();
+      const footer = node('div', '', 'pool-picker-footer pool-picker-browse-footer');
       const selected = config.routers.find(pool => pool.id === selectedId());
       const selectedModel = choices().find(choice => choice.value === options.selectedValue());
       const selection = selected?.name || selectedModel?.label;
       const status = node('span', notice || (selection ? `Selected: ${selection}` : selectedId() ? 'Selected pool is unavailable.' : 'Choose a model or pool.'), 'pool-picker-caption');
       status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-      footer.append(status, button('Manage pools ↗', options.manage)); root.append(footer);
+      status.title = status.textContent || '';
+      const actions = node('div', '', 'pool-picker-browse-actions');
+      actions.append(createButton({ label: 'Manage pools', iconEnd: 'externalLink', size: 'sm', variant: 'ghost', onClick: options.manage }));
+      if (useButton) actions.append(useButton);
+      footer.append(status, actions); root.append(footer);
+      const poolList = root.querySelector('.pool-picker-list');
+      if (poolList) poolList.scrollTop = poolListScrollTop;
     }
     root.setAttribute('aria-busy', String(saving || loading));
     if (saving) {

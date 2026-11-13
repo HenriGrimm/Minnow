@@ -7,13 +7,14 @@ import { AUTO_TITLE_MAX_LEN, PLACEHOLDER_CHAT_NAME } from '../constants';
 import { DEFAULT_MODE_ID } from '../chat/modes/types';
 import { normalizePersistedModeId } from './session-schema.mjs';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import type { Chat, SessionState } from '../types';
 
 // ── Visibility ───────────────────────────────────────────────────────────────
 
-/** Legacy Expert Lab sessions stay out of the main sidebar; expert threads are listed normally. */
+/** Side conversations and legacy Expert Lab sessions stay out of the main thread lists. */
 export function isSidebarVisibleChat(chat: Chat): boolean {
-  return chat.kind !== 'expert-lab';
+  return chat.kind !== 'expert-lab' && !isGraphiteSideChat(chat);
 }
 
 /** True when the chat has unsent composer text persisted on the session row. */
@@ -21,7 +22,17 @@ export function hasComposerDraft(chat: Chat): boolean {
   return Boolean(chat.composerDraft?.trim());
 }
 
+const pendingArchivePlacements = new Map<string, boolean>();
+
+/** In-flight UI placement only; session saves retain the acknowledged metadata. */
+export function setPendingChatArchive(chatId: string, archived: boolean | undefined): void {
+  if (archived === undefined) pendingArchivePlacements.delete(chatId);
+  else pendingArchivePlacements.set(chatId, archived);
+}
+
 export function isChatArchived(chat: Chat): boolean {
+  const pending = pendingArchivePlacements.get(chat.id);
+  if (pending !== undefined) return pending;
   return typeof chat.archivedAt === 'number' && Number.isFinite(chat.archivedAt) && chat.archivedAt > 0;
 }
 
@@ -32,6 +43,8 @@ export function isChatArchived(chat: Chat): boolean {
  */
 export function chatHasListableContent(chat: Chat): boolean {
   if (chat.agentConversation?.version === 1) return true;
+  // A history rewrite can temporarily or permanently empty a saved chat.
+  if (chat.chatCommandVersion === 1 && (chat.historyRewriteRevision ?? 0) > 0) return true;
   if (isChatArchived(chat)) return true;
   if (hasComposerDraft(chat)) return true;
   // A Super Plan chat is the home of a server-side run and never has a

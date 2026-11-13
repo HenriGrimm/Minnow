@@ -101,6 +101,9 @@ export function resolveSafePath(userPath, options = {}) {
   if (/(?:^|[/\\])SKILL\.md$/i.test(userPath)) {
     throw new Error('Skill file resolves outside the workspace directory. Use load_skill if offered to list installed skills and read their references. For browser work, use the available browser tools.');
   }
+  if (store?.enforceWorkspace) {
+    throw new Error(`Path "${userPath}" resolves outside the workspace directory.`);
+  }
   throw new Error(
     `Path "${userPath}" resolves outside the workspace directory. Enable full disk access in Settings → General → Filesystem access (dangerous) or set TOOLS_ALLOW_ALL_PATHS=1 for automation.`,
   );

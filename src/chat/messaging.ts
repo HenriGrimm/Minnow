@@ -32,7 +32,10 @@ import { runChatTurn } from './run-turn-chat';
 import {
   getActiveChat,
   getActiveGoal,
+  getDurablySavedChatRevision,
   isGoalLoopActive,
+  markChatDirty,
+  persistSessionsBeforeDeliveryAck,
   scheduleSaveSessions,
   sessionState,
   touchChat,
@@ -66,6 +69,7 @@ import {
   clearComposerAfterSend,
   clearComposerDraftOnChat,
   beginComposerSubmissionDraft,
+  flushComposerDraftSessionSave,
   type ComposerSubmissionDraft,
 } from '../ui/composer-draft';
 import {
@@ -86,11 +90,10 @@ import { dispatchPluginSlashCommand, isPluginSlashCommand } from './slash-comman
 import { getWorkspacePath } from '../state/workspace';
 import { isPairedDevice } from '../api/session-token';
 import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
-import { persistSessionsBeforeDeliveryAck } from '../state/sessions';
 import type { ChatSendIntent } from '../../server/chats/contracts';
 import { isCavemanIntensity } from '../skills/caveman-client';
 import { ensureOrdinaryChatRoute } from './ordinary-routing';
-import { beginFirstMessageSubmission, finishFirstMessageSubmission, getFirstMessageSubmission, isFirstMessageSubmissionPending } from './first-message-submission';
+import { beginFirstMessageSubmission, finishFirstMessageSubmission, getFirstMessageSubmission, isFirstMessageSubmissionPending, releaseFirstMessageSubmission } from './first-message-submission';
 import { renderChatFromHistory, syncPendingTranscriptMessages } from '../ui/messages';
 import { randomUUID } from '../lib/random-id';
 
@@ -104,6 +107,16 @@ export {
   runChatTurn,
   resumeParentChatWithMessage,
 } from './run-turn-chat';
+
+async function persistPairedChatBeforeSend(chat: Chat): Promise<void> {
+  if (chat.history.length || getDurablySavedChatRevision(chat.id) !== null) return;
+  // Device drafts are local. A newly created chat needs its own shared row
+  // before the computer can look up the target of the first send.
+  markChatDirty(chat);
+  if (!await persistSessionsBeforeDeliveryAck(chat.id) || getDurablySavedChatRevision(chat.id) === null) {
+    throw new Error('Could not save the new chat.');
+  }
+}
 export type { RunChatTurnOptions, ResumeParentChatOptions } from './run-turn-chat';
 export type { ComposerSurface } from '../ui/composer-surface';
 export { resendFromIndex } from './resend-from-index';
@@ -165,9 +178,10 @@ function managedSendContext(chat: Chat, text: string, options: SendProgrammaticC
   if (slash.skillId && !isSkillEnabled(slash.skillId)) throw new Error(`Skill "${slash.skillId}" is disabled in Settings`);
   const turn = resolveTurnSkill({ slashSkillId: slash.skillId, userText: slash.userText, pinned: chat.pinnedSkill, isSkillEnabled });
   const userText = normalizeCavemanUserText(turn.skillId, slash.skillId, slash.userText);
+  const intensity = turn.skillId === CAVEMAN_SKILL_ID ? turn.nextPinned?.intensity : undefined;
   const intent: ChatSendIntent = { version: 1,
     skill: turn.skillId ? { id: turn.skillId, source: turn.fromPin ? 'pinned' : 'slash', input: userText,
-      ...(isCavemanIntensity(turn.nextPinned?.intensity) ? { intensity: turn.nextPinned!.intensity as import('../skills/caveman-client').CavemanIntensity } : {}) } : null,
+      ...(isCavemanIntensity(intensity) ? { intensity } : {}) } : null,
     ...(options.ephemeralContext !== undefined ? { context: options.ephemeralContext } : {}),
     ...(options.issue ? { issue: options.issue } : {}), ...(options.codeMap ? { codeMap: options.codeMap } : {}),
     ...(options.goalDriven !== undefined ? { goalDriven: options.goalDriven } : {}),
@@ -199,6 +213,7 @@ export async function sendProgrammaticChatText(
   }
   if (chat.chatCommandVersion === 1) {
     options.signal?.throwIfAborted();
+    const previousPin = chat.pinnedSkill;
     const context = managedSendContext(chat, text, options);
     const { sendManagedChatAction, waitForManagedCommand } = await import('./managed-chat-client');
     const attachments = await resolveWorkspaceReferences(options.validAttachments ?? []);
@@ -214,7 +229,10 @@ export async function sendProgrammaticChatText(
       receipt = await sendManagedChatAction(chat.id, 'send', { text: context.text, intent: context.intent, attachments });
       pendingDraft?.accept();
     } finally { pendingDraft?.restore(); }
-    chat.pinnedSkill = context.nextPinned;
+    if (chat.pinnedSkill === previousPin && context.nextPinned !== (previousPin ?? null)) {
+      chat.pinnedSkill = context.nextPinned;
+      syncComposerPinnedSkillFromActiveChat();
+    }
     if (!pendingDraft && options.clearComposerOnSend !== false && chat.composerDraft === draftBeforeAdmission) {
       if (sessionState?.activeId === chat.id && composerInput && composerInput.value === inputBeforeAdmission) {
         clearComposerAfterSend(chat, composerInput);
@@ -231,7 +249,7 @@ export async function sendProgrammaticChatText(
     return;
   }
   if (isPairedDevice()) {
-    if (!chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
+    await persistPairedChatBeforeSend(chat);
     await sendRemoteChatCommand(chat.id, 'send', { text, attachments: options.validAttachments });
     return;
   }
@@ -454,6 +472,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
   // Local slash controls do not create server conversations or migrate history.
   if ((rawTextEarly || getPendingAttachments().length) && !isPluginSlashCommand(rawTextEarly) &&
       !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(rawTextEarly)) {
+    if (chat.chatCommandVersion !== 1) flushComposerDraftSessionSave();
     try { await ensureOrdinaryChatRoute(chat); }
     catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); return; }
     if (sessionState?.activeId !== chat.id) return;
@@ -487,7 +506,8 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     let pendingDraft = draftSubmission;
     try {
       if (attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error')) throw new Error('Could not read attached files. Fix or remove them before sending.');
-      if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
+      if (isPairedDevice()) await persistPairedChatBeforeSend(chat);
+      const previousPin = chat.pinnedSkill;
       const context = chat.chatCommandVersion === 1 ? managedSendContext(chat, managedText, {
         ephemeralContext: composer?.ephemeralContext, issue: composer?.issue, goalDriven: managedGoal,
         parseSlash: !managedGoal, attachIssueMentions: !composer?.issue,
@@ -500,7 +520,12 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
         ...(context && action === 'send' ? { intent: context.intent } : {}),
         ...(action === 'send' && composer?.followupDelivery === 'queue' ? { mode: 'queue' } : {}),
         attachments: attachments.filter(attachment => attachment.kind !== 'error' && attachment.kind !== 'chatRef') });
-      if (context && action === 'send') { chat.pinnedSkill = context.nextPinned; touchChat(chat); scheduleSaveSessions(); }
+      if (context && action === 'send' && chat.pinnedSkill === previousPin && context.nextPinned !== (previousPin ?? null)) {
+        chat.pinnedSkill = context.nextPinned;
+        touchChat(chat);
+        scheduleSaveSessions();
+        syncComposerPinnedSkillFromActiveChat();
+      }
       // Remove only the sent files; anything added during delivery is a new draft.
       if (pendingDraft && getActiveChat().id === chat.id && getAttachmentEpoch() === remoteAttachmentEpoch) {
         const sentIds = new Set(attachmentsAtSend.map(attachment => attachment.id));
@@ -514,10 +539,9 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     finally { pendingDraft?.restore(); }
     return;
   }
-  // Renderer-owned turns paint their own input and must allow steering as soon as they start.
+  // Keep the optimistic echo through local setup while the turn owns Stop and steering.
   if (isFirstMessageSubmissionPending(chat)) {
-    finishFirstMessageSubmission(chat);
-    syncPendingTranscriptMessages(chat);
+    releaseFirstMessageSubmission(chat);
     syncComposerFromStreamingState();
   }
   if (isChatWorktreeSetupPending(chat.id)) {
@@ -582,7 +606,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
   const { consumePendingMessageEdit, completePendingMessageEdit } = await import(
     '../ui/message-actions'
   );
-  const pendingEdit = consumePendingMessageEdit();
+  const pendingEdit = consumePendingMessageEdit(chat.id);
   if (pendingEdit) {
     const editChat =
       sessionState?.chats.find((c) => c.id === pendingEdit.chatId) ?? getActiveChat();

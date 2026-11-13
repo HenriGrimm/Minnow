@@ -58,6 +58,7 @@ export interface AgentCliStatus {
   label: string;
   installed: boolean;
   authStatus: AgentCliAuthStatus;
+  accountEmail?: string;
   enabled: boolean;
   version?: string;
   binPath?: string;
@@ -125,6 +126,29 @@ export async function listAgentClis(signal?: AbortSignal): Promise<AgentCliStatu
     signal,
   });
   return body.agentClis ?? [];
+}
+
+export interface AgentCliUpdateItem {
+  kind: AgentCliKind;
+  label: string;
+  installedVersion: string | null;
+  latestVersion: string | null;
+  state: 'available' | 'current' | 'unavailable';
+}
+
+export interface AgentCliUpdateCheck { items: AgentCliUpdateItem[]; checkedAt: number; installing?: AgentCliKind[] }
+
+export async function checkAgentCliUpdates(refresh: boolean): Promise<AgentCliUpdateCheck | null> {
+  const response = await fetch(`/api/models/agent-clis/updates${refresh ? '?refresh=1' : ''}`, {
+    cache: 'no-store', signal: AbortSignal.timeout(20_000),
+  });
+  if (response.status === 403) return null;
+  if (!response.ok) throw new Error('Could not check CLI updates.');
+  return response.json();
+}
+
+export function installAgentCliUpdate(kind: AgentCliKind): Promise<{ installedVersion: string }> {
+  return requestJson(cliUrl(kind, 'update'), { method: 'POST' });
 }
 
 export async function verifyAgentCli(

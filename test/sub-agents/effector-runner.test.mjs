@@ -207,7 +207,6 @@ function makeEffector(opts = {}) {
     getState: opts.getState,
     model: MODEL,
     limits: opts.limits,
-    promptVariant: 'lite',
     runTurn: opts.runTurn,
     deps: opts.deps ?? stubDeps(),
     reapOrphans: opts.reapOrphans,

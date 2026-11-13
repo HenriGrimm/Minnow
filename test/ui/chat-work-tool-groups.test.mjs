@@ -44,8 +44,10 @@ afterEach(() => {
   win.close();
 });
 
-test('reopened work combines single-call rounds and retains original results and disclosure choices', () => {
-  chat.history[4].content = 'Error: file not found';
+test('reopened work groups successful rounds across failed calls and retains disclosure choices', () => {
+  const missing = calls(['missing']);
+  missing[1].content = 'Error: file not found';
+  chat.history.splice(3, 0, ...missing);
   const saved = JSON.stringify(chat.history);
   renderChatFromHistory(chat);
   const batch = groups()[0];
@@ -55,8 +57,9 @@ test('reopened work combines single-call rounds and retains original results and
   assert.equal(batch.classList.contains('chat-work-hidden'), true);
   work.click();
   assert.equal(batch.classList.contains('chat-work-hidden'), false);
-  assert.equal(batch.querySelector('.tool-call-batch__label').textContent, 'Explored 2 files, 1 failed');
+  assert.equal(batch.querySelector('.tool-call-batch__label').textContent, 'Explored 2 files');
   assert.deepEqual(toolIds(batch), ['a', 'b']);
+  assert.ok(mount.querySelector('[data-tool-call-id="missing"]').hidden);
   assert.equal(batch.querySelectorAll('.tool-call-msg.chat-work-hidden').length, 0);
   assert.equal(batch.querySelectorAll('.tool-call-details').length, 2);
   batch.open = true;

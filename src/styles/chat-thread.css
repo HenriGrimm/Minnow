@@ -7,8 +7,10 @@
   --chat-raise: color-mix(in srgb, var(--mn-fg) 5%, transparent);
   /* Timeline geometry: dot centre on the step's first line, and the gap between steps. */
   --chat-step-dot-y: 12px;
-  --chat-step-gap: 16px;
-  gap: 18px;
+  --chat-step-gap: calc(16px + 2 * var(--mn-density-step));
+  --chat-block-gap: calc(18px + 2 * var(--mn-density-step));
+  --chat-prompt-padding-block: calc(12px + var(--mn-density-step));
+  gap: var(--chat-block-gap);
 }
 
 .chat-thread > .msg.user,
@@ -30,14 +32,14 @@
 .chat-thread > .msg.user {
   align-items: stretch;
   width: 100%;
-  margin-top: 18px;
+  margin-top: var(--chat-block-gap);
 }
 
 .chat-thread > .msg.user:first-child { margin-top: 0; }
 
 /* Stack consecutive tool rows closer — the thread gap stays for prose boundaries. */
 .chat-thread > .tool-call-msg + .tool-call-msg {
-  margin-top: -14px;
+  margin-top: calc(4px - var(--chat-block-gap));
 }
 
 .chat-thread > .msg.user .msg-bubble {
@@ -45,7 +47,7 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  padding: 12px 16px 12px 40px;
+  padding: var(--chat-prompt-padding-block) 16px var(--chat-prompt-padding-block) 40px;
   background: var(--chat-raise);
   border: 1px solid var(--mn-border);
   border-radius: 10px;
@@ -57,7 +59,7 @@
   content: '›';
   position: absolute;
   left: 16px;
-  top: 12px;
+  top: var(--chat-prompt-padding-block);
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 600;
@@ -166,8 +168,6 @@
   :scope.chat-thread .tool-call-batch__status,
   :scope.chat-thread .tool-call-batch__counts { display: none; }
   :scope.chat-thread .tool-call-batch__label { font-size: 13px; font-weight: 500; color: var(--mn-fg); }
-  /* Failure shows on the dot and the chips; the heading stays readable. */
-  :scope.chat-thread .tool-call-batch--fail .tool-call-batch__label { color: var(--mn-fg); }
   :scope.chat-thread .tool-call-batch__chevron { color: var(--mn-fg-subtle); }
   :scope.chat-thread .tool-call-batch__body { gap: 0; padding: 4px 0 0; }
 }
@@ -198,7 +198,6 @@
   line-height: 1.4;
   white-space: nowrap;
 }
-.tool-call-batch__chip--fail { color: var(--mn-danger-ink); }
 .tool-call-batch__chip--more { color: var(--mn-fg-subtle); }
 
 /* ── Timeline: each step owns a dot; consecutive steps share a rail ── */
@@ -214,10 +213,7 @@
   margin-top: 0;
   gap: 9px;
 }
-.chat-thread > .chat-step--joined + .chat-step,
-/* A card's hidden spawn row sits between it and the step above. */
-.chat-thread > .chat-step--joined + .tool-call-msg--delegated + .chat-step,
-.chat-thread > .chat-step--joined + .tool-call-batch--delegated + .chat-step { margin-top: calc(var(--chat-step-gap) - 18px); }
+.chat-thread > .chat-step--continued { margin-top: calc(var(--chat-step-gap) - var(--chat-block-gap)); }
 .chat-thread > .chat-step::before {
   content: '';
   position: absolute;
@@ -240,8 +236,6 @@
   width: 1px;
   background: var(--mn-border-strong);
 }
-.chat-thread > .chat-step.tool-call-msg--fail::before,
-.chat-thread > .chat-step.tool-call-batch--fail::before,
 .chat-thread > .chat-step.sub-agent-card[data-status='failed']::before { border-color: var(--mn-danger-ink); }
 /* Keep the active marker the same size as settled steps; the spinner carries motion. */
 .chat-thread > .chat-step.tool-call-batch--running::before,
@@ -298,7 +292,6 @@
 .chat-work__detail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-work__detail:not(:empty)::before { content: '· '; }
 .chat-work__item + .chat-work__item::before { content: ' · '; }
-.chat-work__failed { color: var(--mn-danger-ink); }
 .chat-work__activity { flex-basis: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mn-fg-muted); }
 .chat-work__activity:empty { display: none; }
 
@@ -312,7 +305,7 @@
 /* Prompt blocks span the column, so ⋮ moves inside the block instead of a lane beside it. */
 .chat-thread > .msg.user.msg--has-actions { padding-left: 0; }
 .chat-thread > .msg.user.msg--has-actions .msg-bubble { padding-right: 40px; }
-.chat-thread > .msg.user .message-actions__trigger { left: auto; right: 6px; top: 7px; }
+.chat-thread > .msg.user .message-actions__trigger { left: auto; right: 6px; top: calc(7px + var(--mn-density-step)); }
 
 /* ── Reply footer: copy · remake · speed under the latest answer ── */
 .chat-thread > .chat-reply-foot {
@@ -508,3 +501,64 @@
 .chat-turn-todos__item--completed > :last-child { text-decoration: line-through; }
 .chat-turn-todos__item--in_progress .chat-turn-todos__glyph { color: var(--mn-accent); }
 .chat-turn-todos__item--in_progress > :last-child { font-weight: 600; }
+
+.chat-todo-panel {
+  box-sizing: border-box;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-lg);
+  background: var(--mn-graphite-sheet);
+  box-shadow: var(--mn-composer-shadow);
+  overflow: clip;
+}
+
+.chat-todo-panel,
+.chat-todo-panel > summary {
+  border-end-start-radius: var(--chat-todo-bottom-radius, var(--mn-radius-lg));
+  border-end-end-radius: var(--chat-todo-bottom-radius, var(--mn-radius-lg));
+}
+
+.chat-todo-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  min-height: var(--mn-control-h-lg);
+  padding: var(--mn-space-2) var(--mn-space-3);
+  border-start-start-radius: var(--mn-radius-lg);
+  border-start-end-radius: var(--mn-radius-lg);
+  font-weight: 600;
+  list-style: none;
+}
+
+.chat-todo-panel > summary::-webkit-details-marker { display: none; }
+.chat-todo-panel > summary:focus-visible { outline-offset: -2px; }
+.chat-todo-panel[open] > summary { border-end-start-radius: 0; border-end-end-radius: 0; }
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-todo-panel > summary:hover { background: var(--mn-surface-elevated); }
+}
+
+@media (pointer: coarse) {
+  .chat-todo-panel > summary { min-height: var(--touch-min); }
+}
+
+.chat-todo-panel__icon,
+.chat-todo-panel__chevron { flex: none; color: var(--mn-fg-muted); }
+.chat-todo-panel[open] .chat-todo-panel__chevron { transform: rotate(90deg); }
+
+.chat-todo-panel .chat-turn-todos__count {
+  margin-inline: auto 0;
+  font-size: var(--mn-type-sm);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.chat-todo-panel .chat-turn-todos__list {
+  max-height: min(15rem, 36cqh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: var(--mn-space-1) var(--mn-space-3) var(--mn-space-2);
+  border-top: 1px solid var(--mn-border);
+}
+
+.chat-todo-panel .chat-turn-todos__item { gap: var(--mn-space-2); }

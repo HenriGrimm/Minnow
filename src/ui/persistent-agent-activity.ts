@@ -189,7 +189,7 @@ function sourceAnchor(calls: Map<string, HTMLElement>, receipts: Map<string, HTM
   row.classList.add('tool-call-msg--delegated');
   const batch = row.closest<HTMLElement>('.tool-call-batch');
   if (batch) {
-    const rows = [...batch.querySelectorAll(':scope > .tool-call-batch__body > .tool-call-msg')];
+    const rows = [...batch.querySelectorAll(':scope > .tool-call-batch__body > .tool-call-msg:not([hidden])')];
     batch.classList.toggle('tool-call-batch--delegated', rows.length > 0 && rows.every(node => node.classList.contains('tool-call-msg--delegated')));
   }
   return batch ?? row;

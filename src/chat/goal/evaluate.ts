@@ -172,6 +172,7 @@ export async function maybeContinueGoalAfterTurn(chat: Chat): Promise<void> {
     setGoalEvaluating(chat.id, false);
     syncGoalEvalUi(chat.id);
   }
+  if (getActiveGoal(chat) !== goal) return;
   goal.lastReason = result.reason;
 
   if (result.met) {

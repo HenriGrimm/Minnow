@@ -1,11 +1,8 @@
-import { routingStep } from './routing';
 /**
- * Ordered onboarding step registry (MIN-233 flow).
+ * The provider path is the only setup required to start chatting.
  */
 
-import type { OnboardingStep } from '../types';
-import { welcomeStep } from './welcome';
-import { themeStep } from './theme';
+import type { OnboardingContext, OnboardingStep } from '../types';
 import {
   providerChoiceStep,
   providerLocalStep,
@@ -14,42 +11,34 @@ import {
 import { providerManagedStep } from './managed';
 import { providerCliStep } from './cli';
 import { modelPickStep } from './model';
-import { extrasStep } from './extras';
-import { githubStep } from './github';
-import { apiKeysStep } from './api-keys';
-import { context7Step } from './context7';
-import { permissionsStep, memoryStep, doneStep } from './remaining';
 
-/** Full wizard step order; controller filters with isApplicable. */
 export const ONBOARDING_STEPS: OnboardingStep[] = [
-  welcomeStep,
-  themeStep,
   providerChoiceStep,
   providerLocalStep,
   providerManagedStep,
   providerCloudStep,
   providerCliStep,
   modelPickStep,
-  routingStep,
-  apiKeysStep,
-  extrasStep,
-  githubStep,
-  permissionsStep,
-  memoryStep,
-  context7Step,
-  doneStep,
 ];
 
-export function getApplicableSteps(ctx: import('../types').OnboardingContext): OnboardingStep[] {
+export function getApplicableSteps(ctx: OnboardingContext): OnboardingStep[] {
   return ONBOARDING_STEPS.filter((step) => step.isApplicable(ctx));
 }
 
-export function resolveStepIndex(
-  steps: OnboardingStep[],
-  stepId: import('../types').OnboardingStepId | null,
-): number {
-  if (!stepId) return 0;
-  if (stepId === 'apps') stepId = 'provider-choice';
-  const idx = steps.findIndex((s) => s.id === stepId);
-  return idx >= 0 ? idx : 0;
+export function resolveStepIndex(steps: OnboardingStep[], ctx: OnboardingContext): number {
+  const { lastStep } = ctx.state;
+  const savedIndex = steps.findIndex((step) => step.id === lastStep);
+  if (savedIndex >= 0) {
+    // A committed provider can go straight to model selection on resume.
+    const next = steps[savedIndex + 1];
+    if (ctx.providerId && lastStep && ctx.state.steps[lastStep]?.done && next?.id === 'model-pick') {
+      return savedIndex + 1;
+    }
+    return savedIndex;
+  }
+  // Older setups may have stopped on an optional page after connecting a model.
+  const selection = steps.at(-1);
+  return ctx.providerId && selection
+    && (selection.id === 'model-pick' || ctx.state.steps[selection.id]?.done)
+    ? steps.length - 1 : 0;
 }

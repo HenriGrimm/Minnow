@@ -9,6 +9,8 @@ import { GIT_CHECKOUT_CHANGED_EVENT } from './git-checkout-events';
 export interface GitFileEntry {
   path: string;
   status: string;
+  additions?: number;
+  deletions?: number;
 }
 
 export interface IssueWorkSnapshot {
@@ -137,6 +139,7 @@ export interface GitSavedCheckoutChanges {
 export interface GitCheckoutSwitchInput {
   cwd?: string;
   branch: string;
+  pullRequest?: { number: number; url: string };
   create?: boolean;
   startPoint?: string;
   dirtyHandling?: 'bring' | 'leave';
@@ -182,7 +185,8 @@ async function postGit(
       };
     }
     const result = (await res.json()) as GitOpResult;
-    if (result.ok && ['checkout', 'checkoutSwitch', 'checkoutDetach'].includes(op) && typeof window !== 'undefined') {
+    const checkoutChanged = result.ok || (op === 'checkoutSwitch' && result.branch && !result.needsChoice);
+    if (checkoutChanged && ['checkout', 'checkoutSwitch', 'checkoutDetach'].includes(op) && typeof window !== 'undefined') {
       window.dispatchEvent(new window.CustomEvent(GIT_CHECKOUT_CHANGED_EVENT));
     }
     return result;
@@ -197,8 +201,8 @@ async function postGit(
 
 // ── Working tree ─────────────────────────────────────────────────────────────
 
-export function gitStatus(cwd?: string, signal?: AbortSignal): Promise<GitOpResult> {
-  return postGit('status', cwd ? { cwd } : {}, signal);
+export function gitStatus(cwd?: string, signal?: AbortSignal, options?: { lineStats?: boolean }): Promise<GitOpResult> {
+  return postGit('status', { ...(cwd ? { cwd } : {}), ...(options?.lineStats ? { lineStats: true } : {}) }, signal);
 }
 
 export async function gitFileDiff(input: { cwd?: string; cached: boolean; path: string }): Promise<

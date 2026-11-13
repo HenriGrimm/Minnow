@@ -1,4 +1,4 @@
-import type { Chat } from '../types';
+import type { Chat, ChatTodo } from '../types';
 import { CHAT_VIEW_CHANGED, getChatView, type ChatView } from '../appearance/chat-view';
 import { collectTranscriptTurns, formatWorkDuration, type TranscriptTurn } from '../chat/transcript-turns';
 import { formatTurnSummary, narrationSentence, summarizeTurn, type TurnSummary } from '../chat/turn-summary';
@@ -6,10 +6,13 @@ import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createTurnChanges } from './chat-turn-changes';
 import { getTurnPresentedFiles } from '../chat/presented-files';
 import { createPresentedFileCards } from './presented-file-cards';
-import { createTurnTodoPanel, getTurnTodos } from './todo-panel';
+import { createTurnTodoPanel, getTurnTodos, updateTodoPanel } from './todo-panel';
+import { getChatTodos } from '../state/sessions';
+import { streamingChatIds } from '../app-state';
+import { markPreviewOccluder } from './preview-occlusion';
 import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
-import { supportsLocalHistoryMutation } from '../state/chat-relationships';
+import { supportsLocalHistoryMutation, supportsManagedHistoryMutation } from '../state/chat-relationships';
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { groupWorkedToolRows } from './chat-work-tool-groups';
 import { TOOL_START_INDICATOR_CHANGED } from './stream-status';
@@ -40,6 +43,7 @@ const LIVE_TEXT_LEAVES = '.stream-status__label, .stream-status__detail, .stream
 
 const controllers = new WeakMap<HTMLElement, { chat: Chat; sync: () => void; dispose: () => void }>();
 const expandedByChat = new WeakMap<Chat, Set<number>>();
+const todoDisclosureByChat = new WeakMap<Chat, boolean>();
 let nextId = 0;
 
 /**
@@ -54,6 +58,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   if (previous?.chat === chat) { previous.sync(); return; }
   previous?.dispose();
   const disposeScrollLayout = options.isolated ? () => {} : observeChatScrollLayout(mount);
+  const todoViewport = !options.isolated && mount.parentElement?.matches('.chat-viewport') ? mount.parentElement : null;
+  let todoPanel: HTMLDetailsElement | null = null;
+  let todoPanelKey: string | undefined;
+  let hadLiveTodos = false;
   const groups = new Map<number, WorkGroup>();
   const expanded = options.expanded ?? expandedByChat.get(chat) ?? new Set<number>();
   if (!options.expanded) expandedByChat.set(chat, expanded);
@@ -135,6 +143,46 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     void import('./composer-undo').then((m) => m.syncComposerUndoFromActiveChat());
   }
 
+  function syncFloatingTodos(turns: TranscriptTurn[]): void {
+    if (!todoViewport) return;
+    let todos: ChatTodo[] | undefined;
+    if (turns.length && mount.querySelector(':scope > .msg, :scope > .tool-call-msg, :scope > .tool-call-batch')) {
+      const saved = getChatTodos(chat);
+      const localStream = streamingChatIds.has(chat.id);
+      if (localStream && saved) hadLiveTodos = true;
+      // Live state can land ahead of the transcript receipt, including a clear.
+      if (chat.chatCommandVersion === 1 || (localStream && hadLiveTodos)) {
+        todos = saved;
+      } else {
+        for (let i = turns.length - 1; i >= 0 && todos === undefined; i--) {
+          todos = getTurnTodos(chat, turns[i].fork, turns[i].end);
+        }
+        todos ??= saved;
+      }
+      if (!localStream) hadLiveTodos = false;
+    }
+    if (!todos?.length) {
+      todoPanel?.remove();
+      todoPanel = null;
+      todoPanelKey = undefined;
+      todoDisclosureByChat.delete(chat);
+      return;
+    }
+    const key = JSON.stringify(todos);
+    if (todoPanelKey === key) return;
+    if (todoPanel) {
+      updateTodoPanel(todoPanel, todos);
+    } else {
+      todoPanel = createTurnTodoPanel(todos, true)!;
+      const panel = todoPanel;
+      panel.querySelector('summary')!.addEventListener('click', () => todoDisclosureByChat.set(chat, !panel.open));
+      markPreviewOccluder(panel);
+      todoViewport.append(panel);
+    }
+    todoPanel.open = todoDisclosureByChat.get(chat) ?? todos.some(item => item.status !== 'completed');
+    todoPanelKey = key;
+  }
+
   function syncGroup(
     turn: TranscriptTurn,
     rows: HTMLElement[],
@@ -162,7 +210,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     live = live && !terminal;
     const pending = executionStatus != null && !terminal;
     const ongoing = live || pending;
+    const firstMountedRow = rows[0];
+    rows = rows.filter(row => !row.hidden);
     if (!ongoing) rows = groupWorkedToolRows(rows);
+    const firstRow = rows[0] ?? firstMountedRow;
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
     const final = ongoing ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
@@ -175,7 +226,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const activity = rows.filter((row) => !replyRows.has(row));
     for (const row of assistants) {
       row.classList.toggle('chat-turn-final', replyRows.has(row));
-      if (replyRows.has(row)) row.classList.remove('chat-work-hidden', 'chat-step', 'chat-step--joined');
+      if (replyRows.has(row)) row.classList.remove('chat-work-hidden', ...STEP_CLASSES);
     }
     // The active checkpoint divider is a boundary, not work: alone it earns no disclosure.
     const work = activity.filter((row) => !row.matches('.compaction-divider:not(.compaction-divider--superseded)'));
@@ -189,19 +240,21 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       return;
     }
     group ??= makeGroup(turn.fork);
-    if ((group.todos?.nextElementSibling ?? group.button.nextElementSibling) !== rows[0]) mount.insertBefore(group.button, rows[0]);
-    const todos = getTurnTodos(chat, turn.fork, turn.end);
-    const todosKey = JSON.stringify(todos);
-    if (group.todosKey !== todosKey) {
-      const wasOpen = group.todos?.open;
-      group.todos?.remove();
-      group.todos = createTurnTodoPanel(todos);
-      if (group.todos && wasOpen !== undefined) group.todos.open = wasOpen;
-      group.todosKey = todosKey;
+    if ((group.todos?.nextElementSibling ?? group.button.nextElementSibling) !== firstRow) mount.insertBefore(group.button, firstRow);
+    if (!todoViewport) {
+      const todos = getTurnTodos(chat, turn.fork, turn.end) ?? [];
+      const todosKey = JSON.stringify(todos);
+      if (group.todosKey !== todosKey) {
+        const wasOpen = group.todos?.open;
+        group.todos?.remove();
+        group.todos = createTurnTodoPanel(todos);
+        if (group.todos && wasOpen !== undefined) group.todos.open = wasOpen;
+        group.todosKey = todosKey;
+      }
+      if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     }
-    if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     // A live turn draws its steps in place; the composer status line carries elapsed time.
-    const show = full || group.expanded || ongoing && !options.isolated;
+    const show = full || group.expanded || live || pending && !options.isolated;
     group.button.classList.toggle('chat-work--live-hidden', live && !options.isolated);
     if (hasActivity) group.button.setAttribute('aria-expanded', String(show));
     else group.button.removeAttribute('aria-expanded');
@@ -237,8 +290,6 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated')
         || row.matches('.sub-agent-card--persistent:not([data-status="completed"]):not([data-status="cancelled"]), .sub-agent-group[data-live="true"]')
         || Boolean(row.querySelector('.sub-agent-card--persistent[data-status="failed"]'))
-        || row.matches('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]')
-        || Boolean(row.querySelector('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]'))
         || Boolean(row.querySelector('.msg-bubble--error'))
         || row.matches('.compaction-divider:not(.compaction-divider--superseded)')
         || (live && (row.dataset.toolName === 'ask_question'
@@ -277,7 +328,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       group.presentedFiles = createPresentedFileCards(presentedFiles);
       group.presentedFilesKey = presentedFilesKey;
     }
-    const lastRow = rows.at(-1)!;
+    const lastRow = rows.at(-1) ?? firstRow;
     if (group.presentedFiles && lastRow.nextElementSibling !== group.presentedFiles) lastRow.after(group.presentedFiles);
     if (!ongoing) {
       const key = `${turn.end}:${run?.endedAt ?? ''}:${turn.fork === primaryFork ? 'primary' : ''}`;
@@ -310,6 +361,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     mount.classList.add('chat-thread');
     mount.dataset.chatView = full ? 'full' : 'compact';
     const turns = collectTranscriptTurns(chat);
+    syncFloatingTodos(turns);
     const byIndex = new Map<number, TranscriptTurn>();
     for (const turn of turns) for (let i = turn.fork; i <= turn.end; i++) byIndex.set(i, turn);
     const buckets = new Map<TranscriptTurn, HTMLElement[]>();
@@ -349,7 +401,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       groups.delete(fork);
     }
     observer.observe(mount, { childList: true, subtree: true, attributes: true,
-      attributeFilter: ['class', 'data-history-index', 'data-stream-phase', 'data-turn-kind', 'data-status', 'data-live'] });
+      attributeFilter: ['class', 'hidden', 'data-history-index', 'data-stream-phase', 'data-turn-kind', 'data-status', 'data-live'] });
     if (streaming) scheduleTick();
   }
 
@@ -392,6 +444,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   function dispose(): void {
     disposed = true;
     disposeScrollLayout();
+    todoPanel?.remove();
     observer.disconnect();
     for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.presentedFiles?.remove(); group.foot?.remove(); group.todos?.remove(); }
     for (const row of mount.querySelectorAll('.chat-work-hidden')) row.classList.remove('chat-work-hidden');
@@ -529,7 +582,7 @@ function syncReplyFoot(
     return;
   }
   let foot = group.foot;
-  const canRewrite = supportsLocalHistoryMutation(chat);
+  const canRewrite = supportsLocalHistoryMutation(chat) || supportsManagedHistoryMutation(chat);
   if (!foot || foot.dataset.index !== String(index) || foot.dataset.canRewrite !== String(canRewrite)) {
     foot?.remove();
     foot = document.createElement('div');
@@ -564,10 +617,10 @@ function paintStatus(group: WorkGroup, outcome: WorkOutcome): void {
   group.status.replaceChildren(createIcon(name, { className: 'chat-work__status-icon', size: 12 }));
 }
 
-const STEP_CLASSES = ['chat-step', 'chat-step--joined'] as const;
+const STEP_CLASSES = ['chat-step', 'chat-step--joined', 'chat-step--continued'] as const;
 const TOOL_ROW = '.tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card';
-/** Collapsed rows, plus spawn rows (and spawn-only rounds) a sub-agent card stands in for. */
-const OFF_RAIL = '.chat-work-hidden, .tool-call-msg--delegated, .tool-call-batch--delegated';
+/** Hidden activity and spawn rows represented by sub-agent cards. */
+const OFF_RAIL = '.chat-work-hidden, [hidden], .tool-call-msg--delegated, .tool-call-batch--delegated';
 
 function hasProse(row: HTMLElement): boolean {
   const bubble = row.querySelector(':scope > .msg-bubble:not(.msg-bubble--awaiting)');
@@ -596,6 +649,7 @@ function hasSettledThoughts(row: HTMLElement): boolean {
 function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void {
   const steps = new Set<HTMLElement>();
   const joined = new Set<HTMLElement>();
+  const continued = new Set<HTMLElement>();
   if (!full) {
     const visible = activity.filter((row) => !row.matches(OFF_RAIL));
     visible.forEach((row) => {
@@ -611,12 +665,17 @@ function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void
       while (sibling instanceof HTMLElement && sibling.matches(OFF_RAIL)) {
         sibling = sibling.nextElementSibling;
       }
-      if (ordered[i + 1] && sibling === ordered[i + 1]) joined.add(row);
+      const next = ordered[i + 1];
+      if (next && sibling === next) {
+        joined.add(row);
+        continued.add(next);
+      }
     });
   }
   for (const row of activity) {
     setClass(row, 'chat-step', steps.has(row));
     setClass(row, 'chat-step--joined', joined.has(row));
+    setClass(row, 'chat-step--continued', continued.has(row));
   }
 }
 
@@ -657,12 +716,6 @@ function paintTally(group: WorkGroup, summary: TurnSummary | undefined, runningA
     item.className = 'chat-work__item';
     item.dataset.kind = entry.kind;
     item.textContent = entry.kind === 'agents' && runningAgents ? `${entry.text} · ${runningAgents} running` : entry.text;
-    if (entry.failed) {
-      const failed = document.createElement('span');
-      failed.className = 'chat-work__failed';
-      failed.textContent = ` · ${entry.failed} failed`;
-      item.append(failed);
-    }
     parts.push(item);
   }
   if (summary?.overflow) {

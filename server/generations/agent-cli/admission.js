@@ -1,12 +1,21 @@
 const providers = new Map();
+const maintenance = new Set();
 const abortError = () => Object.assign(new Error('Agent CLI request cancelled.'), { name: 'AbortError' });
+
+/** An updater can replace binaries only while no turn owns this provider. */
+export function beginAgentCliMaintenance(providerId) {
+  if (maintenance.has(providerId) || providers.has(providerId)) return null;
+  maintenance.add(providerId);
+  return () => maintenance.delete(providerId);
+}
 
 /** FIFO admission is shared across chats, sub-agents, routers, and utility callers. */
 export function admitAgentCli(providerId, limit = 1, signal) {
   if (signal?.aborted) return Promise.reject(abortError());
+  if (maintenance.has(providerId)) return Promise.reject(new Error('This CLI is updating. Try again when the update finishes.'));
   let pool = providers.get(providerId);
   if (!pool) { pool = { active: 0, queue: [] }; providers.set(providerId, pool); }
-  if (pool.queue.length >= 64) return Promise.reject(new Error('Agent CLI queue is full. Wait for a running task or increase concurrency in Models → CLIs.'));
+  if (pool.queue.length >= 64) return Promise.reject(new Error('Agent CLI queue is full. Wait for a running task or increase concurrency in Models → Subscriptions.'));
   function drain() {
     while (pool.queue.length && pool.active < pool.queue[0].limit) {
       const entry = pool.queue.shift();

@@ -119,6 +119,9 @@ function applyLaunchOptionsToInstance(inst: AppInstance, options?: LaunchOptions
     for (const key of CODE_ONE_SHOT_LAUNCH_KEYS) delete previous[key];
     inst.seed = undefined;
   }
+  if (inst.appId === 'settings' && options.settingsSection && options.settingsSection !== previous.settingsSection) {
+    delete previous.settingsSearchKey;
+  }
   inst.launchOptions = { ...previous, ...options };
   if (options.seed) inst.seed = options.seed;
 }

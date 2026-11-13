@@ -14,7 +14,6 @@ import type {
   MemoryEmbeddingsConfig,
   MemoryEmbeddingsOpResult,
 } from './types';
-import type { PromptProfile } from '../chat/prompts/types';
 
 const API_BASE = '';
 
@@ -186,7 +185,6 @@ export async function fetchMemoryEnabled(): Promise<boolean> {
 /** Retrieve formatted memory block for prompt injection (via Brain wiki retrieve). */
 export async function retrieveMemoryBlock(options: {
   query?: string;
-  profile?: PromptProfile;
   limit?: number;
   expertId?: string;
   autoInject?: boolean;
@@ -200,7 +198,6 @@ export async function retrieveMemoryBlock(options: {
     method: 'POST',
     body: JSON.stringify({
       query: options.query ?? '',
-      profile: options.profile ?? 'full',
       limit: options.limit ?? 12,
       workspaceRoot,
       ...(options.autoInject ? { autoInject: true } : {}),

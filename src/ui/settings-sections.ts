@@ -1,32 +1,11 @@
 import { refreshMcpToolCache } from '../tools/client';
-import { appAlert, appConfirm, appPrompt } from './app-dialog';
+import { appAlert, appConfirm } from './app-dialog';
 /**
  * Populate full settings page sections from Step 02–18 APIs (no placeholder stubs).
  */
 
-import { PART_ORDER } from '../chat/prompts/prompt-composer';
 import { schedulePromptTokenEstimateRefresh } from './settings-prompt-estimate';
 import { mountSetupProfilesPanel } from './settings-profiles';
-import { loadPromptById } from '../chat/prompts/prompt-loader';
-import {
-  customPartBaselineProfileHint,
-  isPromptPartDiffSupported,
-  resolveBuiltinPromptBaselineForPart,
-} from '../chat/prompts/prompt-baseline';
-import { mountPromptDiffControls } from './prompt-diff-panel';
-import {
-  deletePromptConfig,
-  duplicatePromptConfig,
-  listPromptConfigs,
-  loadPromptConfig,
-  savePromptConfig,
-} from '../chat/prompts/prompt-configs';
-import type {
-  PromptConfig,
-  PromptConfigPartSettings,
-  PromptPartId,
-  PromptProfile,
-} from '../chat/prompts/types';
 import {
   loadPromptMetaSettings,
   savePromptMetaSettings,
@@ -159,24 +138,6 @@ import {
   loadToolCallsMeta,
   saveToolCallsMeta,
 } from '../config/tool-calls-meta';
-
-const PART_LABELS: Record<PromptPartId, string> = {
-  base: 'Base',
-  mode: 'Mode',
-  expert: 'Expert',
-  'tool-usage': 'Tool usage',
-  info: 'Info',
-  memory: 'Memory',
-  'code-map': 'Code map',
-  'context-documents': 'Context documents',
-  'work-agent': 'Work agent',
-  skill: 'Skill',
-};
-
-const DEFAULT_PART_SETTINGS: PromptConfigPartSettings = {
-  enabled: true,
-  contentOverride: null,
-};
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -426,11 +387,15 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
   const generation = beginAsyncSectionRender(area);
   const mount = clearMount({ general: 'settingsGeneralBody', terminal: 'settingsTerminalBody', backups: 'settingsBackupsBody', access: 'settingsAccessBody', updates: 'settingsUpdatesBody' }[area]);
   if (!mount) return;
+  if (area === 'updates') {
+    renderAppUpdatesSettings(mount);
+    return;
+  }
 
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
   if (area === 'general') appendGeneralSectionLead(shell);
-  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', backups: 'Back up your data and restore it on this or another computer.', access: 'Control how agents access files and run commands on this computer.', updates: 'Check for new versions and choose when to restart.' }[area]));
+  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', backups: 'Back up your data and restore it on this or another computer.', access: 'Control how agents access files and run commands on this computer.' }[area]));
   if (area === 'general') {
     const links = el('nav', 'settings-quick-links');
     links.setAttribute('aria-label', 'Common settings');
@@ -450,19 +415,6 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
       shell,
       'Open Minnow to save file-backed settings. Values below use browser storage until then.',
     );
-  }
-
-  if (area === 'updates') {
-    const updates = appendSettingsGroup(
-      shell,
-      'App updates',
-      'Stay on the latest build. Downloads run in the background; restart when you are ready.',
-      'general.updates',
-      { emphasis: true },
-    );
-    updates.id = 'settingsAppUpdates';
-    renderAppUpdatesSettings(updates);
-
   }
 
   if (area === 'general') {
@@ -520,7 +472,7 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
     const permissions = appendSettingsGroup(
       shell,
       'Permissions',
-      'One level for every chat, agent, tool, MCP server, plugin and website. The composer pill and Shift+Tab change the same setting.',
+      'One level for every chat, agent, tool, MCP server, plugin and website. The composer’s permission icon and Shift+Tab change the same setting.',
       'general.permissions',
       { emphasis: true },
     );
@@ -546,8 +498,8 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
 
   const setup = appendSettingsGroup(
     shell,
-    'Setup wizard',
-    'Re-run the first-launch setup flow (theme, provider, permissions).',
+    'Minnow setup',
+    'Connect a provider and choose a default chat model.',
     'general.onboarding',
     { emphasis: true },
   );
@@ -570,360 +522,11 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
 
 // ── Prompting ────────────────────────────────────────────────────────────────
 
-function defaultCustomConfig(id: string, label: string): PromptConfig {
-  const parts: PromptConfig['parts'] = {};
-  for (const partId of PART_ORDER) {
-    parts[partId] = { ...DEFAULT_PART_SETTINGS };
-  }
-  return {
-    id,
-    label,
-    profile: 'custom',
-    parts,
-    meta: { createdAt: new Date().toISOString() },
-  };
-}
-
-let promptingUiBound = false;
-let activeCustomConfig: PromptConfig | null = null;
-
-async function renderPromptPartsPanel(
-  profile: PromptProfile,
-  configId: string | null,
-): Promise<void> {
-  const mount = clearMount('settingsPromptParts');
-  if (!mount) return;
-
-  if (profile === 'custom') {
-    if (!configId) {
-      mount.appendChild(
-        el('p', 'settings-field-hint', 'Select or create a custom configuration.'),
-      );
-      return;
-    }
-    const loaded = await loadPromptConfig(configId);
-    if (loaded instanceof Error) {
-      mount.appendChild(el('p', 'settings-field-hint', loaded.message));
-      return;
-    }
-    activeCustomConfig = loaded;
-    renderCustomPartEditors(mount, loaded);
-    return;
-  }
-
-  activeCustomConfig = null;
-  const list = el('div', 'settings-parts-preview');
-  for (const partId of PART_ORDER) {
-    const kind =
-      partId === 'work-agent'
-        ? 'work-agent'
-        : partId === 'tool-usage'
-          ? 'tool-usage'
-          : partId;
-    const promptId =
-      partId === 'base'
-        ? 'default'
-        : partId === 'mode'
-          ? 'build'
-          : partId === 'expert'
-            ? 'general'
-            : partId === 'info'
-              ? 'general-assistant'
-              : partId === 'tool-usage'
-                ? 'default'
-                : partId === 'work-agent'
-                  ? 'default'
-                  : null;
-
-    if (!promptId) {
-      const row = el('details', 'settings-part-block');
-      row.appendChild(el('summary', '', PART_LABELS[partId]));
-      row.appendChild(
-        el(
-          'p',
-          'settings-field-hint',
-          'Resolved at send time from session context (memory, skills).',
-        ),
-      );
-      list.appendChild(row);
-      continue;
-    }
-
-    const body = loadPromptById(kind as 'base', promptId, profile);
-    const row = el('details', 'settings-part-block');
-    row.open = partId === 'base';
-    row.appendChild(el('summary', '', PART_LABELS[partId]));
-    const pre = el('pre', 'settings-part-preview');
-    pre.textContent = body?.body?.trim() || '(empty)';
-    row.appendChild(pre);
-    list.appendChild(row);
-  }
-  mount.appendChild(list);
-}
-
-function renderCustomPartEditors(mount: HTMLElement, config: PromptConfig): void {
-  void (async () => {
-    const profileHint = await customPartBaselineProfileHint();
-
-    for (const partId of PART_ORDER) {
-      const settings = config.parts[partId] ?? { ...DEFAULT_PART_SETTINGS };
-      const block = el('details', 'settings-part-block');
-      block.open = partId === 'base';
-
-      const summary = el('summary', '');
-      const { root: enableSwitch, input: enable } = createSettingsSwitch({
-        checked: settings.enabled !== false,
-        ariaLabel: `Enable ${PART_LABELS[partId]} part`,
-      });
-      enable.addEventListener('click', (e) => e.stopPropagation());
-      enable.addEventListener('change', () => {
-        if (!activeCustomConfig) return;
-        activeCustomConfig.parts[partId] = {
-          ...(activeCustomConfig.parts[partId] ?? DEFAULT_PART_SETTINGS),
-          enabled: enable.checked,
-        };
-        schedulePromptTokenEstimateRefresh();
-      });
-      summary.appendChild(enableSwitch);
-      summary.appendChild(document.createTextNode(` ${PART_LABELS[partId]}`));
-      block.appendChild(summary);
-
-      const ta = document.createElement('textarea');
-      ta.className = 'settings-part-editor';
-      ta.rows = 6;
-      ta.value = settings.contentOverride ?? '';
-      ta.placeholder = 'Leave empty to use shipped default at send time';
-
-      let lastSavedOverride: string | null = settings.contentOverride;
-      let builtinBaseline = '';
-
-      const applyPartToConfig = () => {
-        if (!activeCustomConfig) return;
-        const trimmed = ta.value.trim();
-        activeCustomConfig.parts[partId] = {
-          enabled: enable.checked,
-          contentOverride: trimmed ? ta.value : null,
-        };
-        schedulePromptTokenEstimateRefresh();
-      };
-
-      ta.addEventListener('input', () => {
-        applyPartToConfig();
-        if (diffControls) diffControls.refresh();
-      });
-
-      block.appendChild(ta);
-
-      let diffControls: ReturnType<typeof mountPromptDiffControls> | null = null;
-
-      if (isPromptPartDiffSupported(partId)) {
-        const baseline = await resolveBuiltinPromptBaselineForPart(partId);
-        builtinBaseline = baseline;
-        diffControls = mountPromptDiffControls(block, {
-          getBaseline: () => builtinBaseline,
-          getCurrent: () => {
-            const trimmed = ta.value.trim();
-            return trimmed ? ta.value : builtinBaseline;
-          },
-          showOfflineHint: true,
-          profileHint,
-          resetPartLabel: 'Reset part to default',
-          onResetPart: async () => {
-            const hasUnsaved =
-              (ta.value.trim() ? ta.value : null) !== lastSavedOverride;
-            if (
-              hasUnsaved &&
-              !(await appConfirm('Discard unsaved edits and reset this part to shipped default?'))
-            ) {
-              return;
-            }
-            if (!activeCustomConfig) return;
-            activeCustomConfig.parts[partId] = {
-              enabled: enable.checked,
-              contentOverride: null,
-            };
-            ta.value = '';
-            lastSavedOverride = null;
-            const saved = await savePromptConfig(activeCustomConfig);
-            if (saved instanceof Error) {
-              setStatus('err', saved.message);
-              return;
-            }
-            schedulePromptTokenEstimateRefresh();
-          },
-        });
-        diffControls.setBaseline(builtinBaseline);
-      } else {
-        const hint = el(
-          'p',
-          'settings-field-hint',
-          'Diff not available — this part is resolved from the active chat at send time.',
-        );
-        block.appendChild(hint);
-      }
-
-      mount.appendChild(block);
-    }
-  })();
-}
-
-async function refreshCustomConfigSelect(): Promise<void> {
-  const select = document.getElementById(
-    'settingsCustomConfigSelect',
-  ) as HTMLSelectElement | null;
-  if (!select) return;
-
-  const meta = await loadPromptMetaSettings();
-  const configs = await listPromptConfigs();
-  select.replaceChildren();
-  const empty = document.createElement('option');
-  empty.value = '';
-  empty.textContent = configs.length ? '— Select configuration —' : '— No saved configs —';
-  select.appendChild(empty);
-
-  for (const item of configs) {
-    const opt = document.createElement('option');
-    opt.value = item.id;
-    opt.textContent = item.label;
-    select.appendChild(opt);
-  }
-
-  if (meta.activePromptConfigId) {
-    select.value = meta.activePromptConfigId;
-  }
-}
-
-async function bindPromptingToolbar(): Promise<void> {
-  if (promptingUiBound) return;
-  promptingUiBound = true;
-
-  const customBar = document.getElementById('settingsCustomConfigBar');
-  const select = document.getElementById(
-    'settingsCustomConfigSelect',
-  ) as HTMLSelectElement | null;
-
-  const syncCustomBarVisibility = async () => {
-    const meta = await loadPromptMetaSettings();
-    customBar?.classList.toggle('hidden', meta.activePromptProfile !== 'custom');
-    await renderPromptPartsPanel(meta.activePromptProfile, meta.activePromptConfigId);
-  };
-
-  select?.addEventListener('change', () => {
-    void (async () => {
-      const id = select.value || null;
-      await savePromptMetaSettings({ activePromptConfigId: id });
-      await renderPromptPartsPanel('custom', id);
-      schedulePromptTokenEstimateRefresh();
-    })();
-  });
-
-  document.getElementById('settingsCustomConfigNew')?.addEventListener('click', () => {
-    void (async () => {
-      const label = await appPrompt('Configuration label:', 'My setup');
-      if (!label?.trim()) return;
-      const id = label
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 48);
-      if (!id) return;
-      const config = defaultCustomConfig(id, label.trim());
-      const saved = await savePromptConfig(config);
-      if (saved instanceof Error) {
-        setStatus('err', saved.message);
-        return;
-      }
-      await savePromptMetaSettings({
-        activePromptProfile: 'custom',
-        activePromptConfigId: id,
-      });
-      await refreshCustomConfigSelect();
-      select!.value = id;
-      await syncCustomBarVisibility();
-    })();
-  });
-
-  document.getElementById('settingsCustomConfigSave')?.addEventListener('click', () => {
-    void (async () => {
-      if (!activeCustomConfig) {
-        setStatus('err', 'No configuration loaded');
-        return;
-      }
-      activeCustomConfig.meta = {
-        ...activeCustomConfig.meta,
-        updatedAt: new Date().toISOString(),
-      };
-      const saved = await savePromptConfig(activeCustomConfig);
-      setStatus(saved instanceof Error ? 'err' : 'idle', saved instanceof Error ? saved.message : 'Configuration saved');
-      if (!(saved instanceof Error)) schedulePromptTokenEstimateRefresh();
-    })();
-  });
-
-  document.getElementById('settingsCustomConfigDuplicate')?.addEventListener('click', () => {
-    void (async () => {
-      const meta = await loadPromptMetaSettings();
-      if (!meta.activePromptConfigId) return;
-      const newLabel = await appPrompt('Duplicate as:', 'Copy');
-      if (!newLabel?.trim()) return;
-      const newId = `${meta.activePromptConfigId}-copy`
-        .slice(0, 48)
-        .replace(/[^a-z0-9-]/g, '-');
-      const result = await duplicatePromptConfig(
-        meta.activePromptConfigId,
-        newId,
-        newLabel.trim(),
-      );
-      if (result instanceof Error) {
-        setStatus('err', result.message);
-        return;
-      }
-      await refreshCustomConfigSelect();
-      await savePromptMetaSettings({ activePromptConfigId: newId });
-      select!.value = newId;
-      await syncCustomBarVisibility();
-    })();
-  });
-
-  document.getElementById('settingsCustomConfigDelete')?.addEventListener('click', () => {
-    void (async () => {
-      const meta = await loadPromptMetaSettings();
-      if (!meta.activePromptConfigId) return;
-      if (
-        !(await appConfirm(`Delete "${meta.activePromptConfigId}"?`, {
-          confirmLabel: 'Delete',
-          danger: true,
-        }))
-      ) {
-        return;
-      }
-      const result = await deletePromptConfig(meta.activePromptConfigId);
-      if (result instanceof Error) {
-        setStatus('err', result.message);
-        return;
-      }
-      await savePromptMetaSettings({ activePromptConfigId: null });
-      await refreshCustomConfigSelect();
-      await syncCustomBarVisibility();
-    })();
-  });
-
-  document.querySelectorAll('[data-profile-tab]').forEach((tab) => {
-    tab.addEventListener('click', () => {
-      void syncCustomBarVisibility().then(() => schedulePromptTokenEstimateRefresh());
-    });
-  });
-
-  await syncCustomBarVisibility();
-}
-
 async function renderAgentCenterBasePrompts(): Promise<void> {
   const profilesMount = document.getElementById('settingsSetupProfilesMount');
   if (profilesMount) {
     mountSetupProfilesPanel(profilesMount, setStatus);
   }
-  await refreshCustomConfigSelect();
-  await bindPromptingToolbar();
   const meta = await loadPromptMetaSettings();
 
   const guidanceMount = document.getElementById(
@@ -972,7 +575,6 @@ async function renderAgentCenterBasePrompts(): Promise<void> {
     guidanceMount.appendChild(row);
   }
 
-  await renderPromptPartsPanel(meta.activePromptProfile, meta.activePromptConfigId);
   schedulePromptTokenEstimateRefresh();
 }
 
@@ -1236,6 +838,7 @@ async function renderToolsSection(): Promise<void> {
 
   const advanced = document.createElement('details');
   advanced.className = 'settings-advanced';
+  advanced.open = true;
   const summary = document.createElement('summary');
   summary.textContent = 'Advanced tool settings';
   advanced.appendChild(summary);
@@ -1581,7 +1184,7 @@ function buildMcpAddPanel(): HTMLDetailsElement {
   errEl.id = 'settingsMcpAddError';
   errEl.setAttribute('role', 'alert');
 
-  const actions = el('div', 'settings-mcp-form-actions');
+  const actions = el('div', 'settings-form-actions');
   const submitBtn = Object.assign(document.createElement('button'), {
     type: 'submit',
     className: 'settings-action-btn',

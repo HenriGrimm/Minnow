@@ -50,6 +50,10 @@ Minnow uses **Uicons** from Flaticon for UI chrome icons (sidebar, composer, git
 
 Attribution: Uicons by [Flaticon](https://www.flaticon.com/uicons). Confirm paid-license coverage or keep this notice visible per your Flaticon plan.
 
+## Geist and Geist Mono
+
+Minnow bundles Geist and Geist Mono subsets from Google Fonts for offline use. The fonts are distributed under the SIL Open Font License 1.1. The full license accompanies the build in `licenses/geist-OFL.txt`. [Geist Font project](https://github.com/vercel/geist-font)
+
 ## Provider logos
 
 Provider marks in `public/logos/providers/` are from [Lobe Icons](https://github.com/lobehub/lobe-icons), licensed under MIT. The complete license is bundled in `public/logos/providers/LICENSE`. Names and logos are trademarks of their respective owners.

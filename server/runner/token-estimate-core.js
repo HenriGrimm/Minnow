@@ -320,7 +320,6 @@ function computeOutboundPromptEstimateFromParts(parts) {
     userRules,
     history,
     tools,
-    legacyFallback: parts.legacyFallback === true
   };
 }
 export {

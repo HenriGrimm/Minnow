@@ -56,10 +56,7 @@ let savedActiveChatId: string | null = null;
 let createInFlight = false;
 let editExpertId: string | null = null;
 let editFullBody = '';
-let editLiteBody = '';
-let editLiteEdited = false;
 let editDirty = false;
-let editProfile: 'full' | 'lite' = 'full';
 let summonAbort: AbortController | null = null;
 let detailTab: 'overview' | 'runtime' | 'memory' | 'chats' = 'overview';
 
@@ -132,7 +129,7 @@ function setFormError(elementId: string, message: string | null): void {
 function promptPreviewForExpert(expertId: string): string {
   const expert = getExpert(expertId);
   if (!expert) return '';
-  const body = expert.liteBody?.trim() || expert.fullBody?.trim() || '';
+  const body = expert.fullBody.trim();
   if (body.length <= 1200) return body;
   return `${body.slice(0, 1200).trimEnd()}…`;
 }
@@ -443,7 +440,7 @@ async function submitCreateExpert(): Promise<void> {
 function syncEditBodyField(): void {
   const bodyInput = document.getElementById('expertsEditBody') as HTMLTextAreaElement | null;
   if (!bodyInput) return;
-  bodyInput.value = editProfile === 'full' ? editFullBody : editLiteBody;
+  bodyInput.value = editFullBody;
 }
 
 function markEditDirty(): void {
@@ -463,10 +460,7 @@ async function openEditExpertStep(expertId: string): Promise<void> {
 
   editExpertId = expertId;
   editFullBody = loaded.fullBody;
-  editLiteBody = loaded.liteBody;
-  editLiteEdited = false;
   editDirty = false;
-  editProfile = 'full';
 
   const labelInput = document.getElementById('expertsEditLabel') as HTMLInputElement | null;
   const descInput = document.getElementById('expertsEditDescription') as HTMLInputElement | null;
@@ -492,12 +486,6 @@ async function openEditExpertStep(expertId: string): Promise<void> {
     }
   }
 
-  document.querySelectorAll('.experts-profile-tab').forEach((tab) => {
-    const el = tab as HTMLElement;
-    const isFull = el.dataset.profile === 'full';
-    el.classList.toggle('is-active', isFull);
-    el.setAttribute('aria-selected', isFull ? 'true' : 'false');
-  });
 
   setFormError('expertsEditError', null);
   syncEditBodyField();
@@ -517,11 +505,7 @@ async function submitEditExpert(event?: Event): Promise<void> {
   const greetingInput = document.getElementById('expertsEditGreeting') as HTMLInputElement | null;
   const bodyInput = document.getElementById('expertsEditBody') as HTMLTextAreaElement | null;
 
-  if (editProfile === 'full') {
-    editFullBody = bodyInput?.value ?? editFullBody;
-  } else {
-    editLiteBody = bodyInput?.value ?? editLiteBody;
-  }
+  editFullBody = bodyInput?.value ?? editFullBody;
 
   const saveBtn = document.getElementById('btnExpertsEditSave');
   if (saveBtn instanceof HTMLButtonElement) saveBtn.disabled = true;
@@ -537,8 +521,6 @@ async function submitEditExpert(event?: Event): Promise<void> {
       tagline: taglineInput?.value.trim(),
       greeting: greetingInput?.value.trim(),
       fullBody: editFullBody,
-      liteBody: editLiteBody,
-      liteEdited: editLiteEdited,
     });
     const savedId = editExpertId;
     editExpertId = null;
@@ -772,34 +754,7 @@ function bindStaticControls(): void {
   document.getElementById('expertsEditIcon')?.addEventListener('input', markEditDirty);
   document.getElementById('expertsEditAccent')?.addEventListener('change', markEditDirty);
 
-  const editBody = document.getElementById('expertsEditBody');
-  editBody?.addEventListener('input', () => {
-    markEditDirty();
-    if (editProfile === 'lite') editLiteEdited = true;
-    const ta = editBody as HTMLTextAreaElement;
-    if (editProfile === 'full') editFullBody = ta.value;
-    else editLiteBody = ta.value;
-  });
-
-  document.querySelectorAll('.experts-profile-tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
-      const el = tab as HTMLElement;
-      const profile = el.dataset.profile === 'lite' ? 'lite' : 'full';
-      const bodyInput = document.getElementById('expertsEditBody') as HTMLTextAreaElement | null;
-      if (bodyInput) {
-        if (editProfile === 'full') editFullBody = bodyInput.value;
-        else editLiteBody = bodyInput.value;
-      }
-      editProfile = profile;
-      document.querySelectorAll('.experts-profile-tab').forEach((t) => {
-        const node = t as HTMLElement;
-        const active = node.dataset.profile === profile;
-        node.classList.toggle('is-active', active);
-        node.setAttribute('aria-selected', active ? 'true' : 'false');
-      });
-      syncEditBodyField();
-    });
-  });
+  document.getElementById('expertsEditBody')?.addEventListener('input', markEditDirty);
 
   document.getElementById('btnExpertScopeBack')?.addEventListener('click', () => {
     returnToExpertsHub();

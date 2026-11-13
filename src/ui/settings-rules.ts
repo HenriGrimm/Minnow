@@ -344,7 +344,7 @@ function renderGroupToolbar(
   usage.dataset.settingsSearchKey = 'agents.rules.usage';
   usage.textContent = `${bytes.toLocaleString()} / ${MAX_USER_RULES_BYTES.toLocaleString()} bytes used`;
 
-  toolbar.append(addGroupBtn, usage);
+  toolbar.append(usage, addGroupBtn);
   mount.appendChild(toolbar);
 }
 
@@ -435,7 +435,7 @@ export async function renderRulesSettingsSection(
   group.appendChild(enabledRow);
 
   const listHost = document.createElement('div');
-  listHost.className = 'settings-rules-groups';
+  listHost.className = 'settings-rules-groups settings-group__panel';
   listHost.dataset.settingsSearchKey = 'agents.rules.items';
   group.appendChild(listHost);
 

@@ -1,5 +1,5 @@
 import { getWorkspacePath } from '../state/workspace';
-import { getGitPanelCwd } from './git-panel';
+import { getGitPanelFileBrowseCwd } from './git-panel';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
 import { normalizePanelPath, panelPathsEqual } from './panel-worktree-cwd';
 
@@ -7,7 +7,7 @@ import { normalizePanelPath, panelPathsEqual } from './panel-worktree-cwd';
 export function resolveFileExplorerTerminalCwd(): string {
   const listingRoot = getFileTreeListingWorkspaceRoot()?.trim();
   if (listingRoot) return listingRoot;
-  const panelCwd = getGitPanelCwd()?.trim();
+  const panelCwd = getGitPanelFileBrowseCwd()?.trim();
   if (panelCwd) return panelCwd;
   return getWorkspacePath().trim() || '.';
 }

@@ -9,17 +9,12 @@ import type { ApiMessage, AssistantToolCallMessage, Chat } from '../types';
 export function buildHeadlessApiMessages(
   chat: Chat,
   composedSystemPrompt: string,
-  userRulesContent?: string | null,
 ): ApiMessage[] {
   const messages: ApiMessage[] = [];
 
   const composed = composedSystemPrompt.trim();
   if (composed) {
     messages.push({ role: 'system', content: composed });
-  }
-  const rules = userRulesContent?.trim();
-  if (rules) {
-    messages.push({ role: 'system', content: rules });
   }
 
   for (const m of chat.history) {

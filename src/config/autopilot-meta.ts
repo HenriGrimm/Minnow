@@ -8,7 +8,7 @@
 import {
   foldAutopilotDefaultStatus,
 } from '../lib/leftover-autonomy.mjs';
-import { detectConfigServer } from './storage-mode';
+import { detectConfigServer, readConfigMeta } from './storage-mode';
 
 /** Stored isolation sentinel `auto` means derive from board concurrency at resolve time. */
 export type AutopilotIsolationMode = 'auto' | 'off' | 'per-task' | 'per-wave' | 'per-board';
@@ -230,10 +230,8 @@ function writeLocalAutopilotMeta(config: AutopilotMeta): void {
 }
 
 async function fetchAutopilotFromServer(): Promise<AutopilotMeta> {
-  const res = await fetch('/api/config/meta', { cache: 'no-store' });
-  if (!res.ok) return readLocalAutopilotMeta();
-  const meta = (await res.json()) as Record<string, unknown>;
-  return parseAutopilotMeta(meta.autopilot);
+  const meta = await readConfigMeta();
+  return meta ? parseAutopilotMeta(meta.autopilot) : readLocalAutopilotMeta();
 }
 
 /** Load global autopilot meta (cached until reset). */

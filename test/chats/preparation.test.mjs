@@ -49,7 +49,7 @@ function fixture(overrides = {}) {
     loadComposer: async () => composer, readSettings: async () => settings,
     listTools: async () => names.map(definition), loadWorkAgents: async () => ({ agents, overrides: {} }),
     loadSubAgentTypes: async () => subAgents,
-    loadPromptSources: async () => sources, loadCustomPrompt: async () => null,
+    loadPromptSources: async () => sources,
     loadTypePrompt: async () => 'ACTUAL TYPE ROLE',
     loadSkill: async id => ({ body: `Workflow skill: ${id}`, access: id === 'plan' ? 'plans' : null }),
     readTranscript: async () => transcript,
@@ -177,6 +177,14 @@ test('production preparation composes shared prompts, current input first-turn d
 
 test('a captured /plan skill narrows the turn even after its chat is unpinned', async () => {
   const f = fixture();
+  const readTool = 'mcp__docs__read';
+  const unknownTool = 'mcp__docs__unknown';
+  f.names.push(unknownTool);
+  f.settings.meta.toolSecurity = { permissionLevel: 'full' };
+  f.adapters.listTools = async () => ({
+    definitions: f.names.map(definition),
+    mcpHints: { [readTool]: 'read' },
+  });
   f.execution.captured.turnIntent = await captureChatTurnIntent({ version: 1, skill: { id: 'plan', source: 'slash' } },
     f.chat, 'Plan the change', { adapters: f.adapters });
   const prepared = await f.prepare();
@@ -187,6 +195,24 @@ test('a captured /plan skill narrows the turn even after its chat is unpinned', 
     { currentPolicy: prepared.policy }), error => error.code === 'policy_denied');
   assert.doesNotThrow(() => assertChatToolAllowed(prepared.policy, 'save_file', { path: 'documentation/plans/new.md', content: '# Plan' },
     { currentPolicy: prepared.policy }));
+  assert.equal(prepared.policy.toolEffects[readTool], 'read');
+  assert.doesNotThrow(() => assertChatToolAllowed(prepared.policy, readTool, {}, { currentPolicy: prepared.policy }));
+  assert.throws(() => assertChatToolAllowed(prepared.policy, unknownTool, {}, { currentPolicy: prepared.policy }),
+    error => error.reason === 'tool_denied');
+  const revoked = createChatPolicy({ ...prepared.policy, toolEffects: { ...prepared.policy.toolEffects, [readTool]: 'unknown' } });
+  assert.throws(() => assertChatToolAllowed(prepared.policy, readTool, {}, { currentPolicy: revoked }),
+    error => error.reason === 'tool_denied');
+
+  f.setTranscript({ messages: [{ role: 'user', content: 'Plan the change\n\n[skill: plan]' },
+    { role: 'assistant', content: 'Here is the plan.' }, { role: 'user', content: 'Implement it', commandId: 'command' }], meta: {} });
+  f.command.message = 'Implement it';
+  f.execution.captured.turnIntent = await captureChatTurnIntent({ version: 1, skill: null },
+    f.chat, 'Implement it', { adapters: f.adapters });
+  const followup = await f.prepare();
+  assert.equal(followup.policy.turnClamp, null);
+  assert.doesNotMatch(followup.systemPrompt, /Workflow skill: plan/);
+  assert.doesNotThrow(() => assertChatToolAllowed(followup.policy, 'save_file', { path: 'src/main.ts', content: 'x' },
+    { currentPolicy: followup.policy }));
 });
 
 test('follow-ups replay exact stored context, including CLI stable/current separation', async () => {
@@ -234,14 +260,18 @@ test('chat preparation preserves attachment delivery without vision metadata and
   }
 });
 
-test('custom prompt disappearance fails explicitly and per-call registries never leak', async () => {
+test('legacy Custom settings are ignored and prompt overrides remain scoped per call', async () => {
   const f = fixture();
   f.settings.meta.activePromptProfile = 'custom';
   f.settings.meta.activePromptConfigId = 'missing';
-  await assert.rejects(f.prepare, error => error.code === 'capability_unavailable');
-  f.settings.meta.activePromptProfile = 'full';
+  f.setProfile({ prompt: {
+    meta: { activePromptProfile: 'lite' },
+    sources: { userRaw: { 'base/default.lite.md': raw('base', 'default', 'OLD LITE BODY') } },
+  } });
   f.sources.userRaw['base/default.full.md'] = raw('base', 'default', 'CUSTOM FIRST');
-  assert.match((await f.prepare()).systemPrompt, /CUSTOM FIRST/);
+  const prepared = await f.prepare();
+  assert.match(prepared.systemPrompt, /CUSTOM FIRST/);
+  assert.doesNotMatch(prepared.systemPrompt, /OLD LITE BODY/);
   assert.ok(!(await fixture().prepare()).systemPrompt.includes('CUSTOM FIRST'));
 });
 
@@ -451,9 +481,19 @@ test('Stop interrupts hung optional enrichment instead of being swallowed as an 
 
 test('hung required documents fail with an actionable error instead of becoming an optional omission', async () => {
   const f = fixture();
+  f.settings.meta.contextDocuments = { customPaths: ['required.md'] };
   f.options.enrichmentTimeoutMs = 20;
   f.adapters.loadComposer = async () => ({ ...composer, resolveContextDocumentsBlock: () => new Promise(() => {}) });
   await assert.rejects(f.prepare, error => error.code === 'capability_unavailable' && /Context document preparation exceeded.*Check Context documents settings/.test(error.message));
+});
+
+test('a preset-only document timeout leaves the turn usable and records the omission', async () => {
+  const f = fixture();
+  f.options.enrichmentTimeoutMs = 20;
+  f.adapters.loadComposer = async () => ({ ...composer, resolveContextDocumentsBlock: () => new Promise(() => {}) });
+  const prepared = await f.prepare();
+  assert.deepEqual(prepared.enrichmentOmissions, [{ kind: 'context-documents', reason: 'deadline' }]);
+  assert.equal(prepared.contextBodies['context-documents'], undefined);
 });
 
 test('ordinary skills are server-resolved and captured with settings and fenced surface context', async () => {

@@ -2,7 +2,7 @@
 
 A tracker that agents can use. Issues is a Linear-style list and board for work in your workspace, with the difference that the assistant can file, triage, expand and close items through tools — so "I found three problems while reading this" becomes three real cards instead of a paragraph you will lose.
 
-Open it from the app rail for the fullscreen app, or from the Issues button in the Code sidebar rail to embed it beside your code.
+Open **Issues** from the app rail for the full app. In Code, select the small **Open issues** button beside **Issue** in the surface launcher to browse and capture workspace issues alongside the thread. It opens the **All** filter, including closed issues, even when the thread has no linked issue.
 
 ## Views
 
@@ -15,7 +15,9 @@ Open it from the app rail for the fullscreen app, or from the Issues button in t
 
 **Capture** with the quick-capture field in the header, or **New issue** (**C**) for the full form (title, type, priority, labels, description). When **Workspace scope** is **All workspaces**, the new-issue form includes a **Workspace** picker (Scratch plus recent folders). New issues start in **Backlog**. **Expand** uses the fields you have entered to suggest a title, description, labels, and priority directly in the form. Review or edit the proposal, then select **Create**.
 
-**Ctrl/Cmd + I** opens the same full form over your current app. **Expand and Create** saves the issue and closes the form, then expands its title, description, type, priority, and labels in the background. You can keep working or create another issue while it runs. Fields you edit on the saved issue are preserved; if expansion fails, the original issue remains saved.
+**Ctrl/Cmd + I** opens issue capture over your current app. In a Code thread, the **Capture issue** button opens the same compact popover. It uses the Issues type, priority, status, and label pickers, starts in **Triage**, and can link the current thread to the issue.
+
+**Expand and Create** in the full form and **Expand and Capture** in the thread popover save the issue and close the form, then expand its title, description, type, priority, and labels in the background. You can keep working or create another issue while it runs. Fields you edit on the saved issue are preserved. If expansion fails, the original issue remains saved.
 
 **Select** several rows with **Ctrl/Cmd+click**, or a range with **Shift+click**. The selection bar can change status, priority, assignee, labels, and project, or delete. **Shift+F10** or right-click opens the row menu: new issue, open, copy ID, expand, add a sub-issue, remove from parent, send to chat, status, priority, type, assignee, project, labels, and delete. Linked issues also offer **Open in GitHub**. Code's files toolbar has an **Issues** pane with quick capture and the same menu; **View** opens the issue inside that pane and **Edit in Issues** opens it here.
 
@@ -51,8 +53,9 @@ This is what the app is for.
 |--------|--------------|
 | **Expand** | Sparkles on peek, board cards, the row menu, or **E**. Rewrites the title and description and suggests labels and priority from what is already on the card. You review and edit in an overlay; nothing is saved until you apply. Uses the prompt expander model when one is set. |
 | **Expand with agent** | An agent researches the workspace and fills in a real description (triage notes), from the detail panel or the row menu |
-| **Use worktree** | Enables automatic worktree setup for this issue's new chats. The choice is remembered for this session and is also available in the issue row menu. |
-| **Send to chat** | Starts a linked chat inside Issues, seeded with the issue, in a mode you choose. With **Worktree on**, Minnow names a branch from the issue title and prepares dependencies before the agent starts. Otherwise the chat uses the issue's local workspace. |
+| **New worktree** | Enables automatic worktree setup for this issue's new chats. The choice is remembered for this session and is also available under **Launch options** and in the issue row menu. |
+| **Start thread** | Starts a linked Build chat with the issue and your instructions, then opens it in Code. With **Worktree on**, Minnow names a branch from the issue title and prepares dependencies before the agent starts. Otherwise the chat uses the issue's local workspace. |
+| **Send to chat** | Starts a linked chat in a mode you choose from the issue row menu. |
 | **Send to board** | When the issue has a plan, hands it to an orchestrate board |
 | **Open plan** | Opens the issue's plan document in the editor |
 
@@ -107,10 +110,10 @@ Keep the taxonomy small. Humans and agents share this vocabulary, and every extr
 - [Code app](code.md)
 - [Orchestrate boards](../orchestrate/boards.md)
 
-When Issues is open in a separate window, **Send to chat**, linked chats, plans, and files open in the Code window for that workspace. **Files** opens the workspace file tree inside Issues.
+When Issues is open in a separate window, **Start thread**, linked chats, plans, and files open in the Code window for that workspace. **Files** opens the workspace file tree inside Issues.
 
 ## Models for issue chats
 
-The model control beside **Send to chat**, and the **Model** action in chat launch menus, starts with the last model selected in a chat composer. Choose a different model or pool for that launch. Worktree setup and queued runs keep the captured choice. Adding an issue to an existing chat retains that chat's model.
+The model control in **Launch options** and the **Model** action in chat launch menus start with the last model selected in a chat composer. Choose a different model or pool for that launch. Worktree setup and queued runs keep the captured choice. Adding an issue to an existing chat retains that chat's model.
 
-Dashboard's send options use the same rule for single issues and bulk dispatches. Changing a dispatch model leaves the remembered composer choice unchanged.
+Changing a dispatch model leaves the remembered composer choice intact. In a project's Ready list, **Start ready issues** groups work by related files and uses the remembered model for isolated chats. **Plan on a board** creates one planning chat for the ready issues. Review and approve the saved plan from the issue's Work tab.

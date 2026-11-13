@@ -143,6 +143,25 @@ test('failed post-effect checkpoint prevents another model request and retains e
   } finally { s.cleanup(); }
 });
 
+test('permission revoked during checkpoint capture continues without creating a tool intent', async () => {
+  const s = setup(); let captures = 0; let rounds = 0;
+  try {
+    const checkpoints = createChatCheckpointCoordinator({ repository: s.repository, capture: async () => {
+      if (++captures === 2) s.changePolicy(createChatPolicy({ ...s.policy(), toolPermissions: { save_file: 'off' } }));
+      return { ok: true, sha: 'snapshot-' + captures };
+    } });
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareCheckpoint: input => checkpoints.prepare(input),
+      prepareExecution: s.prepare(async () => response(rounds++ === 0 ? [tool('save_file')] : [])),
+      createToolDispatch: () => dispatch(async () => assert.fail('A denied tool must not dispatch')) });
+    const result = await host.execute({ command, execution: s.execution, fence: s.fence });
+    assert.equal(result.outcome, 'no_report'); assert.equal(rounds, 2);
+    assert.equal(checkpoints.read('execution', 'call-1').state, 'settled');
+    assert.equal(s.repository.getDatabase().prepare('SELECT count(*) AS count FROM chat_tool_invocations').get().count, 0);
+    assert.match(s.repository.readTranscript('chat').messages.find(row => row.role === 'tool').content, /Error:.*not allowed/);
+  } finally { s.cleanup(); }
+});
+
 test('a review with final prose and settled effects does not inherit another chat\'s running command checkpoint', async () => {
   const s = setup(), started = Promise.withResolvers(), release = Promise.withResolvers();
   let posts = 0, running;
@@ -333,20 +352,50 @@ test('a settled effect with missing canonical result still blocks automatic reru
   } finally { s.cleanup(); }
 });
 
-test('live policy revocation after durable approval blocks the side effect', async () => {
-  const s = setup(); let effects = 0; let pending;
+test('live policy revocation after durable approval blocks the side effect and returns a tool error', async () => {
+  const s = setup(); let effects = 0; let pending; let rounds = 0;
   s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'manual', toolPermissions: { save_file: 'full' }, fileWriteScope: 'workspace' }));
   try {
     const requests = createChatRequestService({ repository: s.repository, authorizeResponse: () => true, onChange: request => { if (request.state === 'pending') pending = request; } });
     const host = createServerChatExecutionHost({ repository: s.repository, requestService: requests, resolveCurrentPolicy: s.policy,
-      prepareExecution: s.prepare(async () => response([tool('save_file')])), createToolDispatch: () => dispatch(async () => { effects++; return { content: 'Saved' }; }) });
+      prepareExecution: s.prepare(async () => response(rounds++ === 0 ? [tool('save_file')] : [])),
+      createToolDispatch: () => dispatch(async () => { effects++; return { content: 'Saved' }; }) });
     const running = host.execute({ command, execution: s.execution, fence: s.fence });
     for (let n = 0; !pending && n < 100; n++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.ok(pending); assert.equal(s.repository.getExecution('execution').status, 'waiting_for_approval');
     s.changePolicy(createChatPolicy({ modeId: 'plan', toolPermissions: { save_file: 'off' }, fileWriteScope: 'plans' }));
     await requests.respond(pending.requestId, { answerCommandId: 'approval', answer: { decision: 'allow_once' } });
     const result = await running;
-    assert.equal(result.outcome, 'crashed'); assert.match(result.error, /not allowed/); assert.equal(effects, 0);
+    assert.equal(result.outcome, 'no_report'); assert.equal(effects, 0); assert.equal(rounds, 2);
+    assert.match(s.repository.readTranscript('chat').messages.find(row => row.role === 'tool').content, /Error:.*not allowed/);
+    assert.equal(s.repository.listUnsettledToolInvocations('execution').length, 0);
+  } finally { s.cleanup(); }
+});
+
+test('a plan denial returns to the model alongside successful tools in the same batch', async () => {
+  const s = setup(); let rounds = 0;
+  s.changePolicy(createChatPolicy({ modeId: 'build', turnClamp: 'plans', permissionLevel: 'full',
+    toolPermissions: { save_file: 'full', read_file: 'full' }, toolEffects: { read_file: 'read' }, fileWriteScope: 'workspace' }));
+  const events = [];
+  const dispatched = [];
+  try {
+    const post = async (_provider, body) => {
+      if (rounds++ === 0) return response([
+        tool('save_file', { path: 'outside-plan.md', content: 'Blocked' }, 'blocked-write'),
+        tool('read_file', { path: 'README.md' }, 'allowed-read'),
+      ]);
+      const results = body.messages.filter(row => row.role === 'tool');
+      assert.match(results.find(row => row.tool_call_id === 'blocked-write').content, /Error:.*planning only/);
+      assert.match(results.find(row => row.tool_call_id === 'allowed-read').content, /Read succeeded/);
+      return response();
+    };
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareExecution: s.prepare(post), onEvent: ({ event }) => events.push(event),
+      createToolDispatch: () => dispatch(async name => { dispatched.push(name); return { content: 'Read succeeded' }; }) });
+    assert.equal((await host.execute({ command, execution: s.execution, fence: s.fence })).outcome, 'no_report');
+    assert.equal(rounds, 2);
+    assert.deepEqual(dispatched, ['read_file']);
+    assert.equal(events.find(event => event.type === 'tool_result' && event.id === 'blocked-write')?.isError, true);
     assert.equal(s.repository.listUnsettledToolInvocations('execution').length, 0);
   } finally { s.cleanup(); }
 });

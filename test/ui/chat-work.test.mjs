@@ -632,7 +632,7 @@ test('the collapsed button tallies the turn and names a tool-limit ending', () =
   setChatView('compact');
 });
 
-test('tool failures stay collapsed even when the turn fails', () => {
+test('tool failures stay hidden in expanded and full chat even when the turn fails', () => {
   const run = (id, content) => [
     { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name: 'execute_command', arguments: '{"command":"npm test"}' } }] },
     { role: 'tool', tool_call_id: id, content },
@@ -641,22 +641,32 @@ test('tool failures stay collapsed even when the turn fails', () => {
     { role: 'assistant', content: 'Tests pass.' }];
   renderChatFromHistory(chat);
   assert.equal(mount.querySelector('.chat-work__detail').textContent, 'Ran 1 command');
-  assert.ok(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'));
+  assert.ok(mount.querySelector('[data-tool-call-id="f1"]').hidden);
   chat.runs[0].status = 'failed';
   renderChatFromHistory(chat);
-  assert.ok(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'));
+  assert.equal(mount.querySelector('.chat-work').dataset.outcome, 'failed');
   mount.querySelector('.chat-work').click();
-  assert.equal(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'), null);
+  assert.ok(mount.querySelector('[data-tool-call-id="f1"]').hidden);
+  assert.equal(mount.querySelector('[data-tool-call-id="f2"]').closest('.chat-work-hidden'), null);
+  setChatView('full');
+  assert.ok(mount.querySelector('[data-tool-call-id="f1"]').hidden);
+  assert.equal(mount.querySelector('[data-tool-call-id="f2"]').hidden, false);
+  setChatView('compact');
 });
 
-test('an unrecovered failure reads in danger ink inside the tally', () => {
+test('an all-failed batch leaves no activity to expand in a completed turn', () => {
+  const call = id => ({ id, type: 'function', function: { name: 'read_file', arguments: JSON.stringify({ path: id }) } });
   chat.history = [{ role: 'user', content: 'Read it.' },
-    { role: 'assistant', content: null, tool_calls: [{ id: 'm', type: 'function', function: { name: 'read_file', arguments: '{"path":"gone.ts"}' } }] },
-    { role: 'tool', tool_call_id: 'm', content: 'Error: not found' },
+    { role: 'assistant', content: null, tool_calls: [call('gone.ts'), call('missing.ts')] },
+    { role: 'tool', tool_call_id: 'gone.ts', content: 'Error: not found' },
+    { role: 'tool', tool_call_id: 'missing.ts', content: 'Error: not found' },
     { role: 'assistant', content: 'The file is gone.' }];
   renderChatFromHistory(chat);
-  assert.equal(mount.querySelector('.chat-work__failed').textContent, ' · 1 failed');
-  assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+  assert.equal(mount.querySelector('.chat-work__detail').textContent, '');
+  assert.equal(mount.querySelector('.chat-work').hasAttribute('aria-expanded'), false);
+  assert.ok(mount.querySelector('.tool-call-batch').hidden);
+  assert.equal(mount.querySelectorAll('.tool-call-msg[hidden]').length, 2);
+  assert.match(mount.querySelector('.chat-turn-final').textContent, /The file is gone/);
 });
 
 test('live narration from the current round leads the activity line', async () => {
@@ -827,6 +837,58 @@ test('failed todo updates preserve the successful list and empty updates clear i
   chat.history.at(-1).content = JSON.stringify({ todos: [] });
   renderChatFromHistory(chat);
   assert.equal(mount.querySelector('.chat-turn-todos'), null);
+});
+
+test('the chat viewport shows one checklist beside the transcript and retains its disclosure across repaints', () => {
+  const viewport = document.createElement('div');
+  viewport.className = 'chat-viewport';
+  mount.before(viewport);
+  viewport.append(mount);
+  chat.history = [
+    { role: 'user', content: 'First task' },
+    ...todoRound('todo1', [{ text: 'Previous task', status: 'completed' }]),
+    { role: 'user', content: 'Next task' },
+    ...todoRound('todo2', [{ text: 'Current task', status: 'in_progress' }]),
+    { role: 'assistant', content: 'Working.' },
+  ];
+  const selector = ':scope > .chat-todo-panel';
+  renderChatFromHistory(chat);
+  const panel = viewport.querySelector(selector);
+  assert.equal(viewport.querySelectorAll(selector).length, 1);
+  assert.equal(mount.querySelector('.chat-turn-todos'), null);
+  assert.match(panel.textContent, /Current task/);
+  assert.doesNotMatch(panel.textContent, /Previous task/);
+  assert.equal(panel.open, true);
+  panel.querySelector('summary').click();
+  assert.equal(panel.open, false);
+  renderChatFromHistory(chat);
+  assert.equal(viewport.querySelector(selector).open, false);
+  renderChatFromHistory(createEmptyChatObject(''));
+  assert.equal(viewport.querySelector(selector), null);
+});
+
+test('managed checklist updates and clears while the tool receipt is pending', async () => {
+  const viewport = document.createElement('div');
+  viewport.className = 'chat-viewport';
+  mount.before(viewport);
+  viewport.append(mount);
+  const selector = ':scope > .chat-todo-panel';
+  chat.chatCommandVersion = 1;
+  chat.todos = [{ text: 'Start', status: 'in_progress' }];
+  chat.history.push(...todoRound('todo1', chat.todos));
+  renderChatFromHistory(chat);
+  const panel = viewport.querySelector(selector);
+  const update = async (todos) => {
+    chat.todos = todos;
+    notifyManagedChatMetadata(chat.id);
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+  };
+  await update([{ text: 'Finish', status: 'completed' }]);
+  assert.equal(viewport.querySelector(selector), panel);
+  assert.match(panel.textContent, /1 of 1 complete.*Finish/);
+  assert.equal(panel.open, false);
+  await update(undefined);
+  assert.equal(viewport.querySelector(selector), null);
 });
 
 test('Review opens recorded changes in the shared side-by-side viewer', async () => {

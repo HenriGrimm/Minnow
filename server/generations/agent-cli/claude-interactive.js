@@ -75,7 +75,7 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   signal?.throwIfAborted();
   if (!spawnPty) {
     const detected = await detectAgentCli('claude', { binPath: invocation.display, env: invocation.env });
-    if (!supportsClaudeInteractiveVersion(detected.version)) throw new Error('Interactive chat requires Claude Code 2.1.289 or newer. Update Claude Code through Models → CLIs and retry.');
+    if (!supportsClaudeInteractiveVersion(detected.version)) throw new Error('Interactive chat requires Claude Code 2.1.289 or newer. Update Claude Code through Models → Subscriptions and retry.');
   }
   signal?.throwIfAborted();
   const token = randomBytes(32).toString('hex'), secret = Buffer.from(`Bearer ${token}`);

@@ -28,7 +28,7 @@ describe('profile activate', () => {
     resetMinnowHomeCache();
   });
 
-  test('activate ignores retired per-tool permissions in legacy bundles', async () => {
+  test('activate ignores retired prompt variants and per-tool permissions in legacy bundles', async () => {
     const tools = (await readConfigJson('tools.json')) ?? {};
     const def = tools.permissions?.default ?? {};
     def.execute_command = 'full';
@@ -62,6 +62,6 @@ describe('profile activate', () => {
 
     const meta = await readConfigJson('config.json');
     assert.equal(meta.activeSetupProfileId, 'restore-me');
-    assert.equal(meta.activePromptProfile, 'lite');
+    assert.equal(meta.activePromptProfile, undefined);
   });
 });

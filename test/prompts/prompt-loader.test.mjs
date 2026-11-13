@@ -27,7 +27,7 @@ version: 1
 ---
 Minnow base body`,
     });
-    const loaded = loadPromptById('base', 'default', 'full');
+    const loaded = loadPromptById('base', 'default');
     assert.ok(loaded?.body.includes('Minnow'));
   });
 
@@ -53,7 +53,7 @@ BUILTIN`,
         source: 'user',
       },
     ]);
-    const loaded = loadPromptById('base', 'default', 'full');
+    const loaded = loadPromptById('base', 'default');
     assert.equal(loaded?.body, 'USER_OVERRIDE');
   });
 
@@ -67,7 +67,7 @@ version: 1
 ---
 SHOULD_NOT_LOAD`,
     });
-    const loaded = loadPromptById('base', 'sample', 'full');
+    const loaded = loadPromptById('base', 'sample');
     assert.equal(loaded, null);
   });
 });

@@ -184,6 +184,7 @@ export async function prepareAgentCliInvocation(input) {
     const native1m = /^claude-(?:sonnet-5|opus-(?:4-[789]|5)|haiku-5-5|fable-5)/i.test(model);
     const claudeModel = extended && !native1m && !model.endsWith('[1m]') ? `${model}[1m]` : model;
     if (claudeModel) args.push('--model', claudeModel);
+    args.push('--settings', JSON.stringify({ fastMode: input.body?.minnow_cli_fast_mode === true }));
     if (effort) args.push('--effort', effort);
     const configuredBudgetUsd = Number(profile.maxBudgetUsd);
     const requestedBudgetUsd = Number(input.body?.max_budget_usd);
@@ -212,7 +213,7 @@ export async function prepareAgentCliInvocation(input) {
     const content = imageRows.length > 0 ? [{ type: 'text', text: prompt }, ...imageRows] : prompt;
     stdin = `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`;
     if (input.interactive) {
-      if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) throw new Error('Claude interactive sessions do not support the CLI dollar budget. Clear the budget in Models → CLIs to use interactive chat.');
+      if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) throw new Error('Claude interactive sessions do not support the CLI dollar budget. Clear the budget in Models → Subscriptions to use interactive chat.');
       const printFlags = new Map([['--print', 0], ['--output-format', 1], ['--include-partial-messages', 0], ['--input-format', 1], ['--no-session-persistence', 0]]);
       for (let i = args.length - 1; i >= 0; i--) if (printFlags.has(args[i])) args.splice(i, 1 + printFlags.get(args[i]));
       args.push('--permission-mode', 'dontAsk');
@@ -235,6 +236,7 @@ export async function prepareAgentCliInvocation(input) {
       args.push('--disable', feature);
     }
     if (model) args.push('--model', model);
+    if (input.body?.minnow_cli_fast_mode === true) args.push('--config', 'service_tier="priority"');
     if (effort) args.push('--config', `model_reasoning_effort=${tomlString(effort)}`);
     if (contextWindow) args.push('--config', `model_context_window=${contextWindow}`);
     args.push('exec', '--json', '--ephemeral', '--skip-git-repo-check', '--ignore-rules', '-');

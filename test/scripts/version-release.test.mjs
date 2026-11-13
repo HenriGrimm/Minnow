@@ -21,6 +21,26 @@ test('stable and nightly releases use the supported pinned ARM64 macOS runner', 
   }
 });
 
+test('nightly releases pin builds and publication to the selected commit', () => {
+  const source = fs.readFileSync(new URL('../../.github/workflows/beta-nightly-release.yml', import.meta.url), 'utf8');
+  const { jobs, on } = parse(source);
+  const checkout = job => job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
+  assert.ok(Object.hasOwn(on, 'workflow_dispatch'));
+  assert.ok(on.schedule.length > 0);
+  assert.equal(checkout(jobs.prepare).with.ref, '${{ github.sha }}');
+  assert.equal(jobs.prepare.outputs.sha, '${{ steps.version.outputs.sha }}');
+  assert.ok(jobs.prepare.steps.find(step => step.id === 'version').run.includes('echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"'));
+  for (const name of ['sandbox-helper', 'package']) {
+    assert.ok(jobs[name].needs.includes('prepare'), name);
+    assert.equal(checkout(jobs[name]).with.ref, '${{ needs.prepare.outputs.sha }}', name);
+  }
+  assert.ok(jobs.package.needs.includes('sandbox-helper'));
+  assert.ok(jobs.publish.needs.includes('prepare'));
+  assert.ok(jobs.publish.needs.includes('package'));
+  assert.equal(jobs.publish.env.SHA, '${{ needs.prepare.outputs.sha }}');
+  assert.ok(jobs.publish.steps.find(step => step.name === 'Create draft prerelease').run.includes('--target "$SHA"'));
+});
+
 test('stable release accepts an optional v prefix and ignores nightly tags', () => {
   assert.deepEqual(validateReleaseVersion('v0.1.7', ['v0.1.6', 'v0.1.7-beta.20261001.1.1']), {
     version: '0.1.7', tag: 'v0.1.7',

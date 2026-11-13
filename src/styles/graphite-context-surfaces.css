@@ -1,0 +1,357 @@
+.graphite-context-surface {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  overflow: auto;
+  padding: 16px 20px 24px;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.graphite-context-surface h2,
+.graphite-context-surface h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.graphite-context-surface h3 {
+  margin-top: 8px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.graphite-context-surface__meta,
+.graphite-context-surface__row,
+.graphite-context-surface__device {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+.graphite-context-surface__meta {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.graphite-context-surface__meta > :is(button, a):last-child {
+  margin-inline-start: auto;
+}
+
+.graphite-context-surface__row > span {
+  flex: 1;
+}
+
+.graphite-context-surface__row > .graphite-context-surface__check-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.graphite-context-surface__row > code,
+.graphite-context-surface__refs {
+  flex: none;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+}
+
+.graphite-context-surface__row > code {
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.graphite-context-surface__checklist-row {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: 12.5px;
+}
+
+.graphite-context-surface :is([data-state="success"], [data-state="completed"]) > .icon-svg {
+  color: var(--mn-success);
+}
+
+.graphite-context-surface :is([data-state="failure"], [data-state="failed"]) > .icon-svg {
+  color: var(--mn-danger);
+}
+
+.graphite-context-surface [data-state="running"] > .icon-svg {
+  color: var(--mn-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .graphite-context-surface [data-state="running"] > .icon-svg {
+    animation: graphite-agent-spin 900ms linear infinite;
+  }
+}
+
+@keyframes graphite-agent-spin {
+  to { transform: rotate(360deg); }
+}
+
+.graphite-context-surface__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graphite-context-surface__prose {
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  overflow-wrap: anywhere;
+}
+
+.graphite-context-surface__prose > :first-child {
+  margin-top: 0;
+}
+
+.graphite-context-surface code,
+.graphite-side-chat__context > code {
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+}
+
+.graphite-surface-action {
+  display: inline-flex;
+  min-height: 28px;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.graphite-surface-action:hover,
+.graphite-surface-action[aria-pressed='true'] {
+  background: var(--mn-graphite-active, var(--mn-surface-elevated));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.graphite-surface-action:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.graphite-surface-action--primary,
+.graphite-surface-action--primary:hover {
+  flex: none;
+  padding-inline: 12px;
+  background: var(--mn-graphite-button, var(--mn-accent));
+  color: var(--mn-graphite-button-text, var(--mn-fg-on-accent));
+}
+
+.graphite-surface-action--secondary {
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-context-surface__footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-block-start: 8px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.graphite-surface-status {
+  margin: 0;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.graphite-context-surface--agents {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.graphite-context-surface__agent-list {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  max-height: 45%;
+  gap: 1px;
+  padding: 8px;
+  overflow: auto;
+  border-block-end: 1px solid var(--mn-graphite-line, var(--mn-border));
+}
+
+.graphite-context-surface__agent-list > button {
+  width: 100%;
+  min-height: 36px;
+  gap: 10px;
+  padding-inline: 12px;
+  text-align: start;
+}
+
+.graphite-context-surface code.graphite-context-surface__role {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: 4px;
+  background: var(--mn-graphite-ground, var(--mn-bg));
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: 10.5px;
+  line-height: 1.35;
+  letter-spacing: .02em;
+}
+
+.graphite-context-surface__agent-title,
+.graphite-context-surface__agent-model,
+.graphite-context-surface__agent-heading > h2 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphite-context-surface code.graphite-context-surface__agent-time {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 11px;
+}
+
+.graphite-context-surface__agent-detail {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.graphite-context-surface__agent-heading,
+.graphite-context-surface__agent-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.graphite-context-surface__agent-heading {
+  border-block-end: 1px solid var(--mn-graphite-line, var(--mn-border));
+}
+
+.graphite-context-surface__agent-heading > h2 {
+  flex: 0 1 auto;
+  font-size: 13px;
+}
+
+.graphite-context-surface__agent-state {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--mn-graphite-active, var(--mn-surface-2));
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: 11.5px;
+}
+
+.graphite-context-surface__agent-heading[data-state="running"] .graphite-context-surface__agent-state {
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent);
+}
+
+.graphite-context-surface__agent-heading[data-state="completed"] .graphite-context-surface__agent-state {
+  background: var(--mn-success-soft);
+  color: var(--mn-success);
+}
+
+.graphite-context-surface__agent-heading[data-state="failed"] .graphite-context-surface__agent-state {
+  background: var(--mn-danger-soft);
+  color: var(--mn-danger);
+}
+
+.graphite-context-surface__agent-footer {
+  border-block-start: 1px solid var(--mn-graphite-line, var(--mn-border));
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+}
+
+.graphite-context-surface__agent-footer > button {
+  flex: none;
+  min-height: 26px;
+  font-size: 12px;
+}
+
+.graphite-side-chat {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.graphite-side-chat__context {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.graphite-side-chat__context > code {
+  padding: 0 5px;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: var(--mn-radius-sm);
+}
+
+.graphite-chat-panel__scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.graphite-chat-panel__transcript {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mn-space-4);
+  padding: var(--mn-space-5) var(--mn-space-4) var(--mn-space-2);
+}
+
+.graphite-chat-panel__transcript .msg-bubble {
+  overflow-wrap: anywhere;
+}
+
+.graphite-side-chat__empty {
+  max-width: 34ch;
+  margin: 12px 0 0;
+  color: var(--mn-fg-muted);
+}
+
+:is(.graphite-side-chat, .graphite-chat-panel__scroll) > .graphite-surface-status:not(:empty) {
+  margin: 0;
+  padding: 0 16px 6px;
+}
+
+.graphite-side-chat > .input-bar {
+  margin-block: var(--mn-space-1) var(--mn-space-3);
+}
+
+@media (pointer: coarse) {
+  .graphite-surface-action {
+    min-height: 44px;
+  }
+}

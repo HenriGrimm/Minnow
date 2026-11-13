@@ -33,7 +33,7 @@ import {
  * turn always carries a composed prompt. A reasoning model handed a context-free
  * instruction deliberates about what is even being asked, which is what made the slowest
  * rows time out. This is a faithful subset of what chat sends — the neutral lines from
- * `chat/prompts/base/default.lite.md` and `chat/prompts/tool-usage/default.lite.md` — and
+ * `chat/prompts/base/default.full.md` and `chat/prompts/tool-usage/default.full.md` — and
  * nothing else. Do not add guidance here that hints at what any verdict checks for.
  */
 export const CAPABILITY_PROBE_SYSTEM_PROMPT = [

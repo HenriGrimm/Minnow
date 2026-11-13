@@ -80,9 +80,8 @@ async function loadModels(
     if (!provider) {
       list.innerHTML = '';
       list.appendChild(
-        el('p', 'mn-onboarding-notice', 'No provider configured. Skip to continue, then add one in Settings.'),
+        el('p', 'mn-onboarding-notice', 'Go back to connect a provider, or set up later in Models.'),
       );
-      actions.setPrimaryEnabled(true);
       return;
     }
 
@@ -92,8 +91,7 @@ async function loadModels(
     list.innerHTML = '';
 
     if (models.length === 0) {
-      list.appendChild(el('p', 'mn-onboarding-notice', 'No models returned. Check your server, or skip for now.'));
-      actions.setPrimaryEnabled(true);
+      list.appendChild(el('p', 'mn-onboarding-notice', 'No models returned. Check your provider, then go back to retry.'));
       return;
     }
 
@@ -137,6 +135,5 @@ async function loadModels(
         err instanceof Error ? err.message : 'Could not load models',
       ),
     );
-    actions.setPrimaryEnabled(true);
   }
 }

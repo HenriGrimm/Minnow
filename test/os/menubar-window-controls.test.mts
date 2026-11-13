@@ -61,10 +61,10 @@ describe('menubar-window-controls', () => {
     menubar.appendChild(right);
     container.appendChild(menubar);
 
-    const cleanup = initShellMenubarChrome(menubar, right);
+    const cleanup = initShellMenubarChrome(menubar);
     cleanup();
 
-    assert.equal(right.querySelector('.mn-os-mb-window-controls'), null);
+    assert.equal(menubar.querySelector('.mn-os-mb-window-controls'), null);
     assert.equal(document.documentElement.classList.contains('is-electron-shell'), false);
   });
 
@@ -77,10 +77,11 @@ describe('menubar-window-controls', () => {
     menubar.appendChild(right);
     container.appendChild(menubar);
 
-    const cleanup = initShellMenubarChrome(menubar, right);
+    const cleanup = initShellMenubarChrome(menubar);
 
-    const controls = right.querySelector('.mn-os-mb-window-controls');
+    const controls = menubar.querySelector('.mn-os-mb-window-controls');
     assert.ok(controls);
+    assert.equal(menubar.lastElementChild, controls);
     assert.equal(controls!.querySelectorAll('button').length, 3);
     assert.equal(document.documentElement.classList.contains('is-electron-shell'), true);
     assert.equal(document.documentElement.dataset.platform, 'win32');
@@ -94,7 +95,7 @@ describe('menubar-window-controls', () => {
     assert.equal(controls!.querySelector('.mn-os-window-btn--maximize'), null);
 
     cleanup();
-    assert.equal(right.querySelector('.mn-os-mb-window-controls'), null);
+    assert.equal(menubar.querySelector('.mn-os-mb-window-controls'), null);
   });
 
   test('skips custom controls on macOS (native traffic lights)', () => {
@@ -105,9 +106,9 @@ describe('menubar-window-controls', () => {
     menubar.appendChild(right);
     container.appendChild(menubar);
 
-    initShellMenubarChrome(menubar, right);
+    initShellMenubarChrome(menubar);
 
-    assert.equal(right.querySelector('.mn-os-mb-window-controls'), null);
+    assert.equal(menubar.querySelector('.mn-os-mb-window-controls'), null);
     assert.equal(menubar.classList.contains('mn-os-menubar--shell-frameless'), true);
     assert.equal(document.documentElement.dataset.platform, 'darwin');
     assert.equal(document.documentElement.dataset.macTitlebar, undefined);
@@ -122,7 +123,7 @@ describe('menubar-window-controls', () => {
     const right = document.createElement('div');
     menubar.appendChild(right);
     container.appendChild(menubar);
-    const cleanup = initShellMenubarChrome(menubar, right);
+    const cleanup = initShellMenubarChrome(menubar);
 
     assert.equal(document.documentElement.dataset.macTitlebar, 'wide');
     cleanup();
@@ -140,7 +141,7 @@ describe('menubar-window-controls', () => {
     const right = document.createElement('div');
     menubar.appendChild(right);
     container.appendChild(menubar);
-    const cleanup = initShellMenubarChrome(menubar, right);
+    const cleanup = initShellMenubarChrome(menubar);
 
     const root = document.documentElement;
     assert.equal(root.style.getPropertyValue('--mn-shell-zoom'), '0.9');
@@ -175,7 +176,7 @@ describe('menubar-window-controls', () => {
     const right = document.createElement('div');
     menubar.appendChild(right);
     container.appendChild(menubar);
-    const cleanup = initShellMenubarChrome(menubar, right);
+    const cleanup = initShellMenubarChrome(menubar);
 
     await Promise.resolve();
     assert.equal(document.documentElement.dataset.windowFullScreen, 'true');

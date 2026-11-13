@@ -57,6 +57,24 @@ export function appendFailedTurnRecoveryActions(
     recovery.onRecover?.();
   });
 
-  actions.append(continueBtn, clearBtn);
+  const threadHeader = document.getElementById('graphiteThreadHeader');
+  if (threadHeader && !threadHeader.hidden) {
+    const fork = document.createElement('button');
+    fork.type = 'button';
+    fork.className = 'msg-error-recover-btn';
+    fork.textContent = 'Fork';
+    fork.title = 'Open a separate thread from this conversation';
+    fork.addEventListener('click', event => {
+      event.stopPropagation();
+      void import('../state/sessions').then(async ({ findChatById, sessionState }) => {
+        if (sessionState?.activeId !== recovery.chatId) return;
+        const chat = findChatById(recovery.chatId);
+        if (chat) await (await import('./thread-card')).forkThreadWithModel(chat);
+      });
+    });
+    actions.append(continueBtn, fork, clearBtn);
+  } else {
+    actions.append(continueBtn, clearBtn);
+  }
   host.appendChild(actions);
 }

@@ -1,8 +1,10 @@
 import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { setPairedDevice } from '../../src/api/session-token.ts';
 import { clearAttachments, getPendingAttachments, pushAttachment } from '../../src/attachments/store.ts';
 import { sendMessageWithTools, sendProgrammaticChatText } from '../../src/chat/messaging.ts';
+import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { createEmptyChatObject, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { initComposerSkillHighlight } from '../../src/ui/composer-skill-highlight.ts';
 import { syncComposerFromStreamingState } from '../../src/ui/composer-send.ts';
@@ -38,6 +40,8 @@ afterEach(async () => {
   await Promise.all([import('../../src/ui/sidebar.ts'), import('../../src/ui/chat-app.ts')]);
   await new Promise(resolve => setImmediate(resolve));
   globalThis.fetch = originalFetch;
+  setPairedDevice(false);
+  setStorageModeForTests(null);
   clearAttachments();
   resetSessionPersistenceForTests();
   setSessionStateForTests(null);
@@ -72,6 +76,37 @@ test('an acknowledged first send clears the visible composer while its reply run
   assert.equal(input.value, '');
   assert.equal(input.parentElement?.querySelector('.composer-skill-highlight')?.textContent, '');
   assert.equal(button.getAttribute('aria-label'), 'Stop generating');
+});
+
+test('a paired phone persists the new chat before it relays the first message', async () => {
+  const { chat, input } = setup();
+  delete chat.chatCommandVersion;
+  delete chat.composerDraft;
+  chat.history = [];
+  setPairedDevice(true);
+  setStorageModeForTests('server');
+  const requests: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url) === '/api/config/sessions' && init?.method === 'PATCH') {
+      const saved = JSON.parse(String(init.body)).chats.find((row: { id: string }) => row.id === chat.id);
+      assert.equal(saved.workspacePath, chat.workspacePath);
+      assert.equal(saved.composerDraft, undefined, 'the phone draft stays local');
+      requests.push('save');
+      return Response.json({ ok: true, revision: 3 });
+    }
+    if (String(url) === '/api/chat-sync/commands') {
+      assert.deepEqual(requests, ['save']);
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.chatId, chat.id);
+      assert.equal(body.text, 'How is our DB setup?');
+      requests.push('send');
+      return Response.json({ id: body.id, ok: true });
+    }
+    return Response.json({});
+  };
+  await sendMessageWithTools();
+  assert.deepEqual(requests, ['save', 'send']);
+  assert.equal(input.value, '');
 });
 
 test('sending plain text after removing a chat chip clears the inline editor too', async () => {

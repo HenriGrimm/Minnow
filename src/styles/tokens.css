@@ -73,6 +73,10 @@ body {
   --mn-control-px-md: var(--mn-space-3);
   --mn-control-px-lg: var(--mn-space-4);
   --mn-control-gap: var(--mn-space-1-5);
+  /* Density adjusts repeated spacing around content while preserving the type scale. */
+  --mn-density-step: 0px;
+  --mn-density-nav-row: calc(30px + 2 * var(--mn-density-step));
+  --mn-density-touch-row: calc(var(--touch-min) + 4px + 2 * var(--mn-density-step));
   --mn-icon-sm: 14px;
   --mn-icon-md: 16px;
   --mn-icon-lg: 18px;
@@ -92,8 +96,8 @@ body {
   --mn-menu-radius: var(--radius-lg);
   --mn-menu-item-radius: var(--radius-md);
   --mn-menu-padding: 6px;
-  --mn-menu-item-padding: 7px 10px;
-  --mn-menu-item-height: 34px;
+  --mn-menu-item-padding: calc(7px + var(--mn-density-step)) 10px;
+  --mn-menu-item-height: calc(34px + 2 * var(--mn-density-step));
   --mn-menu-bg: var(--mn-surface-1);
   --mn-menu-border: var(--mn-border);
   --mn-menu-hover-bg: var(--mn-surface-elevated);
@@ -108,8 +112,8 @@ body {
   /* Typography stacks. Appearance → Fonts overrides these on documentElement
      via applyAppearanceFonts(). There is no --mn-font-* alias — consumers
      must use --font-ui / --font-mono so the user preference actually applies. */
-  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
   --bp-compact: 600px;
   --bp-mobile: 640px;
   --bp-wide: 900px;
@@ -1416,6 +1420,294 @@ html[data-theme$="-light"],
   --mn-label-fig: oklch(0.48 0.14 312);
   --mn-label-blush: oklch(0.50 0.14 12);
   --mn-label-pebble: oklch(0.48 0.05 80);
+}
+
+/* Graphite workbench palette. Matrix keeps its existing palette. */
+:root {
+  --mn-graphite-teal: #4fd1b0;
+  --mn-graphite-switch-knob-active: #ffffff;
+  --mn-graphite-blue: #6e9bff;
+  --mn-graphite-amber: #f5a524;
+  --mn-graphite-violet: #b79cff;
+  --mn-graphite-rose: #f472b6;
+  --mn-graphite-picked-accent: var(--mn-graphite-teal);
+  --mn-graphite-tint: 1;
+}
+
+.settings-accent-swatch {
+  --mn-graphite-picked-accent: var(--mn-graphite-teal);
+  --mn-graphite-preset-accent: var(--mn-graphite-picked-accent);
+}
+
+:is(:root, .settings-accent-swatch)[data-graphite-accent="blue"] { --mn-graphite-picked-accent: var(--mn-graphite-blue); }
+:is(:root, .settings-accent-swatch)[data-graphite-accent="amber"] { --mn-graphite-picked-accent: var(--mn-graphite-amber); }
+:is(:root, .settings-accent-swatch)[data-graphite-accent="violet"] { --mn-graphite-picked-accent: var(--mn-graphite-violet); }
+:is(:root, .settings-accent-swatch)[data-graphite-accent="rose"] { --mn-graphite-picked-accent: var(--mn-graphite-rose); }
+
+:is(:root, .settings-theme-preview)[data-theme="graphite-dark"],
+:is(:root, .settings-theme-preview)[data-theme="graphite-light"] {
+  --mn-graphite-preset-accent: var(--mn-graphite-picked-accent);
+}
+:is(:root, .settings-theme-preview)[data-theme="swamp-dark"],
+:root[data-theme="graphite-dark"][data-graphite-accent="swamp"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="swamp"] { --mn-graphite-preset-accent: #9ec5a7; }
+:is(:root, .settings-theme-preview)[data-theme="swamp-light"],
+:root[data-theme="graphite-light"][data-graphite-accent="swamp"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="swamp"] { --mn-graphite-preset-accent: #5b8a72; }
+:is(:root, .settings-theme-preview)[data-theme="ocean-dark"],
+:root[data-theme="graphite-dark"][data-graphite-accent="ocean"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="ocean"] { --mn-graphite-preset-accent: #7dd3e8; }
+:is(:root, .settings-theme-preview)[data-theme="ocean-light"],
+:root[data-theme="graphite-light"][data-graphite-accent="ocean"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="ocean"] { --mn-graphite-preset-accent: #2b7a96; }
+:is(:root, .settings-theme-preview)[data-theme="desert-dark"],
+:root[data-theme="graphite-dark"][data-graphite-accent="desert"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="desert"] { --mn-graphite-preset-accent: #d4a574; }
+:is(:root, .settings-theme-preview)[data-theme="desert-light"],
+:root[data-theme="graphite-light"][data-graphite-accent="desert"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="desert"] { --mn-graphite-preset-accent: #a36f2a; }
+:is(:root, .settings-theme-preview)[data-theme="coral-dark"],
+:root[data-theme="graphite-dark"][data-graphite-accent="coral"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="coral"] { --mn-graphite-preset-accent: #f5a3a0; }
+:is(:root, .settings-theme-preview)[data-theme="coral-light"],
+:root[data-theme="graphite-light"][data-graphite-accent="coral"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="coral"] { --mn-graphite-preset-accent: #c75651; }
+:is(:root, .settings-theme-preview)[data-theme="human-dark"],
+:root[data-theme="graphite-dark"][data-graphite-accent="human"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="human"] { --mn-graphite-preset-accent: #d27428; }
+:is(:root, .settings-theme-preview)[data-theme="human-light"],
+:root[data-theme="graphite-light"][data-graphite-accent="human"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="human"] { --mn-graphite-preset-accent: #c46820; }
+:is(:root, .settings-theme-preview)[data-theme="mint-dark"],
+:root[data-theme="graphite-dark"][data-graphite-accent="mint"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="mint"] { --mn-graphite-preset-accent: #66ffb0; }
+:is(:root, .settings-theme-preview)[data-theme="mint-light"],
+:root[data-theme="graphite-light"][data-graphite-accent="mint"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="mint"] { --mn-graphite-preset-accent: #1fa86a; }
+:is(:root, .settings-theme-preview)[data-theme="mono-dark"],
+:root[data-theme="graphite-dark"][data-graphite-accent="mono"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="mono"] { --mn-graphite-preset-accent: #d4d4d4; }
+:is(:root, .settings-theme-preview)[data-theme="mono-light"],
+:root[data-theme="graphite-light"][data-graphite-accent="mono"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="mono"] { --mn-graphite-preset-accent: #2b2b2b; }
+
+:root[data-theme="graphite-dark"][data-graphite-accent="matrix"],
+:root[data-theme$="-dark"] .settings-accent-swatch[data-graphite-accent="matrix"] { --mn-graphite-preset-accent: #28d250; }
+:root[data-theme="graphite-light"][data-graphite-accent="matrix"],
+:root[data-theme$="-light"] .settings-accent-swatch[data-graphite-accent="matrix"] { --mn-graphite-preset-accent: #0a6b28; }
+
+:is(:root, .settings-theme-preview)[data-theme$="-dark"] {
+  color-scheme: dark;
+  --mn-graphite-ground-base: #09090b;
+  --mn-graphite-sheet-base: #111113;
+  --mn-graphite-raised-base: #18181b;
+  --mn-graphite-raised-2-base: #1f1f23;
+  --mn-graphite-ground-mix: 3.5%;
+  --mn-graphite-sheet-mix: 3%;
+  --mn-graphite-raised-mix: 4%;
+  --mn-graphite-raised-2-mix: 5%;
+  --mn-graphite-hover: rgba(255,255,255,0.045);
+  --mn-graphite-active: rgba(255,255,255,0.075);
+  --mn-graphite-line-base: rgba(255,255,255,0.07);
+  --mn-graphite-line-2-base: rgba(255,255,255,0.11);
+  --mn-graphite-preview-line: rgba(255,255,255,0.14);
+  --mn-graphite-ink: #ededef;
+  --mn-graphite-muted-base: #a1a1aa;
+  --mn-graphite-subtle-base: #83838c;
+  --mn-graphite-button: #ededef;
+  --mn-graphite-button-text: #0a0a0b;
+  --mn-graphite-accent-text: #0a0a0b;
+  --mn-graphite-add: rgba(63,185,80,0.12);
+  --mn-graphite-add-text: #56d364;
+  --mn-graphite-delete: rgba(248,81,73,0.12);
+  --mn-graphite-delete-text: #f47067;
+  --mn-graphite-warning: #f5a524;
+  --mn-graphite-warning-bg: rgba(245,165,36,0.07);
+  --mn-graphite-warning-line: rgba(245,165,36,0.30);
+  --mn-graphite-syntax-keyword: #c4a7ff;
+  --mn-graphite-syntax-string: #9fdcaa;
+  --mn-graphite-syntax-function: #7dd3fc;
+  --mn-graphite-syntax-comment: #6b6b74;
+  --mn-graphite-shadow-color: rgba(0,0,0,0.45);
+  --mn-graphite-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px -16px rgba(0,0,0,0.8);
+  --mn-graphite-popup: 0 0 0 1px rgba(255,255,255,0.08), 0 24px 64px -12px rgba(0,0,0,0.75);
+  --mn-graphite-scrim: rgba(5,5,6,0.6);
+  --mn-composer-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 8px 20px -10px rgba(0,0,0,0.6);
+}
+
+:is(:root, .settings-theme-preview)[data-theme$="-light"] {
+  color-scheme: light;
+  --mn-graphite-ground-base: #ececee;
+  --mn-graphite-sheet-base: #ffffff;
+  --mn-graphite-raised-base: #f7f7f8;
+  --mn-graphite-raised-2-base: #f0f0f2;
+  --mn-graphite-ground-mix: 6%;
+  --mn-graphite-sheet-mix: 1.5%;
+  --mn-graphite-raised-mix: 3%;
+  --mn-graphite-raised-2-mix: 4.5%;
+  --mn-graphite-hover: rgba(0,0,0,0.04);
+  --mn-graphite-active: rgba(0,0,0,0.065);
+  --mn-graphite-line-base: rgba(0,0,0,0.08);
+  --mn-graphite-line-2-base: rgba(0,0,0,0.13);
+  --mn-graphite-preview-line: rgba(0,0,0,0.12);
+  --mn-graphite-ink: #18181b;
+  --mn-graphite-muted-base: #52525b;
+  --mn-graphite-subtle-base: #55555e;
+  --mn-graphite-button: #18181b;
+  --mn-graphite-button-text: #ffffff;
+  --mn-graphite-accent-text: #0a0a0b;
+  --mn-graphite-add: #e6f6ea;
+  --mn-graphite-add-text: #1a7f37;
+  --mn-graphite-delete: #fdecec;
+  --mn-graphite-delete-text: #cf222e;
+  --mn-graphite-warning: #b45309;
+  --mn-graphite-warning-bg: #fdf6e8;
+  --mn-graphite-warning-line: rgba(180,83,9,0.28);
+  --mn-graphite-syntax-keyword: #7c3aed;
+  --mn-graphite-syntax-string: #15803d;
+  --mn-graphite-syntax-function: #0369a1;
+  --mn-graphite-syntax-comment: #8a8a93;
+  --mn-graphite-shadow-color: rgba(0,0,0,0.12);
+  --mn-graphite-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 12px 32px -16px rgba(0,0,0,0.18);
+  --mn-graphite-popup: 0 0 0 1px rgba(0,0,0,0.08), 0 24px 64px -16px rgba(0,0,0,0.25);
+  --mn-graphite-scrim: rgba(236,236,238,0.65);
+  --mn-composer-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 6px 16px -8px rgba(0,0,0,0.12);
+}
+
+:is(:root, .settings-theme-preview)[data-theme]:not([data-theme^="matrix-"]) {
+  --mn-bg: color-mix(in oklab, var(--mn-graphite-ground-base), var(--mn-accent) calc(var(--mn-graphite-tint) * var(--mn-graphite-ground-mix)));
+  --mn-surface-0: color-mix(in oklab, var(--mn-graphite-sheet-base), var(--mn-accent) calc(var(--mn-graphite-tint) * var(--mn-graphite-sheet-mix)));
+  --mn-surface-1: color-mix(in oklab, var(--mn-graphite-raised-base), var(--mn-accent) calc(var(--mn-graphite-tint) * var(--mn-graphite-raised-mix)));
+  --mn-surface-2: color-mix(in oklab, var(--mn-graphite-raised-2-base), var(--mn-accent) calc(var(--mn-graphite-tint) * var(--mn-graphite-raised-2-mix)));
+  --mn-surface-elevated: var(--mn-graphite-hover);
+  --mn-border: var(--mn-graphite-line-base);
+  --mn-border-strong: var(--mn-graphite-line-2-base);
+  --mn-fg: var(--mn-graphite-ink);
+  --mn-fg-muted: color-mix(in oklab, var(--mn-graphite-muted-base), var(--mn-accent) calc(var(--mn-graphite-tint) * 3%));
+  --mn-fg-subtle: color-mix(in oklab, var(--mn-graphite-subtle-base), var(--mn-accent) calc(var(--mn-graphite-tint) * 6%));
+  --mn-fg-on-accent: var(--mn-graphite-accent-text);
+  --mn-accent: var(--mn-graphite-preset-accent);
+  --mn-accent-soft: color-mix(in srgb, var(--mn-accent) 14%, transparent);
+  --mn-accent-border: color-mix(in srgb, var(--mn-accent) 38%, transparent);
+  --mn-accent-ink: color-mix(in srgb, var(--mn-accent) 55%, var(--mn-fg));
+  --mn-focus-ring: var(--mn-accent-ink);
+  --mn-shadow: var(--mn-graphite-shadow-color);
+  --mn-folder: var(--mn-accent-ink);
+  --mn-success: var(--mn-graphite-add-text);
+  --mn-success-soft: var(--mn-graphite-add);
+  --mn-success-border: color-mix(in srgb, var(--mn-success) 28%, transparent);
+  --mn-success-ink: var(--mn-success);
+  --mn-warning: var(--mn-graphite-warning);
+  --mn-warning-soft: var(--mn-graphite-warning-bg);
+  --mn-warning-border: var(--mn-graphite-warning-line);
+  --mn-danger: var(--mn-graphite-delete-text);
+  --mn-danger-soft: var(--mn-graphite-delete);
+  --mn-danger-border: color-mix(in srgb, var(--mn-danger) 28%, transparent);
+  --mn-danger-ink: var(--mn-danger);
+  --mn-overlay: var(--mn-graphite-scrim);
+  --mn-menu-bg: var(--mn-surface-1);
+  --mn-menu-selected-bg: var(--mn-sel);
+  --mn-menu-shadow: var(--mn-graphite-popup);
+  --mn-selection-bg: var(--mn-accent-soft);
+  --asst-bg: var(--mn-bg);
+  --asst-bdr: var(--mn-border);
+  --shadow-popover: var(--mn-graphite-popup);
+  --shadow-popover-soft: var(--mn-graphite-shadow);
+  --shadow-popover-tall: var(--mn-graphite-popup);
+  --shadow-lift: var(--mn-graphite-shadow);
+  --shadow-sidebar: 4px 0 24px var(--mn-shadow);
+  --shadow-sidebar-left: -4px 0 24px var(--mn-shadow);
+  --shadow-card: var(--mn-graphite-shadow);
+  --shadow-drawer: -8px 0 36px var(--mn-shadow);
+  --tool-call-panel-bg: var(--mn-surface-1);
+  --tool-call-status-bg: var(--mn-surface-1);
+  --tool-call-pre-bg: var(--mn-surface-0);
+  --tool-call-status-ok-border: var(--mn-success-border);
+  --tool-call-status-ok-bg: var(--mn-success-soft);
+  --tool-call-status-fail-border: var(--mn-danger-border);
+  --tool-call-status-fail-bg: var(--mn-danger-soft);
+  --banner-danger-bg: var(--mn-danger-soft);
+  --banner-danger-hover-bg: color-mix(in srgb, var(--mn-danger) 14%, var(--mn-surface-1));
+  --banner-danger-hover-border: var(--mn-danger-border);
+  --banner-danger-hover-text: var(--mn-danger-ink);
+  --thought-bubble-bg: var(--mn-surface-1);
+  --thought-flow-bg: var(--mn-surface-0);
+  --thought-segment-bg: var(--mn-surface-1);
+  --settings-warn-banner-border: var(--mn-warning-border);
+  --settings-warn-banner-bg: var(--mn-warning-soft);
+  --cm-keyword: var(--mn-graphite-syntax-keyword);
+  --cm-title: var(--mn-graphite-syntax-function);
+  --cm-attr: var(--mn-graphite-syntax-function);
+  --cm-string: var(--mn-graphite-syntax-string);
+  --mn-syntax-command: var(--mn-graphite-syntax-function);
+  --mn-syntax-name: var(--mn-graphite-syntax-string);
+  --mn-syntax-inline: var(--mn-fg);
+  --mn-syntax-link: var(--mn-accent-ink);
+}
+
+:is(:root, .settings-theme-preview)[data-theme]:not([data-theme^="matrix-"])[data-theme$="-light"] {
+  --mn-accent-ink: color-mix(in srgb, var(--mn-accent) 44%, var(--mn-fg));
+}
+
+:is(:root, .settings-theme-preview)[data-theme$="-light"]:is([data-theme^="ocean-"], [data-theme^="mono-"]) {
+  --mn-graphite-accent-text: var(--mn-graphite-button-text);
+}
+
+:root[data-theme="graphite-light"]:is([data-graphite-accent="ocean"], [data-graphite-accent="mono"], [data-graphite-accent="matrix"]),
+:root[data-accent-text="light"] {
+  --mn-graphite-accent-text: #fefefe;
+}
+:root[data-accent-text="dark"] { --mn-graphite-accent-text: #030304; }
+:root[data-theme="graphite-dark"][data-accent-text] {
+  --mn-accent-ink: color-mix(in srgb, var(--mn-accent) 42%, var(--mn-fg));
+}
+:root[data-theme="graphite-light"][data-accent-text] {
+  --mn-accent-ink: color-mix(in srgb, var(--mn-accent) 36%, var(--mn-fg));
+}
+
+:is(:root, .settings-theme-preview)[data-theme] {
+  --mn-graphite-ground: var(--mn-bg);
+  --mn-graphite-sheet: var(--mn-surface-0);
+  --mn-graphite-raised: var(--mn-surface-1);
+  --mn-graphite-raised-2: var(--mn-surface-2);
+  --mn-graphite-line: var(--mn-border);
+  --mn-graphite-line-2: var(--mn-border-strong);
+  --mn-graphite-text: var(--mn-fg);
+  --mn-graphite-text-muted: var(--mn-fg-muted);
+  --mn-graphite-text-subtle: var(--mn-fg-subtle);
+  --mn-bubble: color-mix(in oklab, var(--mn-surface-2), var(--mn-accent) calc(var(--mn-graphite-tint) * 6%));
+  --mn-sel: color-mix(in srgb, var(--mn-accent) calc(var(--mn-graphite-tint) * 4%), var(--mn-graphite-active));
+  --mn-graphite-preview-bubble: color-mix(in oklab, var(--mn-graphite-raised-2-base), var(--mn-accent) calc(var(--mn-graphite-tint) * (var(--mn-graphite-raised-2-mix) + 6%)));
+}
+
+:is(:root, .settings-theme-preview)[data-theme^="matrix-"] {
+  --mn-bubble: var(--mn-surface-2);
+  --mn-sel: var(--mn-accent-soft);
+  --mn-graphite-preview-bubble: var(--mn-surface-2);
+}
+
+:root[data-reduce-motion] *,
+:root[data-reduce-motion] *::before,
+:root[data-reduce-motion] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.001ms !important;
+}
+
+:root[data-density="compact"] {
+  --mn-density-step: -2px;
+}
+
+:root[data-density="roomy"] {
+  --mn-density-step: 4px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --mn-density-nav-row: var(--mn-density-touch-row);
+    --mn-menu-item-height: var(--mn-density-touch-row);
+  }
 }
 
 /* Native selection — chat code fences, inputs, and prose */

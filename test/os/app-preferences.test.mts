@@ -52,12 +52,11 @@ function setupDom(): void {
 describe('app registry availability invariants', () => {
   // Research is `core` but hidden while it is disabled for release, so it is
   // absent here (listCoreReleasedApps filters on releaseState).
-  test('core released apps include code, models, brain, scheduler, issues, settings', () => {
+  test('core released apps match the current workspace roster', () => {
     const coreIds = listCoreReleasedApps().map((app) => app.id).sort();
     assert.deepEqual(coreIds, [
       'brain',
       'code',
-      'home',
       'issues',
       'models',
       'scheduler',
@@ -77,8 +76,8 @@ describe('app registry availability invariants', () => {
   });
 
   test('every app has availability + releaseState; four apps are hidden', () => {
-    assert.equal(APPS.length, 12);
-    assert.equal(listReleasedApps().length, 8);
+    assert.equal(APPS.length, 11);
+    assert.equal(listReleasedApps().length, 7);
     for (const app of APPS) {
       assert.ok(app.availability === 'core' || app.availability === 'optional');
       assert.ok(app.releaseState === 'released' || app.releaseState === 'hidden');

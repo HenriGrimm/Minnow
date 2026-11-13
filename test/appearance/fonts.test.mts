@@ -66,12 +66,13 @@ afterEach(() => {
 });
 
 describe('appearance fonts', () => {
-  test('default fonts are system presets', () => {
+  test('defaults to bundled Geist and Geist Mono', () => {
     mockLocalStorage();
     const fonts = getAppearanceFonts();
     assert.equal(fonts.ui.kind, 'preset');
     assert.equal(fonts.mono.kind, 'preset');
-    if (fonts.ui.kind === 'preset') assert.equal(fonts.ui.id, 'system');
+    if (fonts.ui.kind === 'preset') assert.equal(fonts.ui.id, 'bundled-geist');
+    if (fonts.mono.kind === 'preset') assert.equal(fonts.mono.id, 'bundled-geist');
   });
 
   test('setAppearanceFonts persists JSON', () => {
@@ -92,17 +93,19 @@ describe('appearance fonts', () => {
     assert.match(MONO_FONT_STACKS['fira-code'], /Fira Code/);
   });
 
-  test('catalog is a large Google Fonts list without Geist', () => {
+  test('catalog has bundled Geist and retains the existing Google Fonts choices', () => {
     assert.ok(UI_FONT_PRESETS.length >= 31, `UI presets ${UI_FONT_PRESETS.length}`);
     assert.ok(MONO_FONT_PRESETS.length >= 21, `mono presets ${MONO_FONT_PRESETS.length}`);
     assert.ok(!UI_FONT_PRESETS.includes('geist'));
     assert.ok(!MONO_FONT_PRESETS.includes('geist-mono'));
+    assert.ok(UI_FONT_PRESETS.includes('bundled-geist'));
+    assert.ok(MONO_FONT_PRESETS.includes('bundled-geist'));
     assert.ok(UI_FONT_PRESETS.includes('inter'));
     assert.ok(MONO_FONT_PRESETS.includes('fira-code'));
     assert.ok(MONO_FONT_PRESETS.includes('cascadia-code'));
   });
 
-  test('retired geist ids fall back to system', () => {
+  test('retired font IDs fall back to bundled defaults', () => {
     mockLocalStorage();
     storage.set(
       APPEARANCE_STORAGE_KEYS.fonts,
@@ -112,8 +115,8 @@ describe('appearance fonts', () => {
       }),
     );
     const fonts = getAppearanceFonts();
-    if (fonts.ui.kind === 'preset') assert.equal(fonts.ui.id, 'system');
-    if (fonts.mono.kind === 'preset') assert.equal(fonts.mono.id, 'system');
+    if (fonts.ui.kind === 'preset') assert.equal(fonts.ui.id, 'bundled-geist');
+    if (fonts.mono.kind === 'preset') assert.equal(fonts.mono.id, 'bundled-geist');
   });
 
   test('Google Fonts CSS2 URL encodes families and weights', () => {

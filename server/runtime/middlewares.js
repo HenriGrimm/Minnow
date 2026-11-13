@@ -40,7 +40,7 @@ import { createPreviewAccessMiddleware } from '../preview/isolated-host.js';
 import { createDesignAnnotationsMiddleware } from '../design/annotations-routes.js';
 import { createSourceMapMiddleware } from '../design/source-map-routes.js';
 import { createProfilesMiddleware } from '../profiles/middleware.js';
-import { createPromptConfigsMiddleware } from '../prompt-configs/middleware.js';
+import { createPromptsMiddleware } from '../prompts/middleware.js';
 import { createProviderMiddleware } from '../providers/routes.js';
 import { createSttMiddleware } from '../stt/middleware.js';
 import { createTtsMiddleware } from '../tts/middleware.js';
@@ -252,7 +252,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createMcpMiddleware());
   connectApp.use(createServersMiddleware());
   connectApp.use(createPluginsMiddleware());
-  connectApp.use(createPromptConfigsMiddleware());
+  connectApp.use(createPromptsMiddleware());
   connectApp.use(createProfilesMiddleware());
   connectApp.use(createProviderMiddleware());
   connectApp.use(createSttMiddleware());

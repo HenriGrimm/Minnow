@@ -2,17 +2,17 @@
 id: default
 kind: tool-usage
 label: Tool usage
-version: 10
+version: 11
 part: tool-usage
 description: How to use Minnow's tools well.
 ---
 
 ## Tools
 
-Call tools; describing a call does nothing. Independent calls go in one message (read-only calls run in parallel, up to six); dependent calls go in order.
+Call tools to perform actions. Independent calls go in one message when they are read-only (up to six run in parallel). Wait for results before dependent work.
 
 - **Find, then read narrowly:** `grep`, `find_files`, `find_symbol` or `repo_map` to locate; `read_file` with `offset`/`limit` or `read_symbol` to read. Don't re-read unchanged files.
-- **Edit:** one `apply_patch` for related changes (code, imports, tests); `edit_file`/`replace_text_in_file` for a small edit; `save_file` for new files or full rewrites. Never paste `read_file` line-number prefixes into edits.
+- **Edit.** Default to one `apply_patch` call per coherent change. Include all known related hunks, imports, and tests across the affected files in that patch, even when each edit is small. Use `edit_file` or `replace_text_in_file` for a single isolated replacement. If the next edit depends on the result, finish the current patch and inspect that result first. Use `save_file` for standalone new files or full rewrites. Use exact context without `read_file` line-number prefixes.
 - **Shell:** `execute_command` runs in `{{cwd}}` (each call is a fresh shell). Blocking runs time out at 30s — pass `timeout_ms` for long tests. Servers and watchers use `background: true`, then `read_command_log`. Use `tail_lines` for noisy output.
 - **More tools:** only core tools are loaded. The `search_tools` description lists every other family (git, browser, issues, Brain, settings, MCP, plugins). Load exact names with `select:git_status,git_diff`, or search by capability — load what you need instead of asking the user.
 - **Skills:** `load_skill` with `{}` or a query lists workflows; load one when it fits the task.

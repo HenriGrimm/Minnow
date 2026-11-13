@@ -3,6 +3,7 @@
  */
 
 import { isMinnowSandboxWorkspacePath } from '../lib/workspace-sandbox';
+import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import { sessionState } from '../state/sessions';
 import { isCurrentWindowWorkspace } from '../state/workspace';
 import { getCurrentRoute, launchApp } from './router';
@@ -36,9 +37,10 @@ async function findLinkedChat(chatId: string): Promise<boolean> {
     showToast('Could not load this conversation. Reconnect and open its link again.', 'error');
     return false;
   }
-  if (sessionState?.chats.some(chat => chat.id === chatId)) return true;
+  const chat = sessionState?.chats.find(row => row.id === chatId);
+  if (chat && !isGraphiteSideChat(chat)) return true;
   const { showToast } = await import('../ui/toast');
-  showToast('This conversation is unavailable. It may have been deleted or belong to another workspace.', 'error');
+  showToast(chat ? 'Open Side chat from the main conversation.' : 'This conversation is unavailable. It may have been deleted or belong to another workspace.', 'error');
   return false;
 }
 

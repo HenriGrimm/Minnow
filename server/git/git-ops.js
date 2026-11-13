@@ -307,7 +307,51 @@ export function splitShowOutput(text) {
   return { stat, patch };
 }
 
-export async function status({ cwd } = {}) {
+function parseFileNumstat(result) {
+  const stats = new Map();
+  if (result.accumulationTruncated || (result.code !== 0 && result.code !== 1)) return stats;
+  const fields = (result.stdout ?? '').split('\0');
+  for (let index = 0; index < fields.length; index += 1) {
+    const row = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(fields[index]);
+    if (!row) continue;
+    // With -z, a rename has a blank path field followed by the old and new paths.
+    const file = row[3] || (index += 2, fields[index]);
+    if (file && row[1] !== '-' && row[2] !== '-') {
+      stats.set(file, { additions: Number(row[1]), deletions: Number(row[2]) });
+    }
+  }
+  return stats;
+}
+
+async function withStatusLineStats(cwd, parsed) {
+  const stagedArgs = ['diff', '--cached', '--numstat', '-z', '--'];
+  const unstagedArgs = ['diff', '--numstat', '-z', '--'];
+  const [staged, unstaged] = await Promise.all([
+    parsed.staged.length ? git(stagedArgs, cwd).then(parseFileNumstat) : new Map(),
+    parsed.unstaged.length ? git(unstagedArgs, cwd).then(parseFileNumstat) : new Map(),
+  ]);
+  const untracked = new Map();
+  if (parsed.untracked.length <= 12) {
+    const nullDevice = process.platform === 'win32' ? 'NUL' : '/dev/null';
+    for (let index = 0; index < parsed.untracked.length; index += 4) {
+      await Promise.all(parsed.untracked.slice(index, index + 4).map(async file => {
+        const stat = await fs.lstat(path.join(cwd, file.path)).catch(() => null);
+        if (!stat || (!stat.isFile() && !stat.isSymbolicLink()) || stat.size > 512_000) return;
+        const rows = parseFileNumstat(await git(['diff', '--no-index', '--numstat', '-z', '--', nullDevice, file.path], cwd));
+        const counts = rows.get(file.path) ?? (rows.size === 1 ? rows.values().next().value : undefined);
+        if (counts) untracked.set(file.path, counts);
+      }));
+    }
+  }
+  return {
+    ...parsed,
+    staged: parsed.staged.map(file => ({ ...file, ...staged.get(file.path) })),
+    unstaged: parsed.unstaged.map(file => ({ ...file, ...unstaged.get(file.path) })),
+    untracked: parsed.untracked.map(file => ({ ...file, ...untracked.get(file.path) })),
+  };
+}
+
+export async function status({ cwd, lineStats = false } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
@@ -316,7 +360,8 @@ export async function status({ cwd } = {}) {
     return { ok: false, error: processError(result) };
   }
 
-  const parsed = parsePorcelainStatus(result.stdout, true);
+  const status = parsePorcelainStatus(result.stdout, true);
+  const parsed = lineStats === true ? await withStatusLineStats(repo.cwd, status) : status;
   const gitDir = await git(['rev-parse', '--absolute-git-dir'], repo.cwd);
   let operation;
   if (gitDir.code === 0) {

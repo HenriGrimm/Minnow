@@ -14,7 +14,8 @@ import {
   setUiFont,
   UI_FONT_CATALOG,
 } from '../appearance/fonts';
-import type { MonoFontPresetId, UiFontPresetId } from '../appearance/types';
+import { DEFAULT_APPEARANCE_FONTS, type MonoFontPresetId, type UiFontPresetId } from '../appearance/types';
+import { DEFAULT_APPEARANCE_FONT_ID } from '../lib/appearance-choices.mjs';
 import { appAlert } from './app-dialog';
 
 let fontRowCounter = 0;
@@ -30,7 +31,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Native <select> with System first and the rest under a Google Fonts group. */
+/** Native select with bundled and system options before Google Fonts. */
 function buildCatalogSelect(
   catalog: readonly FontCatalogEntry[],
   value: string,
@@ -184,21 +185,18 @@ export function appendAppearanceFonts(mount: HTMLElement): void {
     'p',
     'settings-field-hint',
     fonts.ui.kind === 'upload' || fonts.mono.kind === 'upload'
-      ? 'Custom uploaded fonts are stored in this browser (IndexedDB). Google Fonts load only for the selected UI and mono pair; System UI stays local.'
-      : 'Google Fonts load only for the selected UI and mono pair. System UI uses the fonts already on this machine.',
+      ? 'Uploaded fonts are stored in this browser. Geist is bundled and works offline.'
+      : 'Geist is bundled and works offline. Google Fonts load only when selected.',
   );
   controls.appendChild(hint);
 
   const resetBtn = el('button', 'settings-action-btn', 'Reset fonts to default');
   resetBtn.type = 'button';
   resetBtn.addEventListener('click', () => {
-    setAppearanceFonts({
-      ui: { kind: 'preset', slot: 'ui', id: 'system' },
-      mono: { kind: 'preset', slot: 'mono', id: 'system' },
-    });
+    setAppearanceFonts(DEFAULT_APPEARANCE_FONTS);
     void applyAppearanceFonts();
-    uiSelect.value = 'system';
-    monoSelect.value = 'system';
+    uiSelect.value = DEFAULT_APPEARANCE_FONT_ID;
+    monoSelect.value = DEFAULT_APPEARANCE_FONT_ID;
     refreshPreviewWhenReady();
   });
   controls.appendChild(resetBtn);

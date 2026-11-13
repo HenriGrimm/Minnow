@@ -1,4 +1,3 @@
-import type { SystemPromptPreset } from './types';
 import { SESSION_SCHEMA_VERSION } from './types';
 import { MINNOW_GLYPH_EMPTY_HTML } from './ui/minnow-glyph';
 import { iconHtml } from './ui/icon';
@@ -51,12 +50,3 @@ export {
   type LegacyThemePreference as ThemePreference,
 } from './theme';
 export const ASSISTANT_RENDER_DEBOUNCE_MS = 32;
-
-/** Built-in system prompt preset for the legacy settings drawer fallback. */
-export const SYSTEM_PROMPT_PRESETS: SystemPromptPreset[] = [
-  {
-    id: 'general-assistant',
-    label: 'General assistant',
-    text: 'You are a helpful, concise assistant. Respond clearly and directly. Avoid unnecessary preamble.',
-  },
-];

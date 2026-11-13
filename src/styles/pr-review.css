@@ -35,7 +35,7 @@
   text-align: left;
   font: inherit;
   color: var(--mn-fg);
-  background: var(--mn-surface);
+  background: var(--mn-surface-1);
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm, 6px);
   cursor: pointer;
@@ -54,7 +54,7 @@
   margin: 0;
   padding: 8px 10px;
   color: var(--mn-fg);
-  background: color-mix(in oklch, var(--mn-danger) 12%, var(--mn-surface));
+  background: color-mix(in oklch, var(--mn-danger) 12%, var(--mn-surface-1));
   border: 1px solid color-mix(in oklch, var(--mn-danger) 40%, var(--mn-border));
   border-radius: var(--radius-sm, 6px);
 }

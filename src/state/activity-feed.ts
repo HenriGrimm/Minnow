@@ -39,6 +39,7 @@ export interface ActivityFeedInput {
   live: readonly AgentActivityRow[];
   notifications: readonly NotificationRecord[];
   pendingChatIds: ReadonlySet<string>;
+  dismissedExecutionAlerts?: ReadonlySet<string>;
   workspacePath: string;
 }
 
@@ -181,6 +182,10 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
     completedByChat.set(item.chatId, Math.max(completedByChat.get(item.chatId) ?? -Infinity, item.timestamp));
   }
   for (const item of all) {
+    if ((item.status === 'failed' || item.status === 'blocked') && input.dismissedExecutionAlerts?.has(item.id)) {
+      item.resolved = true;
+      item.unread = false;
+    }
     // A successful later reply supersedes chat errors, not unrelated task or review alerts.
     if (item.status === 'failed' && item.chatId && item.notifications.every((record) => record.kind === 'chat_turn_error') && (completedByChat.get(item.chatId) ?? -Infinity) > item.timestamp) {
       item.resolved = true;

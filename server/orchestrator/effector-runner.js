@@ -367,7 +367,6 @@ async function readBoardAttemptWallClockMs() {
  *   model?: { providerId: string, id: string },
  *   cwd?: string,
  *   limits?: { maxTurns?: number, wallClockMs?: number },
- *   promptVariant?: 'full' | 'lite',
  *   runTurn?: typeof defaultRunTurn,
  *   runFinalLadder?: typeof runFinalLadder,
  *   deps?: import('../runner/adapters').RunnerDeps,
@@ -382,7 +381,6 @@ export function createRunnerEffector(options = {}) {
   const journal = options.journal ?? diskJournal;
   const runTurnFn = options.runTurn ?? defaultRunTurn;
   const limits = attemptLimits(options.limits);
-  const promptVariant = options.promptVariant === 'lite' ? 'lite' : 'full';
   const isolateWorktrees = options.worktrees ?? !(typeof options.cwd === 'string' && options.cwd.trim());
   const explicitCwd = typeof options.cwd === 'string' && options.cwd.trim()
     ? options.cwd.trim()
@@ -803,8 +801,8 @@ export function createRunnerEffector(options = {}) {
           if (!status.installed) throw prerequisiteError('Install or reconnect the configured agent CLI to continue.', [{ kind: 'agent_cli', providerId: model.providerId }]);
         }
       }
-      await loadRolePrompt('builder', promptVariant);
-      await loadRolePrompt('tester', promptVariant);
+      await loadRolePrompt('builder');
+      await loadRolePrompt('tester');
       if (!isolateWorktrees) return;
       if (!boardId || !state) {
         const git = await ensureBoardWorkspaceGit();
@@ -937,7 +935,7 @@ export function createRunnerEffector(options = {}) {
       }
 
       const prompt = interpolatePrompt(
-        await loadRolePrompt(desired.role, promptVariant),
+        await loadRolePrompt(desired.role),
         { cwd: attemptCwd },
       );
       const builtinTools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];

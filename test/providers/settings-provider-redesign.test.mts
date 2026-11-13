@@ -203,6 +203,58 @@ test('custom names get unique IDs, Unicode names get a valid fallback, and manua
   assert.equal(id.value, 'custom-id');
 });
 
+test('custom provider exposes OpenAI v1 and tests the draft before persisting it', async () => {
+  await renderProvidersSettingsSection();
+  document.getElementById('settingsProvidersAddButton')!.click();
+  document.querySelector<HTMLButtonElement>('.settings-providers-add-custom')!.click();
+  const form = document.querySelector<HTMLFormElement>('#settingsProvidersAddForm')!;
+  const kind = form.querySelector<HTMLSelectElement>('[name="apiKind"]')!;
+  const baseUrl = form.querySelector<HTMLInputElement>('[name="baseUrl"]')!;
+  const key = form.querySelector<HTMLInputElement>('[name="apiKey"]')!;
+  const status = form.querySelector<HTMLElement>('[data-provider-draft-connection-status]')!;
+  const testConnection = form.querySelector<HTMLButtonElement>('#settingsProvidersAddTest')!;
+  assert.equal(kind.value, 'openai-v1');
+  assert.equal(kind.closest('details'), null);
+  assert.equal(form.querySelector<HTMLInputElement>('[name="chatCompletionsPath"]')!.value, '/v1/chat/completions');
+  baseUrl.value = 'http://localhost:18772';
+  key.value = 'fixture-key';
+  mutation = async () => json({ modelCount: 1 });
+  testConnection.click();
+  await settle();
+  assert.equal(status.textContent, 'Connected. 1 model available.');
+  const posts = requests.filter((request) => request.method === 'POST');
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].url, '/api/providers/connection/test');
+  assert.deepEqual(JSON.parse(posts[0].body!), {
+    baseUrl: 'http://localhost:18772', apiKind: 'openai-v1', authStyle: 'bearer',
+    modelsPath: '/v1/models', apiKey: 'fixture-key',
+  });
+  kind.value = 'lm-studio-v0';
+  kind.dispatchEvent(new win.Event('change', { bubbles: true }));
+  assert.equal(status.hidden, true);
+  assert.equal(form.querySelector<HTMLInputElement>('[name="modelsPath"]')!.value, '/api/v0/models');
+});
+
+test('editing a draft connection suppresses results from an earlier test', async () => {
+  await renderProvidersSettingsSection();
+  document.getElementById('settingsProvidersAddButton')!.click();
+  document.querySelector<HTMLButtonElement>('.settings-providers-add-custom')!.click();
+  const form = document.querySelector<HTMLFormElement>('#settingsProvidersAddForm')!;
+  const baseUrl = form.querySelector<HTMLInputElement>('[name="baseUrl"]')!;
+  const status = form.querySelector<HTMLElement>('[data-provider-draft-connection-status]')!;
+  const testConnection = form.querySelector<HTMLButtonElement>('#settingsProvidersAddTest')!;
+  let complete!: (response: Response) => void;
+  mutation = async () => new Promise((resolve) => { complete = resolve; });
+  baseUrl.value = 'http://localhost:18772';
+  testConnection.click();
+  baseUrl.value = 'http://localhost:18773';
+  baseUrl.dispatchEvent(new win.Event('input', { bubbles: true }));
+  complete(json({ modelCount: 1 }));
+  await settle();
+  assert.equal(status.hidden, true);
+  assert.equal(testConnection.disabled, false);
+});
+
 test('manual capability checks do not discard unsaved drafts or send probe requests', async () => {
   await renderProvidersSettingsSection();
   const card = openCard();
@@ -288,6 +340,7 @@ test('provider autosave serializes edits, preserves newer drafts, and keeps fail
 
 test('logos use provider identity, including custom names, CLI kinds, and a neutral fallback', () => {
   assert.equal(providerLogoId({ ...connection, id: 'work', label: 'Work API' }), 'openrouter');
+  assert.equal(providerLogoId({ ...connection, id: 'work', label: 'Work API', baseUrl: 'https://api.anthropic.com' }), 'claude');
   assert.equal(providerLogoId({ ...connection, id: 'custom', label: 'Acme', baseUrl: 'https://acme.example' }), null);
   assert.equal(providerLogoId({ ...connection, apiKind: 'agent-cli-v1', id: 'cursor-agent-cli', baseUrl: '' }), 'cursor');
   assert.equal(providerLogoId({ ...connection, baseUrl: 'https://openrouter.ai.evil.example', id: 'custom', label: 'Acme' }), null);

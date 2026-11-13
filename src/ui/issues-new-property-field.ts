@@ -1,16 +1,25 @@
 /**
- * Type and priority pickers for the new-issue form — icon chips with context menus.
+ * Taxonomy pickers shared by New issue and thread capture.
  */
 
-import { sortedPriorities, sortedTypes } from '../issues/taxonomy';
+import {
+  defaultIssuePriorityId,
+  defaultIssueStatusId,
+  defaultIssueTypeId,
+  sortedPriorities,
+  sortedStatuses,
+  sortedTypes,
+  type TaxonomyItem,
+} from '../issues/taxonomy';
 import {
   createIssuePriorityChip,
+  createIssueStatusChip,
   createIssueTypeChip,
+  resolveIssueStatusIcon,
   resolveIssueTypeIcon,
   resolveIssuePriorityIcon,
 } from '../issues/type-icons';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
-import type { IssuePriority, IssueType } from '../types';
 import { createIcon } from './icon';
 import { openIssuesContextMenu } from './issues-context-menu';
 
@@ -99,52 +108,59 @@ function bindPropertyChip(
   });
 }
 
-function paintTypeField(host: HTMLElement, value: IssueType): void {
-  const taxonomy = getIssuesTaxonomySync();
-  const item = taxonomy.types.find((entry) => entry.id === value);
-  const label = item?.label ?? value;
-  const chip = createIssueTypeChip(value, item, { labeled: true });
-  bindPropertyChip(chip, `Type: ${label}`, (anchor) => {
-    openIssuesContextMenu({
-      anchor,
-      restoreFocus: anchor,
-      label: 'Type',
-      items: sortedTypes(taxonomy).map((entry) => ({
-        id: entry.id,
-        label: entry.label,
-        iconClass: resolveIssueTypeIcon(entry.id, entry),
-        onSelect: () => {
-          writeFieldValue(TYPE_FIELD_ID, entry.id);
-          syncNewIssuePropertyFields();
-        },
-      })),
-    });
-  });
-  host.replaceChildren(chip);
-}
+const PROPERTY_FIELDS = {
+  type: {
+    label: 'Type',
+    options: sortedTypes,
+    fallback: defaultIssueTypeId,
+    chip: (id: string, item?: TaxonomyItem) => createIssueTypeChip(id, item, { labeled: true }),
+    icon: resolveIssueTypeIcon,
+  },
+  priority: {
+    label: 'Priority',
+    options: sortedPriorities,
+    fallback: defaultIssuePriorityId,
+    chip: createIssuePriorityChip,
+    icon: resolveIssuePriorityIcon,
+  },
+  status: {
+    label: 'Status',
+    options: sortedStatuses,
+    fallback: defaultIssueStatusId,
+    chip: createIssueStatusChip,
+    icon: resolveIssueStatusIcon,
+  },
+};
 
-function paintPriorityField(host: HTMLElement, value: IssuePriority): void {
+export function paintIssuePropertyField(
+  host: HTMLElement,
+  property: keyof typeof PROPERTY_FIELDS,
+  value: string | undefined,
+  onChange: (value: string) => void,
+): void {
+  const field = PROPERTY_FIELDS[property];
   const taxonomy = getIssuesTaxonomySync();
-  const item = taxonomy.priorities.find((entry) => entry.id === value);
-  const label = item?.label ?? (value === 'none' ? 'None' : value);
-  const chip = createIssuePriorityChip(value, item);
-  bindPropertyChip(chip, `Priority: ${label}`, (anchor) => {
+  const options = field.options(taxonomy);
+  const id = options.find((entry) => entry.id === value)?.id ?? field.fallback(taxonomy);
+  const item = options.find((entry) => entry.id === id);
+  const chip = field.chip(id, item);
+  const restoreFocus = host.contains(document.activeElement);
+  onChange(id);
+  bindPropertyChip(chip, `${field.label}: ${item?.label ?? id}`, (anchor) => {
     openIssuesContextMenu({
       anchor,
       restoreFocus: anchor,
-      label: 'Priority',
-      items: sortedPriorities(taxonomy).map((entry) => ({
+      label: field.label,
+      items: options.map((entry) => ({
         id: entry.id,
         label: entry.label,
-        iconClass: resolveIssuePriorityIcon(entry.id, entry),
-        onSelect: () => {
-          writeFieldValue(PRIORITY_FIELD_ID, entry.id);
-          syncNewIssuePropertyFields();
-        },
+        iconClass: field.icon(entry.id, entry),
+        onSelect: () => paintIssuePropertyField(host, property, entry.id, onChange),
       })),
     });
   });
   host.replaceChildren(chip);
+  if (restoreFocus) chip.focus();
 }
 
 /** Repaint type and priority chips from hidden field values and taxonomy. */
@@ -157,18 +173,6 @@ export function syncNewIssuePropertyFields(): void {
   const priorityHost = document.getElementById(PRIORITY_HOST_ID);
   if (!(typeHost instanceof HTMLElement) || !(priorityHost instanceof HTMLElement)) return;
 
-  const taxonomy = getIssuesTaxonomySync();
-  const typeValue = readFieldValue(TYPE_FIELD_ID, 'task');
-  const priorityValue = readFieldValue(PRIORITY_FIELD_ID, 'none');
-
-  const typeIds = sortedTypes(taxonomy).map((entry) => entry.id);
-  const priorityIds = sortedPriorities(taxonomy).map((entry) => entry.id);
-  const nextType = typeIds.includes(typeValue) ? typeValue : 'task';
-  const nextPriority = priorityIds.includes(priorityValue) ? priorityValue : 'none';
-
-  if (nextType !== typeValue) writeFieldValue(TYPE_FIELD_ID, nextType);
-  if (nextPriority !== priorityValue) writeFieldValue(PRIORITY_FIELD_ID, nextPriority);
-
-  paintTypeField(typeHost, nextType as IssueType);
-  paintPriorityField(priorityHost, nextPriority as IssuePriority);
+  paintIssuePropertyField(typeHost, 'type', readFieldValue(TYPE_FIELD_ID, 'task'), (id) => writeFieldValue(TYPE_FIELD_ID, id));
+  paintIssuePropertyField(priorityHost, 'priority', readFieldValue(PRIORITY_FIELD_ID, 'none'), (id) => writeFieldValue(PRIORITY_FIELD_ID, id));
 }

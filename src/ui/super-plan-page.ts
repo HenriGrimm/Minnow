@@ -114,9 +114,11 @@ class SuperPlanPage {
     this.root.id = SUPER_PLAN_PAGE_ROOT_ID;
     this.root.setAttribute('role', 'region');
     this.root.setAttribute('aria-label', 'Super Plan');
+    const header = el('header', 'sp-stage-header', 'Super Plan');
+    header.dataset.appTitlebar = '';
     const shell = el('div', 'sp-shell');
     shell.append(this.buildRail(), this.mainEl);
-    this.root.append(shell);
+    this.root.append(header, shell);
     this.autoCollapseRailWhenNarrow();
     this.cleanup.push(subscribeSuperPlanSummaries(() => this.scheduleRailRefresh()));
     void this.loadLibrary();

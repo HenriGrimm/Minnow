@@ -483,7 +483,6 @@ function bindTypeModel(model, typeRow, globalSampler) {
  *   getState?: () => import('./types').AgentsState | Promise<import('./types').AgentsState>,
  *   model?: { providerId: string, id: string },
  *   limits?: { maxTurns?: number, wallClockMs?: number },
- *   promptVariant?: 'full' | 'lite',
  *   runTurn?: typeof defaultRunTurn,
  *   deps?: import('../runner/adapters').RunnerDeps,
  *   postChatCompletions?: import('../runner/adapters').PostChatCompletions,
@@ -497,7 +496,6 @@ function bindTypeModel(model, typeRow, globalSampler) {
 export function createSubAgentEffector(options = {}) {
   const parentChatId = options.parentChatId;
   const runTurnFn = options.runTurn ?? defaultRunTurn;
-  const promptVariant = options.promptVariant === 'lite' ? 'lite' : 'full';
   const ask = options.ask === undefined ? null : options.ask;
   const loadConfig = options.loadConfig ?? loadSubAgentFile;
   const getTypeRow = options.getTypeRow ?? getSubAgentTypeRow;
@@ -644,7 +642,6 @@ export function createSubAgentEffector(options = {}) {
         run.type,
         typeRow,
         run.task,
-        promptVariant,
       );
 
       const bound = options.model ?? run.model;

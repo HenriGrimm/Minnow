@@ -29,17 +29,8 @@ describe('plan-reviewer sub-agent prompts', () => {
     assert.match(body, /\*\*blocker\*\*/);
   });
 
-  test('plan-reviewer.lite summarizes contract', async () => {
-    const body = await readPrompt('plan-reviewer.lite.md');
-    assert.ok(body.includes('Pass 2'));
-    assert.ok(body.includes('findings'));
-    assert.match(body, /Empty workspace: Wave 1 is scaffold only/);
-  });
-
   test('shipped map matches greenfield blocker contract', () => {
-    const full = SHIPPED_SUB_AGENT_PROMPTS['plan-reviewer.full'] ?? '';
-    const lite = SHIPPED_SUB_AGENT_PROMPTS['plan-reviewer.lite'] ?? '';
+    const full = SHIPPED_SUB_AGENT_PROMPTS['plan-reviewer'] ?? '';
     assert.match(full, /Empty workspace: Wave 1 is scaffold only/);
-    assert.match(lite, /Empty workspace: Wave 1 is scaffold only/);
   });
 });

@@ -17,6 +17,7 @@ export const COMMAND_TIMEOUT_MS = 30_000;
  * @param {number} [options.timeout]
  * @param {Record<string, string>} [options.env]
  * @param {boolean} [options.shell]
+ * @param {boolean} [options.ignoreStdin]
  * @param {AbortSignal} [options.signal]
  * @param {(text: string) => void} [options.onStdout]
  * @param {(text: string) => void} [options.onStderr]
@@ -30,6 +31,7 @@ export function runProcess(command, args, options = {}) {
     timeout = COMMAND_TIMEOUT_MS,
     env,
     shell = false,
+    ignoreStdin = false,
     onStdout,
     onStderr,
     onSpawn,
@@ -43,6 +45,7 @@ export function runProcess(command, args, options = {}) {
       cwd,
       env: { ...process.env, ...env },
       shell,
+      ...(ignoreStdin ? { stdio: ['ignore', 'pipe', 'pipe'] } : {}),
       windowsHide: true,
       detached: Boolean(signal) && process.platform !== 'win32',
     });

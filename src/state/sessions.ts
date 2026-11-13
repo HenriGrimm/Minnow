@@ -768,14 +768,12 @@ export function chatSummaryToChat(summary: ChatSummary): Chat {
     messageCount: rawMessageCount,
     lastMessagePreview: _lastMessagePreview,
     sortIndex: _sortIndex,
-    historyDigest: _historyDigest,
     ...cold
   } = summary as ChatSummary & Record<string, unknown>;
   if (typeof _lastMessagePreview === 'string' && _lastMessagePreview.trim()) {
     summaryPreviewByChatId.set(summary.id, _lastMessagePreview.trim());
   }
   void _sortIndex;
-  void _historyDigest;
 
   const messageCount =
     typeof rawMessageCount === 'number' && Number.isFinite(rawMessageCount)
@@ -863,6 +861,8 @@ function materializeChatHistory(chat: Chat, messages: Message[], detail: ChatDet
  * terminal row it recorded while the fetch was in flight — wins over the fetch.
  */
 export function applyChatDetail(chat: Chat, detail: ChatDetail): void {
+  if (detail.historyDigest !== undefined) chat.historyDigest = detail.historyDigest;
+  if (detail.historyRewriteRevision !== undefined) chat.historyRewriteRevision = detail.historyRewriteRevision;
   const merge = <T>(fetched: readonly T[], local: readonly T[] | undefined, key: (item: T) => string,
     localWins: (item: T) => boolean): T[] => {
     const byKey = new Map(fetched.map((item) => [key(item), item]));
@@ -2466,6 +2466,12 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
 export function getDurablySavedChatRevision(chatId: string): number | null {
   if (!isServerStorageMode() || !sessionsHydratedFromServer || dirtyChatIds.has(chatId) || deletedChatIds.has(chatId)) return null;
   return chatRevisions.get(chatId) ?? null;
+}
+
+/** A save may have committed before its response reaches this window. */
+export async function waitForPendingChatSave(chatId: string): Promise<number | null> {
+  if (dirtyChatIds.has(chatId)) await inFlightSessionSave;
+  return getDurablySavedChatRevision(chatId);
 }
 
 /** Flush a parent resume or delegation after its transcript is durably saved. */

@@ -1,5 +1,6 @@
 import type { Chat } from '../types';
 import { randomUUID } from '../lib/random-id';
+import { isPairedDevice } from '../api/session-token';
 import type { ChatRequest } from '../../server/chats/contracts';
 import { readInterruptedExecution, retireInterruptedExecution, readManagedChatRequestPage, respondManagedChatRequest } from '../chat/managed-chat-client';
 import { acknowledgeChatViewed } from '../notifications/acknowledge';
@@ -12,10 +13,12 @@ import { getActiveChatMountElement } from './chat-mount';
 import { validateAskQuestionArgs } from '../tools/ask-question-types';
 import { focusAskQuestionModalForChat, isAskQuestionModalOpenForChat, showQuestionCardsModal, syncAskQuestionModalOnDisplayContextChange } from './question-cards-modal';
 import { syncChatItemDotsInDom } from './chat-item-dot';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 interface RequestPanel { request: ChatRequest; element: HTMLElement; form: HTMLFormElement; status: HTMLElement; busy: boolean; stale: boolean; error?: string; }
-interface ChatRequestsView { chatId: string; host: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
+interface ChatRequestsView { chatId: string; host: HTMLElement; mount?: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
 const views = new Map<string, ChatRequestsView>();
+const mountOwners = new WeakMap<HTMLElement, string>();
 let subscriptions: (() => void)[] | undefined;
 
 interface PresentedAction { detail: string; reasons: string[]; risk: 'low' | 'elevated' | 'high'; grant: { key: string; label: string } | null }
@@ -104,7 +107,8 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
     const deny = () => { const note = feedback.value.trim(); void submit(view, panel, note ? { decision: 'deny', feedback: note } : { decision: 'deny' }); };
     feedback.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); deny(); } });
     const actions = document.createElement('div'); actions.className = 'managed-chat-request__actions';
-    const allow = button('Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
+    const graphite = Boolean(view.mount?.closest('#workspaceSplit')?.querySelector('#graphiteThreadHeader:not([hidden])'));
+    const allow = button(graphite ? 'Allow once' : 'Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
     actions.append(allow);
     if (action?.grant && action.risk !== 'high') {
       actions.append(button(`Allow ${action.grant.label} for this chat`, () => void submit(view, panel, { decision: 'allow_chat' })));
@@ -179,7 +183,7 @@ function applyRequests(view: ChatRequestsView, requests: readonly ChatRequest[])
 }
 
 async function refreshView(view: ChatRequestsView, force = false): Promise<void> {
-  if (view.loading && !force) return;
+  if (view.loading && !view.loading.signal.aborted && !force) return;
   view.loading?.abort(); const controller = new AbortController(); view.loading = controller;
   try {
     const page = await readManagedChatRequestPage(view.chatId, { cursor: view.cursor, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) });
@@ -194,6 +198,7 @@ async function refreshView(view: ChatRequestsView, force = false): Promise<void>
       for (const request of requests) if (request.state === 'pending') summary.set(request.requestId, { requestId: request.requestId, kind: request.kind });
       applySharedChatAttention(view.chatId, { agentRequests: requests, agentRequestSummary: [...summary.values()] });
       view.summaryKey = JSON.stringify(chat.agentRequestSummary); syncChatItemDotsInDom();
+      syncHostVisibility(view);
     }
   } catch (error) {
     if (controller.signal.aborted) return;
@@ -228,56 +233,51 @@ function descendants(chat: Chat): Chat[] {
   for (let index = 0; index < queue.length; index++) { const child = queue[index]!; result.push(child); queue.push(...(graph.children.get(child.id) ?? [])); }
   return result;
 }
-function recoveryControls(chatId: string, executionId: string): HTMLElement {
-  const panel = document.createElement('div'), info = document.createElement('p');
+function recoveryControls(chatId: string, executionId: string, needsConfirmation: boolean): HTMLElement {
+  const panel = document.createElement('div');
+  panel.className = 'managed-chat-recovery';
+  const info = document.createElement('p');
   info.setAttribute('role', 'status');
-  info.textContent = 'A tool may have run before the interruption. Check its effects before starting more work.';
-  const inspect = button('Review interrupted work', async () => {
-    inspect.disabled = true;
+  panel.append(info);
+  if (!needsConfirmation) {
+    info.textContent = 'Waiting for interrupted work to stop…';
+    return panel;
+  }
+  const paired = isPairedDevice();
+  const guidance = paired
+    ? 'Confirm the interrupted work has stopped on the host computer to continue.'
+    : 'If the interrupted work has stopped, you can keep any changes and continue this chat.';
+  info.textContent = guidance;
+  if (paired) return panel;
+  const requestId = randomUUID();
+  let review: Awaited<ReturnType<typeof readInterruptedExecution>> | undefined;
+  const continueButton = button('Confirm stopped', async () => {
+    continueButton.disabled = true;
+    info.textContent = 'Getting this chat ready…';
     try {
-      const review = await readInterruptedExecution(chatId);
-      if (!panel.isConnected || review.executionId !== executionId) { inspect.disabled = false; return; }
-      const items = document.createElement('ul');
-      for (const op of review.operations) {
-        const item = document.createElement('li');
-        item.textContent = [op.toolName, op.targets.join(', '), op.logPath, op.receiptId ? 'Host result recorded' : 'Outcome unknown', op.invocationId].filter(Boolean).join(' · ');
-        items.append(item);
+      review ??= await readInterruptedExecution(chatId);
+      if (!panel.isConnected || review.executionId !== executionId) {
+        continueButton.disabled = false;
+        info.textContent = guidance;
+        return;
       }
-      for (const checkpoint of review.checkpoints ?? []) {
-        const item = document.createElement('li');
-        item.textContent = ['Unsettled filesystem checkpoint', checkpoint.checkpointId,
-          checkpoint.cwd, checkpoint.pre?.sha ? `Before: ${checkpoint.pre.sha}` : 'Baseline unavailable'].filter(Boolean).join(' · ');
-        items.append(item);
-      }
-      if (!review.ownerReleased) {
-        info.textContent = 'Restart Minnow to verify the execution has stopped, then review the interrupted work again.';
-        panel.replaceChildren(info, items); return;
-      }
-      const label = document.createElement('label'), note = document.createElement('textarea');
-      label.textContent = 'Verify that the operation has stopped. Check its diff in Source Control or its log in Terminal, then record what you found.';
-      note.maxLength = 2000; label.append(note);
-      const requestId = randomUUID();
-      const retire = button('Record findings and retire attempt', async () => {
-        retire.disabled = true; note.disabled = true;
-        try {
-          await retireInterruptedExecution(chatId, review, requestId, note.value);
-          panel.replaceChildren(info); info.textContent = 'Attempt retired. Start new work from the state you verified.';
-        } catch (error) {
-          note.disabled = false; retire.disabled = false; info.textContent = error instanceof Error ? error.message : 'Recovery failed.';
-          inspect.disabled = false; inspect.textContent = 'Refresh recovery details'; panel.append(inspect);
-        }
-      });
-      retire.disabled = true; note.addEventListener('input', () => { retire.disabled = !note.value.trim(); });
-      info.textContent = review.checkout ? `Inspect the checkout at ${review.checkout}.` : 'Inspect the original checkout.';
-      panel.replaceChildren(info, items, label, retire); note.focus();
-    } catch (error) { inspect.disabled = false; info.textContent = error instanceof Error ? error.message : 'Recovery details unavailable.'; }
+      await retireInterruptedExecution(chatId, review, requestId);
+      continueButton.remove();
+      info.textContent = 'You can continue this chat.';
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Refresh')) review = undefined;
+      continueButton.disabled = false;
+      info.textContent = error instanceof Error ? error.message : 'Could not continue this chat. Try again.';
+    }
   });
-  panel.append(info, inspect); return panel;
+  panel.append(continueButton);
+  return panel;
 }
 function syncControls(chat: Chat, view: ChatRequestsView): void {
   const attention = descendants(chat).filter(child => child.agentRequestSummary?.length);
   let controls = view.host.querySelector<HTMLElement>(':scope > .managed-chat-scopes');
-  const key = JSON.stringify([chat.agentExecution?.executionId, chat.agentExecution?.status, attention.map(item => [item.id, item.agentRequestSummary])]);
+  const execution = chat.agentExecution;
+  const key = JSON.stringify([execution?.executionId, execution?.status, execution?.needsManualRecovery, attention.map(item => [item.id, item.agentRequestSummary])]);
   if (controls?.dataset.key === key) return;
   if (!controls) { controls = document.createElement('div'); controls.className = 'managed-chat-scopes'; view.host.prepend(controls); }
   controls.dataset.key = key; controls.replaceChildren();
@@ -285,22 +285,54 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
     const first = attention[0]!, requestId = first.agentRequestSummary![0]!.requestId;
     controls.append(button(`${attention.length} agent${attention.length === 1 ? '' : 's'} need${attention.length === 1 ? 's' : ''} your attention`, () => void import('../os/chat-launch').then(async module => { await module.launchCodeWithChat(first.id); await focusManagedChatRequest(first.id, requestId); })));
   }
-  if (chat.agentExecution?.status === 'recovery_required') controls.append(recoveryControls(chat.id, chat.agentExecution.executionId));
+  if (execution?.status === 'recovery_required') controls.append(recoveryControls(chat.id, execution.executionId, execution.needsManualRecovery === true));
   controls.hidden = !controls.children.length;
 }
 
+function composerApprovalSlot(mount: HTMLElement): HTMLElement | null {
+  const shared = mount.closest('.shared-chat-host');
+  if (shared) return shared.querySelector('#toolApprovalHost');
+  if (mount.id === 'chatArea') return mount.closest('#mainColumn')?.querySelector('#toolApprovalHost') ?? null;
+  if (mount.id === 'chatAppMessageCol') return mount.closest('#chatView')?.querySelector('#chatAppToolApprovalHost') ?? null;
+  return null;
+}
+
 function syncHostVisibility(view: ChatRequestsView): void {
-  view.host.hidden = ![...view.list.children].some(panel => !(panel as HTMLElement).hidden) && view.notice.hidden && view.pager.hidden && Boolean(view.host.querySelector<HTMLElement>('.managed-chat-scopes')?.hidden);
+  const { host, mount } = view;
+  if (!mount || !mount.isConnected || mountOwners.get(mount) !== view.chatId) return;
+  const scopes = view.host.querySelector<HTMLElement>('.managed-chat-scopes');
+  const hasControls = scopes?.hidden === false;
+  host.hidden = ![...view.list.children].some(panel => !(panel as HTMLElement).hidden) && view.notice.hidden && view.pager.hidden && !hasControls;
+  const hasPendingApproval = findChatById(view.chatId)?.agentRequestSummary?.some(request => request.kind === 'approval')
+    || view.list.querySelector('.managed-chat-request--approval[data-state="pending"]');
+  const slot = !host.hidden && (hasControls || hasPendingApproval) ? composerApprovalSlot(mount) : null;
+  const active = host.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+  host.classList.toggle('managed-chat-requests--docked', Boolean(slot));
+  for (const element of view.list.querySelectorAll<HTMLElement>('.managed-chat-request[data-state]:not([data-state="pending"])')) {
+    element.hidden = Boolean(slot);
+  }
+  if (slot) {
+    if (host.nextElementSibling !== slot) slot.before(host);
+    markPreviewOccluder(host, 'panel');
+  } else {
+    unmarkPreviewOccluder(host);
+    const context = mount.querySelector(':scope > .agent-chat-context');
+    if (context) { if (context.nextElementSibling !== host) context.after(host); }
+    else if (mount.firstElementChild !== host) mount.prepend(host);
+  }
+  if (active?.isConnected && document.activeElement === document.body) active.focus({ preventScroll: true });
 }
 
 /** Mount alongside the common transcript; forms retain draft/focus across history refreshes. */
 export function syncManagedChatRequests(chat: Chat, mount: HTMLElement): void {
+  mountOwners.set(mount, chat.id);
+  const inline = mount.querySelector<HTMLElement>(':scope > .managed-chat-requests');
+  if (inline && inline.dataset.chatId !== chat.id) inline.remove();
+  const docked = composerApprovalSlot(mount)?.previousElementSibling;
+  if (docked instanceof HTMLElement && docked.classList.contains('managed-chat-requests--docked') && docked.dataset.chatId !== chat.id) docked.remove();
   const needed = chat.chatCommandVersion === 1 || chat.agentRequestSummary !== undefined || Boolean(chat.agentRequests?.length) || descendants(chat).some(child => hasUnsettledAgentWork(child));
-  if (!needed) { mount.querySelector(':scope > .managed-chat-requests')?.remove(); return; }
-  const view = getView(chat.id); syncControls(chat, view);
-  const context = mount.querySelector(':scope > .agent-chat-context');
-  if (context) { if (context.nextElementSibling !== view.host) context.after(view.host); }
-  else if (mount.firstElementChild !== view.host) mount.prepend(view.host);
+  if (!needed) { inline?.remove(); return; }
+  const view = getView(chat.id); view.mount = mount; syncControls(chat, view);
   const summaryKey = JSON.stringify(chat.agentRequestSummary ?? []), changed = summaryKey !== view.summaryKey;
   const active = document.activeElement as HTMLElement | null;
   if (chat.agentRequests && !view.loaded) applyRequests(view, chat.agentRequests.slice(0, 40));

@@ -23,15 +23,12 @@ describe('parseRunArgs', () => {
       '.',
       '--mode',
       'build',
-      '--profile',
-      'lite',
     ]);
     assert.equal(parsed.ok, true);
     if (parsed.ok) {
       assert.equal(parsed.options.prompt, 'Say OK');
       assert.equal(parsed.options.workspace, '.');
       assert.equal(parsed.options.modeId, 'build');
-      assert.equal(parsed.options.profile, 'lite');
       assert.equal(parsed.options.noApproval, false);
     }
   });
@@ -44,8 +41,7 @@ describe('parseRunArgs', () => {
     }
   });
 
-  it('rejects invalid profile', () => {
-    const parsed = parseRunArgs(['--prompt', 'x', '--profile', 'bogus']);
-    assert.equal(parsed.ok, false);
+  it('rejects the retired prompt size flag', () => {
+    assert.throws(() => parseRunArgs(['--prompt', 'x', '--profile', 'lite']), { code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
   });
 });

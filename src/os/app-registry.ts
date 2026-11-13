@@ -38,15 +38,6 @@ export const APPS: readonly AppDefinition[] = [
     releaseState: 'released',
   },
   {
-    id: 'home',
-    name: 'Dashboard',
-    icon: 'home',
-    tag: 'Oversee project work',
-    description: 'Plan goals, dispatch issues to agents, review work, and merge changes',
-    availability: 'core',
-    releaseState: 'released',
-  },
-  {
     id: 'source-control',
     name: 'Source Control',
     icon: 'sourceControl',
@@ -213,7 +204,6 @@ type AppModuleLoader = () => Promise<{ init: () => void | Promise<void> }>;
 
 /** Dynamic import entry points for each Minnow app page bundle. */
 export const APP_MODULE_LOADERS: Partial<Record<AppId, AppModuleLoader>> = {
-  home: () => import('../ui/home-page').then((m) => ({ init: m.initHomePage })),
   settings: () => import('../ui/settings-page').then((m) => ({ init: m.initSettingsPage })),
   bench: () => import('../ui/benchmark-page').then((m) => ({ init: m.initBenchmarkPage })),
   compare: () => import('../ui/compare-page').then((m) => ({ init: m.initComparePage })),

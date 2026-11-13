@@ -10,7 +10,7 @@ import os from 'node:os';
 import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { handleConfigRequest } from '../../server/config/middleware.js';
-import { handlePromptRequest } from '../../server/prompt-configs/middleware.js';
+import { handlePromptRequest } from '../../server/prompts/middleware.js';
 
 function setTestHome(env) {
   resetMinnowHomeCache();
@@ -80,7 +80,7 @@ describe('prompt builtin baseline API', () => {
 
     const normal = await httpGet(
       baseUrl,
-      '/api/prompts/modes/build/prompt?profile=full',
+      '/api/prompts/modes/build/prompt',
     );
     assert.equal(normal.status, 200);
     assert.equal(normal.json.source, 'override');
@@ -88,11 +88,17 @@ describe('prompt builtin baseline API', () => {
 
     const builtin = await httpGet(
       baseUrl,
-      '/api/prompts/modes/build/prompt?profile=full&baseline=builtin',
+      '/api/prompts/modes/build/prompt?baseline=builtin',
     );
     assert.equal(builtin.status, 200);
     assert.equal(builtin.json.source, 'builtin');
     assert.ok(!builtin.json.content.includes('USER OVERRIDE ONLY'));
     assert.ok(builtin.json.content.length > 20);
+  });
+  test('rejects requests for a legacy variant without changing the canonical prompt', async () => {
+    const path = '/api/prompts/modes/build/prompt';
+    const retired = await httpGet(baseUrl, path + '?profile=lite');
+    assert.equal(retired.status, 400);
+    assert.equal((await httpGet(baseUrl, path)).status, 200);
   });
 });

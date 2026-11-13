@@ -14,7 +14,7 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   font-family: var(--font-ui);
   font-size: 14px;
@@ -128,7 +128,8 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 7px 10px;
+  min-height: var(--mn-density-nav-row);
+  padding: calc(7px + var(--mn-density-step)) 10px;
   font: inherit;
   font-size: 13px;
   color: var(--mn-fg-muted);
@@ -791,7 +792,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   gap: 8px;
   align-items: center;
   padding: 10px var(--models-gutter);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   border-bottom: 1px solid var(--mn-border);
 }
 
@@ -929,7 +930,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   top: var(--models-toolbar-h, 51px);
   z-index: 1;
   min-height: 30px;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   border-bottom: 1px solid var(--mn-border);
 }
 
@@ -1019,7 +1020,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
 }
 
 .models-row {
-  min-height: 52px;
+  min-height: calc(52px + 2 * var(--mn-density-step));
   text-align: left;
   cursor: pointer;
   border-bottom: 1px solid var(--mn-border);
@@ -2359,8 +2360,8 @@ html:not(.minnow-os-enabled) .models-page.is-open {
 
   .models-row {
     grid-template-columns: minmax(0, 1fr) auto;
-    min-height: 48px;
-    padding: 10px var(--models-gutter);
+    min-height: calc(48px + 2 * var(--mn-density-step));
+    padding: calc(10px + var(--mn-density-step)) var(--models-gutter);
   }
 
   .models-row__cell {
@@ -3215,7 +3216,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   color: var(--mn-success-ink);
 }
 .discover-fit--warning {
-  color: var(--mn-warning-ink);
+  color: var(--mn-warning);
 }
 .discover-fit--unknown {
   color: var(--mn-fg-muted);
@@ -3228,7 +3229,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   padding: 25px 22px;
   overflow: hidden;
   border-left: 1px solid var(--mn-border);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
 }
 .discover-pick__copy > .discover-model-identity {
   margin: 5px 0 10px;
@@ -3372,7 +3373,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   position: sticky;
   bottom: 0;
   z-index: 2;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   border-top: 1px solid var(--mn-border-strong);
 }
 .discover-downloads summary {

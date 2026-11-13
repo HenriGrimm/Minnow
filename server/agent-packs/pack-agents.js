@@ -78,10 +78,6 @@ export function workAgentsFromPackManifest(manifest, packRoot) {
       packRoot,
       promptPaths: {
         full: String(entry.prompts.full),
-        lite:
-          entry.prompts.lite !== undefined && entry.prompts.lite !== null
-            ? String(entry.prompts.lite)
-            : undefined,
       },
     });
   }

@@ -98,73 +98,17 @@
   overflow: hidden;
 }
 
-.chat-sidebar-header {
+.chat-sidebar-title {
   display: flex;
   min-height: var(--mn-code-header-height);
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--mn-border);
+  padding: 10px 16px 8px;
   flex-shrink: 0;
-}
-
-/* Search + new group: one bordered cluster, secondary to the New chat button */
-.chat-sidebar-header-actions {
-  display: inline-flex;
-  align-items: stretch;
-  flex-shrink: 0;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--mn-surface-1);
-}
-
-.chat-sidebar-header-actions .icon-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: var(--mn-fg-muted);
-}
-
-/* Search glyph reads heavy at the default 18px inside the compact header cluster */
-#btnChatSearch .icon-svg {
-  --mn-icon-size: 16px;
-}
-
-.chat-sidebar-header-actions .icon-btn + .icon-btn {
-  border-left: 1px solid var(--mn-border);
-}
-
-.chat-sidebar-header-actions .icon-btn[aria-current='page'] {
-  background: var(--mn-accent-soft);
-  color: var(--mn-accent);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .chat-sidebar-header-actions .icon-btn:hover {
-    background: var(--mn-surface-elevated);
-    color: var(--mn-fg);
-    border-color: transparent;
-  }
-
-  .chat-sidebar-header-actions .icon-btn[aria-current='page']:hover {
-    background: var(--mn-accent-soft);
-    color: var(--mn-accent);
-  }
-}
-
-.chat-sidebar-title {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--mn-fg-muted);
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
 }
 
 .chat-new-wide {
@@ -266,7 +210,7 @@
   padding: 4px 8px 2px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--mn-text-muted);
+  color: var(--mn-fg-muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: default;
@@ -279,7 +223,7 @@
   padding: 0;
   color: inherit;
   cursor: pointer;
-  font-size: 9px;
+  font-size: var(--mn-type-2xs);
   line-height: 1;
 }
 
@@ -576,7 +520,7 @@
 
 /* Group member: name only; status rolls up to .chat-group-header__dot. */
 .chat-item-row.chat-item-row--in-group {
-  padding: 2px 8px;
+  padding: calc(2px + var(--mn-density-step)) 8px;
 }
 
 .chat-item-row.chat-item-row--in-group .chat-item-name {
@@ -778,7 +722,7 @@
   padding: 4px 6px;
   background: var(--mn-bg);
   border: 1px solid var(--mn-accent);
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
   color: var(--mn-fg);
   font-family: 'JetBrains Mono', monospace;
   outline: none;
@@ -881,103 +825,6 @@
  * Working / Archive switch sits at the bottom.
  */
 
-/* Header: project (opens the switcher), bare icon actions, then the branch. */
-.chat-sidebar-header {
-  border-bottom: 0;
-  padding: 10px 8px 8px;
-}
-
-.chat-sidebar-header-actions {
-  gap: 2px;
-  margin-inline-start: auto;
-  border: 0;
-  background: transparent;
-}
-
-.chat-sidebar-header-actions .icon-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
-}
-
-.chat-sidebar-header-actions .icon-btn + .icon-btn {
-  border-left: 0;
-}
-
-.chat-sidebar-header-actions .icon-btn .icon-svg {
-  --mn-icon-size: 15px;
-}
-
-.chat-sidebar-branch {
-  display: inline-flex;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  height: 30px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--mn-fg);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.chat-sidebar-branch[hidden],
-.chat-sidebar-title[hidden] {
-  display: none;
-}
-
-/* Outside git the old title holds the slot, aligned with the rows below. */
-.chat-sidebar-header > .chat-sidebar-title {
-  padding-inline-start: 8px;
-}
-
-.chat-sidebar-branch > .icon-svg {
-  --mn-icon-size: 13px;
-  flex-shrink: 0;
-  color: var(--mn-accent-ink, var(--mn-accent));
-}
-
-.chat-sidebar-branch__name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-sidebar-branch__sync,
-.chat-sidebar-branch__changed {
-  flex-shrink: 0;
-  color: var(--mn-fg-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.chat-sidebar-branch__sync:empty,
-.chat-sidebar-branch__changed:empty {
-  display: none;
-}
-
-/* "· 3 changed" reads as part of the same instrument line. */
-.chat-sidebar-branch__changed::before {
-  content: '· ';
-  color: var(--mn-fg-subtle);
-}
-
-.chat-sidebar-branch:focus-visible {
-  outline: 2px solid var(--mn-accent);
-  outline-offset: 1px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .chat-sidebar-branch:hover {
-    background: var(--mn-surface-elevated);
-  }
-}
-
 /* Sections: quiet uppercase label, optional "Archive N finished" on the right. */
 .chat-list-section-head {
   justify-content: flex-start;
@@ -1014,7 +861,7 @@
 .chat-item-row {
   display: flex;
   align-items: center;
-  min-height: 30px;
+  min-height: var(--mn-density-nav-row);
   padding: 0 8px;
   border-color: transparent;
 }
@@ -1209,7 +1056,17 @@
   font-size: 12px;
 }
 
-/* Git state on the right edge. */
+/* Reserve the same space for Git status and the hover/focus action. */
+.chat-item-trailing {
+  display: grid;
+  flex: none;
+  align-items: center;
+  justify-items: end;
+}
+
+.chat-item-trailing > * { grid-area: 1 / 1; }
+.chat-item-trailing:has(> .chat-item-git[hidden]:only-child) { display: none; }
+
 .chat-item-git {
   display: inline-flex;
   flex-shrink: 0;
@@ -1245,7 +1102,8 @@
 
 /* Archive / Restore: replaces the git state while the row is hovered or focused. */
 .chat-item-archive {
-  display: none;
+  display: inline-flex;
+  visibility: hidden;
   flex-shrink: 0;
   align-items: center;
   gap: 5px;
@@ -1267,11 +1125,11 @@
 }
 
 .chat-item-row:focus-within .chat-item-archive {
-  display: inline-flex;
+  visibility: visible;
 }
 
-.chat-item-row:focus-within .chat-item-git {
-  display: none;
+.chat-item-row:focus-within .chat-item-git:has(+ .chat-item-archive) {
+  visibility: hidden;
 }
 
 .chat-item-archive:focus-visible {
@@ -1281,11 +1139,11 @@
 
 @media (hover: hover) and (pointer: fine) {
   .chat-item-row:hover .chat-item-archive {
-    display: inline-flex;
+    visibility: visible;
   }
 
-  .chat-item-row:hover .chat-item-git {
-    display: none;
+  .chat-item-row:hover .chat-item-git:has(+ .chat-item-archive) {
+    visibility: hidden;
   }
 
   .chat-item-archive:hover,
@@ -1854,10 +1712,6 @@
 }
 
 @media (pointer: coarse) {
-  .chat-item-row {
-    min-height: 44px;
-  }
-
   .chat-list-view,
   .chat-list-section-action,
   .needs-you-card__option,

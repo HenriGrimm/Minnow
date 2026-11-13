@@ -23,7 +23,11 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 **Startup & setup** controls desktop tray behavior and launch at startup. It also links to common settings and lets you run setup again.
 
-**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, eight theme families with dark and light variants, fonts, and custom colors. Changes apply immediately. In a browser, use the browser's zoom controls.
+**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, fonts, and colors. Choose **Dark**, **Light**, or **System** mode. Select an **Accent color** swatch or choose **Custom…** to use the color picker or enter a hex value. Drag the **Surface tint** slider from 0% to 100% to adjust how much of the accent reaches backgrounds and selections. In a browser, use the browser's zoom controls.
+
+Choose **Advanced colors → Edit colors…** to change individual interface colors. Select an element, set its color and opacity, then apply your changes. You can reset individual colors, pause your overrides, or import and export a palette under **Palette options**.
+
+**Density** adjusts spacing in sidebars, menus, chats, and lists. **Compact** fits more on screen, **Cozy** is the default, and **Roomy** adds more space between items. Text size is set separately.
 
 **Notifications** controls desktop notifications and sound packs. The menubar **Activity** dropdown keeps live work and session outcomes visible even when alerts are muted or disabled. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
 
@@ -31,7 +35,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 ### Code & workspace
 
-**GitHub** connects your github.com account for pull requests, CI checks, and GitHub issue sync. Select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow verifies the account and displays your username. You can cancel and retry an unfinished sign-in. The same optional step appears during first-run setup.
+**GitHub** connects your github.com account for pull requests, CI checks, and GitHub issue sync. Select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow verifies the account and displays your username. You can cancel and retry an unfinished sign-in.
 
 If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select **Check again**. Existing CLI logins are detected automatically. GitHub CLI manages credentials; Minnow does not store another GitHub token. Accounts supplied through `GH_TOKEN` or `GITHUB_TOKEN` are identified as environment-managed. Repository remotes and Git's existing credential setup remain separate from account sign-in.
 
@@ -41,7 +45,7 @@ If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select
 
 ### AI & agents
 
-**Models & connections** opens Models. **Agents** configures shared prompt profiles, composer modes, work agents, sub-agent types, and context policy. **Chat context** chooses the default Brain notes, code map, and project documents added to chats. **Rules** manages standing instructions.
+**Models & connections** opens Models. **Agents** configures the shared system prompt, work agents, sub-agent types, and context policy. **Chat context** chooses the default Brain notes, code map, and project documents added to chats. **Rules** manages standing instructions.
 
 **Tools** configures structured arguments, tool loading, caching, and result size. The global permission mode governs all agent actions.
 
@@ -67,7 +71,7 @@ File and git tools stay inside open workspaces by default. See [Tools and permis
 
 ### About & troubleshooting
 
-**About** shows version, runtime, storage, and startup diagnostics. **Updates** checks for new builds and controls the update channel. **Health & diagnostics** shows subsystem health, captured errors, local logs, and a redacted report you can copy.
+**About** shows version, runtime, storage, and startup diagnostics. **Updates** checks Minnow and installed CLI providers. The **Updates** button beside Settings shows how many updates are available and opens a popover with versions and actions. When the sidebar is open, both buttons are at its bottom. Minnow downloads desktop updates in the background and waits for you to restart. CLI updates start when you select **Update** and show their result in the app. In Settings, choose **Stable** or **Beta** for Minnow releases. **Health & diagnostics** shows subsystem health, captured errors, local logs, and a redacted report you can copy.
 
 ## Where settings are stored
 

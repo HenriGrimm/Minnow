@@ -1,164 +1,43 @@
-/* Menubar update pill + popover (MIN-384). Hidden unless downloading or ready. */
-
-/* :not([hidden]) so the slot's flex display never overrides the hidden attribute
-   (an empty pill would otherwise sit in the header in dev/unsupported states). */
-.mn-os-mb-update-slot:not([hidden]) {
-  display: flex;
-  align-items: center;
-}
-
-.mn-os-mb-update-pill {
-  height: 24px;
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--mn-border);
-  border-radius: 12px;
-  background: var(--os-surface-2);
-  color: var(--os-text-dim);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: 0.14s var(--os-ease);
-}
-
-.mn-os-mb-update-pill:hover,
-.mn-os-mb-update-pill.is-open {
-  color: var(--os-text);
-}
-
-.mn-os-mb-update-pill.is-ready {
+.mn-os-mb-update-slot:not([hidden]) { display: flex; align-items: center; flex: none; }
+.mn-os-mb-update-pill { position: relative; }
+.mn-os-mb-update-pill.has-updates { color: var(--mn-accent-ink); }
+.mn-os-mb-update-count:not([hidden]) {
+  position: absolute;
+  inset: 1px 0 auto auto;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--mn-radius-pill);
   background: var(--mn-accent);
-  border-color: var(--mn-accent);
-  color: var(--mn-bg);
-  font-weight: 600;
+  color: var(--mn-fg-on-accent);
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 750;
+  pointer-events: none;
 }
 
-.mn-os-mb-update-pill.is-ready:hover,
-.mn-os-mb-update-pill.is-ready.is-open {
-  background: color-mix(in oklch, var(--mn-accent) 88%, var(--mn-fg));
-  color: var(--mn-bg);
-}
-
-.mn-os-mb-update-pill:focus-visible {
-  outline: 2px solid var(--mn-accent);
-  outline-offset: 1px;
-}
-
-/* Popover — mirrors .mn-os-notif-menu chrome */
-.mn-os-update-menu {
-  position: fixed;
-  z-index: 55;
-  width: min(22rem, calc(100vw - 1rem));
-  padding: 14px 16px;
-  background: var(--mn-menu-bg);
-  border: 1px solid var(--mn-menu-border);
-  border-radius: var(--mn-menu-radius);
-  box-shadow: var(--mn-menu-shadow);
-  color: var(--mn-fg);
-}
-
-.mn-os-update-menu__title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.mn-os-update-menu__lead {
-  margin: 0 0 12px;
-  font-size: 12.5px;
-  color: var(--mn-fg-muted);
-}
-
-.mn-os-update-menu__notes-title {
-  margin: 0 0 5px;
-  color: var(--mn-fg-subtle);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.mn-os-update-menu__notes {
-  margin: 0 0 12px;
-  padding-left: 17px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--mn-fg-muted);
-}
-
-.mn-os-update-menu__note {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.mn-os-update-menu__note + .mn-os-update-menu__note {
-  margin-top: 4px;
-}
-
-.mn-os-update-menu__warning {
-  margin: 0 0 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--mn-border);
-  font-size: 11.5px;
-  color: var(--mn-fg-muted);
-}
-
-.mn-os-update-menu__actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.mn-os-update-menu__restart,
-.mn-os-update-menu__later {
-  min-height: 32px;
-  padding: 5px 13px;
-  font-size: 12.5px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--mn-border);
-  background: var(--mn-surface-2);
-  color: var(--mn-fg);
-  cursor: pointer;
-}
-
-.mn-os-update-menu__restart {
-  background: var(--mn-accent);
-  border-color: var(--mn-accent);
-  color: var(--mn-bg);
-  font-weight: 600;
-}
-
-.mn-os-update-menu__restart:hover {
-  background: color-mix(in oklch, var(--mn-accent) 88%, var(--mn-fg));
-}
-
-.mn-os-update-menu__later:hover {
-  background: color-mix(in srgb, var(--mn-fg) 6%, var(--mn-surface-2));
-}
-
-.mn-os-update-menu__settings {
+.mn-os-update-menu.mn-popover {
+  width: min(380px, calc(100vw - 16px));
+  max-width: none;
+  max-height: min(calc(100dvh - 76px), 540px);
   padding: 0;
-  border: none;
-  background: none;
-  font-size: 12px;
-  color: var(--mn-accent);
-  cursor: pointer;
 }
 
-.mn-os-update-menu__settings:hover {
-  text-decoration: underline;
+.updates-popover__header { padding: 12px 14px; }
+.updates-popover .updates-list {
+  border-radius: 0;
+  border-inline: 0;
 }
-
-.mn-os-update-menu__restart:focus-visible,
-.mn-os-update-menu__later:focus-visible,
-.mn-os-update-menu__settings:focus-visible {
-  outline: 2px solid var(--mn-accent);
-  outline-offset: 1px;
+.updates-popover .updates-row { padding-block: 9px; }
+.updates-popover .updates-row__status { margin-top: 3px; }
+.updates-popover__footer { display: flex; justify-content: flex-end; padding: 10px 14px; }
+.updates-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

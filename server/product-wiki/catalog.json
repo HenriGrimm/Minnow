@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "d83d7bc4f9be681a3d808c6753104ddd57c1596b247c692e1334833c6c1909c5"
+      "hash": "7c16da0ab873e38370c7ab18bcc505c13618f083c5e817d567ecd38b9f338d1e"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -34,7 +34,7 @@
         "Next"
       ],
       "section": "Get started",
-      "hash": "3244fe69e330f89c46620e442d7d9885d3c8669a383557f10f05d640be96ec75"
+      "hash": "633f5178ab543473a65b695b0d49ed049ffaa9b401d24a9d955a13e08acd5781"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -46,7 +46,7 @@
         "Ollama",
         "Serve a model inside Minnow",
         "Cloud APIs",
-        "Agent CLIs",
+        "Subscriptions",
         "Choosing the model for a turn",
         "Routing: which model does what",
         "Model routers",
@@ -55,7 +55,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "3c920a35a31a35c52965536d57d9ecdf629949b44bb71b258902a0046d0290e4"
+      "hash": "5eefb0848c174b164ed30fd11c1b18e5e347b0a2646ca1b04aac1fefb798af7e"
     },
     {
       "path": "documentation/manual/get-started/costs-and-providers.md",
@@ -85,7 +85,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "392bce26f272067ea3d188eb98c051206ad604441ed38edc4be10412b99c1c38"
+      "hash": "392e04d3afd82c76234359ae375a37b5a13e7df2c0922a5cafd43a8e2ab517ed"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "17925cfaec192ad3e3b532000ee6de5073bd53e9a3fa9526990a4de8e1bf2069"
+      "hash": "2e6107ca677069898b3aa592f7508cd5a8653957c7d25827077e14a1ed96db4a"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -142,7 +142,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "0ac167a1a1fc204a5ff71695ac479e23dabb440b36bb616bfeee28301108a710"
+      "hash": "ed0f7b91587d337711384781bfd1de202318c2fe1c14f552e2643399c2344f6b"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -155,12 +155,12 @@
         "Saving a memory",
         "What belongs in memory",
         "Rules",
-        "Prompt profiles",
+        "System prompt",
         "Recall",
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "3b73dfe1afd131b0181b48276f5334d7f6772ba245b997984ce92a1bae92f344"
+      "hash": "5880588b5d86d66a4751a9e79ec8699ba4f1bdde53842172ff6f702845cb6210"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -180,7 +180,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "cc58a17163270ee460811598548d258e8e7383d3c592212a7db0cde4a8cf0f9c"
+      "hash": "d5d99ee5115af20d90eafa3b0c99aa823ac7b56620631f38891e9fea6f7a597d"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -198,15 +198,14 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "02abc4b3dfdb130b7d1a34b9114aa793d51eb995ca484b0fe254a5042d3b44c7"
+      "hash": "ff9b4c1bc2e02cb37764be298a99eb0237f5d3ac76e63c71e0d6c6da003f1c74"
     },
     {
       "path": "documentation/manual/apps/overview.md",
       "title": "Apps overview",
-      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Dashboard, Source Control, Mo",
+      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. The left rail opens Source Control,",
       "headings": [
         "Code",
-        "Dashboard",
         "The supporting surfaces",
         "Source Control history",
         "Models",
@@ -218,7 +217,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "7d20dc74dc75377ad1174492b6f418ee129c493246b8c7c6ddee52faa5e085d5"
+      "hash": "ee58e31469c3c6c73bc6f2723f1de04612cfe08a4f3f823ab14e3e1d58891e3d"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -244,12 +243,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "8b8d2e60e6aa181139cbe88ed608e6c4921e1f24d142d9a9c998452bc6b92495"
+      "hash": "94462fea66661cf6ad7aa9f3a9b8815f5bd78ebc2f23ebb4542bb24df767863e"
     },
     {
       "path": "documentation/manual/apps/brain.md",
       "title": "Brain",
-      "summary": "Brain is Minnow's memory, and it is not a black box. It is a wiki of markdown pages in a folder on your disk that you can read, edit, delete and back up. The assistant searches and writes it with tools; you curate it. Open it from the app rail. It fills the main stage like the ot",
+      "summary": "Brain is Minnow's memory, and it is not a black box. It is a wiki of markdown pages in a folder on your disk that you can read, edit, delete and back up. The assistant searches and writes it with tools; you curate it. Open it from the app rail to see the graph with no page select",
       "headings": [
         "The sections",
         "Reading the graph",
@@ -262,7 +261,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "127eec4f3b36b371fb7524c248e9f01ec0e76557184d3b1c11df552544cb3608"
+      "hash": "130d29ebd8c96d414c28ab29cf3651edc536fc8e55a1890faf65839318a20996"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -275,7 +274,7 @@
         "MLX on Apple Silicon",
         "MTPLX on Apple Silicon",
         "Providers",
-        "CLIs",
+        "Subscriptions",
         "Account usage",
         "Routing",
         "Model pools",
@@ -288,7 +287,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "d50280f879c72c1851a7207aa1a6cfcfed27afd9795114b8bce438fc3f56b8d5"
+      "hash": "906f7c01ab6bf027c0ec3448546209b0ed8715bf5deac01b41b85f95cc797c73"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -306,7 +305,7 @@
         "Models for issue chats"
       ],
       "section": "Apps",
-      "hash": "f9d6b979172e2ee75b99f84fb7fd1ef64f2fb6b776995f52c08412532ebd0143"
+      "hash": "16fe7d1d8fa7d9a68b2ea2440e297140afe77d633ae59ecb8b5dfda53370b2d4"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -343,7 +342,7 @@
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "6a97f179c1618272bd692996e7f74454918c328322ec643e5a32981fcdea6812"
+      "hash": "4155de09869deb43a1003c9e6a108afff019590170d95e163935f826b2615b21"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -425,7 +424,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "cfc840a43bdd4e8c95320f7d22098abba35003b0fcdc212913d86a25fd51f1ae"
+      "hash": "ffd1d25c412f98ac62e8ea278bf3dfcc765c7fa2527b8c2822f67a73a9744303"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
@@ -434,6 +433,7 @@
       "headings": [
         "Shell",
         "Chat",
+        "Thread surfaces",
         "Code editor",
         "File tree",
         "Terminal",
@@ -445,7 +445,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "260fefbc2deff050632b361e4b16dfea3b64388bc8beff11f85f16b49d07d43b"
+      "hash": "59c2a274fb53f763bc5d7c80f982c7dadf858479ff1765aaa03b762790fec32a"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
@@ -461,7 +461,7 @@
         "Model selections and shared pools"
       ],
       "section": "Reference",
-      "hash": "cfe06de88673565560b9e2acb47b260e5e1e09d5c3272faa1c8885d7d64a1c81"
+      "hash": "6ed052305a911527a1a05b4caf48b45952031dfb45c8cae40690f514c232470f"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -558,10 +558,11 @@
         "Application runtime (representative)",
         "Material Icon Theme",
         "Uicons (Flaticon)",
+        "Geist and Geist Mono",
         "Provider logos"
       ],
       "section": "Legal",
-      "hash": "bd8fee840fac9dcd0e0b7a40beb294c4658facad99335e1dc763d217094ed753"
+      "hash": "3314f4b7526e771cc2abf670a78e01c1141f6e040b9570c4ea3440af4947df2f"
     },
     {
       "path": "documentation/manual/plugins.md",
@@ -594,27 +595,14 @@
         "Questions and approvals",
         "Stop work",
         "Messages between chats",
-        "Review interrupted work",
+        "Continue after an interruption",
         "Saved history and older tasks",
         "Checkouts, deletion and backups",
         "Continue from the CLI",
         "Related"
       ],
       "section": "Chat",
-      "hash": "34382d49e5f95805be9fd45e082fd7b3bef43d6b0fc8af40061582356493a000"
-    },
-    {
-      "path": "documentation/manual/apps/home.md",
-      "title": "Dashboard",
-      "summary": "Dashboard runs your project's issues through Triage , Ready , In Progress , Review , and Done . It uses the same issues, chats, models, and worktrees as Code and Issues. Change an issue's status using the status dropdown on its card or in the issue workspace header. The menu incl",
-      "headings": [
-        "Capture and plan",
-        "Send issues to agents",
-        "Review in the dock",
-        "Refresh"
-      ],
-      "section": "Apps",
-      "hash": "d76df538c4c9673b6a4d39aa00db5b74b82e9df1d291e5ac3324fe8513e740ce"
+      "hash": "b9fa6faa596465747350a5a4ebc3d36c4f9e9659a442e591ee375c0a5beab54c"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",

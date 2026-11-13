@@ -57,6 +57,11 @@ import {
   isCodeAppForeground,
 } from './preview-restore-policy';
 import { showToast } from './toast';
+import {
+  isGraphiteIndependentBrowser, refreshGraphiteSurfaceLayout, requestGraphiteSurface,
+  showGraphiteContent, usesGraphiteContentTabs,
+} from './surfaces/surface-bridge';
+import type { SurfacePanel } from './surfaces/surface-state';
 import { attachBrowserUrlSuggest, toggleBrowserHistoryPopover } from './browser-url-suggest';
 import { bindPreviewBrowserMenu, closePreviewBrowserMenu } from './preview-browser-menu';
 import { disableDesignMode, enableDesignMode, isDesignModeEnabled, getDesignModeSession, refreshDesignModeArmedToolGuest, relocateDesignModeStrip } from '../design/design-mode';
@@ -1044,26 +1049,28 @@ function applySourceToPreview(source: PreviewSource, cacheBust?: number, tabId?:
 
 export async function activatePreviewTabGuest(
   tabId: string,
-  options?: { forceLoad?: boolean; slot?: PaneSlotId },
+  options?: {
+    forceLoad?: boolean; slot?: PaneSlotId; panel?: SurfacePanel;
+    fromSurface?: boolean; isCurrent?: () => boolean;
+  },
 ): Promise<void> {
-  activatePreviewTab(tabId);
-  const { showPreviewSplit } = await import('./file-layout');
-  const split = await import('./right-pane-split');
-  const splitLayout = split.isRightPaneSplitLayoutEnabled();
-
-  const slotTabs = await import('./right-pane-slot-tabs');
-  const targetSlot = splitLayout
-    ? slotTabs.registerPreviewTabOpened(tabId, options?.slot)
-    : 'primary';
-  if (splitLayout) split.focusPaneSlot(targetSlot);
-  showPreviewSplit({ tabId, slot: targetSlot });
-
-  if (splitLayout && targetSlot === 'secondary') {
-    const tab = getPreviewTab(tabId);
-    if (!tab) return;
-    const { renderSecondaryPreviewSlot } = await import('./preview-secondary-slot');
-    await renderSecondaryPreviewSlot(tabId);
-    return;
+  if (!options?.fromSurface) {
+    const ready = showGraphiteContent('preview', tabId, options?.forceLoad, options?.panel);
+    if (ready) return ready;
+  }
+  if (!activatePreviewTab(tabId)) return;
+  if (!options?.fromSurface) {
+    const split = await import('./right-pane-split');
+    const splitLayout = split.isRightPaneSplitLayoutEnabled() && !isGraphiteIndependentBrowser();
+    const slotTabs = await import('./right-pane-slot-tabs');
+    const targetSlot = splitLayout ? slotTabs.registerPreviewTabOpened(tabId, options?.slot) : 'primary';
+    if (splitLayout) split.focusPaneSlot(targetSlot);
+    showPreviewSplit({ tabId, slot: targetSlot });
+    if (splitLayout && targetSlot === 'secondary') {
+      const { renderSecondaryPreviewSlot } = await import('./preview-secondary-slot');
+      await renderSecondaryPreviewSlot(tabId);
+      return;
+    }
   }
 
   showActiveTabFrame();
@@ -1090,12 +1097,15 @@ export async function activatePreviewTabGuest(
   if (usesElectronPreview() && api) {
     if (api.tabs?.create) {
       const listed = await api.tabs.list();
+      if (options?.isCurrent?.() === false) return;
       if (!listed.some((t) => t.id === tabId)) {
         await api.tabs.create(tabId);
       }
     }
+    if (options?.isCurrent?.() === false) return;
     if (api.tabs?.activate) {
       await api.tabs.activate(tabId);
+      if (options?.isCurrent?.() === false) return;
       if (!loadedTabGuests.has(tabId) || forceLoad) {
         if (tab.source) {
           await loadSourceInPreview(tab.source, undefined, tabId);
@@ -1124,22 +1134,34 @@ export async function activatePreviewTabGuest(
   }
 }
 
-async function openPreviewTabFromUi(source?: PreviewSource | null): Promise<void> {
+async function openPreviewTabFromUi(
+  source?: PreviewSource | null, panel?: SurfacePanel, isCurrent?: () => boolean,
+): Promise<string | undefined> {
+  if (isCurrent?.() === false) return;
   let opened = openPreviewTabWithCapacity(source ?? null);
   if (!opened.tab && opened.evictedId) {
     await closePreviewTabUi(opened.evictedId);
+    if (isCurrent?.() === false) return;
     opened = openPreviewTabWithCapacity(source ?? null, { evict: false });
   }
   if (!opened.tab) {
     showToast('Tab limit reached (6 max). Close a tab to open another.', 'error');
     return;
   }
-  await activatePreviewTabGuest(opened.tab.id, { forceLoad: true });
+  await activatePreviewTabGuest(opened.tab.id, { forceLoad: true, panel });
+  return opened.tab.id;
 }
 
-async function openNewPreviewTabUi(): Promise<void> {
-  await openPreviewTabFromUi(null);
-  getUrlInput()?.focus();
+export async function openNewPreviewTabUi(
+  source: PreviewSource | null = null, panel?: SurfacePanel, isCurrent?: () => boolean,
+): Promise<void> {
+  const id = await openPreviewTabFromUi(source, panel, isCurrent);
+  if (!id || source || isCurrent?.() === false) return;
+  const input = usesGraphiteContentTabs()
+    ? document.getElementById(`graphitePanel-${encodeURIComponent(`preview:${id}`)}`)
+      ?.querySelector<HTMLInputElement>('.preview-url')
+    : getUrlInput();
+  input?.focus();
 }
 
 export async function closePreviewTabUi(tabId: string): Promise<void> {
@@ -1154,7 +1176,11 @@ export async function closePreviewTabUi(tabId: string): Promise<void> {
     const api = getPreviewApi();
     const instanceId = owningSlot ? split.previewInstanceIdForSlot(owningSlot) : undefined;
     if (api?.tabs?.close) {
-      await api.tabs.close(tabId, instanceId);
+      if (usesGraphiteContentTabs()) {
+        await Promise.all([api.tabs.close(tabId), api.tabs.close(tabId, split.WORKSPACE_PREVIEW_SECONDARY_INSTANCE)]);
+      } else {
+        await api.tabs.close(tabId, instanceId);
+      }
     } else {
       await clearPreviewGuest(tabId);
     }
@@ -1162,6 +1188,11 @@ export async function closePreviewTabUi(tabId: string): Promise<void> {
   destroyPreviewFrame(tabId);
   clearLoadedTabGuest(tabId);
   closePreviewTab(tabId);
+  if (usesGraphiteContentTabs()) {
+    refreshGraphiteSurfaceLayout();
+    scheduleElectronPreviewHostVisibilitySync();
+    return;
+  }
   slotTabs.unregisterPreviewTab(tabId);
   split.collapseEmptySlots();
 
@@ -1205,6 +1236,15 @@ export async function revealPreviewPanelForAgentNavigation(
 ): Promise<void> {
   const trimmed = url.trim();
   if (!trimmed) return;
+  if (usesGraphiteContentTabs() && canAgentRevealPreviewPanel()) {
+    const tabId = requestedTabId?.trim() || ensureDefaultPreviewTab().id;
+    const ready = showGraphiteContent('preview', tabId);
+    if (ready) {
+      await ready;
+      updatePreviewTabSource(tabId, { kind: 'url', url: trimmed });
+      return;
+    }
+  }
 
   const desktopHosted = false;
   if (!(await dismissFileViewerForPreview())) {
@@ -1255,6 +1295,10 @@ async function applyAgentPreviewNavigation(
 export async function openUrlInPreviewPanel(url: string): Promise<void> {
   const trimmed = url.trim();
   if (!trimmed || !HTTP_URL_RE.test(trimmed)) return;
+  if (usesGraphiteContentTabs()) {
+    await openPreviewTabFromUi({ kind: 'url', url: trimmed });
+    return;
+  }
   if (!(await dismissFileViewerForPreview())) return;
 
   const api = getPreviewApi();
@@ -1285,9 +1329,14 @@ export async function openUrlInPreviewPanel(url: string): Promise<void> {
 }
 
 /** Open the preview panel with an optional initial source. */
-export async function openPreviewPanel(source?: PreviewSource | null): Promise<void> {
-  if (!(await dismissFileViewerForPreview())) return;
-  showPreviewSplit();
+export async function openPreviewPanel(source?: PreviewSource | null, options?: { fromSurface?: boolean }): Promise<void> {
+  if (usesGraphiteContentTabs()) {
+    if (source) await openPreviewTabFromUi(source);
+    else await activatePreviewTabGuest(ensureDefaultPreviewTab().id);
+    return;
+  }
+  if (!options?.fromSurface && !(await dismissFileViewerForPreview())) return;
+  showPreviewSplit(options);
   const resolved = source ?? getActivePreviewSource();
   const tabId = getActivePreviewTabId() ?? ensureDefaultPreviewTab().id;
 
@@ -1328,6 +1377,7 @@ export async function openPreviewPanel(source?: PreviewSource | null): Promise<v
 export function closePreviewPanel(): void {
   cancelDeferredPreviewLoad();
   clearFrameBlockedTimer();
+  if (requestGraphiteSurface('preview', 'hide')) return;
   collapseRightPane();
 }
 
@@ -1339,6 +1389,10 @@ export function isActivePreviewGuestLoaded(): boolean {
 
 /** Collapse the preview split on Code app entry without discarding previewSource (MIN-342). */
 export function collapsePreviewPanelKeepingSource(): void {
+  if (usesGraphiteContentTabs()) {
+    refreshGraphiteSurfaceLayout();
+    return;
+  }
   resetRightSplitForCodeEntry();
   cancelDeferredPreviewLoad();
   clearLoadedTabGuest();
@@ -1354,6 +1408,7 @@ export function collapsePreviewPanelKeepingSource(): void {
 
 /** Toggle preview panel using last source or empty address bar. */
 export function togglePreviewPanel(): void {
+  if (requestGraphiteSurface('preview', 'toggle')) return;
   const state = getFilePanelState();
   // Collapsed pane already showing browser tabs: just reopen it.
   if (
@@ -1488,7 +1543,7 @@ function onPreviewReloadSettled(): void {
 
 function onWorkspaceFileSaved(path: string): void {
   const state = getFilePanelState();
-  if (!state.previewAutoReload || state.rightPaneMode !== 'preview') return;
+  if (!state.previewAutoReload || !(usesGraphiteContentTabs() ? isPreviewPaneDomVisible() : state.rightPaneMode === 'preview')) return;
   const activeSource = getActivePreviewSource();
   if (!activeSource || activeSource.kind !== 'workspace') return;
   if (!pathsMatchForReload(path, activeSource.path)) return;
@@ -1650,12 +1705,14 @@ function bindPreviewControls(): void {
         { id: 'previewAutoReload', label: 'Auto-reload saved files' },
         { id: 'btnPreviewDevToolsDock', label: () => getDevToolsDockButton()?.title ?? 'Dock DevTools' },
         { id: 'btnPreviewPaneSplit', label: 'Split right' },
+        { id: 'btnAgentBrowserViewer', label: 'Open Agent Browser' },
       ],
       address: () => {
         const source = getActivePreviewSource();
         return source ? sourceToAddressBar(source) : '';
       },
       onClose: scheduleElectronPreviewHostVisibilitySync,
+      onNewTab: () => void openPreviewTabFromUi(null),
     },
   );
 
@@ -1755,7 +1812,7 @@ async function restorePreviewPanelFromPrefs(): Promise<void> {
 /** Re-attach the Electron guest (or iframe) after the preview pane is visible again. */
 export function resyncOpenPreviewPanelFromState(options?: { reload?: boolean }): void {
   const state = getFilePanelState();
-  if (state.rightPaneMode !== 'preview') return;
+  if (state.rightPaneMode !== 'preview' && !isGraphiteIndependentBrowser()) return;
   if (!isPreviewPaneDomVisible()) return;
   if (isCodeAppForeground() && !shouldAutoRestorePreviewPanel()) return;
 

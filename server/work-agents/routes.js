@@ -134,8 +134,11 @@ export async function handleWorkAgentsRequest(req, res, pathname, search) {
       assertValidWorkAgentId(agentId);
 
       const params = new URLSearchParams(search);
-      const profile = params.get('profile') === 'lite' ? 'lite' : 'full';
       const baselineBuiltin = params.get('baseline') === 'builtin';
+      if (params.has('profile') && params.get('profile') !== 'full') {
+        sendJson(res, 400, { error: 'Prompt variants are no longer supported' });
+        return true;
+      }
 
       if (req.method === 'GET') {
         const agent = await getWorkAgentById(PROJECT_ROOT, agentId);
@@ -144,26 +147,28 @@ export async function handleWorkAgentsRequest(req, res, pathname, search) {
           return true;
         }
         const result = baselineBuiltin
-          ? await readBuiltinWorkAgentPrompt(PROJECT_ROOT, agentId, profile)
-          : await readWorkAgentPrompt(PROJECT_ROOT, agentId, profile);
+          ? await readBuiltinWorkAgentPrompt(PROJECT_ROOT, agentId)
+          : await readWorkAgentPrompt(PROJECT_ROOT, agentId);
         sendJson(res, 200, result);
         return true;
       }
 
       if (req.method === 'PUT') {
         const body = await readJsonBody(req);
-        const writeProfile = body.profile === 'lite' ? 'lite' : 'full';
+        if (body.profile !== undefined && body.profile !== 'full') {
+          sendJson(res, 400, { error: 'Prompt variants are no longer supported' });
+          return true;
+        }
         const content = typeof body.content === 'string' ? body.content : '';
-        await writeWorkAgentPromptOverride(agentId, writeProfile, content);
-        workAgentPromptOverridePath(agentId, writeProfile);
-        const result = await readWorkAgentPrompt(PROJECT_ROOT, agentId, writeProfile);
+        await writeWorkAgentPromptOverride(agentId, content);
+        const result = await readWorkAgentPrompt(PROJECT_ROOT, agentId);
         sendJson(res, 200, result);
         return true;
       }
 
       if (req.method === 'DELETE') {
         const { unlink } = await import('node:fs/promises');
-        const overridePath = workAgentPromptOverridePath(agentId, profile);
+        const overridePath = workAgentPromptOverridePath(agentId);
         try {
           const { invalidateNativePolicyBeforeWrite } = await import('../chats/native-policy-monitor.js');
           invalidateNativePolicyBeforeWrite('work-agents');
@@ -172,7 +177,7 @@ export async function handleWorkAgentsRequest(req, res, pathname, search) {
           sendJson(res, 404, { error: 'No override to remove' });
           return true;
         }
-        const result = await readWorkAgentPrompt(PROJECT_ROOT, agentId, profile);
+        const result = await readWorkAgentPrompt(PROJECT_ROOT, agentId);
         sendJson(res, 200, result);
         return true;
       }

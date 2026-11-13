@@ -4,9 +4,19 @@
  * packaged Electron binds a new loopback port per launch, so the choice vanished.
  */
 
-const THEME_FAMILIES = ['swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint'];
+import {
+  DEFAULT_APPEARANCE_FONT_ID,
+  DEFAULT_COLOR_INTENSITY,
+  DEFAULT_THEME_FAMILY,
+  DEFAULT_THEME_ID,
+  THEME_FAMILIES,
+  normalizeAppearanceDensity,
+  normalizeColorIntensity,
+  normalizeGraphiteAccent,
+} from '../../src/lib/appearance-choices.mjs';
+
 const THEME_MODES = ['dark', 'light'];
-const THEME_ID_RE = /^(swamp|desert|ocean|coral|mono|matrix|human|mint)-(dark|light)$/;
+const THEME_ID_RE = new RegExp(`^(${THEME_FAMILIES.join('|')})-(dark|light)$`);
 
 const CORE_THEME_TOKEN_KEYS = [
   'bg',
@@ -43,8 +53,8 @@ const MAX_FONT_NAME_CHARS = 80;
 const MAX_ASSET_ID_CHARS = 128;
 
 const DEFAULT_FONTS = {
-  ui: { kind: 'preset', slot: 'ui', id: 'system' },
-  mono: { kind: 'preset', slot: 'mono', id: 'system' },
+  ui: { kind: 'preset', slot: 'ui', id: DEFAULT_APPEARANCE_FONT_ID },
+  mono: { kind: 'preset', slot: 'mono', id: DEFAULT_APPEARANCE_FONT_ID },
 };
 
 /** Empty persisted blob — `updatedAt` null means the file has never been saved. */
@@ -53,8 +63,12 @@ export function defaultAppearanceConfig() {
     version: 1,
     chatView: 'compact',
     followSystem: false,
-    family: 'swamp',
-    themeId: 'swamp-dark',
+    family: DEFAULT_THEME_FAMILY,
+    themeId: DEFAULT_THEME_ID,
+    colorIntensity: DEFAULT_COLOR_INTENSITY,
+    graphiteAccent: 'teal',
+    density: 'cozy',
+    reduceMotion: false,
     customEnabled: false,
     customAdvanced: false,
     customTokens: {},
@@ -75,12 +89,12 @@ function isThemeId(value) {
 }
 
 function familyFromThemeId(themeId) {
-  if (!isThemeId(themeId)) return 'swamp';
+  if (!isThemeId(themeId)) return DEFAULT_THEME_FAMILY;
   return themeId.slice(0, themeId.lastIndexOf('-'));
 }
 
 function composeThemeId(family, mode) {
-  const fam = isThemeFamily(family) ? family : 'swamp';
+  const fam = isThemeFamily(family) ? family : DEFAULT_THEME_FAMILY;
   const resolvedMode = THEME_MODES.includes(mode) ? mode : 'dark';
   return `${fam}-${resolvedMode}`;
 }
@@ -122,7 +136,7 @@ function normalizeFontRef(raw, slot) {
       familyName: familyName || `MinnowCustom${slot}`,
     };
   }
-  const id = typeof raw.id === 'string' ? raw.id.trim().slice(0, 64) : 'system';
+  const id = typeof raw.id === 'string' ? raw.id.trim().slice(0, 64) : DEFAULT_APPEARANCE_FONT_ID;
   if (!id || /[<>]/.test(id)) return fallback;
   return { kind: 'preset', slot, id };
 }
@@ -155,10 +169,10 @@ export function normalizeAppearanceConfig(raw) {
     : null;
 
   // Explicit theme id wins when not following the OS; family wins when following.
-  let family = 'swamp';
-  let themeId = 'swamp-dark';
+  let family = base.family;
+  let themeId = base.themeId;
   if (followSystem) {
-    family = rawFamily ?? (rawThemeId ? familyFromThemeId(rawThemeId) : 'swamp');
+    family = rawFamily ?? (rawThemeId ? familyFromThemeId(rawThemeId) : DEFAULT_THEME_FAMILY);
     const mode = rawThemeId && rawThemeId.endsWith('-light') ? 'light' : 'dark';
     themeId = composeThemeId(family, mode);
   } else if (rawThemeId) {
@@ -176,6 +190,10 @@ export function normalizeAppearanceConfig(raw) {
     followSystem,
     family,
     themeId,
+    colorIntensity: normalizeColorIntensity(row.colorIntensity),
+    graphiteAccent: normalizeGraphiteAccent(row.graphiteAccent),
+    density: normalizeAppearanceDensity(row.density),
+    reduceMotion: row.reduceMotion === true,
     chatView: row.chatView === 'full' ? 'full' : 'compact',
     customEnabled: row.customEnabled === true,
     customAdvanced: row.customAdvanced === true,
@@ -196,13 +214,16 @@ export function appearanceLooksPersisted(state) {
   if (state.chatView === 'full') return true;
   if (state.updatedAt) return true;
   if (state.followSystem) return true;
-  if (state.themeId && state.themeId !== 'swamp-dark') return true;
-  if (state.family && state.family !== 'swamp') return true;
+  if (state.themeId && state.themeId !== DEFAULT_THEME_ID) return true;
+  if (state.family && state.family !== DEFAULT_THEME_FAMILY) return true;
+  if (normalizeColorIntensity(state.colorIntensity) !== DEFAULT_COLOR_INTENSITY) return true;
+  if (state.graphiteAccent && state.graphiteAccent !== 'teal') return true;
+  if ((state.density && state.density !== 'cozy') || state.reduceMotion) return true;
   if (state.customEnabled) return true;
   if (state.customTokens && Object.keys(state.customTokens).length > 0) return true;
   const fonts = state.fonts;
-  if (fonts?.ui && (fonts.ui.kind !== 'preset' || fonts.ui.id !== 'system')) return true;
-  if (fonts?.mono && (fonts.mono.kind !== 'preset' || fonts.mono.id !== 'system')) return true;
+  if (fonts?.ui && (fonts.ui.kind !== 'preset' || fonts.ui.id !== DEFAULT_APPEARANCE_FONT_ID)) return true;
+  if (fonts?.mono && (fonts.mono.kind !== 'preset' || fonts.mono.id !== DEFAULT_APPEARANCE_FONT_ID)) return true;
   return false;
 }
 
@@ -217,6 +238,10 @@ export function appearanceBootPayload(state) {
     chatView: normalized.chatView,
     family: normalized.family,
     themeId: normalized.themeId,
+    colorIntensity: normalized.colorIntensity,
+    graphiteAccent: normalized.graphiteAccent,
+    density: normalized.density,
+    reduceMotion: normalized.reduceMotion,
     customEnabled: normalized.customEnabled,
     customAdvanced: normalized.customAdvanced,
     customTokens: normalized.customTokens,

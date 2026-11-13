@@ -7,7 +7,6 @@ import path from 'node:path';
 import { ensureMinnowLayout, getMinnowHome } from '../config/home.js';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
 import { mergeConfigMeta, normalizeWorkspacePath } from '../config/validators.js';
-import { listPromptConfigs, loadPromptConfigFile } from '../prompt-configs/handlers.js';
 import { validateProfileBundle } from './validate.js';
 import {
   applyProfileBundle,
@@ -229,45 +228,6 @@ export async function importProfileBundle(body, mode = 'create') {
   }
 
   return saveProfileFile(validated.bundle);
-}
-
-/**
- * One-shot migration from prompt-configs/*.json into profiles/.
- */
-export async function migrateFromPromptConfigs() {
-  const configs = await listPromptConfigs();
-  const migrated = [];
-
-  for (const item of configs) {
-    const cfg = await loadPromptConfigFile(item.id);
-    if (!cfg) continue;
-
-    const bundle = {
-      id: item.id,
-      label: cfg.label ?? item.id,
-      schemaVersion: 1,
-      meta: {
-        description: 'Migrated from prompt-config',
-        createdAt: cfg.meta?.createdAt ?? new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      prompt: {
-        promptProfile: 'custom',
-        activePromptConfigId: item.id,
-        activeInfoPresetId: 'general-assistant',
-        planGranularity: 'medium',
-        source: 'embedded',
-        parts: cfg.parts ?? {},
-      },
-      agents: { workAgents: {}, subAgents: {} },
-      tools: {},
-    };
-
-    await saveProfileFile(bundle);
-    migrated.push(item.id);
-  }
-
-  return { ok: true, migrated };
 }
 
 /**

@@ -11,9 +11,12 @@ import {
   type CronPattern,
   type ScheduleUiState,
 } from '../../scheduler/schedule-display';
+import { nextComponentId } from '../components/internal';
 
 export interface ScheduleFieldMount {
   root: HTMLElement;
+  kindId: string;
+  invalidControl: () => HTMLElement;
   getState: () => ScheduleUiState;
   setState: (schedule: { kind: 'interval' | 'cron'; value: string }) => void;
   refreshPreview: () => void;
@@ -47,6 +50,7 @@ export function mountScheduleField(
 
   const kindRow = el('div', 'scheduler-schedule-kind-row');
   const kindSelect = el('select', 'settings-select scheduler-schedule-kind') as HTMLSelectElement;
+  kindSelect.id = nextComponentId('scheduler-schedule-kind');
   for (const option of SCHEDULE_KIND_OPTIONS) {
     const opt = el('option', undefined, option.label) as HTMLOptionElement;
     opt.value = option.value;
@@ -58,6 +62,7 @@ export function mountScheduleField(
   const intervalPanel = el('div', 'scheduler-schedule-panel scheduler-schedule-panel--interval');
   const intervalInput = el('input', 'scheduler-input scheduler-schedule-interval') as HTMLInputElement;
   intervalInput.type = 'text';
+  intervalInput.setAttribute('aria-label', 'Interval');
   intervalInput.placeholder = '5m';
   intervalInput.setAttribute('inputmode', 'text');
   intervalInput.setAttribute('autocomplete', 'off');
@@ -69,6 +74,7 @@ export function mountScheduleField(
 
   const cronPanel = el('div', 'scheduler-schedule-panel scheduler-schedule-panel--cron hidden');
   const patternSelect = el('select', 'settings-select scheduler-cron-pattern') as HTMLSelectElement;
+  patternSelect.setAttribute('aria-label', 'Repeat pattern');
   for (const option of CRON_PATTERN_OPTIONS) {
     const opt = el('option', undefined, option.label) as HTMLOptionElement;
     opt.value = option.value;
@@ -112,8 +118,11 @@ export function mountScheduleField(
   cronPanel.appendChild(weekRow);
 
   const customBlock = el('div', 'scheduler-cron-custom hidden');
-  customBlock.appendChild(el('span', 'scheduler-field__label', 'Cron expression'));
+  const customLabel = el('label', 'scheduler-field__label', 'Cron expression');
+  customBlock.appendChild(customLabel);
   const customInput = el('input', 'scheduler-input scheduler-cron-custom-input') as HTMLInputElement;
+  customInput.id = nextComponentId('scheduler-cron-expression');
+  customLabel.htmlFor = customInput.id;
   customInput.type = 'text';
   customInput.placeholder = '0 9 * * 1-5';
   customInput.setAttribute('spellcheck', 'false');
@@ -168,16 +177,21 @@ export function mountScheduleField(
 
   function syncCronPanels(): void {
     const pattern = ui.cron.pattern;
-    timeRow.classList.toggle('hidden', pattern === 'hourly' || pattern === 'custom');
-    minuteRow.classList.toggle('hidden', pattern !== 'hourly');
-    weekRow.classList.toggle('hidden', pattern !== 'weekly');
-    customBlock.classList.toggle('hidden', pattern !== 'custom');
+    setPanelHidden(timeRow, pattern === 'hourly' || pattern === 'custom');
+    setPanelHidden(minuteRow, pattern !== 'hourly');
+    setPanelHidden(weekRow, pattern !== 'weekly');
+    setPanelHidden(customBlock, pattern !== 'custom');
+  }
+
+  function setPanelHidden(panel: HTMLElement, hidden: boolean): void {
+    panel.hidden = hidden;
+    panel.classList.toggle('hidden', hidden);
   }
 
   function syncKindPanels(): void {
     const isInterval = ui.kind === 'interval';
-    intervalPanel.classList.toggle('hidden', !isInterval);
-    cronPanel.classList.toggle('hidden', isInterval);
+    setPanelHidden(intervalPanel, !isInterval);
+    setPanelHidden(cronPanel, isInterval);
   }
 
   function refreshPreview(): void {
@@ -265,6 +279,13 @@ export function mountScheduleField(
 
   return {
     root,
+    kindId: kindSelect.id,
+    invalidControl: () => {
+      if (ui.kind === 'interval') return intervalInput;
+      if (ui.cron.pattern === 'custom') return customInput;
+      if (ui.cron.pattern === 'weekly') return dayToggleInputs[0] ?? patternSelect;
+      return patternSelect;
+    },
     getState: () => structuredClone(ui),
     setState: (schedule) => {
       ui = scheduleToUi(schedule);

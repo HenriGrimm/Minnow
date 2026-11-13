@@ -171,7 +171,6 @@ function installRunnerFactory(opts = {}) {
     lastEffector = createRunnerEffector({
       boardId,
       ...(isolateWorktrees ? { worktrees: true } : { cwd: sandbox }),
-      promptVariant: 'lite',
       limits: { maxTurns: 8, wallClockMs: 25_000 },
       model: MODEL,
       ...(isolateWorktrees ? { runFinalLadder: skipFinalLadder } : {}),

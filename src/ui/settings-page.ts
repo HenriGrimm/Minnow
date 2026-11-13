@@ -1,16 +1,16 @@
 import '../styles/settings-page.css';
 import '../styles/settings-agent-center.css';
+import '../styles/settings-graphite.css';
 
-import { loadPromptMetaSettings, savePromptMetaSettings } from '../config/prompt-meta';
+import { isPairedDevice } from '../api/session-token';
 import { detectLocalServer } from '../tools/client';
 import { refreshSettingsSection } from './settings-sections';
+import { disposeAppUpdatesSettings } from './settings-updates';
 import {
   initSettingsPromptEstimate,
   refreshPromptTokenEstimate,
-  schedulePromptTokenEstimateRefresh,
 } from './settings-prompt-estimate';
 import { setStatus } from './status';
-import type { PromptProfile } from '../chat/prompts/types';
 import {
   SETTINGS_CATEGORY_AREAS,
   SETTINGS_CATEGORIES,
@@ -50,7 +50,8 @@ import { resolveSettingsSectionNavigation } from './settings-section-navigation'
 import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import { getCurrentRoute, launchApp, navigateToDesktop } from '../os/router';
 import type { LaunchOptions } from '../os/types';
-import { isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { isShellOverlayTopmost, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { initGraphiteSettingsPresentation } from './settings-graphite';
 
 export type { SettingsSectionId, SettingsCategoryId } from './settings-page-types';
 export { categoryForArea } from './settings-page-types';
@@ -196,8 +197,13 @@ export function setActiveArea(
   area: SettingsSectionId,
   options?: { searchKey?: string; skipHash?: boolean },
 ): void {
+  if (area === 'devices' && isPairedDevice() && document.getElementById('mobileShell')) {
+    void import('../mobile/devices').then(({ openPhoneDevice }) => openPhoneDevice());
+    return;
+  }
   const resolved = resolveSettingsSectionNavigation(area, options?.searchKey);
   area = resolved.sectionId;
+  if (area !== 'updates') disposeAppUpdatesSettings();
   options = { ...options, searchKey: resolved.searchKey };
   activeArea = area;
   const category = categoryForArea(area);
@@ -266,6 +272,7 @@ function setActiveIntegrationsHub(hubId: SettingsIntegrationsHubId): void {
   const firstArea = hubDef?.areas[0];
   if (!firstArea) return;
 
+  disposeAppUpdatesSettings();
   activeArea = firstArea;
   activeCategory = 'integrations';
 
@@ -312,23 +319,6 @@ function bindStaticSections(): void {
     launchApp('models', { modelsSection: 'providers' });
   });
 
-  const tabs = document.querySelectorAll('[data-profile-tab]');
-  tabs.forEach((tab) => {
-    const el = tab as HTMLButtonElement;
-    el.addEventListener('click', async () => {
-      const profile = el.dataset.profileTab as PromptProfile;
-      await savePromptMetaSettings({ activePromptProfile: profile });
-      tabs.forEach((t) =>
-        (t as HTMLButtonElement).classList.toggle(
-          'is-active',
-          (t as HTMLButtonElement).dataset.profileTab === profile,
-        ),
-      );
-      await refreshSettingsSection('agent-center');
-      schedulePromptTokenEstimateRefresh();
-    });
-  });
-
   document.querySelectorAll('[data-area-jump]').forEach((link) => {
     link.addEventListener('click', (event) => {
       event.preventDefault();
@@ -347,17 +337,6 @@ function bindStaticSections(): void {
         | undefined;
       if (hub) setActiveIntegrationsHub(hub);
     });
-  });
-}
-
-async function hydrateStaticFields(): Promise<void> {
-  const meta = await loadPromptMetaSettings();
-  document.querySelectorAll('[data-profile-tab]').forEach((tab) => {
-    const el = tab as HTMLButtonElement;
-    el.classList.toggle(
-      'is-active',
-      el.dataset.profileTab === meta.activePromptProfile,
-    );
   });
 }
 
@@ -420,15 +399,28 @@ export function openSettings(
   section?: SettingsSectionId,
   options?: { searchKey?: string; phoneList?: boolean },
 ): void {
+  const root = getSettingsRoot();
+  const inPhoneHost = Boolean(root?.closest('.m-native-app-host'));
   const modelsSection = section
     ? modelsSectionForSettingsArea(section)
     : undefined;
   if (modelsSection) {
-    launchApp('models', { modelsSection });
+    if (document.getElementById('mobileShell')) {
+      void import('../mobile/apps').then(m => m.openPhoneApp('models', { modelsSection }));
+    }
+    else launchApp('models', { modelsSection });
     return;
   }
 
-  if (isOsEmbedded()) {
+  if (!inPhoneHost && document.getElementById('mobileShell')) {
+    void import('../mobile/apps').then(m => m.openPhoneApp('settings', {
+      settingsSection: section,
+      settingsSearchKey: options?.searchKey,
+    }));
+    return;
+  }
+
+  if (isOsEmbedded() && !inPhoneHost) {
     const foreground = getForegroundAppId();
     if (foreground !== 'settings') {
       launchApp('settings', osEmbeddedSettingsLaunchOptions(section, options));
@@ -436,7 +428,6 @@ export function openSettings(
     }
   }
 
-  const root = getSettingsRoot();
   const shell = getChatShell();
   if (!root || !shell) return;
 
@@ -458,7 +449,7 @@ export function openSettings(
     clearSettingsPageFilter();
   }
 
-  openShellOverlay('settings', () => closeSettings());
+  if (!inPhoneHost) openShellOverlay('settings', () => closeSettings());
   root.classList.add('is-open');
   syncSettingsOsWindowChrome();
   requestAnimationFrame(() => syncSettingsOsWindowChrome());
@@ -474,7 +465,6 @@ export function openSettings(
   upgradeSettingsCheckboxes();
   bindStaticSections();
   initSettingsPromptEstimate();
-  void hydrateStaticFields();
   void detectLocalServer().then(() => refreshPromptTokenEstimate());
 
   const resolvedSection = section
@@ -514,6 +504,7 @@ export function openSettings(
 
 /** Close settings and return to Code, the window stack, or desktop. */
 export function closeSettings(options?: { skipNavigate?: boolean }): void {
+  disposeAppUpdatesSettings();
   shellOverlayClosed('settings');
   if (!options?.skipNavigate && isOsEmbedded() && closeSettingsAndReturnToCaller()) {
     return;
@@ -581,6 +572,7 @@ export function initSettingsPage(): void {
   pageInitialized = true;
 
   const root = getSettingsRoot();
+  if (root) initGraphiteSettingsPresentation(root);
   if (root && isOsEmbedded()) {
     root.classList.add('settings-page--os-embedded');
   }
@@ -603,7 +595,7 @@ export function initSettingsPage(): void {
 
   initSettingsMobileNav();
   document.addEventListener('keydown', (event) => {
-    if (event.defaultPrevented || event.key !== 'Escape' || !isShellOverlayOpen('settings')) return;
+    if (event.defaultPrevented || event.key !== 'Escape' || !isShellOverlayTopmost('settings')) return;
     event.preventDefault();
     closeSettings();
     document.querySelector<HTMLElement>('[data-shell-overlay="settings"]')?.focus();
@@ -644,7 +636,9 @@ export function navigateToSettingsField(searchKey: string, area?: SettingsSectio
   const targetArea = area ?? entry?.area ?? 'general';
   const modelsSection = modelsSectionForSettingsArea(targetArea);
   if (modelsSection) {
-    launchApp('models', { modelsSection });
+    if (document.getElementById('mobileShell')) {
+      void import('../mobile/apps').then(m => m.openPhoneApp('models', { modelsSection }));
+    } else launchApp('models', { modelsSection });
     return;
   }
   openSettings(targetArea, { searchKey: entry?.key ?? searchKey });

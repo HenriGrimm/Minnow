@@ -62,7 +62,6 @@ export interface CreateRunnerEffectorOptions {
   model?: TurnModel;
   cwd?: string;
   limits?: { maxTurns?: number; wallClockMs?: number };
-  promptVariant?: 'full' | 'lite';
   runTurn?: (options: RunTurnOptions) => Promise<TurnResult>;
   /**
    * test seam.

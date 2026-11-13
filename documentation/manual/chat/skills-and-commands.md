@@ -24,7 +24,7 @@ The `/ask` and `/plan` limits are enforced when each tool runs, not just request
 
 ## Skills
 
-A skill is a `SKILL.md` file: a short front matter block and a body of instructions. Sending `/skill-name` loads those instructions and pins the skill on the chat for subsequent turns.
+A skill is a `SKILL.md` file with a short front matter block and a body of instructions. Sending `/skill-name` loads those instructions for the current turn. `/caveman` and `/partymode` also pin themselves for subsequent turns. To remove any pinned skill, select **×** beside its name in the composer.
 
 Agents can also choose relevant skills during requested work with **Load skill**. The tool discovers enabled skills, loads their instructions, and reads bundled text references. It does not pin a skill or execute its steps; the agent uses its existing tools and permissions to follow the workflow. Skills marked `disable-model-invocation: true` remain available through explicit slash invocation and are excluded from agent discovery.
 

@@ -63,7 +63,7 @@ export const themeStep: OnboardingStep = {
     const cleanupZoom = mountDesktopZoomControl(zoomMount);
 
     const themeMount = el('div', 'mn-onboarding-appearance-theme');
-    appendThemeControls(themeMount, {
+    const cleanupTheme = appendThemeControls(themeMount, {
       onChange: (state) => {
         actions.patchContext({
           themeMode: state.followSystem ? 'system' : state.mode,
@@ -75,7 +75,10 @@ export const themeStep: OnboardingStep = {
 
     actions.setPrimaryLabel('Continue');
     actions.setPrimaryEnabled(true);
-    return cleanupZoom;
+    return () => {
+      cleanupTheme();
+      cleanupZoom();
+    };
   },
 
   commit(ctx) {

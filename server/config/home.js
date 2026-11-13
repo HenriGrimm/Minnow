@@ -72,7 +72,6 @@ const SCAFFOLD_DIRS = [
   'providers',
   'mcp',
   'lsp',
-  'prompt-configs',
   'profiles',
   'prompts',
   'skills',
@@ -110,8 +109,6 @@ const DEFAULT_META = {
   localStorageKeysMigrated: [],
   layoutVersion: 1,
   activeProviderId: 'lm-studio-local',
-  activePromptProfile: 'full',
-  activePromptConfigId: null,
   activeInfoPresetId: 'general-assistant',
   flaticonIconGuidanceEnabled: true,
   localModelGuidance: 'auto',
@@ -213,7 +210,6 @@ const DEFAULT_META = {
   memory: {
     enabled: true,
     maxInjectCharsFull: 8000,
-    maxInjectCharsLite: 800,
     retrieveLimit: 20,
     defaultTags: [],
     embeddings: {

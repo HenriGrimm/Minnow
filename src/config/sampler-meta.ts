@@ -8,7 +8,7 @@ import {
   SAMPLER_NEUTRAL,
   type SamplerPreset,
 } from '../agents/sampler-types';
-import { detectConfigServer } from './storage-mode';
+import { detectConfigServer, readConfigMeta } from './storage-mode';
 
 /** Persisted global sampler defaults (main chat baseline). */
 export interface SamplerGlobalMeta extends SamplerPreset {
@@ -82,10 +82,8 @@ function writeLocalSamplerMeta(config: SamplerGlobalMeta): void {
 }
 
 async function fetchSamplerFromServer(): Promise<SamplerGlobalMeta> {
-  const res = await fetch('/api/config/meta', { cache: 'no-store' });
-  if (!res.ok) return readLocalSamplerMeta();
-  const meta = (await res.json()) as Record<string, unknown>;
-  return parseSamplerGlobalBlock(meta.sampler);
+  const meta = await readConfigMeta();
+  return meta ? parseSamplerGlobalBlock(meta.sampler) : readLocalSamplerMeta();
 }
 
 /** Load global sampler meta (cached until reset). */

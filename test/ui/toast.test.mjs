@@ -18,6 +18,16 @@ afterEach(() => {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('toast', () => {
+  test('phone toasts mount in the phone shell', () => {
+    const shell = document.createElement('div');
+    shell.id = 'mobileShell';
+    document.body.append(shell);
+
+    showToast('Cannot reach providers', 'error');
+
+    assert.ok(shell.querySelector(':scope > .mn-toast-stack'));
+  });
+
   test('ordinary feedback is politely announced and times out', async () => {
     showToast('Committed changes', 'success', 15);
     assert.equal(document.querySelector('.mn-toast__message').textContent, 'Committed changes');
@@ -193,11 +203,27 @@ describe('toast', () => {
     assert.deepEqual(cards.map((card) => card.hidden), [false, true, false, false]);
   });
 
+  test('new cards preserve focused notices and the overflow returns focus to a revealed card', () => {
+    showToast('Inspect this first', 'error');
+    const first = document.querySelector('.mn-toast');
+    const dismiss = first.querySelector('.mn-toast__dismiss');
+    dismiss.focus();
+    for (let i = 1; i <= 3; i += 1) showToast(`Error ${i}`, 'error');
+    assert.equal(first.hidden, false);
+    assert.equal(document.activeElement, dismiss);
+    const folded = document.querySelector('.mn-toast[hidden]');
+    const more = document.querySelector('.mn-toast-more');
+    more.focus();
+    more.click();
+    assert.equal(folded.hidden, false);
+    assert.equal(document.activeElement, folded.querySelector('.mn-toast__dismiss'));
+  });
+
   test('a "Settings → …" hint makes the card open that page', () => {
     showToast('Cannot reach providers (DeepSeek). Check Settings → Providers.', 'error');
     const open = document.querySelector('.mn-toast__open');
     assert.ok(open, 'card is clickable');
-    assert.match(open.getAttribute('aria-label'), /Open Settings → Providers/);
+    assert.equal(open.getAttribute('aria-label'), 'Cannot reach providers (DeepSeek). Open Settings → Providers');
     showToast('Saved', 'success');
     assert.equal(document.querySelectorAll('.mn-toast__open').length, 1);
   });

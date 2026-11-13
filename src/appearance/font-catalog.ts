@@ -2,9 +2,10 @@
  * Built-in font presets for Settings → Appearance.
  *
  * Google families are lazy-loaded via the CSS2 API when selected (see fonts.ts).
- * `system` entries have no Google family so they stay offline-capable, except
- * System mono which still leads with JetBrains Mono to keep the shipped default look.
+ * The bundled Geist pair stays offline-capable.
  */
+
+import { DEFAULT_APPEARANCE_FONT_ID } from '../lib/appearance-choices.mjs';
 
 /** Weights Minnow chrome actually uses (body / UI / labels). */
 export const DEFAULT_FONT_WEIGHTS = [400, 500, 600] as const;
@@ -21,6 +22,8 @@ export type FontCatalogEntry = {
   label: string;
   /** Present when this preset is a Google Font. */
   google?: GoogleFontSpec;
+  /** A font-face shipped in the application. */
+  bundledFamily?: string;
 };
 
 const W = DEFAULT_FONT_WEIGHTS;
@@ -38,10 +41,11 @@ function gf(
 }
 
 /**
- * UI (sans) presets. System first, then alphabetical by label.
+ * UI (sans) presets. Bundled and system fonts first, then alphabetical by label.
  * Display, handwriting, and serif faces are omitted — they fight 14px chrome.
  */
 export const UI_FONT_CATALOG: readonly FontCatalogEntry[] = [
+  { id: DEFAULT_APPEARANCE_FONT_ID, label: 'Geist', bundledFamily: 'Geist' },
   { id: 'system', label: 'System' },
   gf('albert-sans', 'Albert Sans', 'Albert Sans'),
   gf('atkinson-hyperlegible', 'Atkinson Hyperlegible', 'Atkinson Hyperlegible', W400_700),
@@ -83,11 +87,12 @@ export const UI_FONT_CATALOG: readonly FontCatalogEntry[] = [
 ];
 
 /**
- * Monospace presets. System first (JetBrains-led stack), then alphabetical.
+ * Monospace presets. Bundled and system fonts first, then alphabetical.
  * Includes ligature coding fonts (Fira Code, JetBrains Mono, Cascadia Code).
  */
 export const MONO_FONT_CATALOG: readonly FontCatalogEntry[] = [
-  // Same Google family as jetbrains-mono so the default System pick still looks like today.
+  { id: DEFAULT_APPEARANCE_FONT_ID, label: 'Geist Mono', bundledFamily: 'Geist Mono' },
+  // Preserve the former system mono pick and its existing look.
   gf('system', 'System mono', 'JetBrains Mono'),
   gf('anonymous-pro', 'Anonymous Pro', 'Anonymous Pro', W400_700),
   gf('azeret-mono', 'Azeret Mono', 'Azeret Mono'),

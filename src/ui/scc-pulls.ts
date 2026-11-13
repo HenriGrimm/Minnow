@@ -36,6 +36,7 @@ import {
   relativeTime,
   skeletonRows,
   stateDot,
+  forgeUnavailableCopy,
   unavailableState,
   type SccContext,
   type SccView,
@@ -201,18 +202,12 @@ export function createPullsView(
     detailCol.hidden = true;
     root.classList.add('scc-split--single');
 
-    const hint = !status.cliInstalled
-      ? 'winget install GitHub.cli'
-      : !status.authenticated
-        ? 'gh auth login'
-        : undefined;
+    const copy = forgeUnavailableCopy(status, 'Pull requests');
 
     listBody.replaceChildren(
       unavailableState({
-        title: status.cliInstalled ? 'Pull requests unavailable' : 'GitHub CLI not found',
-        body: status.reason,
-        hint,
-        action: hint
+        ...copy,
+        action: copy.hint
           ? button({
               label: 'Check again',
               variant: 'primary',

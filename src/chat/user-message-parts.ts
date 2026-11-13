@@ -81,6 +81,15 @@ const DESIGN_REF_BLOCK_RE =
   /<design-ref kind="([^"]*)" page="([^"]*)" anchor="(element|page)"(?: anchorSelector="([^"]*)")?(?: anchorUid="(\d+)")?(?: anchorX="(-?\d+)")?(?: anchorY="(-?\d+)")?(?: image="([^"]*)")?(?: id="([^"]*)")?>\n([\s\S]*?)\n<\/design-ref>/g;
 const IMAGE_PLACEHOLDER_RE = /\[image:\s*([^\]]+)\]/g;
 
+/** Keep attached snapshots and references intact when replacing the prompt text. */
+export function splitHistoryUserContentForEdit(content: string): { text: string; attachments: string[] } {
+  const blocks = new RegExp([FILE_BLOCK_RE, CODE_REF_BLOCK_RE, ELEMENT_REF_LOOSE_RE, DESIGN_REF_BLOCK_RE, IMAGE_PLACEHOLDER_RE]
+    .map(pattern => pattern.source).join('|'), 'g');
+  const attachments: string[] = [];
+  const text = content.replace(blocks, block => { attachments.push(block); return ''; }).trim();
+  return { text, attachments };
+}
+
 /** Remove inlined file bodies when restoring a message's files as composer chips. */
 export function stripHistoryFileBlocks(content: unknown): string {
   return apiMessageContentToText(content).replace(FILE_BLOCK_RE, '').trimEnd();

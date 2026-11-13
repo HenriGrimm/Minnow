@@ -35,6 +35,7 @@ export interface ForceGraphTheme {
   /** Callout card / label bubble fill. */
   surface: string;
   border: string;
+  shadow: string;
   nodePage: string;
   nodePageMuted: string;
   nodeTag: string;
@@ -52,8 +53,6 @@ export interface ForceGraphTheme {
   edgeTag: string;
   label: string;
   labelMuted: string;
-  /** Raw family accent, flattened to sRGB for gradient stops. */
-  accent: string;
   glow: string;
   /** Ambient background lattice dots. */
   grid: string;
@@ -67,6 +66,8 @@ export interface ForceGraphCallbacks {
   onSelect?: (node: GraphNode | null) => void;
   onDoubleClick?: (node: GraphNode) => void;
   onHover?: (node: GraphNode | null) => void;
+  /** Refresh controls that reflect neighborhood focus or pin state. */
+  onNodeActionsChange?: () => void;
 }
 
 /** Options passed when creating a force graph instance. */

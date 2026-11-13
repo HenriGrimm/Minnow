@@ -17,7 +17,7 @@ import {
   updateIssue,
 } from '../state/issues-store';
 import { parseIssueCodeRefPaste } from '../state/issue-code-ref-parse';
-import { getWorkspacePath } from '../state/workspace';
+import { getWorkspacePath, isCurrentWindowWorkspace } from '../state/workspace';
 import { getMode } from '../chat/modes/registry';
 import {
   canExpandIssueWithAgent,
@@ -195,6 +195,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   /** Guards flush → store emit → refresh from rebuilding the panel mid-paint. */
   let paintingDetail = false;
   const workspaceTabs = new Map<string, IssueWorkspaceTab>();
+  const launchDrafts = new Map<string, string>();
+  const expandedLaunchOptions = new Set<string>();
   let planPreview: ReturnType<typeof mountIssuePlanPreview> | undefined;
   let workspacePanel: ReturnType<typeof mountIssueWorkspace> | undefined;
   let navigation: IssueDetailNavigation | undefined;
@@ -257,7 +259,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (!body) return null;
     let host = document.getElementById('issuesDetailHost');
     if (!host) {
-      host = document.createElement('aside');
+      host = document.createElement('div');
       host.id = 'issuesDetailHost';
       host.className = 'issues-detail-host';
       host.setAttribute('aria-label', 'Issue detail');
@@ -691,6 +693,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
           ...subIssueMenuItems(issue).map((item, index) =>
             index === 0 ? { ...item, separatorBefore: true } : item,
           ),
+          ...(options?.workspaceTabs === false ? [] : (['Work', 'Chat', 'Activity'] as const).map((tab, index) => ({
+            id: `issue-view-${tab.toLowerCase()}`,
+            label: `View ${tab.toLowerCase()}`,
+            separatorBefore: index === 0,
+            onSelect: () => workspacePanel?.select(tab),
+          }))),
           {
             id: 'delete',
             label: 'Delete issue',
@@ -772,7 +780,10 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         titleInput.blur();
       }
     });
-    sticky.appendChild(titleInput);
+    const titleHeading = document.createElement('h2');
+    titleHeading.className = 'visually-hidden';
+    titleHeading.textContent = issue.title;
+    sticky.append(titleHeading, titleInput);
 
     const props = document.createElement('div');
     props.className = 'issues-detail__props';
@@ -929,6 +940,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     scroll.append(doc, rail, talk);
 
     panel.appendChild(scroll);
+    host.appendChild(panel);
     if (options?.workspaceTabs !== false) workspacePanel = mountIssueWorkspace({
       panel, sticky, document: doc, issueBody: scroll, issue, summaryInHeader: true,
       tab: workspaceTabs.get(issue.id) ?? 'Issue',
@@ -936,13 +948,18 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       onOpenPlan: (path, workspaceRoot) => planPreview?.open(findIssueById(issue.id) ?? issue, path, workspaceRoot),
       onStartChat: () => {
         workspacePanel?.select('Issue');
-        const trigger = rail.querySelector<HTMLButtonElement>('.issues-workflow-menu__trigger');
+        const prompt = panel.querySelector<HTMLTextAreaElement>('.issues-detail__compact-launch textarea');
+        if (prompt) {
+          prompt.scrollIntoView({ block: 'nearest' });
+          prompt.focus({ preventScroll: true });
+          return;
+        }
+        const trigger = panel.querySelector<HTMLButtonElement>('.issues-workflow-menu__trigger');
         trigger?.scrollIntoView({ block: 'nearest' });
         trigger?.click();
       },
     });
     bindIssueDropTarget(panel, issue.id, () => refreshIssueDetailIfOpen());
-    host.appendChild(panel);
     } finally {
       paintingDetail = false;
     }
@@ -1890,7 +1907,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     row.setAttribute('aria-label', 'Issue workflow');
     const heading = document.createElement('h3');
     heading.className = 'issues-detail__workflow-heading';
-    heading.textContent = 'Work on this issue';
+    heading.textContent = 'Work on this';
     row.appendChild(heading);
 
     const busy = workflowBusyIds.has(issue.id) || expandingIds.has(issue.id);
@@ -1964,46 +1981,53 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     useWorktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
     useWorktree.setAttribute('aria-busy', String(workflowBusyIds.has(issue.id)));
     useWorktree.classList.add('issues-detail__use-worktree');
-    const modelButton = createDetailTextButton({ label: issueLaunchModelLabel(issue.id), icon: 'appModels', disabled: !workflowOk || busy, title: 'Model for a new issue chat', onClick: () => pickIssueLaunchModel(issue.id, modelButton, refreshIssueDetailIfOpen) });
+    const modelLabel = issueLaunchModelLabel(issue.id);
+    const modelButton = createDetailTextButton({
+      label: modelLabel, icon: 'appModels', disabled: !workflowOk || busy,
+      title: `Model for a new issue chat: ${modelLabel}`,
+      onClick: (anchor) => pickIssueLaunchModel(issue.id, anchor, () => {
+        const label = issueLaunchModelLabel(issue.id);
+        if (modelText) modelText.textContent = label;
+        anchor.title = `Model for a new issue chat: ${label}`;
+      }),
+    });
+    const modelText = modelButton.lastElementChild;
     modelButton.classList.add('issues-detail__model');
-    modelButton.title = `Model for a new issue chat: ${issueLaunchModelLabel(issue.id)}`;
     modelButton.appendChild(createIcon('chevronDown', { size: 10 }));
     secondary.append(modelButton, useWorktree);
 
-    const foregroundHints: Record<IssueForegroundChatMode, string> = {
-      general: 'Triage and discuss with full tool access',
-      build: 'Implement or iterate on a fix',
-      plan: 'Interactive planning chat in Code',
-      debug: 'Reproduce and narrow root cause',
-    };
-
-    const foregroundItems = ISSUE_FOREGROUND_CHAT_MODES.map((modeId) => ({
-      id: modeId,
-      label: getMode(modeId).label,
-      hint: foregroundHints[modeId],
-      disabled: !workflowOk || busy,
-      onSelect: (ctx?: { trigger: HTMLButtonElement; clientX: number; clientY: number }) => {
-        promptIssueChatRunTarget({
-          issueId: issue.id,
-          anchor: ctx?.trigger,
-          clientX: ctx?.clientX,
-          clientY: ctx?.clientY,
-          onPick: (choice) =>
-            void runWorkflowAction(issue.id, 'foreground', modeId, choice),
-        });
-      },
-    }));
-
-    secondary.appendChild(
-      createIssuesWorkflowDropdown({
+    if (options) {
+      const foregroundHints: Record<IssueForegroundChatMode, string> = {
+        general: 'Triage and discuss with full tool access',
+        build: 'Implement or iterate on a fix',
+        plan: 'Interactive planning chat in Code',
+        debug: 'Reproduce and narrow root cause',
+      };
+      const foregroundItems = ISSUE_FOREGROUND_CHAT_MODES.map((modeId) => ({
+        id: modeId,
+        label: getMode(modeId).label,
+        hint: foregroundHints[modeId],
+        disabled: !workflowOk || busy,
+        onSelect: (ctx?: { trigger: HTMLButtonElement; clientX: number; clientY: number }) => {
+          promptIssueChatRunTarget({
+            issueId: issue.id,
+            anchor: ctx?.trigger,
+            clientX: ctx?.clientX,
+            clientY: ctx?.clientY,
+            onPick: (choice) =>
+              void runWorkflowAction(issue.id, 'foreground', modeId, choice),
+          });
+        },
+      }));
+      secondary.appendChild(createIssuesWorkflowDropdown({
         label: 'Send to chat',
         ariaLabel: 'Send issue to chat — choose mode',
         icon: 'appChat',
         disabled: !workflowOk || busy,
         primary: !issue.chatIds?.length,
         items: foregroundItems,
-      }),
-    );
+      }));
+    }
     if (issue.chatIds?.length || issue.agent) secondary.append(createDetailTextButton({
       label: isReviewStatus(getIssuesTaxonomySync(), issue.status) ? 'Review work' : 'View work',
       icon: 'gitWorktree', primary: true,
@@ -2011,6 +2035,59 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     }));
 
     row.appendChild(secondary);
+    if (!options) {
+      const launch = document.createElement('div');
+      launch.className = 'issues-detail__compact-launch';
+      const prompt = document.createElement('textarea');
+      const defaultPrompt = `Implement ${issue.id}: ${issue.title}${/[.!?]$/.test(issue.title) ? '' : '.'}`;
+      prompt.setAttribute('aria-label', 'Thread instructions');
+      prompt.rows = 2;
+      prompt.value = launchDrafts.get(issue.id) ?? defaultPrompt;
+      prompt.disabled = !workflowOk || busy;
+      prompt.addEventListener('input', () => launchDrafts.set(issue.id, prompt.value));
+      const actions = document.createElement('div');
+      actions.className = 'issues-detail__compact-actions';
+      const worktree = createDetailTextButton({
+        label: 'New worktree', icon: 'gitWorktree', disabled: !workflowOk || busy,
+        title: 'Create a separate worktree for this thread',
+        onClick: () => {
+          toggleIssueWorktree(issue.id);
+          const enabled = String(issueUsesWorktree(issue.id));
+          worktree.setAttribute('aria-pressed', enabled);
+          useWorktree.setAttribute('aria-pressed', enabled);
+          const label = useWorktree.querySelector('span:last-child');
+          if (label) label.textContent = enabled === 'true' ? 'Worktree on' : 'Use worktree';
+        },
+      });
+      worktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
+      const start = createDetailTextButton({
+        label: busy ? 'Starting…' : 'Start thread', icon: 'chevronRight', primary: true, disabled: !workflowOk || busy,
+        onClick: () => {
+          const instruction = prompt.value.trim();
+          void runWorkflowAction(issue.id, 'foreground', 'build',
+            { kind: issueUsesWorktree(issue.id) ? 'automatic' : 'local' },
+            instruction !== defaultPrompt ? instruction : undefined, true);
+        },
+      });
+      prompt.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey) || event.isComposing) return;
+        event.preventDefault();
+        start.click();
+      });
+      secondary.id = 'issueLaunchOptions';
+      secondary.hidden = !expandedLaunchOptions.has(issue.id);
+      const more = createDetailTextButton({ label: 'Launch options', icon: 'more', onClick: () => {
+        secondary.hidden = !secondary.hidden;
+        if (secondary.hidden) expandedLaunchOptions.delete(issue.id);
+        else expandedLaunchOptions.add(issue.id);
+        more.setAttribute('aria-expanded', String(!secondary.hidden));
+      } });
+      more.setAttribute('aria-controls', secondary.id);
+      more.setAttribute('aria-expanded', String(!secondary.hidden));
+      actions.append(worktree, more, start);
+      launch.append(prompt, actions);
+      row.insertBefore(launch, secondary);
+    }
     return row;
   }
 
@@ -2023,8 +2100,11 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     action: WorkflowAction['kind'],
     modeId?: IssueForegroundChatMode,
     runTarget?: ChatRunTargetChoice,
+    instruction?: string,
+    revealThread = false,
   ): Promise<void> {
     if (workflowBusyIds.has(issueId)) return;
+    const routeAtStart = window.location.hash;
     workflowBusyIds.add(issueId);
     refreshIssueDetailIfOpen();
     try {
@@ -2033,11 +2113,14 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
           issueId,
           modeId as IssueForegroundChatMode,
           runTarget,
+          undefined,
+          instruction,
         );
         if (!result.ok) {
-          showIssuesToast(result.error || 'Send to chat failed', 'error');
+          showIssuesToast(result.error || (revealThread ? 'Could not start thread' : 'Send to chat failed'), 'error');
           return;
         }
+        launchDrafts.delete(issueId);
         workspaceTabs.set(issueId, 'Chat');
         if (modeId === 'plan') {
           showIssuesToast(
@@ -2046,6 +2129,17 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
           );
         } else {
           showIssuesToast(`${getMode(modeId as IssueForegroundChatMode).label} chat started in Code`, 'success');
+        }
+        if (revealThread && result.chatId && selectedIssueId === issueId && window.location.hash === routeAtStart) {
+          const workspace = findIssueById(issueId)?.workspacePath ?? '';
+          const { getAppWindowId } = await import('../os/app-window');
+          if (!getAppWindowId() && isCurrentWindowWorkspace(workspace)) {
+            const { launchApp } = await import('../os/router');
+            if (window.location.hash === routeAtStart) launchApp('code', { chatId: result.chatId, codeSection: 'chat' });
+          } else {
+            const { launchCodeWithChat } = await import('../os/chat-launch');
+            if (window.location.hash === routeAtStart) await launchCodeWithChat(result.chatId);
+          }
         }
         return;
       }

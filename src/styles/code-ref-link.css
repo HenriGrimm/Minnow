@@ -147,6 +147,12 @@
   white-space: nowrap;
 }
 
+.msg-bubble .user-msg-text a.chat-reference-chip {
+  margin: var(--mn-space-0-5);
+  max-width: min(24rem, calc(100% - 2 * var(--mn-space-0-5)));
+  box-sizing: border-box;
+}
+
 .chat-reference-chip__icon {
   display: inline-flex;
   flex-shrink: 0;

@@ -5,7 +5,7 @@
   border: 1px solid var(--mn-border);
   border-radius: var(--mn-radius-sm);
   overflow: hidden;
-  background: color-mix(in srgb, var(--mn-bg) 92%, var(--mn-fg) 8%);
+  background: var(--mn-surface-1);
 }
 
 .tool-call-diff__header {
@@ -13,7 +13,7 @@
   width: 100%;
   padding: 0.35rem 0.65rem;
   font-size: 0.75rem;
-  color: var(--mn-muted);
+  color: var(--mn-fg-muted);
   border-bottom: 1px solid var(--mn-border);
   text-align: left;
 }

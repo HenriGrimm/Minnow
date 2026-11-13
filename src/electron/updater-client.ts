@@ -26,12 +26,14 @@ export function watchUpdaterStatus(
   if (!api) return () => {};
 
   let stopped = false;
+  let receivedEvent = false;
   const unsubscribe = api.onStatusChanged((status) => {
+    receivedEvent = true;
     if (!stopped) callback(status);
   });
   void api.getStatus().then((status) => {
-    if (!stopped && status) callback(status);
-  });
+    if (!stopped && !receivedEvent && status) callback(status);
+  }).catch(() => {});
 
   return () => {
     stopped = true;
@@ -73,7 +75,9 @@ export function describeUpdaterStrip(
     case 'unsupported':
       return { tone: 'muted', label: 'Updates unavailable' };
     case 'idle':
-      return { tone: 'ok', label: `Up to date — version ${status.installedVersion}` };
+      return status.lastCheckedAt == null
+        ? { tone: 'muted', label: 'Waiting for first check' }
+        : { tone: 'ok', label: 'Up to date' };
   }
 }
 

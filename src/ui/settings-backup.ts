@@ -31,6 +31,7 @@ import {
 } from '../backup/client';
 import { detectConfigServer } from '../config/storage-mode';
 import { appConfirm } from './app-dialog';
+import { createIcon } from './icon';
 import { backupNote, createBackupProgress, mountRestorePanel, type RestorePanelHandle } from './backup-restore-panel';
 import {
   appendSettingsOfflineHint,
@@ -169,13 +170,26 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
   function renderNotices(): void {
     notices.replaceChildren();
     const { lastExport } = status.settings;
-    const summary = lastExport
-      ? `Last backup: ${formatBackupWhen(lastExport.at)} · ${backupFileName(lastExport.file)} · ${formatBackupBytes(lastExport.archiveBytes)}${lastExport.encrypted ? ' · encrypted' : ''}`
-      : 'No backup yet. Chats, Brain and credentials exist only in the Minnow data folder on this computer.';
-    notices.appendChild(backupNote(lastExport ? 'info' : 'warn', summary));
-
+    const summary = el('div', 'backup-summary');
+    const text = el('div', 'backup-summary__text');
+    text.append(
+      el('span', 'backup-summary__title', lastExport ? `Last backup ${formatBackupWhen(lastExport.at)}` : 'No backup yet'),
+      el('span', 'backup-summary__detail', lastExport
+        ? `${backupFileName(lastExport.file)} · ${formatBackupBytes(lastExport.archiveBytes)}${lastExport.encrypted ? ' · Encrypted' : ''}`
+        : 'Create a backup of your chats, Brain, and settings.'),
+    );
+    const backupNow = el('button', 'settings-action-btn settings-action-btn--primary', 'Back up now…');
+    backupNow.type = 'button';
+    backupNow.addEventListener('click', () => {
+      create.scrollIntoView({ block: 'start' });
+      passInput.focus({ preventScroll: true });
+    });
+    summary.append(createIcon('archive', { size: 16 }), text, backupNow);
     const pending = status.restore.pending;
-    if (!pending) return;
+    if (!pending) {
+      notices.appendChild(summary);
+      return;
+    }
     const what = pending.kind === 'rollback' ? 'undo' : 'restore';
     const notice = el('div', 'backup-notice');
     if (pending.failed) {
@@ -220,7 +234,7 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
         },
       ]),
     );
-    notices.appendChild(notice);
+    notices.append(notice, summary);
   }
 
   async function act(run: () => Promise<unknown>, okMessage: string): Promise<void> {
@@ -624,7 +638,7 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
     void (async () => {
       snapshotFeedback.replaceChildren();
       snapshotBtn.disabled = true;
-      const progress = createBackupProgress();
+      const progress = createBackupProgress('Snapshot progress');
       progress.set(0, 'Starting…');
       snapshotFeedback.appendChild(progress.root);
       try {
@@ -661,6 +675,7 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
     snapshotActions,
     snapshotFeedback,
   );
+  shell.insertBefore(schedule, contents);
 
   // ── Restore ────────────────────────────────────────────────────────────────
 

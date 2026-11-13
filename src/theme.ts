@@ -1,8 +1,14 @@
 /**
- * Sixteen palette themes (8 families × dark/light), persistence, and DOM application.
+ * Palette families in dark and light, persistence, and DOM application.
  */
 
 import { scheduleAppearancePersist } from './appearance/persist-schedule';
+import { applyGraphiteAccent, readGraphitePreferences } from './appearance/graphite-preferences';
+import {
+  DEFAULT_THEME_FAMILY,
+  DEFAULT_THEME_ID,
+  THEME_FAMILIES,
+} from './lib/appearance-choices.mjs';
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
@@ -10,7 +16,7 @@ export const THEME_STORAGE_KEY = 'minnow.theme';
 export const THEME_FOLLOW_SYSTEM_KEY = 'minnow.theme.followSystem';
 export const THEME_FAMILY_KEY = 'minnow.theme.family';
 
-export const THEME_FAMILIES = ['swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint'] as const;
+export { DEFAULT_THEME_FAMILY, DEFAULT_THEME_ID, THEME_FAMILIES };
 export type ThemeFamily = (typeof THEME_FAMILIES)[number];
 
 export const THEME_MODES = ['dark', 'light'] as const;
@@ -18,7 +24,7 @@ export type ThemeMode = (typeof THEME_MODES)[number];
 
 export type ThemeId = `${ThemeFamily}-${ThemeMode}`;
 
-const THEME_ID_RE = /^(swamp|desert|ocean|coral|mono|matrix|human|mint)-(dark|light)$/;
+const THEME_ID_RE = new RegExp(`^(${THEME_FAMILIES.join('|')})-(dark|light)$`);
 
 /** Maps pre-rename family ids (and sage default) to current ThemeFamily. */
 const LEGACY_FAMILY_ALIASES: Record<string, ThemeFamily> = {
@@ -29,59 +35,6 @@ const LEGACY_FAMILY_ALIASES: Record<string, ThemeFamily> = {
   retro: 'matrix',
   ember: 'human',
 };
-
-export interface ThemeFamilyMeta {
-  id: ThemeFamily;
-  name: string;
-  blurb: string;
-}
-
-export const THEME_FAMILY_META: ThemeFamilyMeta[] = [
-  {
-    id: 'swamp',
-    name: 'Swamp',
-    blurb: 'Cool neutrals, muted green accent. Calm and editor-like.',
-  },
-  {
-    id: 'desert',
-    name: 'Desert',
-    blurb: 'Warm taupe neutrals with an amber accent. Cozy for long sessions.',
-  },
-  {
-    id: 'ocean',
-    name: 'Ocean',
-    blurb: 'Blue-tinted neutrals with a soft cyan accent. Modern dev-tool feel.',
-  },
-  {
-    id: 'coral',
-    name: 'Coral',
-    blurb: 'Graphite neutrals with a warm coral accent. Distinct and soft-modern.',
-  },
-  {
-    id: 'mono',
-    name: 'Mono',
-    blurb: 'Pure grayscale. Proof on newsprint, bench in charcoal.',
-  },
-  {
-    id: 'matrix',
-    name: 'Matrix',
-    blurb: 'Phosphor green on CRT black. Accent-only green, readable long sessions.',
-  },
-  {
-    id: 'human',
-    name: 'Human',
-    blurb: 'Near-black ground with burnt orange accent and peach cream text. Warm evening sessions.',
-  },
-  {
-    id: 'mint',
-    name: 'Mint',
-    blurb: 'Cool charcoal neutrals with mint phosphor accent and icy cyan highlights.',
-  },
-];
-
-/** Default when storage is empty or invalid. */
-export const DEFAULT_THEME_ID: ThemeId = 'swamp-dark';
-export const DEFAULT_THEME_FAMILY: ThemeFamily = 'swamp';
 
 function isThemeFamily(v: string | null): v is ThemeFamily {
   return typeof v === 'string' && (THEME_FAMILIES as readonly string[]).includes(v);
@@ -173,7 +126,7 @@ function migrateLegacyThemeStorage(): void {
   }
   if (raw === 'system') {
     writeStorage(THEME_FOLLOW_SYSTEM_KEY, '1');
-    writeStorage(THEME_FAMILY_KEY, DEFAULT_THEME_FAMILY);
+    writeStorage(THEME_FAMILY_KEY, 'swamp');
     removeStorage(THEME_STORAGE_KEY);
   }
 }
@@ -214,6 +167,12 @@ export function getFamily(id: ThemeId): ThemeFamily {
   return id.split('-')[0] as ThemeFamily;
 }
 
+/** Legacy families now select an accent while sharing the same surfaces. */
+export function getAccentChoice(id = getStoredTheme()) {
+  const family = getFamily(id);
+  return family === DEFAULT_THEME_FAMILY ? readGraphitePreferences().graphiteAccent : family;
+}
+
 export function getMode(id: ThemeId): ThemeMode {
   return id.endsWith('-light') ? 'light' : 'dark';
 }
@@ -221,7 +180,8 @@ export function getMode(id: ThemeId): ThemeMode {
 function updateThemeColorMeta(id: ThemeId): void {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (!meta) return;
-  const bg = getComputedStyle(document.documentElement).getPropertyValue('--mn-bg').trim();
+  const computed = getComputedStyle(document.documentElement);
+  const bg = computed.backgroundColor || computed.getPropertyValue('--mn-bg').trim();
   if (bg) meta.setAttribute('content', bg);
   else meta.setAttribute('content', getMode(id) === 'dark' ? '#0f1216' : '#f7f7f4');
 }
@@ -243,7 +203,7 @@ function attachSystemListener(): void {
   systemListener = globalThis.matchMedia('(prefers-color-scheme: light)');
   onSystemChange = () => {
     if (!getFollowSystem()) return;
-    applyTheme(getStoredTheme(), { persist: false });
+    applyTheme(getStoredTheme(), { persist: false, keepOverrides: true });
   };
   systemListener.addEventListener('change', onSystemChange);
 }
@@ -256,6 +216,8 @@ export function syncThemeListeners(): void {
 export interface ApplyThemeOptions {
   /** When false, only updates DOM (used when OS mode changes under follow-system). */
   persist?: boolean;
+  /** Live system mode changes keep the user's explicit color overrides. */
+  keepOverrides?: boolean;
 }
 
 const BOOT_INLINE_THEME_VARS = ['--mn-bg', '--mn-fg', '--mn-accent', '--mn-border'] as const;
@@ -273,9 +235,11 @@ function clearBootInlineThemeVars(root: HTMLElement): void {
 export function applyTheme(id: ThemeId, options: ApplyThemeOptions = {}): void {
   const { persist = true } = options;
   const root = document.documentElement;
-  clearBootInlineThemeVars(root);
-  root.setAttribute('data-theme', id);
-  root.style.colorScheme = getMode(id);
+  if (!options.keepOverrides) clearBootInlineThemeVars(root);
+  const mode = getMode(id);
+  root.setAttribute('data-theme', `${DEFAULT_THEME_FAMILY}-${mode}`);
+  root.style.colorScheme = mode;
+  applyGraphiteAccent(root, getAccentChoice(id));
   updateThemeColorMeta(id);
 
   if (persist && !getFollowSystem()) {

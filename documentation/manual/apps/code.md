@@ -2,7 +2,7 @@
 
 Code is the development environment: a file tree, an editor with AI completion and language-server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are.
 
-Code opens after you choose a project. You can also open it from the **app rail** or **Open Code** in Dashboard. It takes the full screen.
+Code opens after you choose a project. You can also open it from the **app rail**. It takes the full screen.
 
 Worktree chats show a branch icon in the chat list. It changes to a merge icon when the checkout is clean and its commits are included in the locally known `main` branch (`master` is used when `main` is absent). Hover over the icon for the branch and merge status. Local chats have no icon. Status refreshes while Minnow is visible; squash merges are not detected from Git ancestry.
 
@@ -31,25 +31,19 @@ The folder you pick becomes the **workspace root**, and that is the boundary for
 
 ## The layout
 
-- **Left:** chat sidebar — sessions, groups, board folders, search, and a footer rail of tools.
-- **Middle:** chat, with the composer at the bottom and the inference metrics strip beneath it.
-- **Right:** file tree, editor tabs, and preview.
-- **Bottom:** the terminal panel when you open it.
+The sidebar holds the workspace switcher, apps, threads, and Archive. Open **Activity** in its footer to see work that needs your input, running agents, and recent outcomes.
 
-The footer rail of the sidebar is where the less obvious surfaces live:
+To organize threads, run **New chat group** from the command palette and name the group in the sidebar. Drag threads into the group to add them.
 
-| Button | Opens |
-|--------|-------|
-| **Issues** | The issue tracker embedded in the Code window |
-| **Inference metrics** | Token counts, tok/s, totals |
-| **Terminal** | The terminal panel (**Ctrl+`**) |
-| **Code map** | A map of the repository: its layers and modules, the files in a folder, and who calls a function |
-| **Dev servers** | The dev-server screen |
-| **Orchestrate boards** | The board hub |
+The chat fills the workspace. The composer stays at the bottom, with inference metrics underneath. The branch chip in the header shows the current checkout even before you send your first message. Select it or press **Mod+.** to open the thread card for its checkout, changes, dev servers, model, and linked work. Select the changed-files row to review that checkout in Diff.
 
-The menubar **Activity** dropdown combines work that needs your input, running agents, and recent outcomes. Expand a parent item to inspect its sub-agents.
+When the agent creates a checklist, **Todo list** shows its latest tasks and completion count. It stays to the left of the conversation in wide chats and docks against the top of the composer in narrow chats. Select its header to collapse or expand it.
 
-Collapse the sidebar to a 48-pixel icon rail when you want the room.
+Open the **side panel** with **Mod+J** or the **bottom panel** from the thread header. Use **+** in either panel to pick a surface. Terminal starts in the bottom panel. **Files** opens the file tree, and selecting a file adds a tab beside it. Choose **Browser** to add a browser tab in that panel. Files, browser pages, Terminal, and other surfaces share the same tab strip. Both panels can stay open, and each thread remembers its tabs and their placement. Use the panel header to move a tab, maximize, restore, or hide a panel. Drag its inner edge to resize it.
+
+On desktop, choose **Split right** in a panel header or press **Mod+Backslash** while focused in the panel. The right group has its own tabs and **+** menu. Drag the divider to resize the groups. Use **Close split** to bring the tabs back together. One panel can be split at a time. Across both panels, you can view up to two files and up to two browser tabs at once.
+
+The command palette also opens Dev servers, Code map, and Orchestrate boards. **Ctrl+`** toggles Terminal in whichever panel holds it.
 
 The **Issues** ticket button in the files toolbar replaces the file tree with this workspace's issues. The list starts with open issues, newest first; choose **All** or **Closed**, or search by title or ID. Use **Filter** to narrow by type, status, priority, or project (including **No project**). Filters combine with search and Open/All/Closed; select a filter chip to remove it. Selections are kept separately for each workspace while the app is open. Browsing a worktree keeps the issue list on the Code workspace.
 
@@ -129,6 +123,10 @@ On Windows, **Git Bash** appears when Git for Windows is installed, and installe
 
 ## Git
 
+In Code’s surface launcher, click **Diff** to inspect the thread’s checkout. The small **Open workspace diff** button on the Diff card opens all uncommitted changes in the main workspace checkout, including when the thread has a separate worktree or the card says **No changes yet**.
+
+In **Changes**, click a filename to expand its patch or use **Open file diff** on the row for a side-by-side view. The commit controls stay below the scrolling file list. Select **History** to browse recent commits for the selected checkout.
+
 The source-control panel does status, stage, diff, commit, branch, pull and push. If the folder is not a git repository yet, **Set up git** starts a background chat that initializes it (init, `.gitignore`, first commit) without leaving the panel.
 
 In the sidebar and **Source Control → Changes**, click a row to highlight it, **Shift-click** to select a range, or **Cmd-click** (macOS) / **Ctrl-click** (Windows and Linux) to select separate rows. **Cmd/Ctrl+A** selects all changes while a change row has focus. The existing file rows and action buttons stay in place. Right-click a highlighted row to act on the selection: stage, unstage, discard, ignore paths or file extensions, copy absolute or relative paths, or reveal files in the system explorer.
@@ -137,6 +135,8 @@ Discard asks for confirmation. Working-tree changes restore the staged version; 
 
 
 Click the branch and worktree name at the top of the sidebar panel to open the **checkout picker**. Search **Branches** or **Worktrees**; remote branches appear automatically with a small **remote** badge. Selecting a remote branch creates its local tracking branch if needed. Selecting a branch already open in another worktree opens that checkout. Creation and removal actions appear below the list.
+
+On GitHub repositories, open **Pull requests** in the checkout picker and search by PR number, title, or branch. Select an open PR to check it out in the current worktree, including PRs from forks. This uses your signed-in GitHub CLI (`gh`).
 
 When you switch branches with uncommitted files, choose **Bring my changes** to carry them to the destination, or **Leave changes** to save them in Git stash. Saved changes include staged, unstaged, and new files; ignored files are excluded. Returning to the saved branch in the same worktree offers **Restore changes**, including the original staging. Commit or stash any current changes before restoring. If restoration conflicts, the saved stash remains available under **Source Control → Stashes**. Browsing a different worktree keeps each checkout’s files in place.
 
@@ -156,6 +156,8 @@ In Code’s Source Control side panel, a failure also leaves a recovery notice b
 
 The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, **Actions**, and **Releases** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**8** jump between sections; **Ctrl+K** opens the command palette. GitHub operations use your local `gh` CLI authentication. Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub.
 
+Use **Pull** and **Push** at the top right of Source Control to sync the selected checkout, even when the working tree is clean. Each button shows how many commits are waiting for that action. Use **Fetch** to update the counts from the remotes.
+
 ### Actions and releases
 
 **Actions → Workflows** lists GitHub workflows or the selected worktree's local workflow files. On GitHub, choose a remote branch or tag and complete the workflow inputs. Only workflows with `workflow_dispatch` can be started manually. Dispatch acceptance means GitHub received the request; open **Runs** to follow execution, jobs, logs, reruns, and cancellation.
@@ -166,7 +168,7 @@ For **Local workflow (act)**, install [act](https://nektosact.com/installation/)
 
 **Runs → Local runs** shows status and logs. Runs continue when you close Source Control or reload its view. Logs are capped at 4 MiB per run and completed records are retained for seven days. Server shutdown stops local runs; interrupted runs are not automatically restarted. Local action secrets are passed only when selected and known values are masked in captured output.
 
-**Releases** lists GitHub drafts, prereleases, and published releases. Create a draft from an existing tag or an explicitly selected remote commit for a new tag. Drafts open ready to edit. Select **Write draft** to create user-facing release notes from commit subjects and bodies since the last published release, including prereleases. Override the previous tag when needed; an initial release uses the full target history. The writer uses your utility model, or the last selected chat model when no utility override is set. Review the Notes and preview, use **Undo** to restore your preceding edits, and select **Save changes** to save. **Cancel** keeps your notes intact. **Generate with GitHub** remains available. Edit published releases with **Edit release**, choose prerelease/latest settings, and publish drafts when ready. Upload assets using paths relative to the worktree; downloads use a selected relative directory. Replacing or deleting an asset requires confirmation. Deleting a release preserves its Git tag. Immutable releases and accounts without write access show read-only controls. **Run release workflow** opens a popover for the mapped GitHub workflow. In **Actions → Workflows → GitHub**, select a manually runnable workflow and choose **Use for releases** to map it to this button. The mapping is saved locally per GitHub host and repository and applies across its worktrees. From Releases, choose a remote branch or tag, complete the workflow inputs, and select **Run on GitHub**. Inputs reload when the ref changes. Dispatch acceptance means GitHub received the request; **View runs** opens Actions to follow execution. Use **Change workflow** to pick another workflow, or **Remove release mapping** in its workflow inspector to clear the mapping. Running a workflow and creating a release are separate operations.
+**Releases** lists GitHub drafts, prereleases, and published releases. Search loaded releases by title or tag and filter by status. In narrow windows, select **All releases** to return to the list. Create a draft from an existing tag or an explicitly selected remote commit for a new tag. Drafts open ready to edit. Select **Write draft** to create user-facing release notes from commit subjects and bodies since the last published release, including prereleases. Override the previous tag when needed; an initial release uses the full target history. The writer uses your utility model, or the last selected chat model when no utility override is set. Switch between **Write** and **Preview** to review the Markdown. Use **Undo** to restore your preceding edits and **Save changes** to save. **Cancel** keeps your notes intact. **Generate with GitHub** remains available. Select **Edit release** to update a published release. Use **Publishing** to set prerelease and latest options or publish a draft. Upload assets using paths relative to the worktree; downloads use a selected relative directory. Replacing or deleting an asset requires confirmation. Deleting a release preserves its Git tag. Immutable releases and accounts without write access show read-only controls. **Run release workflow** opens a popover for the mapped GitHub workflow. In **Actions → Workflows → GitHub**, select a manually runnable workflow and choose **Use for releases** to map it to this button. The mapping is saved locally per GitHub host and repository and applies across its worktrees. From Releases, choose a remote branch or tag, complete the workflow inputs, and select **Run on GitHub**. Inputs reload when the ref changes. Dispatch acceptance means GitHub received the request; **View runs** opens Actions to follow execution. Use **Change workflow** to pick another workflow, or **Remove release mapping** in its workflow inspector to clear the mapping. Running a workflow and creating a release are separate operations.
 
 Agents use the same services through `action_inspect`, `action_run`, `action_cancel`, `action_command`, `release_inspect`, `release_manage`, and `release_asset`. Inspection defaults to Full permission; mutations default to Ask. Plan mode allows inspection only for these tools.
 
@@ -204,7 +206,7 @@ The `manage_dev_servers` tool gives the model the same controls, so "start the d
 
 A real Chromium view for workspace HTML and localhost URLs. Navigate, reload, and toggle **DevTools** with **F12** or **Ctrl/Cmd+Shift+I** — console, network and element inspection for the previewed page.
 
-The toolbar keeps navigation, the address field, expand, and close visible. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, DevTools, and Split right. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app. The split preview has its own menu for that pane.
+The toolbar keeps navigation and the address field visible. Use the tab strip to switch pages or close the current page. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, and DevTools. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app.
 
 The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
 

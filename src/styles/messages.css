@@ -14,7 +14,7 @@
 .chat-history-pending__row {
   height: 14px;
   width: var(--chat-history-pending-w, 72%);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-2);
   animation: chat-history-pending-pulse 1.1s ease-in-out infinite;
 }
@@ -51,6 +51,83 @@
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+.chat-viewport:has(> :where(.chat-todo-panel), > :where(.composer-notices > :not([hidden]))) {
+  display: grid;
+  grid-template: minmax(0, 1fr) auto auto / minmax(0, 1fr);
+}
+
+.chat-viewport:has(> .chat-todo-panel) { container-type: size; }
+
+.chat-viewport:has(> :where(.chat-todo-panel), > :where(.composer-notices > :not([hidden]))) > :is(.chat-area, .chat-viewport-dock) {
+  grid-area: 1 / 1;
+}
+
+.chat-viewport > .chat-todo-panel {
+  grid-area: 3 / 1;
+  width: calc(0.88 * min(var(--chat-composer-max), 100% - 2 * var(--mn-space-4)));
+  margin: var(--mn-space-1) 0 var(--mn-space-2);
+  align-self: start;
+  justify-self: center;
+}
+
+.chat-viewport > .composer-notices {
+  grid-area: 2 / 1 / 3 / -1;
+}
+
+.composer-notices:not(:has(> :not([hidden]))) { display: none; }
+
+.composer-notices > .chat-read-only-notice {
+  width: min(var(--chat-composer-max), calc(100% - 2 * var(--mn-space-4)));
+  margin-inline: auto;
+}
+
+@container code-stage (width < 1280px) {
+  .chat-viewport:has(~ .input-bar):not(:has(> .composer-notices > :is(.question-host, .tool-approval-host):not([hidden]))) > .chat-todo-panel {
+    --chat-todo-bottom-radius: 0px;
+    margin-block-end: 0;
+    border-block-end: 0;
+  }
+}
+
+@container code-stage (width >= 1280px) {
+  .chat-viewport:has(> .chat-todo-panel) {
+    /* Equal gutters center the transcript. The checklist stays close to it on wide screens. */
+    --chat-todo-outer-inset: clamp(var(--mn-space-8), 3cqi, 5rem);
+    --chat-todo-min-rail-width: calc(12rem + var(--chat-todo-outer-inset));
+    grid-template: auto minmax(0, 1fr) /
+      minmax(var(--chat-todo-min-rail-width), 1fr)
+      minmax(0, var(--chat-composer-max))
+      minmax(var(--chat-todo-min-rail-width), 1fr);
+    column-gap: clamp(var(--mn-space-8), 3cqi, 4rem);
+  }
+
+  .chat-viewport:has(> .chat-todo-panel) > :is(.chat-area, .chat-viewport-dock) {
+    grid-area: 2 / 2;
+  }
+
+  .chat-viewport:has(> .chat-todo-panel) > .chat-area {
+    --chat-todo-transcript-padding-inline: 0px;
+    padding-inline: var(--chat-todo-transcript-padding-inline);
+  }
+
+  .chat-viewport > .chat-todo-panel {
+    grid-area: 2 / 1;
+    width: min(22rem, calc(100% - var(--chat-todo-outer-inset)));
+    min-width: 0;
+    margin: var(--mn-space-8) 0 0;
+    justify-self: end;
+  }
+
+  .chat-viewport:has(> .chat-todo-panel) > .composer-notices {
+    grid-area: 1 / 1 / 2 / -1;
+  }
+}
+
+/* Soften the clipped transcript while leaving the jump button fully visible. */
+.chat-viewport > .chat-area.chat-thread:has(+ .chat-viewport-dock > .chat-jump-latest:not(.hidden)) {
+  mask-image: linear-gradient(to bottom, var(--mn-fg) calc(100% - var(--mn-space-8)), transparent);
 }
 
 /* Bottom-center overlay: jump chip stacked above the code-change strip. */
@@ -120,6 +197,7 @@
 .board-init-split__chat {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 24px 20px;
   display: flex;
@@ -311,13 +389,13 @@
   padding: 2px 8px;
   border-radius: var(--mn-radius-sm);
   border: 1px solid var(--mn-border);
-  background: var(--mn-bg-elevated);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
   cursor: pointer;
 }
 
 .msg-truncated-continue-btn:hover:not(:disabled) {
-  background: var(--mn-bg-hover);
+  background: var(--mn-surface-2);
 }
 
 .msg-truncated-continue-btn:disabled {
@@ -425,7 +503,7 @@
 
 .msg-error-recover-btn--continue {
   color: var(--mn-fg);
-  background: var(--mn-bg-elevated);
+  background: var(--mn-surface-1);
   border-color: var(--mn-border);
 }
 
@@ -434,7 +512,7 @@
 }
 
 .msg-error-recover-btn--continue:hover:not(:disabled) {
-  background: var(--mn-bg-hover);
+  background: var(--mn-surface-2);
 }
 
 .msg-error-recover-btn:disabled {
@@ -568,7 +646,7 @@
 .issue-mention-link:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 1px;
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
 }
 
 .user-msg-attachments {
@@ -706,7 +784,7 @@
 }
 
 :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h1 { font-size: 1.25rem; }
-:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h2 { font-size: 1.12rem; }
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h2 { font-size: var(--mn-type-2xl); }
 :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h3,
 :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h4 { font-size: 1.02rem; }
 
@@ -898,10 +976,10 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: var(--mn-type-2xs);
   letter-spacing: .06em;
   padding: 2px 7px;
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
   border: 1px solid var(--mn-border-strong);
   color: var(--mn-fg-subtle);
   white-space: nowrap;
@@ -933,6 +1011,9 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   width: min(var(--chat-tool-call-max), 100%);
   color: var(--mn-fg-muted);
 }
+
+.tool-call-msg[hidden],
+.tool-call-batch[hidden] { display: none; }
 
 .tool-call-batch__summary {
   display: flex;
@@ -971,7 +1052,6 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
 }
 
 .tool-call-batch__icon { color: var(--mn-fg-muted); }
-.tool-call-batch__icon--fail { color: var(--mn-danger); }
 
 .tool-call-batch__label {
   flex-shrink: 0;
@@ -1006,13 +1086,12 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   white-space: normal;
 }
 
-.tool-call-batch--reasoning-summary.tool-call-batch--running:not(.tool-call-batch--fail) .tool-call-batch__status {
+.tool-call-batch--reasoning-summary.tool-call-batch--running .tool-call-batch__status {
   display: none;
 }
 
 .tool-call-batch__count { flex-shrink: 0; }
 .tool-call-batch__count + .tool-call-batch__count::before { content: ' · '; }
-.tool-call-batch--fail .tool-call-batch__label { color: var(--mn-danger-ink); }
 
 .tool-call-batch__chevron {
   flex-shrink: 0;
@@ -1170,7 +1249,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
 .tool-call-target--file-link:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
 }
 
 /* Outcome: the measurement this tool produced. Reads as a bench gauge. */
@@ -1199,10 +1278,10 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   font-size: 10px;
   letter-spacing: 0.02em;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
   border: 1px solid var(--mn-border);
   color: var(--mn-fg-muted);
-  background: var(--mn-surface-2, var(--mn-surface));
+  background: var(--mn-surface-2);
 }
 
 .tool-call-sandbox-badge--ok {
@@ -1625,7 +1704,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
 .tool-call-raw-details__summary:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
 }
 
 
@@ -1647,7 +1726,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   width: 22px;
   height: 22px;
   margin-top: 2px;
-  font-size: 22px;
+  font-size: var(--mn-type-3xl);
   line-height: 22px;
   color: var(--mn-fg-muted);
 }
@@ -1669,7 +1748,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   margin-top: 16px;
   overflow: hidden;
   background: var(--mn-border);
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
 }
 
 .chat-worktree-setup__progress::after {

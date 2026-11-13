@@ -151,7 +151,7 @@ async function probeForgeStatus(root) {
 
   const remoteUrl = await readRemoteUrl(root);
   if (!remoteUrl) {
-    return { ...base, reason: 'This repository has no remote. Add one to work with pull requests.' };
+    return { ...base, reason: 'This repository has no remote. Add a GitHub remote and try again.' };
   }
 
   const { host, slug, hostname } = parseRemoteHost(remoteUrl);
@@ -319,6 +319,7 @@ const PR_VIEW_FIELDS = [
   'commits',
   'files',
   'reviews',
+  'headRefOid',
   'headRepositoryOwner',
   'isCrossRepository',
   'mergeStateStatus',
@@ -346,6 +347,7 @@ export async function prView({ cwd, number } = {}) {
     pr: {
       ...normalizePr(raw),
       body: String(raw?.body ?? ''),
+      ...(raw?.headRefOid ? { headRefOid: String(raw.headRefOid) } : {}),
       mergeStateStatus: String(raw?.mergeStateStatus ?? '').toLowerCase(),
       crossRepository: Boolean(raw?.isCrossRepository),
       files: (Array.isArray(raw?.files) ? raw.files : []).map((f) => ({
@@ -369,6 +371,8 @@ export async function prView({ cwd, number } = {}) {
           status: String(c?.status ?? '').toLowerCase(),
           conclusion: String(c?.conclusion ?? c?.state ?? '').toLowerCase(),
           url: String(c?.detailsUrl ?? c?.targetUrl ?? ''),
+          ...(c?.startedAt ? { startedAt: String(c.startedAt) } : {}),
+          ...(c?.completedAt ? { completedAt: String(c.completedAt) } : {}),
         }),
       ),
     },
@@ -413,14 +417,18 @@ export async function prCreate({ cwd, title, body, base, draft, web } = {}) {
 
 const MERGE_FLAG = { merge: '--merge', squash: '--squash', rebase: '--rebase' };
 
-export async function prMerge({ cwd, number, method = 'squash', deleteBranch, auto } = {}) {
+export async function prMerge({ cwd, number, method = 'squash', deleteBranch, auto, expectedHeadOid } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
   const flag = MERGE_FLAG[String(method)];
   if (!flag) return { ok: false, error: `Unknown merge method: ${method}` };
 
-  const args = ['pr', 'merge', String(Number(number)), flag];
+  if (expectedHeadOid !== undefined && !/^[a-f\d]{40}$/i.test(expectedHeadOid)) {
+    return { ok: false, error: 'Invalid pull request head commit' };
+  }
+  const args = ['pr', 'merge', String(Number(number)), flag, '--repo', `${gate.status.hostname}/${gate.status.repo}`];
+  if (expectedHeadOid) args.push('--match-head-commit', expectedHeadOid);
   if (deleteBranch) args.push('--delete-branch');
   if (auto) args.push('--auto');
 
@@ -436,7 +444,13 @@ export async function prCheckout({ cwd, number } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
-  const result = await withWorktreeMutation(gate.cwd, () => gh(['pr', 'checkout', String(Number(number))], gate.cwd));
+  return withWorktreeMutation(gate.cwd, () => checkoutForgePullRequest(gate, Number(number)));
+}
+
+/** Callers hold the worktree mutation lock. */
+export async function checkoutForgePullRequest(gate, number) {
+  const repo = `${gate.status.hostname}/${gate.status.repo}`;
+  const result = await gh(['pr', 'checkout', String(number), '--repo', repo], gate.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result, 'Could not check out the pull request') };
   }

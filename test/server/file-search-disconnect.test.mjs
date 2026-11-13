@@ -29,12 +29,15 @@ test('aborting a sidebar grep request aborts the server search', async () => {
   await once(server, 'listening');
   const controller = new AbortController();
   try {
-    const pending = fetch(`http://127.0.0.1:${server.address().port}/api/tools`, {
+    const pending = fetch(`http://127.0.0.1:${server.address().port}/api/tools/workspace-files`, {
       method: 'POST', signal: controller.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'grep', args: { pattern: 'needle', path: '.' } }),
-    }).catch(() => null);
-    await Promise.race([didStart, new Promise((_, reject) => {
+    });
+    const completedBeforeAbort = pending.then(async (res) => {
+      throw new Error(`Search returned before cancellation: ${await res.text()}`);
+    });
+    await Promise.race([didStart, completedBeforeAbort, new Promise((_, reject) => {
       const timer = setTimeout(() => reject(new Error('Search did not start')), 5_000);
       timer.unref();
     })]);
@@ -44,7 +47,7 @@ test('aborting a sidebar grep request aborts the server search', async () => {
       timer.unref();
     })]);
     assert.equal(searchSignal.aborted, true);
-    await pending;
+    await assert.rejects(pending, { name: 'AbortError' });
   } finally {
     controller.abort();
     server.closeAllConnections();

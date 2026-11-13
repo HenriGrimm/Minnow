@@ -357,6 +357,26 @@ test('restart preserves an ambiguous real effect as a held recovery barrier and 
   assert.equal((await f.journal.readEvents('family')).filter(event => event.type === 'attempt.ended').length, 1);
 });
 
+test('removing an attempted queued task cancels its retry across restart and preserves recovery evidence', async t => {
+  const f = await fixture(t), task = await f.spawn('removed-retry');
+  const prior = await f.interrupted(task, { effect: true });
+  await f.service.recoverExecutions(() => ({ verified: true, source: 'test-host-stopped', checkedAt: 2000 }));
+  await f.delivery.recover();
+  const queued = f.repository.getCommand(task.commandId);
+  await f.service.removeQueued(f.caller, { chatId: task.childChatId, targetCommandId: task.commandId,
+    expectedRevision: queued.revision, clientRequestId: 'remove-attempted-task' });
+  await f.reopen(); await f.delivery.recover(); await f.delivery.recover();
+  assert.equal((await f.journal.loadState('family')).runs.get(task.runId).phase, 'cancelled');
+  assert.equal(f.delivery.tasks.getResult(task.runId).status, 'cancelled');
+  assert.equal(f.repository.getExecution(prior.executionId).status, 'recovery_required');
+  assert.equal(f.repository.getCommand(task.commandId).result.disposition, 'removed');
+  assert.equal(f.repository.getToolInvocation('lost-effect-' + task.runId).state, 'intent');
+  assert.equal((await f.service.startAdmittedChildTask({ commandId: task.commandId, runId: task.runId, attemptId: 'removed-retry' })).deferred, true);
+  assert.equal(await fs.readFile(path.join(f.home, 'effect.txt'), 'utf8'), 'One effect');
+  assert.equal(f.calls.filter(call => call.chatId === task.childChatId).length, 0);
+  assert.deepEqual(f.errors, []);
+});
+
 test('one mismatched journal binding cannot block publication of an independent child', async t => {
   const f = await fixture(t);
   const invalid = await f.spawn('invalid'), valid = await f.spawn('valid');

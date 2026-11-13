@@ -32,7 +32,7 @@ These are the Minnow team's own results from daily use building Minnow. They are
 
 An agent chat resends the whole conversation every round, so most of what you pay for is input the provider has already seen. That makes the **cached input price** the number that matters most for Minnow. Two models with the same headline price can differ in cost by several times once caching is counted.
 
-**Subscriptions through an agent CLI.** Claude Pro/Max, ChatGPT Plus/Pro and Cursor plans are a flat monthly fee with usage limits that reset on rolling windows, usually every five hours, with a weekly cap on top. Minnow uses them through the vendor's own CLI ([Agent CLIs](connect-a-model.md#agent-clis)). Limits are not published in tokens. If you hit one, you wait for the window to reset or buy extra usage from the vendor.
+**Subscriptions through an agent CLI.** Claude Pro/Max, ChatGPT Plus/Pro and Cursor plans are a flat monthly fee with usage limits that reset on rolling windows, usually every five hours, with a weekly cap on top. Minnow uses them through the vendor's own CLI ([Subscriptions](connect-a-model.md#subscriptions)). Limits are not published in tokens. If you hit one, you wait for the window to reset or buy extra usage from the vendor.
 
 **Capped gateway plans.** OpenCode Go, GitHub Copilot, Ollama Cloud, and the coding plans sold by model labs give you an API key with a monthly allowance, often measured in dollars of usage. They work like a pay-per-token key, but your bill is fixed.
 
@@ -107,7 +107,7 @@ A gateway is the easiest way to try many models without opening an account with 
 
 ## Subscriptions through agent CLIs
 
-These plans run through the vendor's official CLI, which Minnow drives from **Models → CLIs**. Your usage limits are shared with the vendor's own apps, so time spent in the Claude app or ChatGPT counts against the same pool. Minnow shows your remaining account usage where the CLI reports it ([Models → CLIs](../apps/models.md#clis)).
+These plans run through the vendor's official CLI, which Minnow drives from **Models → Subscriptions**. Your usage limits are shared with the vendor's own apps, so time spent in the Claude app or ChatGPT counts against the same pool. Minnow shows your remaining account usage where the CLI reports it ([Models → Subscriptions](../apps/models.md#subscriptions)).
 
 | Plan | Price | What you get in Minnow |
 |------|-------|------------------------|
@@ -167,7 +167,7 @@ All of these work without paying. The trade-off is limits, and in several cases 
 | [NVIDIA](https://build.nvidia.com) API catalog | About 40 requests/minute per model with an NVIDIA Developer Program account | Check terms; evaluation use only | Custom, base URL `https://integrate.api.nvidia.com` |
 | GitHub Copilot Free | 50 chat requests a month | Check terms | Preset |
 | Ollama Cloud Free | Starter models, one request at a time | Check terms | Your Ollama provider |
-| ChatGPT Free, Cursor Hobby | Limited Codex or agent use | Vendor terms | **Models → CLIs** |
+| ChatGPT Free, Cursor Hobby | Limited Codex or agent use | Vendor terms | **Models → Subscriptions** |
 
 Most of these allowances, apart from Copilot, ChatGPT and Cursor, come from third-party listings rather than the providers' own pages, and free tiers change faster than paid ones. Your account's current limits are on each provider's dashboard.
 

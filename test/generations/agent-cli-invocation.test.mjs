@@ -81,6 +81,21 @@ test('Codex global controls precede exec subcommand', async () => {
   assert.equal(result.args.at(-1), '-');
 });
 
+test('native Fast settings are scoped to the invocation and independent of reasoning', async () => {
+  for (const interactive of [false, true]) {
+    for (const fastMode of [true, false]) {
+      const claude = await prepareAgentCliInvocation({ ...common, kind: 'claude', interactive,
+        body: { model: 'opus', reasoning_effort: 'high', minnow_cli_fast_mode: fastMode } });
+      assert.deepEqual(JSON.parse(claude.args[claude.args.indexOf('--settings') + 1]), { fastMode });
+      assert.equal(claude.args[claude.args.indexOf('--effort') + 1], 'high');
+    }
+  }
+  const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex',
+    body: { model: 'gpt-6.1-sol', minnow_cli_fast_mode: true } });
+  const tier = codex.args.indexOf('service_tier="priority"');
+  assert.ok(tier > 0 && tier < codex.args.indexOf('exec'));
+});
+
 test('explicit context windows use provider-supported controls', async () => {
   const profile = { contextWindowTokens: 1_000_000 };
   const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex', profile });

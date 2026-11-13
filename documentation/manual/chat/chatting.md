@@ -11,7 +11,7 @@ The composer is a card at the bottom of the chat column: the message field on to
 | **Permissions** | The pill on the left: Manual / Auto / Full access, one level for every chat — see [Tools and permissions](../concepts/tools-and-permissions.md) |
 | **Worktree** | Click the branch icon to enable an isolated checkout on send; click its name to change branch, switch worktrees, or go back to Local |
 | **Settings** (cog) | Context documents, code map, brain notes, and other turn settings. |
-| **Context ring** | Window usage; click for capacity, context breakdown, request/session totals, prompt profile, and compaction |
+| **Context ring** | Window usage; click for capacity, context breakdown, request/session totals, and compaction |
 | **Model · reasoning** | Per-chat model and reasoning level. Open the menu to change either. **Ctrl+M** / **Cmd+M** opens it with search focused. |
 | **Microphone** | Dictation — see [Voice](../extend/voice.md) |
 | **Send / Stop** | Enter sends or steers a running turn; the Stop button ends the reply |
@@ -26,7 +26,9 @@ Chats save automatically across windows. If two windows save competing edits, Mi
 
 Supported ordinary General, Build, Plan and Debug chats run on Minnow's local server. On send, an idle saved chat switches ownership only after its history is durable; a live turn is never taken over. Reloading or closing its chat view does not cancel server-capable work while Minnow's server remains running. Browser, clipboard or other connected-host actions can wait for a capable host to reconnect. Quitting Minnow stops its server; interrupted writes require explicit recovery, not automatic replay. Older conversations with unfinished tool/native recovery, compacted legacy context or active controllers retain their compatibility workflow until resolved.
 
-Server-owned history cannot be rewritten locally. A saved human message with a captured turn offers **Replay in new chat**: it starts a new branch without repeating historical tool calls or restoring past filesystem state. Model/mode changes apply to later submitted turns; active and already queued work keeps its accepted configuration.
+Open the **⋮** menu beside a message. In an ordinary server-owned chat, **Edit** changes a prompt and sends it again with its saved attachments. **Replay** sends the original prompt again in the same chat. Both replace the later messages. **Delete message** removes the selected message and everything after it. Finish or stop active work before using these actions. If the chat shows **Needs recovery**, review the interrupted turn first.
+
+A saved human message with a captured turn also offers **Replay in new chat**, which starts a new branch from that point. Replays start a fresh turn, and changes to chat history leave earlier filesystem changes in place. Model and mode changes apply to later submitted turns. Active and already queued work keeps its accepted configuration.
 
 After a completed reply, an empty composer can show a faint suggested follow-up. Press **Tab** to put it in the composer, edit it if needed, then press **Enter** to send. **Escape** dismisses the suggestion; typing your own message dismisses it too. You can also click the **Tab** hint to use it. Suggestions use the chat's model and make a short additional model request. For a model pool, the suggestion uses the model that handled the reply. Suggestions stay out of saved drafts until accepted.
 
@@ -36,7 +38,9 @@ The chat list shows one line per chat: the model's provider logo, the title, and
 
 **Needs you**, at the top of the list, collects every agent question and approval in the project. Answer a single-choice question with one click or type a reply; approve or deny a tool call in place; anything richer opens its chat. Questions from archived chats still appear here, tagged **Archived**.
 
-The bottom of the chat list has **Working** and **Archive** views, each with a chat count. Hover a chat and click the archive button (or right-click and choose **Archive chat**) to move it out of Working; a section with merged or closed pull requests offers **Archive N finished**. Each archive shows an **Undo** toast. In Archive, chats are grouped by when they were archived and can be searched; hover a chat and click **Restore**, or tick several and choose **Restore** to return them to Working. Archiving keeps the conversation, worktree, pin and group, and does not stop a running reply. You can still open and continue archived chats. **New chat** returns to Working.
+Use **Archive** and **Working** in the sidebar footer to switch the chat list while keeping the current chat visible. To archive a chat, hover over it and click the archive button, or right-click and choose **Archive chat**. Sections with merged or closed pull requests offer **Archive N finished**. The archive button and **Archive N finished** offer **Undo**.
+
+In Archive, chats are grouped by when they were archived. Search by title or branch, hover over a chat and click **Restore**, or select several to restore together. Archiving keeps the conversation, worktree, pin and group, and does not stop a running reply. You can still open and continue archived chats. **New chat** returns to Working.
 
 Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. In a server-owned ordinary chat, model changes apply to newly submitted turns; active and already queued work keeps its captured model. A compatibility chat stops its current generation when you change the model. [Agent conversations](persistent-agent-chats.md) use **Stop and switch** and keep each queued message's captured model. A child model change does not change the remembered model for new ordinary chats.
 
@@ -51,6 +55,10 @@ If setup fails, the checkout is kept. A server-owned chat retains its accepted m
 Click the **worktree name** to open its menu. Choose **Switch branch** for a different branch in that checkout, **Change worktree…** for an existing checkout, or **New worktree** for a custom name and start branch. **Back to Local** preserves the worktree and its files; enabling it again reuses that chat's managed checkout. Use Source Control or issue delivery controls for cleanup.
 
 Drag files onto the composer to attach them for the next message, up to 10 MB each. Pasting images also adds an attachment.
+
+Use the provider tabs to browse models or search across providers. Star a model to keep it in the **Favorites** tab.
+
+The picker shows **Standard** and **Fast** for supported Codex and Claude Code models. Fast applies to new messages in this chat and may use more credits. The composer label shows **Fast** while it is selected.
 
 The model label includes the current reasoning level, such as **GPT · Medium**. Its menu offers only the levels the model supports, including **Off** where available. Changes apply to this chat; **Default** restores the model's saved or inherited setting. Auto model pools continue to select reasoning through their task evaluator.
 
@@ -101,7 +109,7 @@ The **undo** control on the latest **Edited files** card in the transcript rewin
 Details worth knowing:
 
 - The file-restoring undo appears **only in a git repository** and **only when that turn actually changed files**. No repository means no snapshot, so there is nothing to restore.
-- The message **⋮** menu always offers **Undo turn** for a conversation-only rewind.
+- In renderer-owned chats, the message **⋮** menu offers **Undo turn** for a conversation-only rewind.
 - Undo does not auto-regenerate. You get your prompt back and decide what to do.
 - The undone reply stays redoable through the branch picker.
 - Orchestrate, board-linked and worktree-isolated chats do not support undo; the control is disabled with the reason. Agent conversations also keep immutable saved history, so undo, regeneration, past-message edits and branch rewinds are unavailable; continue with a new message.

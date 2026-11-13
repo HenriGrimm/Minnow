@@ -676,7 +676,6 @@ describe('P3-C engine + merge queue', { concurrency: false }, () => {
         getState: () => box.engine.getState(),
         model: { providerId: 'local-fake', id: 'fake-board-model' },
         worktrees: true,
-        promptVariant: 'lite',
         runTurn: async (opts) => {
           const uniquePath = path.join(opts.cwd, 'unique-from-builder.txt');
           const isRebase =
@@ -810,7 +809,6 @@ describe('P3-C engine + merge queue', { concurrency: false }, () => {
         getState: () => box.engine.getState(),
         model: { providerId: 'local-fake', id: 'fake-board-model' },
         worktrees: true,
-        promptVariant: 'lite',
         runTurn: async (opts) => {
           const id = taskIdFromSeed(opts.seed);
           if (id === 'B') {
@@ -912,7 +910,6 @@ describe('P3-C engine + merge queue', { concurrency: false }, () => {
         getState: () => box.engine.getState(),
         model: { providerId: 'local-fake', id: 'fake-board-model' },
         worktrees: true,
-        promptVariant: 'lite',
         runTurn: async (opts) => {
           await fsp.writeFile(path.join(opts.cwd, 'only-a.txt'), 'ok\n', 'utf8');
           return { outcome: 'pass', summary: 'ok', evidence: ['only-a.txt'] };

@@ -19,7 +19,7 @@ import { getViewWorkspacePath } from '../state/view-workspace.ts';
 import { getWorkspacePath } from '../state/workspace.ts';
 import { listChatsWithGenerationId } from '../chat/generation-resume.ts';
 import { hasIncompleteToolBatchForBoot } from '../chat/incomplete-tool-resume.ts';
-import { setResumeGateState } from '../chat/resume-gate.ts';
+import { declineChatAutoResume, setResumeGateState } from '../chat/resume-gate.ts';
 import {
   fetchPendingBoardResumes,
   resolveBoardResumes,
@@ -158,6 +158,7 @@ function describeBoardCandidate(candidate: PendingBoardResume): ResumePromptItem
 /** Drop stale generation / interrupt markers ("Don't resume"). */
 function declineResume(candidates: ResumeCandidates): void {
   if (candidates.boards.length) void resolveBoardResumes('decline', candidates.boards);
+  for (const candidate of candidates.chats) declineChatAutoResume(candidate.chat.id);
 
   clearResumeInterruptedForChats(
     candidates.chats.map((c) => c.chat),
@@ -174,9 +175,9 @@ export async function runBootResumeGate(state: SessionState): Promise<void> {
   const { bootIncompleteToolResumeForChats } = await import('../chat/incomplete-tool-resume.ts');
 
   const scopedChats = scopeChatsToWindowWorkspace(state.chats);
-  const resumeScopedChats = async (): Promise<void> => {
-    await bootGenerationResumeForChats(scopedChats);
-    if (isActiveChatInScope(scopedChats)) await bootIncompleteToolResumeForChats(scopedChats);
+  const resumeScopedChats = async (eligible = scopedChats): Promise<void> => {
+    await bootGenerationResumeForChats(eligible);
+    if (isActiveChatInScope(eligible)) await bootIncompleteToolResumeForChats(eligible);
   };
 
   if (!hasCandidates(candidates)) {
@@ -192,20 +193,28 @@ export async function runBootResumeGate(state: SessionState): Promise<void> {
     ...candidates.boards.map(describeBoardCandidate),
   ]);
 
-  if (choice === 'decline') {
+  if (!choice) {
     declineResume(candidates);
     setResumeGateState('declined');
     return;
   }
 
+  const boardOffset = candidates.chats.length;
+  const selectedChats = candidates.chats.filter((_, index) => choice.has(index));
+  const selectedBoards = candidates.boards.filter((_, index) => choice.has(boardOffset + index));
+  declineResume({
+    chats: candidates.chats.filter((_, index) => !choice.has(index)),
+    boards: candidates.boards.filter((_, index) => !choice.has(boardOffset + index)),
+  });
   setResumeGateState('resumed');
 
-  if (candidates.boards.length) await resolveBoardResumes('resume', candidates.boards);
+  if (selectedBoards.length) await resolveBoardResumes('resume', selectedBoards);
 
-  await resumeScopedChats();
+  const selectedIds = new Set(selectedChats.map(candidate => candidate.chat.id));
+  await resumeScopedChats(scopedChats.filter(chat => selectedIds.has(chat.id)));
 
-  clearResumeInterruptedForChats(candidates.chats.map((c) => c.chat));
-  if (candidates.chats.length) saveSessionsNow();
+  clearResumeInterruptedForChats(selectedChats.map((c) => c.chat));
+  if (selectedChats.length) saveSessionsNow();
 }
 
 /** Boot entry point — never rejects, never blocks the rest of `initApp`. */

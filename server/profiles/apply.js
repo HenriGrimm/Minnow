@@ -9,7 +9,6 @@ import { readConfigJson, writeConfigJson } from '../config/store.js';
 import { resetSubAgentServerConfigCache } from '../sub-agents/config.js';
 import { mergeConfigMeta, normalizeSubAgentsConfig, normalizeToolConfig, validateUserRulesSettings } from '../config/validators.js';
 import { getMinnowHome } from '../config/home.js';
-import { loadPromptConfigFile, savePromptConfigFile } from '../prompt-configs/handlers.js';
 import { workAgentsOverridesPath } from '../work-agents/paths.js';
 
 /**
@@ -57,26 +56,6 @@ export async function captureCurrentSettings(id, label, description) {
       ? /** @type {Record<string, unknown>} */ (meta.planning)
       : {};
 
-  const promptProfile =
-    meta.activePromptProfile === 'lite' ||
-    meta.activePromptProfile === 'custom' ||
-    meta.activePromptProfile === 'full'
-      ? meta.activePromptProfile
-      : 'full';
-
-  let parts = {};
-  let source = promptProfile === 'custom' ? 'prompt-config' : promptProfile;
-  const configId =
-    typeof meta.activePromptConfigId === 'string' ? meta.activePromptConfigId : null;
-
-  if (promptProfile === 'custom' && configId) {
-    const cfg = await loadPromptConfigFile(configId);
-    if (cfg?.parts && typeof cfg.parts === 'object') {
-      parts = cfg.parts;
-      source = 'embedded';
-    }
-  }
-
   const now = new Date().toISOString();
 
   return {
@@ -90,8 +69,6 @@ export async function captureCurrentSettings(id, label, description) {
       minnowVersion: process.env.npm_package_version ?? 'dev',
     },
     prompt: {
-      promptProfile,
-      activePromptConfigId: configId,
       activeInfoPresetId:
         typeof meta.activeInfoPresetId === 'string'
           ? meta.activeInfoPresetId
@@ -100,8 +77,6 @@ export async function captureCurrentSettings(id, label, description) {
         planning.granularity === 'large' || planning.granularity === 'small'
           ? planning.granularity
           : 'medium',
-      source,
-      ...(Object.keys(parts).length > 0 ? { parts } : {}),
     },
     agents: {
       workAgents: workAgents && typeof workAgents === 'object' ? workAgents : {},
@@ -157,11 +132,6 @@ export async function applyProfileBundle(bundle) {
   const prompt = bundle.prompt && typeof bundle.prompt === 'object' ? bundle.prompt : {};
 
   const promptPatch = {
-    activePromptProfile: prompt.promptProfile,
-    activePromptConfigId:
-      prompt.activePromptConfigId === null || typeof prompt.activePromptConfigId === 'string'
-        ? prompt.activePromptConfigId
-        : null,
     activeInfoPresetId:
       typeof prompt.activeInfoPresetId === 'string'
         ? prompt.activeInfoPresetId
@@ -177,26 +147,6 @@ export async function applyProfileBundle(bundle) {
 
   const mergedMeta = mergeConfigMeta(meta, promptPatch);
   await writeConfigJson('config.json', mergedMeta);
-
-  const source = prompt.source ?? 'embedded';
-  const configId =
-    typeof prompt.activePromptConfigId === 'string' ? prompt.activePromptConfigId : bundle.id;
-
-  if (prompt.promptProfile === 'custom') {
-    if (source === 'embedded' && prompt.parts && typeof prompt.parts === 'object') {
-      await savePromptConfigFile({
-        id: configId,
-        label: `${bundle.label} (parts)`,
-        profile: 'custom',
-        parts: prompt.parts,
-      });
-      const metaAfter = (await readConfigJson('config.json')) ?? {};
-      await writeConfigJson(
-        'config.json',
-        mergeConfigMeta(metaAfter, { activePromptConfigId: configId }),
-      );
-    }
-  }
 
   const toolsExisting = (await readConfigJson('tools.json')) ?? {};
   const toolsNext = normalizeToolConfig(toolsExisting);

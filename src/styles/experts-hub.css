@@ -500,27 +500,6 @@
   max-width: 5rem;
 }
 
-.experts-edit-profile-tabs {
-  display: flex;
-  gap: 6px;
-}
-
-.experts-profile-tab {
-  padding: 6px 12px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-bg);
-  color: var(--mn-fg-muted);
-  font: inherit;
-  cursor: pointer;
-}
-
-.experts-profile-tab.is-active {
-  border-color: var(--mn-accent);
-  color: var(--mn-fg);
-  background: var(--mn-accent-soft);
-}
-
 .experts-empty {
   max-width: 420px;
   margin: 48px auto;

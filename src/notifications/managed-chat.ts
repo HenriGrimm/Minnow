@@ -44,7 +44,7 @@ export function createManagedChatNotificationProducer(options: {
         const failed = next.status === 'failed' || next.status === 'recovery_required';
         options.pushOutcome({ ...common, activityId: key, dedupeKey: key,
           kind: failed ? 'chat_turn_error' : 'chat_turn_complete', activityStatus: next.status === 'stopped' ? 'stopped' : failed ? 'failed' : 'completed',
-          preview: next.status === 'recovery_required' ? 'This conversation needs recovery.' : failed ? 'Agent reply failed.' : next.status === 'stopped' ? 'Reply stopped.' : 'Agent reply completed.',
+          preview: next.status === 'recovery_required' ? 'Work was interrupted.' : failed ? 'Agent reply failed.' : next.status === 'stopped' ? 'Reply stopped.' : 'Agent reply completed.',
           ...(typeof chat.agentExecution?.settledAt === 'number' ? { createdAt: chat.agentExecution.settledAt } : {}),
           os: next.status !== 'stopped', silent: next.status === 'stopped' });
       }

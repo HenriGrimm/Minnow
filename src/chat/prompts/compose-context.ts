@@ -22,18 +22,21 @@ import { shouldInjectCodeMap } from '../../brain/code-injection-config';
 import { retrieveCodeMapBlock } from '../../brain/code-map-injection';
 import { extractCodeMapFocusHints } from '../../brain/code-map-focus';
 import { fetchBrainCodeConfig } from '../../brain/client';
-import { loadContextDocumentsSettings, shouldInjectContextDocuments } from '../../chat/context-documents/config';
+import {
+  hasConfiguredContextDocumentPaths,
+  loadContextDocumentsSettings,
+  resolveContextDocumentsInjectionEnabled,
+} from '../context-documents/config';
 import { retrieveContextDocumentsBlock } from '../../chat/context-documents/injection';
 import { shouldRunFirstTurnInjections } from './first-turn-injection';
 import {
   resolveInjectionReplay,
   shouldReplayStoredInjection,
 } from '../context/injection-replay';
-import { loadPromptConfig } from './prompt-configs';
 import { chatHistoryHasBrowserToolUse } from './browser-allowlist-gate';
 import { getWorkspacePath } from '../../state/workspace';
 import { resolveShellSandboxModeForChat } from '../../tools/shell-sandbox-client';
-import type { ComposeContext, PromptProfile } from './types';
+import type { ComposeContext } from './types';
 import { getBoardGroupForChat } from '../../state/chat-groups';
 import { resolveEffectiveOrchestratePlanPath } from '../plans/plan-path';
 import { runWithDeadline } from '../../lib/async-deadline.mjs';
@@ -102,15 +105,6 @@ export async function buildComposeContext(
   options?: BuildComposeContextOptions,
 ): Promise<ComposeContext> {
   const meta = await loadPromptMetaSettings();
-  const profile: PromptProfile = meta.activePromptProfile;
-
-  let customConfig = null;
-  if (profile === 'custom' && meta.activePromptConfigId) {
-    const loaded = await loadPromptConfig(meta.activePromptConfigId);
-    if (loaded && !(loaded instanceof Error)) {
-      customConfig = loaded;
-    }
-  }
 
   const modeId = normalizeModeId(chat.modeId);
   const orchestratePlanPath =
@@ -149,7 +143,7 @@ export async function buildComposeContext(
     if (!enabled || !runFirstTurn) return { enabled, block: replay };
     signal.throwIfAborted();
     const block = await retrieveMemoryBlock({
-      query: options?.routeUserText ?? options?.userMessagePreview ?? '', profile,
+      query: options?.routeUserText ?? options?.userMessagePreview ?? '',
       autoInject: chat.kind !== 'expert',
       ...(chat.kind === 'expert' && chat.expertId?.trim() && chat.expertRuntime?.memoryEnabled !== false
         ? { expertId: chat.expertId.trim() } : {}),
@@ -179,20 +173,38 @@ export async function buildComposeContext(
     }
     return { enabled, block: block || null };
   };
-  const documents = async (signal: AbortSignal) => {
+  const documents = async () => {
     const replay = replayBodies['context-documents'] && shouldReplayStoredInjection(chat.contextDocumentsInjection)
       ? replayBodies['context-documents'] : null;
-    const enabled = runFirstTurn ? await shouldInjectContextDocuments(chat) : Boolean(replay);
-    if (!enabled || !runFirstTurn) return { enabled, block: replay };
-    const { documents } = await loadContextDocumentsSettings();
-    signal.throwIfAborted();
-    const block = await retrieveContextDocumentsBlock({ repoPath: worktreeCwd ?? resolveComposeCwd(), documents });
-    return { enabled, block: block || null };
+    if (!runFirstTurn) return { enabled: Boolean(replay), block: replay };
+    const repoPath = worktreeCwd?.trim() || getWorkspacePath().trim();
+    if (!repoPath) return { enabled: false, block: null };
+    try {
+      const { injectionDefault, documents } = await runWithDeadline(loadContextDocumentsSettings, {
+        timeoutMs, signal: options?.signal,
+      });
+      if (!resolveContextDocumentsInjectionEnabled(chat, injectionDefault) || !hasConfiguredContextDocumentPaths(documents)) {
+        return { enabled: false, block: null };
+      }
+      const read = async (signal: AbortSignal) => ({
+        enabled: true,
+        block: (await retrieveContextDocumentsBlock({ repoPath, documents, signal })) || null,
+      });
+      return await (documents.customPaths.length
+        ? runWithDeadline(read, { timeoutMs, signal: options?.signal })
+        : optional('context-documents', read));
+    } catch (error) {
+      options?.signal?.throwIfAborted();
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        throw new Error('Context document preparation timed out. Retry or check Context documents settings and the project files.');
+      }
+      throw error;
+    }
   };
   // Three independent lanes with deterministic assembly; replay never fetches.
   const [memoryResult, codeResult, documentsResult] = await Promise.all([
     optional('memory', memory), optional('code-map', codeMap),
-    runWithDeadline(documents, { timeoutMs, signal: options?.signal }),
+    documents(),
   ]);
   options?.signal?.throwIfAborted();
   const { block: memoryBlock, enabled: injectMemory } = memoryResult;
@@ -203,9 +215,6 @@ export async function buildComposeContext(
   const notice = omissions.length ? 'Optional enrichment unavailable: ' + omissions.sort().join(', ') + '. Use tools if this context is needed.' : '';
 
   const ctx: ComposeContext = {
-    profile,
-    customConfigId: meta.activePromptConfigId,
-    customConfig,
     cwd: worktreeCwd ?? resolveComposeCwd(),
     modeId,
     orchestratePlanPath,
@@ -339,7 +348,7 @@ export interface OutboundInjectionBlocks {
 export interface OutboundSystemMessages {
   cliStable?: string;
   cliTurnContext?: string;
-  /** Primary system content (composed stack or legacy textarea fallback). */
+  /** Primary system content. */
   composed: string;
   /** Second system message body when rules are enabled and non-empty. */
   userRules: string | null;
@@ -351,10 +360,8 @@ export interface OutboundSystemMessages {
 
 export async function resolveOutboundSystemMessages(
   chat: Chat,
-  legacySysPrompt: string,
   options?: BuildComposeContextOptions,
 ): Promise<OutboundSystemMessages> {
-  let composedRaw = '';
   let cliStable: string | undefined;
   let cliTurnContext: string | undefined;
   let injectionBlocks: OutboundInjectionBlocks = {
@@ -362,31 +369,24 @@ export async function resolveOutboundSystemMessages(
     codeMap: null,
     contextDocuments: null,
   };
-  try {
-    const { composeSystemPrompt } = await import('./prompt-composer');
-    const ctx = await resolveComposeContextForSend(chat, options);
-    composedRaw = composeSystemPrompt(ctx);
-    if (options?.separateCliContext) {
-      const parts: string[] = [];
-      cliStable = composeSystemPrompt(ctx, { turnContext: parts });
-      cliTurnContext = parts.join('\n\n---\n\n');
-    }
-    if (!ctx.injectionsReplayed) {
-      const brain = ctx.memoryBlock?.trim() ?? '';
-      const codeMap = ctx.codeMapBlock?.trim() ?? '';
-      const contextDocuments = ctx.contextDocumentsBlock?.trim() ?? '';
-      injectionBlocks = {
-        brainNotes: brain || null,
-        codeMap: codeMap || null,
-        contextDocuments: contextDocuments || null,
-      };
-    }
-  } catch (error) {
-    // Optional lanes already return bounded omission notices. Propagate required
-    // context/configuration failures instead of silently choosing the textarea.
-    throw error;
+  const { composeSystemPrompt } = await import('./prompt-composer');
+  const ctx = await resolveComposeContextForSend(chat, options);
+  const composed = composeSystemPrompt(ctx).trim();
+  if (options?.separateCliContext) {
+    const parts: string[] = [];
+    cliStable = composeSystemPrompt(ctx, { turnContext: parts });
+    cliTurnContext = parts.join('\n\n---\n\n');
   }
-  const composed = composedRaw.trim() || legacySysPrompt.trim();
+  if (!ctx.injectionsReplayed) {
+    const brain = ctx.memoryBlock?.trim() ?? '';
+    const codeMap = ctx.codeMapBlock?.trim() ?? '';
+    const contextDocuments = ctx.contextDocumentsBlock?.trim() ?? '';
+    injectionBlocks = {
+      brainNotes: brain || null,
+      codeMap: codeMap || null,
+      contextDocuments: contextDocuments || null,
+    };
+  }
   const rulesSettings = await loadUserRules();
   const userRules = getUserRulesPayloadForSend(rulesSettings);
   return { composed, userRules, injectionBlocks, cliStable, cliTurnContext };

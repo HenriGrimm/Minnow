@@ -21,6 +21,7 @@ export async function readWorkspaceTextFile(
   path: string,
   workspaceRoot?: string,
   cacheBust?: number,
+  signal?: AbortSignal,
 ): Promise<string> {
   const url = resolvePreviewLoadUrl(
     { kind: 'workspace', path },
@@ -28,7 +29,7 @@ export async function readWorkspaceTextFile(
     workspaceRoot,
     { raw: true },
   );
-  const res = await fetch(url);
+  const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) {
     throw new Error(`Could not read file (HTTP ${res.status})`);
   }

@@ -208,7 +208,9 @@ async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleM
   try {
     if (!nativePolicy) assertMinnowToolMode(runtime.profile.agentCli);
     unlock = lockCodexChat(key);
-    const body = JSON.parse(state.requestBody.toString('utf8')); body.model = candidate.modelId;
+    const body = JSON.parse(state.requestBody.toString('utf8'));
+    if (state.providerId !== candidate.providerId || body.model !== candidate.modelId) delete body.minnow_cli_fast_mode;
+    body.model = candidate.modelId;
     const workspace = nativePolicy?.workspace ?? getEffectiveWorkspaceRoot();
     session = getCodexSession(key);
     release = await admitAgentCli(candidate.providerId, runtime.profile.agentCli.maxConcurrent, controller.signal);
@@ -462,6 +464,7 @@ async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleM
         session.inferenceStarted = true;
         if (nativePolicy) { state.failoverDisabled = true; await nativeExecution.assertCurrent(nativeMeta(session)); }
         const started = await session.rpc.request('turn/start', { threadId: session.threadId, input: seed.input,
+          serviceTier: body.minnow_cli_fast_mode === true ? 'priority' : null,
           ...(effort ? { effort } : {}), ...(outputSchema ? { outputSchema } : {}) }, { signal: controller.signal });
         session.turnId = started.turn.id; session.starting = false;
       }

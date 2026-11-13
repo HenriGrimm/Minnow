@@ -17,6 +17,12 @@ import {
 } from './right-pane-split';
 import { isNarrowLayout } from './mobile-layout';
 import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
+import {
+  isGraphiteIndependentBrowser, refreshGraphiteSurfaceLayout, requestGraphiteSurface,
+  showGraphiteContent, usesGraphiteContentTabs,
+} from './surfaces/surface-bridge';
+import { getActiveViewerTabPath } from './file-viewer-tab-store';
+import { ensureDefaultPreviewTab } from './preview-tab-store';
 
 let chatColumnDragCollapsed = false;
 
@@ -170,6 +176,8 @@ export function hideAllRightSplitPanesDom(): void {
  * back on the same surface (MIN-224).
  */
 export function collapseRightPane(): void {
+  const current = getFilePanelState().rightPaneMode;
+  if (current && requestGraphiteSurface(current === 'preview' ? 'preview' : 'files', 'hide')) return;
   if (getFilePanelState().rightPaneMode === null) return;
   patchFilePanelState({ rightPaneCollapsed: true });
   hideAllRightSplitPanesDom();
@@ -187,6 +195,7 @@ export function expandRightPane(): boolean {
 
 /** Unhide the pane matching persisted rightPaneMode when state and DOM diverge (e.g. reload applied viewer-open before preview restore, or Code foreground). */
 export function reconcileRightSplitDomWithState(): void {
+  if (usesGraphiteContentTabs()) return;
   repairRightPaneDomStructure();
   const mode = resolvedRightPaneMode();
   if (mode === null) {
@@ -214,7 +223,7 @@ export function reconcileRightSplitDomWithState(): void {
   if (mode === 'viewer' || mode === 'split') {
     hidePreviewPaneDom();
     document.getElementById('previewPaneSecondary')?.classList.add('hidden');
-    void window.minnow?.preview?.hide();
+    if (!isGraphiteIndependentBrowser()) void window.minnow?.preview?.hide();
     if (!isRightPaneDomVisible('viewer')) {
       document.getElementById('fileViewerPane')?.classList.remove('hidden');
     }
@@ -305,7 +314,7 @@ export function applyFileSidebarVisuals(): void {
   const btn = document.getElementById('btnFileSidebarCollapse');
   const state = getFilePanelState();
   const split = document.getElementById('workspaceSplit');
-  const splitOpen = isRightSplitOpen();
+  const splitOpen = !usesGraphiteContentTabs() && isRightSplitOpen();
 
   if (split) {
     split.classList.toggle('viewer-open', splitOpen);
@@ -356,22 +365,26 @@ export function applyFileSidebarVisuals(): void {
 
 /** Reveal Files without toggling an already open pane closed. */
 export async function openFileSidebar(): Promise<void> {
+  const graphite = requestGraphiteSurface('files', 'show');
   if (isIssuesSidebarActive()) setIssuesSidebarActive(false);
   const git = await import('./git-panel');
-  if (git.isGitSidePanelOpen()) git.closeGitSidePanel();
+  if (!graphite && git.isGitSidePanelOpen()) git.closeGitSidePanel();
   patchFilePanelState({ fileSidebarCollapsed: false });
-  if (isMobileLayout()) openMobileFileSidebar();
+  if (!graphite && isMobileLayout()) openMobileFileSidebar();
   applyFileSidebarVisuals();
 }
 
 /** Files pane control: switch back from Source Control, else toggle collapse / mobile overlay (MIN-655). */
 export async function toggleFileSidebarLayout(): Promise<void> {
+  const graphite = Boolean(document.getElementById('fileSidebar')?.closest('.graphite-files-host'));
+  if (!graphite &&
+    requestGraphiteSurface('files', 'toggle')) return;
   const git = await import('./git-panel');
 
-  if (git.isGitSidePanelOpen() || isIssuesSidebarActive()) {
+  if ((!graphite && git.isGitSidePanelOpen()) || isIssuesSidebarActive()) {
     setIssuesSidebarActive(false);
-    git.closeGitSidePanel();
-    if (isMobileLayout()) {
+    if (!graphite) git.closeGitSidePanel();
+    if (!graphite && isMobileLayout()) {
       openMobileFileSidebar();
     } else if (getFilePanelState().fileSidebarCollapsed) {
       patchFilePanelState({ fileSidebarCollapsed: false });
@@ -380,7 +393,7 @@ export async function toggleFileSidebarLayout(): Promise<void> {
     return;
   }
 
-  if (isMobileLayout()) {
+  if (!graphite && isMobileLayout()) {
     const side = document.getElementById('fileSidebar');
     if (side && side.classList.contains('mobile-open')) {
       closeMobileFileSidebar();
@@ -394,7 +407,7 @@ export async function toggleFileSidebarLayout(): Promise<void> {
   const state = getFilePanelState();
   const nextCollapsed = !state.fileSidebarCollapsed;
   patchFilePanelState({ fileSidebarCollapsed: nextCollapsed });
-  if (nextCollapsed) closeGitPanelIfOpen();
+  if (nextCollapsed && !graphite) closeGitPanelIfOpen();
   applyFileSidebarVisuals();
 }
 
@@ -435,6 +448,7 @@ export function closeFileSidebar(): void {
 
 /** Hide preview pane DOM only (does not change persisted split state). */
 export function hidePreviewPaneDom(): void {
+  if (isGraphiteIndependentBrowser()) return;
   const previewPane = document.getElementById('previewPane');
   if (previewPane) previewPane.classList.add('hidden');
 }
@@ -464,7 +478,8 @@ function isSplitGroupsPersisted(): boolean {
 }
 
 /** Show split viewer pane; keeps preview tabs in the unified strip. */
-export function showViewerSplit(): void {
+export function showViewerSplit(path = getActiveViewerTabPath()): void {
+  if (path && showGraphiteContent('file', path)) return;
   if (!isRightSplitOpen()) clearChatColumnDragCollapsed();
   if (isSplitGroupsPersisted()) {
     patchFilePanelState({ viewerOpen: true, rightPaneMode: 'split', rightPaneCollapsed: false });
@@ -474,7 +489,7 @@ export function showViewerSplit(): void {
     return;
   }
   hidePreviewPaneDom();
-  void window.minnow?.preview?.hide();
+  if (!isGraphiteIndependentBrowser()) void window.minnow?.preview?.hide();
   showRightPaneColumnDom();
   const pane = document.getElementById('fileViewerPane');
   if (pane) pane.classList.remove('hidden');
@@ -484,6 +499,10 @@ export function showViewerSplit(): void {
 
 /** Hide split viewer pane; switches to preview tabs when available. */
 export function hideViewerSplit(options?: { skipPreviewFallback?: boolean }): void {
+  if (usesGraphiteContentTabs()) {
+    refreshGraphiteSurfaceLayout();
+    return;
+  }
   if (getFilePanelState().rightPaneMode === 'preview') {
     hideViewerPaneDom();
     applyFileSidebarVisuals();
@@ -507,10 +526,18 @@ export function hideViewerSplit(options?: { skipPreviewFallback?: boolean }): vo
 export type ShowPreviewSplitOptions = {
   tabId?: string | null;
   slot?: PaneSlotId;
+  fromSurface?: boolean;
 };
 
 /** Show preview pane; keeps file tabs in the unified strip. */
-export function showPreviewSplit(_options?: ShowPreviewSplitOptions): void {
+export function showPreviewSplit(options?: ShowPreviewSplitOptions): void {
+  if (!options?.fromSurface && usesGraphiteContentTabs() &&
+    showGraphiteContent('preview', options?.tabId ?? ensureDefaultPreviewTab().id)) return;
+  if (isGraphiteIndependentBrowser()) {
+    document.getElementById('previewPane')?.classList.remove('hidden');
+    scheduleElectronPreviewHostLayoutAfterSplitChange();
+    return;
+  }
   if (!isRightSplitOpen()) clearChatColumnDragCollapsed();
 
   if (isSplitGroupsPersisted()) {
@@ -535,6 +562,10 @@ export function showPreviewSplit(_options?: ShowPreviewSplitOptions): void {
 
 /** Hide preview pane; switches to file tabs when available. */
 export function hidePreviewSplit(): void {
+  if (usesGraphiteContentTabs()) {
+    refreshGraphiteSurfaceLayout();
+    return;
+  }
   const fallback = fallbackRightPaneModeAfterClose('preview');
   if (fallback === 'viewer') {
     showViewerSplit();
@@ -585,6 +616,8 @@ export function restoreChatColumnFromDrag(): boolean {
 
 /** Toggle the same full-width right-pane state used by split-handle drag collapse. */
 export function toggleRightPaneFullWidth(): void {
+  const current = getFilePanelState().rightPaneMode;
+  if (requestGraphiteSurface(current === 'viewer' ? 'files' : 'preview', 'maximize')) return;
   if (isChatColumnDragCollapsed()) {
     restoreChatColumnFromDrag();
     return;

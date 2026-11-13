@@ -148,8 +148,6 @@ import {
 } from './ui/layout';
 import { initAppSidebarResizers } from './ui/sidebar-resize';
 import {
-  fillSystemPromptPresetSelect,
-  loadSystemPromptSettings,
 } from './ui/settings';
 import { loadToolConfigIntoDrawer, syncWebSearchProviderFromSearchConfig, registerWebSearchSettingsHandlers } from './tools/config';
 import {
@@ -281,13 +279,32 @@ export async function initApp(): Promise<void> {
   }
   refreshConfigStorageBanner();
   const migrated = await runMigrationIfNeeded();
-  fillSystemPromptPresetSelect();
 
+  markBootPhase('config');
+  const configReady = Promise.all([
+    loadSkillConfigFromStorage(),
+    loadToolSecurityMeta().catch(() => undefined),
+    loadBrowserMeta().catch(() => undefined),
+    loadChatMeta().catch(() => undefined),
+    loadSamplerMeta().then(applySamplerMetaToDrawer).catch(() => undefined),
+    loadLibraryInferencePrefs().catch(() => undefined),
+    loadLibraryLaunchPrefs().catch(() => undefined),
+    loadAutopilotMeta().catch(() => undefined),
+    loadThinkingMeta().catch(() => undefined),
+  ]).then(() => {
+    try {
+      performance.mark('minnow:boot:config-done');
+      performance.measure('minnow:phase:config-cluster', 'minnow:boot:config', 'minnow:boot:config-done');
+    } catch {}
+  });
   const issuesReady = (async () => {
     const { loadIssuesTaxonomyFromStorage } = await import('./state/issues-taxonomy-store.ts');
     await loadIssuesTaxonomyFromStorage();
     const issuesStore = await import('./state/issues-store.ts');
     await issuesStore.loadIssuesFromStorage();
+    if (hasChatSurface && !isPairedDevice() && issuesStore.listIssues().some(issue => issue.agent?.home)) {
+      void import('./home/flow-actions').then(({ initHomeFlow }) => initHomeFlow());
+    }
     const { startGithubAutoSyncLoop } = await import('./state/issues-github-auto.ts');
     startGithubAutoSyncLoop();
     return issuesStore;
@@ -298,13 +315,13 @@ export async function initApp(): Promise<void> {
   })();
 
   await Promise.all([
+    configReady,
     loadToolConfigFromStorage(),
     initPromptSystem(),
     initWorkAgentSystem(),
     migrated ? loadSessionsFromStorage({ force: true }) : Promise.resolve(),
     issuesReady,
     prReviewsReady,
-    loadSystemPromptSettings(),
   ]);
   registerSessionPersistenceShutdownHandler();
   const { migrateLegacyBugBoardsFromChats } = await issuesReady;
@@ -348,16 +365,7 @@ export async function initApp(): Promise<void> {
     initComposerCompact();
   }
   await bindExpertsSettingsCheckbox();
-  // First-run setup needs the computer: phones join a Minnow that is already set up.
-  if (hasChatSurface && !isMobileShell()) {
-    const { shouldShowOnboardingOnBoot, mountOnboarding } = await import('./onboarding');
-    const showOnboarding = await shouldShowOnboardingOnBoot();
-    if (showOnboarding) {
-      await mountOnboarding();
-    }
-  }
   startSchedulerNotificationPoll();
-  releaseFirstRunReveal();
   initNotificationProducers();
   initNotificationCards();
   if (hasChatSurface) {
@@ -382,7 +390,6 @@ export async function initApp(): Promise<void> {
   if (hasComposerSurface) {
     initModelSelectPicker();
     initComposerModelTriggers();
-    await refreshSkillCatalog();
     const msgInput = document.getElementById('msgInput') as HTMLTextAreaElement | null;
     if (msgInput) {
       initComposerInput(msgInput);
@@ -392,28 +399,6 @@ export async function initApp(): Promise<void> {
     initComposerPaste();
     initAppSidebarResizers();
   }
-  markBootPhase('config');
-  await Promise.all([
-    loadSkillConfigFromStorage(),
-    loadToolSecurityMeta().catch(() => undefined),
-    loadBrowserMeta().catch(() => undefined),
-    loadChatMeta().catch(() => undefined),
-    loadSamplerMeta()
-      .then(applySamplerMetaToDrawer)
-      .catch(() => undefined),
-    loadLibraryInferencePrefs().catch(() => undefined),
-    loadLibraryLaunchPrefs().catch(() => undefined),
-    loadAutopilotMeta().catch(() => undefined),
-    loadThinkingMeta().catch(() => undefined),
-  ]);
-  try {
-    performance.mark('minnow:boot:config-done');
-    performance.measure(
-      'minnow:phase:config-cluster',
-      'minnow:boot:config',
-      'minnow:boot:config-done',
-    );
-  } catch {}
   if (hasComposerSurface) {
     initStatsStrip();
     initChatScroll();
@@ -423,6 +408,16 @@ export async function initApp(): Promise<void> {
   registerWebSearchSettingsHandlers();
   loadToolConfigIntoDrawer();
   void syncWebSearchProviderFromSearchConfig();
+
+  // The workspace picker is ready underneath setup. Phones use the host's setup.
+  try {
+    if (hasChatSurface && !isMobileShell()) {
+      const { mountOnboarding } = await import('./onboarding');
+      await mountOnboarding();
+    }
+  } finally {
+    releaseFirstRunReveal();
+  }
 
   if (workspaceGatePending) {
     await workspaceGatePending;
@@ -446,8 +441,8 @@ export async function initApp(): Promise<void> {
 
   if (hasChatSurface) {
     applySidebarVisuals();
-    const { wireSidebarNewGroupButton } = await import('./ui/sidebar');
-    wireSidebarNewGroupButton();
+    const { initChatSidebarInteractions } = await import('./ui/sidebar');
+    initChatSidebarInteractions();
   }
   const { ensureBootAppsInitialized, warmIssuesAppInBackground } = await import(
     './os/app-modules'
@@ -488,6 +483,7 @@ export async function initApp(): Promise<void> {
     mountMobileShell();
   }
   markChromeReady();
+  if (hasComposerSurface) void refreshSkillCatalog();
   window.addEventListener('minnow-host-reconnected', () => { void fetchModels(); });
   const renderSharedSessionChanges = (activeChanged: boolean) => {
     renderSidebar();

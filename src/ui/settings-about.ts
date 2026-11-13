@@ -3,6 +3,8 @@ import '../styles/settings-about.css';
 import { detectConfigServer } from '../config/storage-mode';
 import {
   appendSettingsGroup,
+  linkToProductWiki,
+  linkToRepositoryDoc,
   linkToSettingsSection,
 } from './settings-layout';
 import { createSettingsKvList } from './settings-controls';
@@ -11,6 +13,7 @@ import {
   type DiagnosticsHealthPayload,
 } from './health-strip';
 import { getBootMetrics } from '../boot/boot-metrics';
+import { createIcon } from './icon';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -44,6 +47,31 @@ function formatElectronVersion(
   return 'Browser tab';
 }
 
+function timing(value?: number): string {
+  return value === undefined ? '—' : `${value.toFixed(0)} ms`;
+}
+
+function performanceCards(): HTMLElement {
+  const boot = getBootMetrics();
+  const firstPaint = performance.getEntriesByName?.('first-contentful-paint', 'paint')[0]?.startTime;
+  const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
+  const cards = el('dl', 'about-build__metrics');
+  cards.dataset.settingsSearchKey = 'about.boot';
+  for (const [label, value, hint] of [
+    ['Shell ready', timing(boot?.appReadyMs), 'From app startup'],
+    ['Interactive', timing(boot?.interactiveMs), 'From app startup'],
+    ['First content', timing(firstPaint), 'From page navigation'],
+    ['Document ready', timing(navigation?.domContentLoadedEventEnd || undefined), 'From page navigation'],
+  ]) {
+    const card = el('div', 'about-build__metric');
+    const detail = el('dd');
+    detail.append(el('span', 'about-build__metric-value', value), el('span', 'about-build__metric-hint', hint));
+    card.append(el('dt', '', label), detail);
+    cards.appendChild(card);
+  }
+  return cards;
+}
+
 /** Populate Settings → About (build metadata). */
 export async function renderAboutSettingsSection(): Promise<void> {
   const mount = clearMount('settingsAboutBody');
@@ -52,23 +80,42 @@ export async function renderAboutSettingsSection(): Promise<void> {
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
 
-  const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'Version and runtime details for this install. Health probes and error logs live under ',
-    linkToSettingsSection('Health & diagnostics', 'diagnostics'),
-    '.',
-  );
-  shell.appendChild(lead);
-
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
 
-  const serverUp = await detectConfigServer();
+  const serverUp = (await detectConfigServer()) === 'server';
+  const health = serverUp ? await fetchDiagnosticsHealth() : null;
 
-  let health: DiagnosticsHealthPayload | null = null;
-  if (serverUp) {
-    health = await fetchDiagnosticsHealth();
+  const hero = el('div', 'about-build__hero');
+  const mark = el('span', 'about-build__mark', 'm');
+  mark.setAttribute('aria-hidden', 'true');
+  const name = el('div', 'about-build__name');
+  name.append(
+    el('span', 'about-build__title', health?.version ? `Minnow ${health.version}` : 'Minnow'),
+    el('span', 'about-build__caption', [
+      health?.platform,
+      health?.electronVersion ? `Electron ${health.electronVersion}` : formatElectronVersion(health),
+      health?.nodeVersion ? `Node ${health.nodeVersion}` : null,
+    ].filter(Boolean).join(' · ')),
+  );
+  const releases = el('a', 'settings-inline-btn', 'Release notes');
+  releases.href = 'https://github.com/henrigrimm/minnow/releases';
+  releases.target = '_blank';
+  releases.rel = 'noopener noreferrer';
+  hero.append(mark, name, releases);
+  content.appendChild(hero);
+
+  appendSettingsGroup(content, 'Performance diagnostics').appendChild(performanceCards());
+
+  const links = el('div', 'about-build__links');
+  const docs = linkToProductWiki('Documentation', 'documentation/manual/README.md');
+  const licenses = linkToRepositoryDoc('Licenses', 'documentation/THIRD_PARTY_NOTICES.md');
+  const diagnostics = linkToSettingsSection('Health and diagnostics', 'diagnostics');
+  for (const [link, glyph] of [[docs, 'link'], [licenses, 'chevronRight'], [diagnostics, 'chevronRight']] as const) {
+    link.appendChild(createIcon(glyph));
+    links.appendChild(link);
   }
+  content.appendChild(links);
 
   const build = appendSettingsGroup(
     content,
@@ -96,18 +143,4 @@ export async function renderAboutSettingsSection(): Promise<void> {
     ),
   );
 
-  const boot = getBootMetrics();
-  const perfDetails = el('details', 'about-build__perf-diag');
-  perfDetails.appendChild(el('summary', 'about-build__perf-summary', 'Performance diagnostics'));
-  const perfBody = el('div', 'about-build__perf-body');
-  const bootLabel =
-    boot != null ? `${boot.appReadyMs.toFixed(1)} ms to shell ready` : 'Shell ready — pending first boot';
-  perfBody.appendChild(
-    createSettingsKvList(
-      [{ term: 'Boot (app-ready)', value: monoValue(bootLabel) }],
-      { className: 'settings-kv about-build__kv', searchKey: 'about.boot' },
-    ),
-  );
-  perfDetails.appendChild(perfBody);
-  build.appendChild(perfDetails);
 }

@@ -7,7 +7,7 @@
 }
 .cli-account-usage__refresh:disabled { opacity: 0.6; cursor: default; }
 .cli-account-usage__status, .cli-account-usage__metadata { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--mn-fg-muted); }
-.cli-account-usage__status[data-state='stale'] { color: var(--mn-warning-ink); }
+.cli-account-usage__status[data-state='stale'] { color: var(--mn-warning); }
 .cli-account-usage__windows { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
 .cli-account-usage__windows:empty { margin-top: 0; }
 .cli-account-usage__window { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; color: var(--mn-fg); }

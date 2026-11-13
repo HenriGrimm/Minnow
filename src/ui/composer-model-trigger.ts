@@ -1,6 +1,7 @@
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
 import { getComposerReasoningState, setComposerReasoningChoice } from './composer-reasoning-effort';
 import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
+import { positionAnchoredModelPicker } from './model-picker-position';
 import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
 import { getModelRowForSelectOrCanonicalId, updateModelLoadUnloadButtons } from '../api/models';
 import { modelCache, streamingChatIds } from '../app-state';
@@ -8,8 +9,10 @@ import { getForegroundAppId, getOsView } from '../os/instances';
 import { modelProducerLogoSvg } from '../providers/model-producer';
 import { isModelLoadUnloadBusy } from './model-load-unload-button';
 import { resolveModelState } from './model-state-dot';
-import { getActiveChat } from '../state/sessions';
-import { isManagedModelBusy, managedModelReadOnlyReason } from './managed-chat-model';
+import { getActiveChat, scheduleSaveSessions, touchChat } from '../state/sessions';
+import { configureManagedChatModel, isManagedModelBusy, managedChatModelSelection, managedModelReadOnlyReason } from './managed-chat-model';
+import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
+import { showToast } from './toast';
 import { isChatAppForeground } from './chat-mount';
 import {
   onActiveChatModelChange,
@@ -97,6 +100,7 @@ let shortcutBound = false;
 let unregisterExternalCloser: (() => void) | null = null;
 /** Keyboard-highlighted row in the open menu (-1 = none). */
 let activeOptionIndex = -1;
+const pendingRelayedSpeedChanges = new Set<string>();
 
 // ── Finders ──────────────────────────────────────────────────────────────────
 
@@ -335,10 +339,11 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
 
   if (selectValue && !isMenubarStyleVariant(trigger.variant) && !router) {
     const reasoning = getComposerReasoningState();
-    if (reasoning.label) {
+    const speed = modelCache.get(selectValue)?.supportsFastMode && chatUsesCliFastMode();
+    if (reasoning.label || speed) {
       const suffix = document.createElement('span');
       suffix.className = 'composer-model-trigger__reasoning';
-      suffix.textContent = ` · ${reasoning.label}`;
+      suffix.textContent = ` · ${[reasoning.label, speed ? 'Fast' : ''].filter(Boolean).join(' · ')}`;
       trigger.labelEl.append(suffix);
       trigger.trigger.setAttribute('aria-label', `Active model: ${trigger.labelEl.textContent}`);
     }
@@ -429,10 +434,82 @@ function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
     button.className = 'composer-model-reasoning__choice';
     button.dataset.composerReasoning = choice.value;
     button.textContent = choice.label;
-    button.setAttribute('aria-pressed', String(choice.value === state.selected));
+    const selected = choice.value === state.selected;
+    button.setAttribute('aria-pressed', String(selected));
+    if (selected) button.insertAdjacentHTML('beforeend', iconHtml('check'));
     button.disabled = state.disabled;
     return button;
   }));
+}
+
+function chatUsesCliFastMode(): boolean {
+  const chat = getActiveChat();
+  return chat.chatCommandVersion === 1
+    ? managedChatModelSelection(chat).options?.fastMode === true
+    : chat.cliFastMode === true;
+}
+
+function syncChatSpeedMenu(trigger: ComposerModelTrigger): void {
+  const button = trigger.panel.querySelector<HTMLButtonElement>('.composer-model-speed');
+  if (!button) return;
+  const chat = getActiveChat();
+  const supported = modelCache.get(resolveTriggerSelectValue(trigger))?.supportsFastMode === true;
+  const fast = chatUsesCliFastMode();
+  button.hidden = !supported && !fast;
+  button.setAttribute('aria-checked', String(fast));
+  if (button.hidden) return;
+  const disabled = getComposerReasoningState().disabled
+    || Boolean(managedModelReadOnlyReason(chat))
+    || pendingRelayedSpeedChanges.has(chat.id);
+  // Keep keyboard focus on the switch while a speed change is being saved.
+  button.setAttribute('aria-disabled', String(disabled));
+}
+
+function mountChatSpeedMenu(actions: HTMLElement): void {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'composer-model-speed';
+  button.hidden = true;
+  button.setAttribute('role', 'switch');
+  button.setAttribute('aria-checked', 'false');
+  button.title = 'Fast mode may use more credits';
+  const track = document.createElement('span');
+  track.className = 'composer-model-speed__track';
+  track.setAttribute('aria-hidden', 'true');
+  button.append(track, 'Fast mode');
+  button.addEventListener('click', async () => {
+    const trigger = openTrigger;
+    if (!trigger?.panel.contains(button)) return;
+    syncChatSpeedMenu(trigger);
+    if (button.hidden || button.getAttribute('aria-disabled') === 'true') return;
+    const chat = getActiveChat();
+    const fast = !chatUsesCliFastMode();
+    try {
+      if (chat.chatCommandVersion === 1) {
+        const selection = managedChatModelSelection(chat);
+        await configureManagedChatModel(chat, { ...selection, options: { ...selection.options, fastMode: fast } });
+      } else if (shouldRelayChat(chat.id)) {
+        pendingRelayedSpeedChanges.add(chat.id);
+        syncChatSpeedMenu(trigger);
+        try {
+          await sendRemoteChatCommand(chat.id, 'configure', {
+            patch: { cliFastMode: { enabled: fast, modelKey: resolveTriggerSelectValue(trigger) } },
+          });
+        } finally {
+          pendingRelayedSpeedChanges.delete(chat.id);
+          if (openTrigger) syncChatSpeedMenu(openTrigger);
+        }
+      } else {
+        chat.cliFastMode = fast;
+        touchChat(chat);
+        scheduleSaveSessions();
+        syncComposerModelTriggers();
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), 'error');
+    }
+  });
+  actions.prepend(button);
 }
 
 function rebuildOpenMenu(): void {
@@ -457,6 +534,7 @@ function rebuildOpenMenu(): void {
   );
   syncAllModelMenuReasoningDefaults();
   syncChatReasoningMenu(openTrigger);
+  syncChatSpeedMenu(openTrigger);
   const binding = decodeModelSelectKey(selectedValue);
   const chat = getActiveChat();
   const router = binding?.providerId === 'minnow-router' ? getRouterConfigSync().routers.find((r) => r.id === binding.modelId) : undefined;
@@ -468,30 +546,10 @@ function rebuildOpenMenu(): void {
 }
 
 function positionPanel(trigger: ComposerModelTrigger): void {
-  const rect = trigger.trigger.getBoundingClientRect();
-  const margin = 8;
-  const gap = 4;
-  const panel = trigger.panel;
-
-  const panelWidth = panel.offsetWidth || panel.getBoundingClientRect().width;
-  let left = rect.right - panelWidth;
-  left = Math.max(margin, Math.min(left, window.innerWidth - panelWidth - margin));
-  panel.style.left = `${left}px`;
-  panel.style.right = 'auto';
-
-  const above = Math.max(0, rect.top - gap - margin);
-  const below = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
-  if (!panel.dataset.placement) {
-    const panelHeight = panel.offsetHeight || panel.getBoundingClientRect().height;
-    panel.dataset.placement = !isMenubarStyleVariant(trigger.variant)
-      && (panelHeight <= above || above >= below) ? 'above' : 'below';
-  }
-  // Keep the opening side through asynchronous view/size changes (including Pools).
-  // Anchor the near edge and scroll within the available space instead of flipping.
-  const opensAbove = panel.dataset.placement === 'above';
-  panel.style.maxHeight = `${opensAbove ? above : below}px`;
-  panel.style.top = opensAbove ? 'auto' : `${Math.max(margin, rect.bottom + gap)}px`;
-  panel.style.bottom = opensAbove ? `${Math.max(margin, window.innerHeight - rect.top + gap)}px` : 'auto';
+  positionAnchoredModelPicker(
+    trigger.panel, trigger.trigger, isMenubarStyleVariant(trigger.variant) ? 'below' : 'above',
+    trigger.variant === 'code' ? 8 : 4,
+  );
 }
 
 function clearMenubarCollapseTimer(trigger: ComposerModelTrigger): void {
@@ -583,6 +641,8 @@ function detachGlobalListeners(): void {
   document.removeEventListener('pointerdown', onDocumentPointerDown, true);
   document.removeEventListener('keydown', onDocumentKeyDown, true);
   window.removeEventListener('resize', onWindowResize);
+  window.visualViewport?.removeEventListener('resize', onWindowResize);
+  window.visualViewport?.removeEventListener('scroll', onWindowResize);
 }
 
 function onDocumentPointerDown(e: PointerEvent): void {
@@ -653,6 +713,8 @@ function attachGlobalListeners(): void {
   document.addEventListener('pointerdown', onDocumentPointerDown, true);
   document.addEventListener('keydown', onDocumentKeyDown, true);
   window.addEventListener('resize', onWindowResize);
+  window.visualViewport?.addEventListener('resize', onWindowResize);
+  window.visualViewport?.addEventListener('scroll', onWindowResize);
 }
 
 /** Open the per-chat model picker for the active composer surface. */
@@ -787,7 +849,13 @@ function createModelMenuPanel(
 ): { panel: HTMLDivElement; menu: HTMLUListElement } {
   const panel = document.createElement('div');
   panel.className = 'composer-model-menu hidden';
-  panel.setAttribute('role', 'presentation');
+  if (variant === 'code') {
+    panel.classList.add('composer-model-menu--code');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Choose a model');
+  } else {
+    panel.setAttribute('role', 'presentation');
+  }
 
   const filterBar = mountModelHostFilterBar(
     panel,
@@ -804,7 +872,7 @@ function createModelMenuPanel(
   menu.setAttribute('role', 'listbox');
   menu.setAttribute('aria-label', 'Model');
   panel.appendChild(menu);
-  mountModelMenuActions(panel, {
+  const actions = mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
     closeMenu: closeComposerModelMenu,
     showReasoningDefault: variant === 'menubar',
@@ -812,6 +880,7 @@ function createModelMenuPanel(
       refreshActiveChatReasoningDefault(selectValue);
     },
   });
+  if (variant === 'code' || variant === 'chat' || variant === 'desktop') mountChatSpeedMenu(actions);
   mountModelPoolPickerHost({
     panel, menu, filterBar, select: getModelSelect,
     selectedValue: resolveOpenMenuSelectValue, query: getModelSearchQuery,

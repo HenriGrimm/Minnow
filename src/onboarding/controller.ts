@@ -1,11 +1,12 @@
 /**
- * Onboarding overlay controller — mount, navigation, keyboard, persistence.
+ * First-run setup dialog and persisted provider navigation.
  */
 
 import { isServerStorageMode } from '../config/storage-mode';
 import { getLocalServerAvailable } from '../tools/client';
 import { isWorkspaceFolderPickerOpen } from '../ui/workspace-folder-picker';
-import { mountStepSidebar, type StepSidebarHandle } from './step-sidebar';
+import { focusableWithin, isolateModalBackground, markOverlayRoot, trapTabKey, unmarkOverlayRoot } from '../ui/components/internal';
+import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';
 import { getApplicableSteps, resolveStepIndex, ONBOARDING_STEPS } from './steps/registry';
 import { warmProviderProbes } from './steps/provider';
 import {
@@ -18,12 +19,12 @@ import {
   saveOnboardingState,
   tryClaimOnboardingOverlay,
 } from './state';
-import type { OnboardingContext, OnboardingStepActions, OnboardingStepId } from './types';
+import type { OnboardingContext, OnboardingStepActions } from './types';
+import { el } from './ui-helpers';
 
-let mounted = false;
 let rootEl: HTMLElement | null = null;
+let dialogEl: HTMLElement | null = null;
 let contentEl: HTMLElement | null = null;
-let sidebarHandle: StepSidebarHandle | null = null;
 let stepCleanup: (() => void) | null = null;
 let ctx: OnboardingContext | null = null;
 let stepIndex = 0;
@@ -31,356 +32,262 @@ let applicableSteps = ONBOARDING_STEPS;
 let primaryBtn: HTMLButtonElement | null = null;
 let backBtn: HTMLButtonElement | null = null;
 let skipBtn: HTMLButtonElement | null = null;
+let restoreBtn: HTMLButtonElement | null = null;
 let errorEl: HTMLElement | null = null;
 let retryBtn: HTMLButtonElement | null = null;
 let pendingRetry: (() => Promise<void>) | null = null;
 let navigating = false;
+let restoring = false;
 let mounting: Promise<void> | null = null;
 let renewalTimer: ReturnType<typeof setInterval> | null = null;
 let renderGeneration = 0;
+let returnFocus: HTMLElement | null = null;
+let releaseBackground: (() => void) | null = null;
 
-// ── Mount ────────────────────────────────────────────────────────────────────
-
-/** Whether first-run wizard should open on boot (does not claim overlay). */
-export async function shouldShowOnboardingOnBoot(): Promise<boolean> {
-  let state = await loadOnboardingState();
-  state = await migrateExistingUsersIfNeeded(state);
-  return !state.completedAt;
-}
-
-/** Open wizard (boot or Settings → Run setup again). */
 export async function mountOnboarding(options?: { force?: boolean }): Promise<void> {
   if (mounting) return mounting;
-  mounting = mountOverlay(options);
+  mounting = mountOverlay(Boolean(options?.force));
   try { await mounting; } finally { mounting = null; }
 }
 
-async function mountOverlay(options?: { force?: boolean }): Promise<void> {
-  if (mounted) return;
+async function mountOverlay(force: boolean): Promise<void> {
+  if (rootEl) return;
 
   let state = await loadOnboardingState();
-  if (!options?.force) {
+  if (!force) {
     state = await migrateExistingUsersIfNeeded(state);
     if (state.completedAt) return;
   }
-  const claim = await tryClaimOnboardingOverlay(state, Boolean(options?.force));
+  const claim = await tryClaimOnboardingOverlay(state, force);
   if (!claim.claimed) {
-    if (options?.force) throw new Error('Setup is already open in another window.');
+    if (force) throw new Error('Setup is already open in another window.');
     return;
   }
-  state = claim.state;
 
-  await warmProviderProbes();
-
-  ctx = buildOnboardingContext(state, {
+  ctx = buildOnboardingContext(claim.state, {
     serverAvailable: getLocalServerAvailable(),
     configServerAvailable: isServerStorageMode(),
   });
-
   applicableSteps = getApplicableSteps(ctx);
-  stepIndex = resolveStepIndex(applicableSteps, state.lastStep);
+  stepIndex = resolveStepIndex(applicableSteps, ctx);
+  warmProviderProbes();
 
-  rootEl = document.createElement('div');
-  rootEl.className = 'mn-onboarding';
-  rootEl.setAttribute('role', 'dialog');
-  rootEl.setAttribute('aria-modal', 'true');
-  rootEl.setAttribute('aria-label', 'Minnow setup');
+  rootEl = el('div', 'mn-onboarding');
+  dialogEl = el('section', 'mn-onboarding__dialog');
+  dialogEl.setAttribute('role', 'dialog');
+  dialogEl.setAttribute('aria-modal', 'true');
+  dialogEl.setAttribute('aria-labelledby', 'mn-onboarding-label');
+  dialogEl.tabIndex = -1;
 
-  const asideMount = document.createElement('aside');
-  const main = document.createElement('div');
-  main.className = 'mn-onboarding__main';
+  const header = el('header', 'mn-onboarding__header');
+  const glyph = el('span', 'mn-onboarding__glyph');
+  glyph.setAttribute('aria-hidden', 'true');
+  glyph.innerHTML = MINNOW_GLYPH_HEADER_HTML;
+  const label = el('span', undefined, 'Minnow setup');
+  label.id = 'mn-onboarding-label';
+  header.append(glyph, label);
+  contentEl = el('div', 'mn-onboarding-step');
 
-  const mobileProgressMount = document.createElement('div');
-
-  contentEl = document.createElement('div');
-  contentEl.className = 'mn-onboarding__content';
-
-  const footer = document.createElement('footer');
-  footer.className = 'mn-onboarding__footer';
-
-  backBtn = document.createElement('button');
-  backBtn.type = 'button';
-  backBtn.className = 'mn-onboarding-back-btn';
-  backBtn.textContent = 'Back';
-  backBtn.addEventListener('click', () => goBack());
-
-  skipBtn = document.createElement('button');
-  skipBtn.type = 'button';
-  skipBtn.className = 'mn-onboarding-skip-btn';
-  skipBtn.textContent = 'Set up later';
-  skipBtn.addEventListener('click', () => void runNavigation(skipCurrent));
-
-  primaryBtn = document.createElement('button');
-  primaryBtn.type = 'button';
-  primaryBtn.className = 'mn-onboarding-primary-btn';
-  primaryBtn.textContent = 'Continue';
-  primaryBtn.addEventListener('click', () => void runNavigation(goNext));
-
-  errorEl = document.createElement('p');
-  errorEl.className = 'mn-onboarding-save-error';
-  errorEl.setAttribute('role', 'alert');
-  errorEl.hidden = true;
-  retryBtn = document.createElement('button');
-  retryBtn.type = 'button';
-  retryBtn.className = 'mn-onboarding-back-btn';
-  retryBtn.textContent = 'Retry';
-  retryBtn.hidden = true;
-  retryBtn.addEventListener('click', () => {
+  backBtn = button('mn-onboarding-back-btn', 'Back', () => goBack());
+  skipBtn = button('mn-onboarding-skip-btn', 'Set up later', () => void runNavigation(finish));
+  restoreBtn = button('mn-onboarding-back-btn', 'Restore from a backup', () => void runNavigation(openRestore));
+  primaryBtn = button('mn-onboarding-primary-btn', 'Continue', () => void runNavigation(goNext));
+  retryBtn = button('mn-onboarding-back-btn', 'Retry', () => {
     if (pendingRetry) void runNavigation(pendingRetry);
   });
+  retryBtn.hidden = true;
 
-  const actions = document.createElement('div');
-  actions.className = 'mn-onboarding__actions';
-  actions.append(backBtn, skipBtn, retryBtn, primaryBtn);
+  errorEl = el('p', 'mn-onboarding-save-error');
+  errorEl.setAttribute('role', 'alert');
+  errorEl.hidden = true;
+  const actions = el('div', 'mn-onboarding__actions');
+  actions.append(backBtn, restoreBtn, retryBtn, skipBtn, primaryBtn);
+  const footer = el('footer', 'mn-onboarding__footer');
   footer.append(errorEl, actions);
 
-  main.append(mobileProgressMount, contentEl, footer);
-  rootEl.append(asideMount, main);
-  document.body.appendChild(rootEl);
-  document.documentElement.classList.add('onboarding-active');
+  dialogEl.append(header, contentEl, footer);
+  rootEl.append(dialogEl);
+  returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  document.body.append(rootEl);
+  releaseBackground = isolateModalBackground(rootEl);
+  markOverlayRoot(rootEl, 'dialog');
 
-  sidebarHandle = mountStepSidebar(
-    asideMount,
-    mobileProgressMount,
-    applicableSteps,
-    applicableSteps[stepIndex]?.id ?? 'welcome',
-  );
-
-  mounted = true;
   renewalTimer = setInterval(() => {
-    void renewOnboardingOverlayClaim().catch((error) => {
-      showSaveError(error, renewOnboardingOverlayClaim);
-    });
+    void renewOnboardingOverlayClaim().catch((error) => showError(error, renewOnboardingOverlayClaim));
   }, 10_000);
-  bindKeyboard();
+  document.addEventListener('keydown', onKeyDown);
   renderCurrentStep();
-
 }
 
-/** Tear down overlay and release second-window claim. */
+function button(className: string, label: string, onClick: () => void): HTMLButtonElement {
+  const node = el('button', className, label);
+  node.type = 'button';
+  node.addEventListener('click', onClick);
+  return node;
+}
+
+function finish(): Promise<void> {
+  return unmountOnboarding(true);
+}
+
+/** Tear down the overlay and release its second-window claim. */
 export async function unmountOnboarding(complete = false): Promise<void> {
-  if (!mounted || !ctx) return;
+  if (!rootEl || !ctx) return;
   if (complete) ctx.state = await markOnboardingComplete(ctx.state);
   ctx.state = await releaseOnboardingOverlayClaim(ctx.state);
   if (renewalTimer) clearInterval(renewalTimer);
   renewalTimer = null;
   stepCleanup?.();
-  renderGeneration += 1;
   stepCleanup = null;
-  sidebarHandle?.destroy();
-  sidebarHandle = null;
-  rootEl?.remove();
-  rootEl = null;
-  contentEl = null;
-  mounted = false;
-  document.documentElement.classList.remove('onboarding-active');
-  unbindKeyboard();
+  renderGeneration += 1;
+  unmarkOverlayRoot(rootEl);
+  rootEl.remove();
+  releaseBackground?.();
+  releaseBackground = null;
+  if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  returnFocus = null;
+  document.removeEventListener('keydown', onKeyDown);
 
-  errorEl = null;
-  retryBtn = null;
+  rootEl = dialogEl = contentEl = errorEl = null;
+  backBtn = restoreBtn = skipBtn = primaryBtn = retryBtn = null;
   pendingRetry = null;
+  restoring = false;
   ctx = null;
 }
 
-function bindKeyboard(): void {
-  document.addEventListener('keydown', onKeyDown);
-}
-
-function unbindKeyboard(): void {
-  document.removeEventListener('keydown', onKeyDown);
-}
-
-function onKeyDown(ev: KeyboardEvent): void {
-  if (!mounted || ev.defaultPrevented || isWorkspaceFolderPickerOpen()) return;
-  if (ev.key === 'Escape') {
-    ev.preventDefault();
-    void runNavigation(() => unmountOnboarding(false));
-    return;
+function onKeyDown(event: KeyboardEvent): void {
+  if (!dialogEl || event.defaultPrevented || isWorkspaceFolderPickerOpen()) return;
+  const active = document.activeElement;
+  const activeModal = active?.closest('[aria-modal="true"]');
+  if (activeModal && activeModal !== dialogEl && !dialogEl.contains(activeModal)) return;
+  if (event.key === 'Tab') {
+    if (event.shiftKey && active === contentEl?.querySelector('h2')) {
+      event.preventDefault();
+      (focusableWithin(dialogEl).at(-1) ?? dialogEl).focus();
+    } else {
+      trapTabKey(dialogEl, event);
+    }
   }
-  if (ev.key === 'Enter' && !ev.shiftKey && primaryBtn && !primaryBtn.disabled) {
-    const target = ev.target as HTMLElement | null;
-    if (target?.closest('button, a, input, textarea, select, [contenteditable="true"], [role="button"]')) return;
-    ev.preventDefault();
-    void runNavigation(goNext);
+  if (event.key === 'Escape' && !restoring) {
+    event.preventDefault();
+    void runNavigation(finish);
   }
-}
-
-// ── Steps ────────────────────────────────────────────────────────────────────
-
-function refreshApplicableSteps(): void {
-  if (!ctx) return;
-  applicableSteps = getApplicableSteps(ctx);
-  sidebarHandle?.setSteps(applicableSteps);
 }
 
 function makeActions(): OnboardingStepActions {
   const generation = renderGeneration;
-  const isCurrent = () => mounted && renderGeneration === generation;
+  const isCurrent = () => Boolean(rootEl) && renderGeneration === generation;
   return {
     next: () => { if (isCurrent()) void runNavigation(goNext); },
     back: () => { if (isCurrent()) goBack(); },
-    skip: () => { if (isCurrent()) void runNavigation(skipCurrent); },
+    skip: () => { if (isCurrent()) void runNavigation(finish); },
     patchContext: (patch) => {
-      if (!ctx || !isCurrent()) return;
+      if (!ctx || !isCurrent() || (stepIndex === 0 && navigating)) return;
       Object.assign(ctx, patch);
-      refreshApplicableSteps();
+      applicableSteps = getApplicableSteps(ctx);
     },
     setPrimaryEnabled: (enabled) => {
       if (primaryBtn && isCurrent()) primaryBtn.disabled = !enabled;
     },
     setPrimaryLabel: (label) => {
-      if (primaryBtn && isCurrent()) primaryBtn.textContent = label;
+      if (!primaryBtn || !isCurrent()) return;
+      const lastStep = stepIndex === applicableSteps.length - 1;
+      primaryBtn.textContent = lastStep && label === 'Continue' ? 'Done' : label;
+      primaryBtn.hidden = stepIndex === 0 || label === 'Skip for now';
     },
     stepIndex,
     totalSteps: applicableSteps.length,
   };
 }
 
-function setWelcomeLayout(active: boolean): void {
-  rootEl?.classList.toggle('is-welcome', active);
-}
-
-function animateStepEnter(): void {
-  if (!contentEl) return;
-  const reduced =
-    typeof globalThis.matchMedia === 'function' &&
-    globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduced) return;
-
-  contentEl.classList.remove('is-entering');
-  void contentEl.offsetWidth;
-  contentEl.classList.add('is-entering');
-  const onEnd = () => {
-    contentEl?.classList.remove('is-entering');
-    contentEl?.removeEventListener('animationend', onEnd);
-  };
-  contentEl.addEventListener('animationend', onEnd);
-}
-
 function renderCurrentStep(): void {
   if (!ctx || !contentEl) return;
   renderGeneration += 1;
   stepCleanup?.();
-  stepCleanup = null;
+  restoring = false;
 
   const step = applicableSteps[stepIndex];
-  if (!step) return;
-
-  setWelcomeLayout(step.id === 'welcome');
-
   if (backBtn) backBtn.hidden = stepIndex === 0;
-  if (skipBtn) skipBtn.hidden = !step.canSkip;
-
+  if (restoreBtn) restoreBtn.hidden = stepIndex !== 0 || !ctx.configServerAvailable;
+  if (skipBtn) skipBtn.hidden = false;
+  if (primaryBtn) primaryBtn.hidden = stepIndex === 0;
   const cleanup = step.render(contentEl, ctx, makeActions());
-  if (typeof cleanup === 'function') stepCleanup = cleanup;
+  stepCleanup = typeof cleanup === 'function' ? cleanup : null;
+  focusStep();
+}
 
-  sidebarHandle?.setActiveStep(step.id, stepIndex);
+function focusStep(): void {
+  if (!contentEl) return;
   contentEl.scrollTop = 0;
-  const heading = contentEl.querySelector<HTMLElement>('h1, h2');
-  if (heading) {
-    heading.tabIndex = -1;
-    heading.focus({ preventScroll: true });
-  }
-  animateStepEnter();
+  const heading = contentEl.querySelector('h2');
+  if (heading) heading.tabIndex = -1;
+  (heading ?? dialogEl)?.focus({ preventScroll: true });
 }
 
 async function goNext(): Promise<void> {
-  if (!ctx || !contentEl) return;
+  if (!ctx) return;
   const step = applicableSteps[stepIndex];
-  if (!step) return;
-
   await step.commit(ctx);
-  await saveOnboardingState(ctx.state);
-
-  if (step.id === 'extras') {
-    ctx.searxngSkipped = Boolean(ctx.state.steps.extras?.data?.searxngSkipped);
-  }
-
-  if (step.id === 'provider-choice' || step.id === 'extras') {
-    refreshApplicableSteps();
-  }
-
-  if (step.id === 'done') {
-    await unmountOnboarding(true);
+  if (stepIndex === applicableSteps.length - 1) {
+    await finish();
     return;
   }
-
-  if (stepIndex < applicableSteps.length - 1) {
-    stepIndex += 1;
-    refreshApplicableSteps();
-    renderCurrentStep();
-  } else {
-    await unmountOnboarding(true);
-  }
+  await saveOnboardingState(ctx.state);
+  stepIndex += 1;
+  renderCurrentStep();
 }
 
 function goBack(): void {
   if (navigating) return;
-  clearSaveError();
-  if (stepIndex <= 0) return;
-  stepIndex -= 1;
+  clearError();
+  if (!restoring && stepIndex > 0) stepIndex -= 1;
   renderCurrentStep();
 }
 
-async function skipCurrent(): Promise<void> {
-  if (!ctx) return;
-  const step = applicableSteps[stepIndex];
-  if (!step?.canSkip) return;
+async function openRestore(): Promise<void> {
+  const generation = renderGeneration;
+  const [{ fetchBackupStatus }, { mountRestorePanel }] = await Promise.all([
+    import('../backup/client'),
+    import('../ui/backup-restore-panel'),
+  ]);
+  const status = await fetchBackupStatus();
+  if (!contentEl || renderGeneration !== generation) return;
+  restoring = true;
+  renderGeneration += 1;
+  stepCleanup?.();
+  stepCleanup = null;
 
-  if (step.id === 'welcome') {
-    await unmountOnboarding(true);
-    return;
-  }
-
-  if (step.id === 'extras') ctx.searxngSkipped = true;
-  if (step.id === 'provider-choice') {
-    ctx.providerPath = null;
-    ctx.providerId = null;
-    ctx.modelId = null;
-  }
-
-  ctx.state = {
-    ...ctx.state,
-    lastStep: step.id,
-    steps: {
-      ...ctx.state.steps,
-      [step.id]: {
-        ...(ctx.state.steps[step.id] ?? {}), done: false, skipped: true,
-        data: step.id === 'extras' ? { searxngSkipped: true }
-          : step.id === 'provider-choice' ? { path: null } : ctx.state.steps[step.id]?.data,
-      },
-    },
-  };
-  await saveOnboardingState(ctx.state);
-
-  refreshApplicableSteps();
-
-  if (stepIndex < applicableSteps.length - 1) {
-    stepIndex += 1;
-    refreshApplicableSteps();
-    renderCurrentStep();
-  } else {
-    await unmountOnboarding(true);
-  }
+  const heading = el('h2', 'mn-onboarding-step-title', 'Restore from a backup');
+  const mount = el('div');
+  contentEl.replaceChildren(heading, mount);
+  if (backBtn) backBtn.hidden = true;
+  if (skipBtn) skipBtn.hidden = true;
+  if (restoreBtn) restoreBtn.hidden = true;
+  if (primaryBtn) primaryBtn.hidden = true;
+  const panel = mountRestorePanel(mount, {
+    initialDir: status.settings.lastDestDir || status.defaultDir,
+    canRestartInPlace: status.packaged,
+    elevated: true,
+    onClose: goBack,
+  });
+  stepCleanup = () => panel.destroy();
+  focusStep();
 }
 
-// ── Settings ─────────────────────────────────────────────────────────────────
-
-/** Re-run entry from Settings. */
 export async function rerunOnboardingFromSettings(): Promise<void> {
   await mountOnboarding({ force: true });
 }
 
-function clearSaveError(): void {
+function clearError(): void {
   pendingRetry = null;
   if (errorEl) errorEl.hidden = true;
   if (retryBtn) retryBtn.hidden = true;
 }
 
-function showSaveError(error: unknown, retry: () => Promise<void>): void {
+function showError(error: unknown, retry: () => Promise<void>): void {
   pendingRetry = retry;
   if (errorEl) {
-    errorEl.textContent = `Setup could not be saved. ${error instanceof Error ? error.message : String(error)} Your choices are still here.`;
+    errorEl.textContent = error instanceof Error ? error.message : String(error);
     errorEl.hidden = false;
   }
   if (retryBtn) retryBtn.hidden = false;
@@ -389,12 +296,12 @@ function showSaveError(error: unknown, retry: () => Promise<void>): void {
 async function runNavigation(action: () => Promise<void>): Promise<void> {
   if (navigating) return;
   navigating = true;
-  clearSaveError();
+  clearError();
   try { await action(); }
-  catch (error) { showSaveError(error, action); }
+  catch (error) { showError(error, action); }
   finally { navigating = false; }
 }
 
 export function isOnboardingMounted(): boolean {
-  return mounted;
+  return Boolean(rootEl);
 }

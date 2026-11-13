@@ -59,12 +59,10 @@ const FALLBACK_OPTIONS: { value: SearchFallbackProvider; label: string }[] = [
 
 /** Managed SearXNG row: canonical label column + status panel in the control column. */
 function appendManagedSearxngRow(container: HTMLElement): {
-  managedWrap: HTMLElement;
+  row: HTMLElement;
   endpoint: HTMLElement;
 } {
-  const managedWrap = el('div', 'settings-search-url-managed hidden');
-
-  const row = el('div', 'settings-row');
+  const row = el('div', 'settings-row settings-search-url-managed hidden');
   row.dataset.settingsSearchKey = 'integrations.search.searxngUrl';
 
   const label = el('div', 'settings-row__label');
@@ -96,10 +94,9 @@ function appendManagedSearxngRow(container: HTMLElement): {
   control.appendChild(managedUrlPanel);
 
   row.append(label, control);
-  managedWrap.appendChild(row);
-  container.appendChild(managedWrap);
+  container.appendChild(row);
 
-  return { managedWrap, endpoint };
+  return { row, endpoint };
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────
@@ -155,7 +152,6 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     }).row,
   );
 
-  const searxngEditable = el('div', 'settings-search-url-editable');
   const searxngInput = document.createElement('input');
   searxngInput.type = 'url';
   searxngInput.id = 'settingsSearxngUrl';
@@ -163,16 +159,14 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
   searxngInput.placeholder = 'http://localhost:8080';
   searxngInput.autocomplete = 'off';
   searxngInput.disabled = !serverUp;
-  searxngEditable.appendChild(
-    createSettingsInputRow('SearXNG base URL', {
-      input: searxngInput,
-      searchKey: 'integrations.search.searxngUrl',
-      description: 'Used when SearXNG is the primary provider and no managed instance is running.',
-    }).row,
-  );
+  const { row: searxngEditable } = createSettingsInputRow('SearXNG base URL', {
+    input: searxngInput,
+    searchKey: 'integrations.search.searxngUrl',
+    description: 'Used when SearXNG is the primary provider and no managed instance is running.',
+  });
   providerGroup.appendChild(searxngEditable);
 
-  const { managedWrap: searxngManaged, endpoint: managedEndpoint } =
+  const { row: searxngManaged, endpoint: managedEndpoint } =
     appendManagedSearxngRow(providerGroup);
 
   const keysGroup = appendSettingsGroup(

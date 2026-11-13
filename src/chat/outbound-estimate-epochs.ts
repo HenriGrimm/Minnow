@@ -14,7 +14,7 @@ export function bumpToolConfigEpoch(): void {
   toolConfigEpoch += 1;
 }
 
-/** Call after system prompt overrides, prompt profiles, or user rules are persisted. */
+/** Call after system prompt overrides or user rules are persisted. */
 export function bumpPromptConfigEpoch(): void {
   promptConfigEpoch += 1;
 }

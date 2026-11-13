@@ -33,7 +33,7 @@ function mockToolClient(result: string): void {
   listCalls = 0;
   mock.module('../../src/tools/client.ts', {
     namedExports: {
-      executeTool: async (name: string) => {
+      executeWorkspaceFileAction: async (name: string) => {
         if (name === 'list_directory') listCalls += 1;
         return { content: result };
       },
@@ -89,31 +89,25 @@ describe('file tree stuck-loading recovery', { concurrency: false }, () => {
     assert.equal(document.querySelector('.file-tree-readiness-actions'), null);
   });
 
-  test('browsing authorization links to the global mode and allows a retry', async () => {
+  test('a filesystem permission error allows a retry', async () => {
     setupDom();
     let enabled = false;
-    let navigated: unknown[] = [];
     mock.module('../../src/tools/client.ts', {
       namedExports: {
-        executeTool: async () => ({ content: enabled
+        executeWorkspaceFileAction: async () => ({ content: enabled
           ? '[file] README.md'
-          : 'Error: File browsing needs approval.',
+          : 'Error: EPERM: permission denied.',
         }),
       },
-    });
-    mock.module('../../src/ui/settings-page.ts', {
-      namedExports: { navigateToSettingsField: (...args: unknown[]) => { navigated = args; } },
     });
     const { refreshFileTree } = await import('../../src/ui/file-tree.ts');
     setFileTreeServerAvailable(true);
     await refreshFileTree();
     const buttons = document.querySelectorAll<HTMLButtonElement>('.file-tree-readiness-action');
-    assert.equal(buttons.length, 2);
-    buttons[0]!.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.deepEqual(navigated, ['general.permissions', 'access']);
+    assert.equal(buttons.length, 1);
+    assert.equal(buttons[0]!.textContent, 'Retry file browsing');
     enabled = true;
-    buttons[1]!.click();
+    buttons[0]!.click();
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.match(document.getElementById('fileTreeHost')?.textContent ?? '', /README\.md/);
     assert.equal(document.querySelector('.file-tree-readiness-actions'), null);

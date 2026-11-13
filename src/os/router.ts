@@ -1,7 +1,7 @@
 import { isAppId } from './app-registry';
 import { isAppAvailable } from './app-preferences';
 import { DEFAULT_MODELS_SECTION } from '../ui/models-section-ids';
-import { closeShellOverlay, isShellOverlayOpen, shellOverlayClosed } from '../ui/shell-overlay-state';
+import { closeShellOverlays, isShellOverlayOpen, shellOverlayClosed } from '../ui/shell-overlay-state';
 import {
   getForegroundAppId,
   getInstanceSnapshot,
@@ -36,7 +36,6 @@ let lastForegroundApp: AppId | null = null;
 let lastRecordedSurface: AppId | null = null;
 let pendingSettingsSection: string | undefined;
 let pendingModelsSection: string | undefined;
-let pendingBrainSection: string | undefined;
 let pendingCodeSection: CodeSectionId | undefined;
 /** Preserves launch options (e.g. concierge seed) across hash-only navigation. */
 let pendingLaunchOptions: LaunchOptions | undefined;
@@ -61,7 +60,7 @@ export function resolveLegacyHash(hash: string): {
   desktopExperts?: boolean;
 } {
   const trimmed = hash || '#/';
-  if (trimmed === '#/app/code/overview') return { hash: '#/app/home' };
+  if (/^#\/app\/(?:home|code\/overview)(?:[/?]|$)/.test(trimmed)) return { hash: '#/app/code/chat' };
   if (trimmed === '#/desktop' || trimmed === '#/' || trimmed === '#' || trimmed === '#/workspaces') {
     return { hash: '#/workspaces' };
   }
@@ -155,14 +154,14 @@ export function parseOsHash(hash: string): OsRoute {
   const appMatch = normalized.match(/^#\/app\/([\w-]+)(?:\/([\w-]+))?/);
   if (appMatch && isAppId(appMatch[1])) {
     const route: OsRoute = { view: 'app', appId: appMatch[1] };
-    if (route.appId === 'settings' && pendingSettingsSection) {
-      route.settingsSection = pendingSettingsSection;
+    if (route.appId === 'settings' && (appMatch[2] || pendingSettingsSection)) {
+      route.settingsSection = appMatch[2] ?? pendingSettingsSection;
     }
     if (route.appId === 'models') {
       route.modelsSection = appMatch[2] ?? pendingModelsSection ?? DEFAULT_MODELS_SECTION;
     }
     if (route.appId === 'brain') {
-      route.brainSection = appMatch[2] ?? pendingBrainSection ?? 'graph';
+      route.brainSection = appMatch[2] ?? 'graph';
     }
     if (route.appId === 'code') {
       const seg = appMatch[2];
@@ -183,10 +182,9 @@ export function parseOsHash(hash: string): OsRoute {
 
 /** Current route derived from location hash + pending redirect state. */
 export function getCurrentRoute(): OsRoute {
-  const { hash, settingsSection, modelsSection, brainSection } = resolveLegacyHash(window.location.hash);
+  const { hash, settingsSection, modelsSection } = resolveLegacyHash(window.location.hash);
   if (settingsSection) pendingSettingsSection = settingsSection;
   if (modelsSection) pendingModelsSection = modelsSection;
-  if (brainSection) pendingBrainSection = brainSection;
   return parseOsHash(hash);
 }
 
@@ -197,13 +195,16 @@ function isCodeSectionId(value: string | undefined): value is CodeSectionId {
 
 /** Hash for a Code app section. Chat is the default workspace. */
 export function hashForCodeSection(section: CodeSectionId): string {
-  if (section === 'overview') return '#/app/home';
+  if (section === 'overview') return '#/app/code/chat';
   if (section === 'chat') return '#/app/code/chat';
   return `#/app/code/${section}`;
 }
 
 function hashForRoute(route: OsRoute): string {
   if (route.view === 'workspaces') return '#/workspaces';
+  if (route.appId === 'settings' && route.settingsSection) {
+    return `#/app/settings/${route.settingsSection}`;
+  }
   if (route.appId === 'models' && route.modelsSection) {
     return `#/app/models/${route.modelsSection}`;
   }
@@ -279,7 +280,6 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
   }
   if (route.brainSection) {
     routeFields.brainSection = route.brainSection;
-    pendingBrainSection = route.brainSection;
   }
   if (route.codeSection) {
     routeFields.codeSection = route.codeSection;
@@ -313,13 +313,11 @@ function applyRouteFromHash(): void {
     if (legacy.hash !== raw) {
       if (legacy.settingsSection) pendingSettingsSection = legacy.settingsSection;
       if (legacy.modelsSection) pendingModelsSection = legacy.modelsSection;
-      if (legacy.brainSection) pendingBrainSection = legacy.brainSection;
       window.location.hash = legacy.hash;
       return;
     }
     pendingSettingsSection = legacy.settingsSection ?? pendingSettingsSection;
     pendingModelsSection = legacy.modelsSection ?? pendingModelsSection;
-    pendingBrainSection = legacy.brainSection ?? pendingBrainSection;
     const opts = pendingLaunchOptions;
     pendingLaunchOptions = undefined;
     applyRoute(parseOsHash(raw), opts);
@@ -364,16 +362,13 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
   const bound = getAppWindowId();
   if (bound && appId !== bound) return;
   if (rejectUnavailableApp(appId)) return;
-  if (appId !== 'settings' || !isShellOverlayOpen('settings')) closeShellOverlay();
+  if (appId !== 'settings' || !isShellOverlayOpen('settings')) closeShellOverlays();
 
   if (options?.settingsSection) {
     pendingSettingsSection = options.settingsSection;
   }
   if (options?.modelsSection) {
     pendingModelsSection = options.modelsSection;
-  }
-  if (options?.brainSection) {
-    pendingBrainSection = options.brainSection;
   }
   if (options?.codeSection) {
     pendingCodeSection = options.codeSection;
@@ -395,30 +390,23 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
         ? 'chat'
         : (options?.codeSection ?? 'chat')
       : undefined;
-  const next = appId === 'models' && options?.modelsSection
-      ? `#/app/models/${options.modelsSection}`
-      : appId === 'brain' && options?.brainSection
-        ? `#/app/brain/${options.brainSection}`
-        : appId === 'code'
-          ? options?.chatId?.trim() ? chatLink(options.chatId.trim()) : hashForCodeSection(codeSection ?? 'chat')
-          : `#/app/${appId}`;
+  const route: OsRoute = {
+    view: 'app',
+    appId,
+    settingsSection: options?.settingsSection,
+    modelsSection: options?.modelsSection,
+    brainSection: options?.brainSection,
+    codeSection,
+  };
+  const chatId = options?.chatId?.trim();
+  const next = appId === 'code' && chatId ? chatLink(chatId) : hashForRoute(route);
   if (window.location.hash !== next) {
     pendingLaunchOptions = options;
     window.location.hash = next;
     applyRouteFromHash();
     return;
   }
-  applyRoute(
-    {
-      view: 'app',
-      appId,
-      settingsSection: options?.settingsSection,
-      modelsSection: options?.modelsSection,
-      brainSection: options?.brainSection,
-      codeSection,
-    },
-    options,
-  );
+  applyRoute(route, options);
 }
 
 /** Attach the single hashchange listener and sync the initial route. */
@@ -456,7 +444,6 @@ export function resetOsRouterForTests(): void {
   lastRecordedSurface = null;
   pendingSettingsSection = undefined;
   pendingModelsSection = undefined;
-  pendingBrainSection = undefined;
   pendingCodeSection = undefined;
   pendingLaunchOptions = undefined;
 }
@@ -487,9 +474,9 @@ function navigateToCodeSection(section: CodeSectionId): void {
   applyRoute({ view: 'app', appId: 'code', codeSection: section });
 }
 
-/** Navigate to the Code app overview dashboard. */
+/** Keep legacy overview callers on the Code chat workspace. */
 export function navigateToCodeOverview(): void {
-  launchApp('home');
+  navigateToCodeChat();
 }
 
 /** Navigate to the Code app chat workspace. */

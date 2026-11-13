@@ -21,7 +21,7 @@ const store = await import('../../src/state/issues-store.ts');
 const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
 const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
 const { resetFilePanelStateForTests } = await import('../../src/state/file-panel.ts');
-const { openIssuesSidebar } = await import('../../src/ui/issues-sidebar.ts');
+const { openIssuesSidebar, showWorkspaceIssues } = await import('../../src/ui/issues-sidebar.ts');
 const { closeFileSidebar, closeMobileFileSidebar, toggleFileSidebarLayout } = await import('../../src/ui/file-layout.ts');
 const { isIssuesSidebarActive } = await import('../../src/ui/file-sidebar-view.ts');
 const { buildIssueRowMenuItems } = await import('../../src/ui/issues-page.ts');
@@ -398,4 +398,36 @@ test('sidebar pastes clipboard files and image items once, validates size and le
   assert.equal(rows().length, 2);
   for (const row of rows()) row.querySelector<HTMLButtonElement>('button')!.click();
   assert.equal(rows().length, 0);
+});
+
+test('workspace Issues surface opens the full workspace list and retains filters between tab switches', async () => {
+  const workspacePath = 'C:/Projects/IssuesSurface';
+  setWorkspaceFromServer({ path: workspacePath, label: 'Issues surface', isDefault: false });
+  const openIssue = store.addIssue({ title: 'An open issue', workspacePath });
+  const closedIssue = store.addIssue({ title: 'A completed issue', workspacePath });
+  store.updateIssue(closedIssue.id, { status: 'done' });
+  store.addIssue({ title: 'Another workspace', workspacePath: 'C:/Projects/Other' });
+  const host = document.createElement('div');
+  host.className = 'issues-sidebar graphite-issues-panel';
+  document.body.append(host);
+
+  await showWorkspaceIssues(host);
+  const filter = host.querySelector('select')!;
+  const rows = () => [...host.querySelectorAll<HTMLElement>('[data-issue-id]')].map(row => row.dataset.issueId);
+  assert.equal(filter.value, 'all');
+  assert.deepEqual(new Set(rows()), new Set([openIssue.id, closedIssue.id]));
+  filter.value = 'open';
+  filter.dispatchEvent(new dom.Event('change') as unknown as Event);
+  host.hidden = true;
+  host.hidden = false;
+  await showWorkspaceIssues(host);
+  assert.equal(filter.value, 'open');
+  assert.deepEqual(rows(), [openIssue.id]);
+
+  host.querySelector<HTMLButtonElement>('[data-issue-id]')!.click();
+  assert.equal(host.querySelector<HTMLElement>('.issues-sidebar__detail')!.hidden, false);
+  await showWorkspaceIssues(host, true);
+  assert.equal(filter.value, 'all');
+  assert.equal(host.querySelector<HTMLElement>('.issues-sidebar__detail')!.hidden, true);
+  assert.deepEqual(new Set(rows()), new Set([openIssue.id, closedIssue.id]));
 });

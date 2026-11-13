@@ -1,25 +1,38 @@
 const STORAGE_KEY = 'minnow-brain-inspector-width-v2';
-const DEFAULT_WIDTH = 532;
-const MIN_WIDTH = 420;
+function inspectorWidths(): { defaultWidth: number; minWidth: number } {
+  return document.documentElement.classList.contains('mn-graphite-apps')
+    ? { defaultWidth: 320, minWidth: 280 }
+    : { defaultWidth: 532, minWidth: 420 };
+}
 
 let bound = false;
 
 function clampWidth(px: number, stage?: HTMLElement | null): number {
   const stageWidth = stage?.getBoundingClientRect().width || window.innerWidth;
-  const maxWidth = Math.max(MIN_WIDTH, Math.floor(stageWidth * 0.52));
-  return Math.min(maxWidth, Math.max(MIN_WIDTH, Math.round(px)));
+  const { minWidth } = inspectorWidths();
+  const maxWidth = Math.max(minWidth, Math.floor(stageWidth * 0.52));
+  return Math.min(maxWidth, Math.max(minWidth, Math.round(px)));
 }
 
 function loadSavedWidth(): number {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return DEFAULT_WIDTH;
-  const parsed = Number.parseInt(raw, 10);
-  if (parsed === 760) return DEFAULT_WIDTH;
-  return Number.isFinite(parsed) && parsed >= MIN_WIDTH ? parsed : DEFAULT_WIDTH;
+  const { defaultWidth, minWidth } = inspectorWidths();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultWidth;
+    const parsed = Number.parseInt(raw, 10);
+    if (parsed === 760) return defaultWidth;
+    return Number.isFinite(parsed) && parsed >= minWidth ? parsed : defaultWidth;
+  } catch {
+    return defaultWidth;
+  }
 }
 
 function saveWidth(px: number): void {
-  localStorage.setItem(STORAGE_KEY, String(px));
+  try {
+    localStorage.setItem(STORAGE_KEY, String(px));
+  } catch {
+    // The current width still applies when preferences cannot be saved.
+  }
 }
 
 /** Apply inspector width via CSS variable on the Brain root. */
@@ -30,7 +43,7 @@ export function applyBrainInspectorWidth(px: number): void {
   const width = clampWidth(px, stage);
   root.style.setProperty('--brain-inspector-w', `${width}px`);
   const handle = document.getElementById('brainInspectorResize');
-  handle?.setAttribute('aria-valuemin', String(MIN_WIDTH));
+  handle?.setAttribute('aria-valuemin', String(inspectorWidths().minWidth));
   handle?.setAttribute('aria-valuemax', String(clampWidth(Number.MAX_SAFE_INTEGER, stage)));
   handle?.setAttribute('aria-valuenow', String(width));
 }
@@ -84,7 +97,7 @@ export function initBrainInspectorResize(): void {
     window.removeEventListener('blur', stopDrag);
 
     const width = inspector.getBoundingClientRect().width;
-    if (width >= MIN_WIDTH) saveWidth(width);
+    if (width >= inspectorWidths().minWidth) saveWidth(width);
   };
 
   handle.addEventListener('pointerdown', (e) => {
@@ -109,7 +122,7 @@ export function initBrainInspectorResize(): void {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home') return;
     e.preventDefault();
     const next = e.key === 'Home'
-      ? DEFAULT_WIDTH
+      ? inspectorWidths().defaultWidth
       : inspector.getBoundingClientRect().width + (e.key === 'ArrowLeft' ? 24 : -24);
     applyBrainInspectorWidth(next);
     const width = inspector.getBoundingClientRect().width;
@@ -117,7 +130,8 @@ export function initBrainInspectorResize(): void {
     saveWidth(width);
   });
   handle.addEventListener('dblclick', () => {
-    applyBrainInspectorWidth(DEFAULT_WIDTH);
-    saveWidth(DEFAULT_WIDTH);
+    const { defaultWidth } = inspectorWidths();
+    applyBrainInspectorWidth(defaultWidth);
+    saveWidth(defaultWidth);
   });
 }

@@ -79,6 +79,28 @@ after(async () => {
   await win.happyDOM.close();
 });
 
+test('phone alert preferences affect paired delivery and leave desktop delivery alone', async () => {
+  const { setPairedDevice } = await import('../../src/api/session-token.ts');
+  const { allowsPhoneAlert, setPhoneAlertEnabled } = await import('../../src/notifications/phone-prefs.ts');
+  const failure = { kind: 'scheduler', appId: 'scheduler', activityStatus: 'failed' } as const;
+  const approval = { kind: 'chat_question', appId: 'code' } as const;
+  setPairedDevice(true);
+  try {
+    assert.equal(allowsPhoneAlert(failure), false);
+    assert.equal(allowsPhoneAlert({ ...failure, activityStatus: 'completed' }), true);
+    assert.equal(allowsPhoneAlert(approval), true);
+    setPhoneAlertEnabled('scheduler', true);
+    setPhoneAlertEnabled('approvals', false);
+    assert.equal(allowsPhoneAlert(failure), true);
+    assert.equal(allowsPhoneAlert(approval), false);
+  } finally {
+    setPairedDevice(false);
+    localStorage.removeItem('minnow.notifications.phone.scheduler');
+    localStorage.removeItem('minnow.notifications.phone.approvals');
+  }
+  assert.equal(allowsPhoneAlert(approval), true);
+});
+
 // ── Boot decision ────────────────────────────────────────────────────────────
 
 test('phone-sized browsers boot the phone app; Electron never does', async () => {
@@ -201,6 +223,65 @@ test('the back gesture pops the top screen; in-app back does not pop twice', asy
   assert.equal(nav.getTopScreen()?.key, 'issues');
 });
 
+test('phone sheets keep focus on the top layer and return it to the trigger', async () => {
+  const { openSheet, closeMobileSheets } = await import('../../src/mobile/sheet.ts');
+  const shell = document.createElement('div');
+  shell.id = 'mobileShell';
+  const stage = document.createElement('div');
+  stage.className = 'm-stage';
+  const trigger = document.createElement('button');
+  stage.append(trigger);
+  shell.append(stage);
+  document.body.append(shell);
+  document.documentElement.setAttribute('data-reduce-motion', '');
+  try {
+    trigger.focus();
+    const drawer = openSheet(document.createElement('button'), { title: 'Minnow', placement: 'left' });
+    await Promise.resolve();
+    assert.equal(stage.inert, true);
+    const drawerButton = drawer.body.querySelector('button')!;
+    drawerButton.focus();
+    const details = openSheet(document.createElement('button'), { title: 'Details' });
+    await Promise.resolve();
+    assert.equal(drawer.el.inert, true);
+    document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape' }));
+    assert.equal(details.el.isConnected, false);
+    assert.equal(drawer.el.isConnected, true);
+    assert.equal(document.activeElement, drawerButton);
+    document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape' }));
+    assert.equal(stage.inert, false);
+    assert.equal(document.activeElement, trigger);
+  } finally {
+    closeMobileSheets();
+    shell.remove();
+    document.documentElement.removeAttribute('data-reduce-motion');
+  }
+});
+
+test('touch scrolling in a phone sheet leaves the form open', async () => {
+  const { openSheet } = await import('../../src/mobile/sheet.ts');
+  const field = document.createElement('textarea');
+  const sheet = openSheet(field, { title: 'New issue' });
+  const panel = sheet.el.querySelector<HTMLElement>('.m-sheet__panel')!;
+  const handle = sheet.el.querySelector('.m-sheet__handle')!;
+  const swipe = (target: Element) => {
+    target.dispatchEvent(Object.assign(new win.Event('touchstart', { bubbles: true }), { touches: [{ clientY: 20 }] }));
+    target.dispatchEvent(Object.assign(new win.Event('touchmove', { bubbles: true }), { touches: [{ clientY: 160 }] }));
+    target.dispatchEvent(new win.Event('touchend', { bubbles: true }));
+  };
+  document.documentElement.setAttribute('data-reduce-motion', '');
+  try {
+    swipe(sheet.body);
+    assert.equal(sheet.el.isConnected, true);
+    assert.equal(panel.style.transform, '');
+    swipe(handle);
+    assert.equal(sheet.el.isConnected, false);
+  } finally {
+    sheet.close();
+    document.documentElement.removeAttribute('data-reduce-motion');
+  }
+});
+
 test('changing workspaces retires file and issue screens, stale history and pending issue edits', async () => {
   const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
   const { addIssue, findIssueById, parseIssuesState, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');
@@ -213,6 +294,10 @@ test('changing workspaces retires file and issue screens, stale history and pend
     assert.ok(node, selector);
     node.click();
   };
+  const drawerTab = (tab: 'chats' | 'issues' | 'files') => {
+    click('.m-tab-host:not([hidden]) > .m-screen:not([hidden]) [aria-label="Open menu"]');
+    click(`.m-sheet--drawer:not([inert]) button[data-tab="${tab}"]`);
+  };
 
   win.localStorage.clear();
   switchTo('C:/projects/one');
@@ -222,7 +307,7 @@ test('changing workspaces retires file and issue screens, stale history and pend
     const second = addIssue({ title: 'Second workspace', workspacePath: 'C:/projects/two' });
     mountMobileShell();
     nav.pushScreen(createFileViewerScreen('logo.png', { openDir() {} }), 'files');
-    click('button[data-tab="issues"]');
+    nav.selectTab('issues');
     click(`button[data-issue-id="${first.id}"]`);
     const staleHistory = win.history.state;
     const firstScreen = nav.getTopScreen()!;
@@ -231,29 +316,29 @@ test('changing workspaces retires file and issue screens, stale history and pend
     click('[aria-label="Edit title"]');
     const editForm = document.querySelector<HTMLFormElement>('.m-sheet .m-prompt')!;
     editForm.querySelector('input')!.value = 'Stale edit';
-    click('button[data-tab="chats"]');
+    nav.selectTab('chats');
     switchTo('c:/projects/ONE/');
-    click('button[data-tab="issues"]');
+    nav.selectTab('issues');
     assert.equal(nav.getTopScreen(), firstScreen, 'equivalent path keeps the open screen');
 
     // Resolve the pending editor, then publish the workspace change before its continuation runs.
     editForm.dispatchEvent(new Event('submit', { cancelable: true }));
-    click('button[data-tab="chats"]');
+    nav.selectTab('chats');
     switchTo('C:/projects/two');
     await Promise.resolve();
     assert.equal(nav.getActiveTab(), 'chats');
-    click('button[data-tab="issues"]');
+    drawerTab('issues');
     assert.equal(nav.getTopScreen()?.key, 'issues');
     assert.equal(document.querySelector(`[data-issue-id="${first.id}"]`), null);
     assert.ok(document.querySelector(`[data-issue-id="${second.id}"]`));
     staleComment.dispatchEvent(new Event('submit', { cancelable: true }));
     assert.equal(findIssueById(first.id)?.title, 'Original title');
     assert.equal(findIssueById(first.id)?.comments?.length ?? 0, 0);
-    click('button[data-tab="files"]');
+    drawerTab('files');
     assert.equal(nav.getTopScreen()?.key, 'dir:.');
     assert.equal(document.querySelector('[data-screen="file:logo.png"]'), null);
 
-    click('button[data-tab="issues"]');
+    drawerTab('issues');
     click(`button[data-issue-id="${second.id}"]`);
     win.dispatchEvent(new win.PopStateEvent('popstate', { state: staleHistory }));
     assert.equal(nav.getTopScreen()?.key, `issue:${second.id}`, 'old history cannot pop a new detail');
@@ -303,6 +388,60 @@ test('chat previews strip markdown and fall back to the summary preview', async 
   assert.equal(chatPreview(chat([{ role: 'user', content: 'Fix it' }])), 'You: Fix it');
   assert.equal(chatPreview(chat([], { historyLoaded: false, messageCount: 4 })), '4 messages');
   assert.equal(chatPreview(chat([], { historyLoaded: false, messageCount: 4 }), '`done` now'), 'done now');
+});
+
+test('phone Threads opens on Active and can browse and search Archive', async (t) => {
+  const { createChatsScreen, listedMobileChats } = await import('../../src/mobile/chats.ts');
+  const { defaultSessionState } = await import('../../src/config/defaults.ts');
+  const { createEmptyChatObject, setSessionStateForTests } = await import('../../src/state/sessions.ts');
+  const { resetWorkspaceStateForTests, setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+  const workspace = '/threads-workspace';
+  const active = { ...createEmptyChatObject('', workspace), id: 'active', name: 'Active thread', historyLoaded: false, messageCount: 1 };
+  const archived = { ...createEmptyChatObject('', workspace), id: 'archived', name: 'Archived thread', archivedAt: 100 };
+  const child = createEmptyChatObject('', workspace);
+  child.name = 'Delegated task';
+  child.agentConversation = {
+    version: 1, childChatId: child.id, parentChatId: archived.id, rootChatId: archived.id,
+    journalOwnerId: archived.id, initialRunId: 'child-task', origin: 'delegated', createdAt: 1,
+    capabilities: { canSend: true, canStop: true, canChooseModel: true },
+  };
+  const otherWorkspace = { ...archived, id: 'elsewhere', workspacePath: '/different' };
+  const boardChat = { ...archived, id: 'board', boardGroupId: 'board' };
+  setWorkspaceFromServer({ path: workspace, label: 'Threads workspace', isDefault: false });
+  setSessionStateForTests({ ...defaultSessionState(), activeId: active.id, chats: [active, archived, child, otherWorkspace, boardChat] });
+  t.mock.method(globalThis, 'fetch', async () => Response.json([]));
+  const opened: string[] = [];
+  const screen = createChatsScreen({
+    openChat: (id) => opened.push(id), newChat: async () => false,
+    openMenu() {}, openModels() {}, openAlertsSettings() {},
+  });
+  try {
+    const rows = () => [...screen.el.querySelectorAll<HTMLButtonElement>('[data-chat-id]')];
+    const ids = () => rows().map(row => row.dataset.chatId).sort();
+    const [activeButton, archiveButton] = screen.el.querySelectorAll<HTMLButtonElement>('.m-segment');
+    assert.equal(activeButton.getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(ids(), [active.id]);
+    assert.deepEqual(listedMobileChats().map(chat => chat.id), [active.id], 'drawer uses active threads');
+
+    archiveButton.click();
+    assert.equal(archiveButton.getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(ids(), [archived.id, child.id].sort());
+    rows().find(row => row.dataset.chatId === archived.id)!.click();
+    assert.deepEqual(opened, [archived.id]);
+
+    screen.el.querySelector<HTMLButtonElement>('button[aria-label="Search threads"]')!.click();
+    const search = screen.el.querySelector<HTMLInputElement>('input[type="search"]')!;
+    search.value = 'Active thread';
+    search.dispatchEvent(new Event('input'));
+    assert.deepEqual(ids(), []);
+    assert.equal(screen.el.querySelector('.m-empty__title')?.textContent, 'No matching threads');
+    activeButton.click();
+    assert.deepEqual(ids(), [active.id]);
+  } finally {
+    screen.dispose?.();
+    setSessionStateForTests(null);
+    resetWorkspaceStateForTests();
+  }
 });
 
 test('diffs fold long unchanged runs and keep line numbers right', async () => {

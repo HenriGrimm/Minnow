@@ -32,7 +32,7 @@
   --scc-title-xl: 24px;
   --scc-title-compact: 21px;
 
-  --scc-row-h: 32px;
+  --scc-row-h: calc(var(--mn-density-nav-row) + 2px);
   --scc-btn-h: 30px;
   /* Height of every horizontal band: header, toolbars, diff title. */
   --scc-band-h: 50px;
@@ -44,7 +44,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   font-size: var(--scc-text);
   overflow: hidden;
@@ -84,10 +84,10 @@
   max-width: 22ch;
 }
 
-/* Branch and worktree read as context, not as buttons competing with Push. */
 .scc-head__context-btn {
   font-family: var(--font-mono);
   font-size: var(--scc-text-sm);
+  min-width: 0;
   max-width: 26ch;
 }
 
@@ -109,6 +109,10 @@
   padding: 2px 7px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
+  min-width: 0;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -125,34 +129,21 @@
   flex-shrink: 0;
 }
 
-.scc-head__gauge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-mono);
-  font-size: var(--scc-text-sm);
-  font-variant-numeric: tabular-nums;
-  padding-right: 4px;
-  color: var(--mn-fg-muted);
-}
-
-.scc-head__gauge-part {
-  display: inline-flex;
-  align-items: center;
+.scc-head__sync {
   gap: 2px;
+  padding-inline-end: 8px;
+  border-inline-end: 1px solid var(--mn-border);
 }
 
-.scc-head__gauge-part--behind {
-  color: var(--mn-warning);
+.scc-head__sync .scc-btn {
+  border-color: transparent;
+  background: transparent;
 }
 
-.scc-head__gauge-part--ahead {
-  color: var(--mn-accent-ink);
-}
-
-/* A quiet nudge that this button has work waiting, without shouting. */
-.scc-btn.is-suggested {
-  border-color: var(--mn-border-strong);
+.scc-head__sync-count {
+  color: var(--mn-fg-muted);
+  font-size: var(--scc-text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .scc-head__palette-btn {
@@ -327,7 +318,7 @@
   height: var(--scc-btn-h);
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
   font-family: inherit;
   font-size: var(--scc-text-sm);
@@ -524,7 +515,7 @@
   padding: 7px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  min-height: 42px;
+  min-height: calc(42px + 2 * var(--mn-density-step));
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -961,7 +952,23 @@
   border-color: var(--mn-accent-border);
 }
 
-.scc-filerow:focus-visible {
+.scc-filerow__trigger {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  align-self: stretch;
+  gap: inherit;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.scc-filerow__trigger:focus-visible {
   outline: 2px solid var(--mn-focus-ring);
   outline-offset: -2px;
 }
@@ -1159,7 +1166,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 10px;
+  padding: calc(8px + var(--mn-density-step)) 10px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
@@ -1513,7 +1520,7 @@
   font-family: inherit;
   color: var(--mn-fg);
   background: transparent;
-  padding: 12px;
+  padding: calc(12px + var(--mn-density-step)) 12px;
   gap: 8px;
   margin-bottom: 4px;
 }
@@ -2698,13 +2705,35 @@
     width: 34px;
   }
 
+  .scc-head__sync {
+    padding-inline-end: 0;
+    border-inline-end: 0;
+  }
+
+  .scc-head__sync .scc-btn {
+    padding-inline: 6px;
+  }
+
+  .scc-head__fetch {
+    width: var(--scc-btn-h);
+    justify-content: center;
+  }
+
+  .scc-head__fetch .scc-btn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
   .scc-rail__item,
   .scc-filerow {
-    height: 40px;
+    height: max(40px, var(--scc-row-h));
   }
 
   .scc-refrow {
-    min-height: 44px;
+    min-height: max(calc(42px + 2 * var(--mn-density-step)), var(--touch-min));
   }
 }
 

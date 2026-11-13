@@ -43,9 +43,12 @@ import {
 import { findFreePort, killPortOwner, listListeningPorts } from '../dev-server/ports.js';
 import { readDevServerSettings, writeDevServerSettings } from '../dev-server/settings.js';
 import { getWorkspaceGitStatus } from './git-status.js';
+import { readWorkspaceProjectIcon } from './project-icon.js';
 import { ensureBaselineGitignore } from './baseline-gitignore.js';
 import { initializeWorkspaceGit } from './initialize-git.js';
 import { revealInSystemExplorer } from './reveal-in-explorer.js';
+import { getRequestIngress } from '../network/ingress.js';
+import { isWorkspaceApp, openWorkspaceApp, resolveWorkspaceAppPath } from './open-in-app.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { resolveSafePath, runWithPathAccess, runWithToolContext } from '../runtime/path-access.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
@@ -171,6 +174,23 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
         return true;
       }
       sendJson(res, 200, result);
+      return true;
+    }
+
+    if (pathname === '/api/workspace/open-in-app' && req.method === 'POST') {
+      if (getRequestIngress(req) !== 'loopback') {
+        sendJson(res, 403, { ok: false, error: 'Open in is available on the host.' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      if (!isWorkspaceApp(body?.app) || typeof body?.path !== 'string' || !body.path.trim() ||
+          (body.checkout !== undefined && typeof body.checkout !== 'string')) {
+        sendJson(res, 400, { ok: false, error: 'An application and workspace path are required.' });
+        return true;
+      }
+      const target = await resolveWorkspaceAppPath(body.path, body.checkout);
+      const result = await openWorkspaceApp(body.app, target);
+      sendJson(res, result.ok ? 200 : 404, result);
       return true;
     }
 
@@ -389,10 +409,14 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
       const recent = await buildRecentWorkspaceList(viewRoot);
       const sandbox = await buildSandboxWorkspaceItem(viewRoot);
       const newProjectParent = await ensureDefaultProjectsParent();
+      const includeIcons = searchParams.get('includeIcons') === '1';
       sendJson(res, 200, {
         ok: true,
         ...getWorkspaceInfo(viewRoot),
-        recent,
+        recent: includeIcons ? await Promise.all(recent.map(async (item) => ({
+          ...item,
+          iconDataUrl: item.exists ? await readWorkspaceProjectIcon(item.path) : undefined,
+        }))) : recent,
         sandbox,
         newProjectParent,
         open: listOpenWorkspaces().map((entry) => ({

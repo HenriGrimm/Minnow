@@ -6,7 +6,7 @@ import { createAppIcon } from '../os/icons';
 import { isOsAppHash, isOsShellEnabled } from '../os/page-bridge';
 import { navigateToDesktop } from '../os/router';
 import { renderSchedulerPanel } from './scheduler/scheduler-panel';
-import { openJobEditorWindow } from './scheduler/job-editor-overlay';
+import { closeJobEditorWindow, openJobEditorWindow } from './scheduler/job-editor-overlay';
 import type { ScheduledJob } from '../scheduler/client';
 
 let initialized = false;
@@ -39,8 +39,14 @@ function setPanelStatus(state: 'ok' | 'err', message: string): void {
 
 function formatHeaderSummary(total: number, enabled: number): string {
   if (total < 0) return '—';
+  if (getRoot()?.classList.contains('m-native-app-page')) {
+    return total ? `${enabled} of ${total} jobs on` : 'No scheduled jobs';
+  }
   if (total === 0) {
     return 'Recurring agent jobs while Minnow is open';
+  }
+  if (document.documentElement.classList.contains('mn-graphite-workspace')) {
+    return `${enabled} of ${total} jobs on · Jobs run while Minnow is open`;
   }
   const enabledPart =
     enabled === total ? `${enabled} enabled` : `${enabled} of ${total} enabled`;
@@ -104,6 +110,8 @@ function panelEditorCallbacks() {
 async function refreshPanel(): Promise<void> {
   const body = getBody();
   if (!body) return;
+  const add = document.getElementById('btnSchedulerAdd');
+  if (add) add.textContent = document.documentElement.classList.contains('mn-graphite-workspace') ? 'New job' : 'Add task';
   await renderSchedulerPanel(body, panelEditorCallbacks());
 }
 
@@ -139,6 +147,7 @@ export async function openScheduler(): Promise<void> {
 }
 
 export function closeScheduler(options?: { skipNavigate?: boolean }): void {
+  closeJobEditorWindow();
   const root = getRoot();
   if (!root) return;
   root.classList.remove('is-open');

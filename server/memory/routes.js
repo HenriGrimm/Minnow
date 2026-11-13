@@ -158,11 +158,7 @@ export async function handleMemoryRequest(req, res, pathname) {
         sendJson(res, 200, { block: '', ids: [] });
         return true;
       }
-      const profile = body.profile === 'lite' ? 'lite' : 'full';
-      const maxChars =
-        profile === 'lite'
-          ? memory.maxInjectCharsLite ?? 800
-          : memory.maxInjectCharsFull ?? 8000;
+      const maxChars = memory.maxInjectCharsFull ?? 8000;
       const all = await loadAllEntriesWithBodies();
       const { block, ids } = await retrieveMemoryBlockHybrid(all, {
         query: body.query,

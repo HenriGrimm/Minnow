@@ -72,9 +72,8 @@ export async function installAgentPackFromZip(zipBuffer, builtinIds = new Set())
       await fs.writeFile(target, data, {flag: 'wx'});
     }
     for (const agent of manifest.agents) {
-      for (const prompt of [agent.prompts.full, agent.prompts.lite].filter(Boolean)) {
-        if (!(await fs.stat(resolvePackPromptPath(stage, prompt))).isFile()) throw new Error('Missing agent prompt');
-      }
+      const promptPath = resolvePackPromptPath(stage, agent.prompts.full);
+      if (!(await fs.stat(promptPath)).isFile()) throw new Error('Missing agent prompt');
     }
 
     // Short synchronous promotion keeps scan and concurrent installs in this host

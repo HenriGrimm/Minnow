@@ -13,7 +13,7 @@ export function setFileTreeListingWorkspaceRoot(root: string | undefined): void 
   listingWorkspaceRoot = root;
 }
 
-/** Context forwarded to executeTool for file-tree-scoped reads and writes. */
+/** Context for file-tree-scoped reads and writes. */
 export function buildFileTreeToolContext(): { workspaceRoot?: string } {
   if (listingWorkspaceRoot) {
     return { workspaceRoot: listingWorkspaceRoot };

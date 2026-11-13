@@ -10,11 +10,20 @@ export const FILE_SIDEBAR_MIN_W = 220;
 export const FILE_SIDEBAR_MAX_W = 560;
 
 const MOBILE_LAYOUT_MQ = '(max-width: 640px)';
+const GRAPHITE_DEFAULT_W = 291;
+const GRAPHITE_MIN_W = 208;
+const GRAPHITE_MAX_W = 380;
 
 // ── Width ────────────────────────────────────────────────────────────────────
 
 function isMobileLayout(): boolean {
   return window.matchMedia(MOBILE_LAYOUT_MQ).matches;
+}
+
+function graphiteShell(): HTMLElement | null {
+  return document.documentElement.classList.contains('mn-graphite-workspace')
+    ? document.getElementById('minnowOsRoot')
+    : null;
 }
 
 export function clampChatSidebarWidth(px: number): number {
@@ -28,6 +37,9 @@ export function clampFileSidebarWidth(px: number): number {
 }
 
 function resolvedChatSidebarWidth(): number {
+  if (graphiteShell()) {
+    return Math.min(GRAPHITE_MAX_W, Math.max(GRAPHITE_MIN_W, sessionState?.sidebarWidth ?? GRAPHITE_DEFAULT_W));
+  }
   return clampChatSidebarWidth(sessionState?.sidebarWidth ?? DEFAULT_CHAT_SIDEBAR_W);
 }
 
@@ -41,6 +53,7 @@ export function syncAppBodySidebarWidthVars(): void {
   if (!body) return;
   body.style.setProperty('--sidebar-w', `${resolvedChatSidebarWidth()}px`);
   body.style.setProperty('--file-sidebar-w', `${resolvedFileSidebarWidth()}px`);
+  graphiteShell()?.style.setProperty('--mn-graphite-sidebar-width', `${resolvedChatSidebarWidth()}px`);
 }
 
 function schedulePreviewLayoutSyncIfNeeded(): void {
@@ -70,6 +83,11 @@ export function syncChatSidebarResizer(): void {
   const resizer = document.getElementById('chatSidebarResizer');
   const collapsed = sessionState?.sidebarCollapsed === true;
   setResizerEnabled(resizer, !isMobileLayout() && !collapsed);
+  if (resizer && graphiteShell()) {
+    resizer.setAttribute('aria-valuemin', String(GRAPHITE_MIN_W));
+    resizer.setAttribute('aria-valuemax', String(GRAPHITE_MAX_W));
+    resizer.setAttribute('aria-valuenow', String(resolvedChatSidebarWidth()));
+  }
 }
 
 export function syncFileSidebarResizer(): void {
@@ -89,18 +107,35 @@ interface BindSidebarResizerOptions {
   readWidth: () => number;
   writeWidth: (width: number) => void;
   cssProperty: string;
+  graphiteChat?: boolean;
   onDragEnd?: () => void;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function bindSidebarResizer(options: BindSidebarResizerOptions): void {
-  const { resizer, container, side, minWidth, hardMaxWidth, readWidth, writeWidth, cssProperty, onDragEnd } =
+  const { resizer, container, side, minWidth, hardMaxWidth, readWidth, writeWidth, cssProperty, graphiteChat, onDragEnd } =
     options;
   let dragging = false;
   let dragRect: DOMRect;
   let maxWidth = hardMaxWidth;
+  let minDragWidth = minWidth;
   let liveWidth: number | null = null;
+  let grabOffset = 0;
+
+  function currentDragTarget(): { container: HTMLElement; property: string; min: number; max: number } {
+    const graphiteRoot = graphiteChat ? graphiteShell() : null;
+    return graphiteRoot
+      ? { container: graphiteRoot, property: '--mn-graphite-sidebar-width', min: GRAPHITE_MIN_W, max: GRAPHITE_MAX_W }
+      : { container, property: cssProperty, min: minWidth, max: hardMaxWidth };
+  }
+
+  function applyWidth(width: number): void {
+    const target = currentDragTarget();
+    target.container.style.setProperty(target.property, `${width}px`);
+    schedulePreviewLayoutSyncIfNeeded();
+    resizer.setAttribute('aria-valuenow', String(width));
+  }
 
   const pointerFrame = createPointerFrame((clientX) => {
     if (!dragging || resizer.hidden) return;
@@ -108,11 +143,9 @@ function bindSidebarResizer(options: BindSidebarResizerOptions): void {
       side === 'start'
         ? clientX - dragRect.left
         : dragRect.right - clientX;
-    const clamped = Math.min(maxWidth, Math.max(minWidth, Math.round(nextWidth)));
+    const clamped = Math.min(maxWidth, Math.max(minDragWidth, Math.round(nextWidth + grabOffset)));
     liveWidth = clamped;
-    container.style.setProperty(cssProperty, `${clamped}px`);
-    schedulePreviewLayoutSyncIfNeeded();
-    resizer.setAttribute('aria-valuenow', String(clamped));
+    applyWidth(clamped);
   });
   const onPointerMove = (e: PointerEvent): void => {
     if (dragging && !resizer.hidden) pointerFrame.schedule(e.clientX);
@@ -138,13 +171,18 @@ function bindSidebarResizer(options: BindSidebarResizerOptions): void {
     e.preventDefault();
     dragging = true;
     liveWidth = null;
-    dragRect = container.getBoundingClientRect();
-    maxWidth = maxWidthForContainer(dragRect, minWidth, hardMaxWidth);
+    const target = currentDragTarget();
+    dragRect = target.container.getBoundingClientRect();
+    minDragWidth = target.min;
+    maxWidth = maxWidthForContainer(dragRect, minDragWidth, target.max);
+    const startWidth = readWidth();
+    // Grabbing anywhere inside the Graphite rail gutter should not snap the sheet to the pointer.
+    grabOffset = graphiteChat && graphiteShell() ? startWidth - (e.clientX - dragRect.left) : 0;
     resizer.classList.add('dragging');
     resizer.setPointerCapture(e.pointerId);
     document.body.style.cursor = 'col-resize';
-    resizer.setAttribute('aria-valuenow', String(readWidth()));
-    resizer.setAttribute('aria-valuemin', String(minWidth));
+    resizer.setAttribute('aria-valuenow', String(startWidth));
+    resizer.setAttribute('aria-valuemin', String(minDragWidth));
     resizer.setAttribute('aria-valuemax', String(maxWidth));
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', stopDrag);
@@ -153,6 +191,33 @@ function bindSidebarResizer(options: BindSidebarResizerOptions): void {
   });
 
   resizer.addEventListener('lostpointercapture', stopDrag);
+  if (graphiteChat) {
+    const commitWidth = (width: number): void => {
+      const target = currentDragTarget();
+      const clamped = Math.min(target.max, Math.max(target.min, width));
+      writeWidth(clamped);
+      syncAppBodySidebarWidthVars();
+      applyWidth(clamped);
+      onDragEnd?.();
+    };
+    resizer.addEventListener('dblclick', () => {
+      if (!resizer.hidden && graphiteShell()) commitWidth(GRAPHITE_DEFAULT_W);
+    });
+    resizer.addEventListener('keydown', (event) => {
+      if (resizer.hidden || !graphiteShell()) return;
+      const step = event.shiftKey ? 48 : 16;
+      const values: Record<string, number> = {
+        ArrowLeft: readWidth() - step,
+        ArrowRight: readWidth() + step,
+        Home: GRAPHITE_MIN_W,
+        End: GRAPHITE_MAX_W,
+        Enter: GRAPHITE_DEFAULT_W,
+      };
+      if (!Object.hasOwn(values, event.key)) return;
+      event.preventDefault();
+      commitWidth(values[event.key]);
+    });
+  }
 }
 
 let resizersBound = false;
@@ -174,6 +239,7 @@ export function initAppSidebarResizers(): void {
     hardMaxWidth: CHAT_SIDEBAR_MAX_W,
     readWidth: resolvedChatSidebarWidth,
     cssProperty: '--sidebar-w',
+    graphiteChat: true,
     writeWidth: (width) => {
       if (!sessionState) return;
       sessionState.sidebarWidth = width;

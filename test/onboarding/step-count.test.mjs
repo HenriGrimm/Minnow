@@ -1,96 +1,41 @@
-/**
- * MIN-438 — onboarding step totals must reflect path-dependent steps.
- */
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
-import { Window } from 'happy-dom';
+import { test } from 'node:test';
+import { getApplicableSteps, resolveStepIndex } from '../../src/onboarding/steps/registry.ts';
+import { buildOnboardingContext, createDefaultOnboardingState } from '../../src/onboarding/state-core.ts';
 
-const { getApplicableSteps } = await import('../../src/onboarding/steps/registry.ts');
-const {
-  buildOnboardingContext,
-  createDefaultOnboardingState,
-} = await import('../../src/onboarding/state-core.ts');
-const { mountStepSidebar } = await import('../../src/onboarding/step-sidebar.ts');
-const {
-  resetAppPreferencesForTests,
-} = await import('../../src/os/app-preferences.ts');
-
-/** happy-dom windows keep the event loop alive unless closed. */
-let testWindow = null;
-
-function setupDom() {
-  testWindow = new Window();
-  globalThis.window = testWindow;
-  globalThis.document = testWindow.document;
-  globalThis.HTMLElement = testWindow.HTMLElement;
-  globalThis.matchMedia = testWindow.matchMedia.bind(testWindow);
-  globalThis.localStorage = testWindow.localStorage;
-  testWindow.localStorage.clear();
-  resetAppPreferencesForTests();
+function context(lastStep = null, steps = {}) {
+  return buildOnboardingContext(
+    { ...createDefaultOnboardingState(), lastStep, steps },
+    { serverAvailable: true, configServerAvailable: true },
+  );
 }
 
-function ctxWith(overrides = {}) {
-  const base = buildOnboardingContext(createDefaultOnboardingState(), {
-    serverAvailable: true,
-    configServerAvailable: true,
-  });
-  return { ...base, ...overrides };
-}
+test('setup shows provider choice, then only the chosen connection and any model selection', () => {
+  assert.deepEqual(getApplicableSteps(context()).map(step => step.id), ['provider-choice']);
+  for (const path of ['local', 'cloud', 'cli', 'managed']) {
+    const ctx = context('provider-choice', { 'provider-choice': { done: true, data: { path } } });
+    const expected = ['provider-choice', `provider-${path}`];
+    if (path !== 'managed') expected.push('model-pick');
+    assert.deepEqual(getApplicableSteps(ctx).map(step => step.id), expected);
+  }
+});
 
-describe('onboarding step count (MIN-438)', () => {
-  afterEach(() => {
-    resetAppPreferencesForTests();
-    testWindow?.close();
-    testWindow = null;
-  });
+test('legacy welcome, appearance and app steps resume at provider choice', () => {
+  for (const lastStep of ['welcome', 'theme', 'apps']) {
+    const ctx = context(lastStep);
+    const steps = getApplicableSteps(ctx);
+    assert.equal(steps[resolveStepIndex(steps, ctx)].id, 'provider-choice');
+  }
+});
 
-  test('before provider path is chosen, branch steps are excluded (10 with server)', () => {
-    const steps = getApplicableSteps(ctxWith());
-    assert.equal(steps.length, 10);
-    assert.equal(steps.some((step) => step.id === 'apps'), false);
-    assert.equal(steps.some((step) => step.id === 'api-keys'), true);
-    assert.equal(steps.some((step) => step.id === 'provider-local'), false);
-    assert.equal(steps.some((step) => step.id === 'model-pick'), false);
-  });
-
-  test('local provider path includes branch, model pick, and web search (12 with server)', () => {
-    const steps = getApplicableSteps(ctxWith({ providerPath: 'local' }));
-    assert.equal(steps.length, 12);
-    assert.equal(steps.some((step) => step.id === 'provider-local'), true);
-    assert.equal(steps.some((step) => step.id === 'model-pick'), true);
-    assert.equal(steps.some((step) => step.id === 'context7'), true);
-    assert.equal(steps.some((step) => step.id === 'email'), false);
-  });
-
-  test('hidden email app omits setup steps even when server is up', () => {
-    setupDom();
-    const steps = getApplicableSteps(ctxWith({ providerPath: 'local' }));
-    assert.equal(steps.some((step) => step.id === 'email'), false);
-  });
-
-  test('sidebar progress label updates when filtered steps grow', () => {
-    setupDom();
-    const aside = document.createElement('aside');
-    const mobile = document.createElement('div');
-    document.body.append(aside, mobile);
-
-    const initial = getApplicableSteps(ctxWith());
-    const handle = mountStepSidebar(aside, mobile, initial, 'welcome');
-
-    assert.equal(
-      aside.querySelector('.mn-onboarding__progress-label')?.textContent,
-      'Step 1 of 10',
-    );
-
-    const expanded = getApplicableSteps(ctxWith({ providerPath: 'local' }));
-    handle.setSteps(expanded);
-    handle.setActiveStep('provider-local', 4);
-
-    assert.equal(
-      aside.querySelector('.mn-onboarding__progress-label')?.textContent,
-      'Step 5 of 12',
-    );
-
-    handle.destroy();
-  });
+test('a saved provider resumes at model selection, including from a legacy optional step', () => {
+  const saved = {
+    'provider-choice': { done: true, data: { path: 'local' } },
+    'provider-local': { done: true, data: { providerId: 'fixture' } },
+  };
+  for (const lastStep of ['provider-local', 'permissions', 'extras']) {
+    const ctx = context(lastStep, saved);
+    const steps = getApplicableSteps(ctx);
+    assert.equal(steps[resolveStepIndex(steps, ctx)].id, 'model-pick');
+  }
 });

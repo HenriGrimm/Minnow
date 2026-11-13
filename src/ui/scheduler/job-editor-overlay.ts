@@ -13,9 +13,12 @@ import { listProviders } from '../../providers/store';
 import {
   mountAuxiliaryModelSelectCombobox,
   syncAuxiliaryModelSelectCombobox,
+  unmountAuxiliaryModelSelectCombobox,
 } from '../model-select-picker';
+import { isAppDialogOpen } from '../app-dialog';
+import { isolateModalBackground, markOverlayRoot, nextComponentId, trapTabKey, unmarkOverlayRoot } from '../components/internal';
 import { createSettingsToggleRow } from '../settings-switch';
-import { openWorkspaceFolderPicker } from '../workspace-folder-picker';
+import { isWorkspaceFolderPickerOpen, openWorkspaceFolderPicker } from '../workspace-folder-picker';
 import { mountScheduleField } from './schedule-field';
 import { SCHEDULER_EDITOR_INSTANCE_ID } from '../../os/scheduler-constants';
 
@@ -84,83 +87,109 @@ function formatJobModelLabel(
   return providerLabel ? `${optionText} — ${providerLabel}` : optionText;
 }
 
-let overlayRoot: HTMLDivElement | null = null;
+let activeEditor: { close: () => void; panel: HTMLElement } | null = null;
 
 /** Whether the scheduler job editor overlay is open. */
 export function isJobEditorWindowOpen() {
-  return Boolean(overlayRoot?.isConnected);
+  return Boolean(activeEditor?.panel.isConnected);
 }
 
 /** Close the scheduler job editor overlay if open. */
 export function closeJobEditorWindow() {
-  overlayRoot?.remove();
-  overlayRoot = null;
+  activeEditor?.close();
 }
 
 /** Open the scheduler job editor as a centered overlay on the scheduler app. */
 export function openJobEditorWindow(options: JobEditorWindowOptions = {}) {
+  if (activeEditor?.panel.isConnected) {
+    activeEditor.panel.focus();
+    return;
+  }
   closeJobEditorWindow();
-  const editingId = options.jobId ?? null;
-  overlayRoot = document.createElement('div');
-  overlayRoot.className = 'scheduler-editor-overlay';
-  const backdrop = document.createElement('button');
-  backdrop.type = 'button';
-  backdrop.className = 'scheduler-editor-overlay__backdrop';
-  backdrop.setAttribute('aria-label', 'Close job editor');
-  backdrop.addEventListener('click', () => closeJobEditorWindow());
-  const dialog = document.createElement('div');
-  dialog.className = 'scheduler-editor-overlay__dialog scheduler-editor-window-body';
+  const returnFocus = document.activeElement as HTMLElement | null;
+  const overlay = el('div', 'scheduler-editor-overlay');
+  const backdrop = el('div', 'scheduler-editor-overlay__backdrop');
+  backdrop.setAttribute('aria-hidden', 'true');
+  const dialog = el('div', 'scheduler-editor-overlay__dialog scheduler-editor-window-body');
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
-  overlayRoot.append(backdrop, dialog);
+  dialog.tabIndex = -1;
+  const titleId = nextComponentId('scheduler-editor-title');
+  dialog.setAttribute('aria-labelledby', titleId);
+  overlay.append(backdrop, dialog);
   const host =
     document.getElementById('schedulerView') ??
     document.getElementById('osAppsLayer') ??
     document.body;
-  host.appendChild(overlayRoot);
-  void mountEditor(dialog, { ...options, jobId: editingId ?? undefined });
+  host.appendChild(overlay);
+  markOverlayRoot(overlay, 'dialog');
+  const restoreBackground = isolateModalBackground(overlay);
+  let dismiss = () => close();
+  const onKey = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || isWorkspaceFolderPickerOpen() || isAppDialogOpen()) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      dismiss();
+    } else if (event.key === 'Tab') {
+      trapTabKey(dialog, event);
+    }
+  };
+  const close = () => {
+    if (activeEditor?.panel !== dialog) return;
+    const modelSelect = dialog.querySelector<HTMLSelectElement>('.scheduler-model-select');
+    if (modelSelect) unmountAuxiliaryModelSelectCombobox(modelSelect);
+    activeEditor = null;
+    document.removeEventListener('keydown', onKey);
+    window.removeEventListener('hashchange', onRouteChange);
+    unmarkOverlayRoot(overlay);
+    overlay.remove();
+    restoreBackground();
+    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  };
+  const openedOnSchedulerRoute = window.location.hash.startsWith('#/app/scheduler') || window.location.hash.startsWith('#/scheduler');
+  const onRouteChange = () => {
+    if (openedOnSchedulerRoute && !window.location.hash.startsWith('#/app/scheduler') && !window.location.hash.startsWith('#/scheduler')) close();
+  };
+  activeEditor = { panel: dialog, close };
+  let pressedOnBackdrop = false;
+  overlay.addEventListener('pointerdown', (event) => { pressedOnBackdrop = event.target === backdrop; });
+  overlay.addEventListener('click', (event) => {
+    if (pressedOnBackdrop && event.target === backdrop) dismiss();
+    pressedOnBackdrop = false;
+  });
+  document.addEventListener('keydown', onKey);
+  window.addEventListener('hashchange', onRouteChange);
+  void mountEditor(dialog, options, titleId, close, (next) => { dismiss = next; });
+  dialog.focus();
 }
 
 async function mountEditor(
   mount: HTMLElement,
-  options: JobEditorWindowOptions & { jobId?: string },
+  options: JobEditorWindowOptions,
+  titleId: string,
+  close: () => void,
+  setDismiss: (dismiss: () => void) => void,
 ): Promise<void> {
-  const notify = (state: 'ok' | 'err', message: string) => {
-    options.onStatus?.(state, message);
-  };
-
-  mount.replaceChildren();
-
-  const panel = el('section', 'scheduler-editor');
-  panel.setAttribute('aria-label', 'Job editor');
+  const panel = el('div', 'scheduler-editor');
   mount.appendChild(panel);
 
   const editingId = options.jobId ?? null;
-  const formState = { ...EMPTY_FORM, ...options.initialJob };
-  let defaultWorkspacePath = '';
-  let defaultWorkspaceLabel = 'Scheduler';
-  const providerLabelById = new Map<string, string>();
-
-  try {
-    const defaultWorkspace = await fetchSchedulerDefaultWorkspace();
-    defaultWorkspacePath = defaultWorkspace.path;
-    defaultWorkspaceLabel = defaultWorkspace.label || 'Scheduler';
-  } catch {
-  }
-
-  try {
-    const { providers } = await listProviders();
-    for (const provider of providers) {
-      providerLabelById.set(provider.id, provider.label || provider.id);
-    }
-  } catch {
-  }
-
   const editorHead = el('div', 'scheduler-editor__head');
-  editorHead.appendChild(
-    el('h3', 'scheduler-editor__title', editingId ? 'Edit job' : 'New job'),
-  );
-  panel.appendChild(editorHead);
+  const title = el('h2', 'scheduler-editor__title', editingId ? 'Edit job' : 'New job');
+  title.id = titleId;
+  editorHead.append(title);
+  panel.append(editorHead);
+
+  const formState = { ...EMPTY_FORM, ...options.initialJob };
+  const [workspace, providerList] = await Promise.all([
+    fetchSchedulerDefaultWorkspace().catch(() => null),
+    listProviders().catch(() => null),
+  ]);
+  if (!mount.isConnected) return;
+  const defaultWorkspacePath = workspace?.path || '';
+  const defaultWorkspaceLabel = workspace?.label || 'Scheduler';
+  const providerLabelById = new Map(providerList?.providers.map((provider) => [provider.id, provider.label || provider.id]));
 
   const fields = el('div', 'scheduler-editor__fields');
 
@@ -200,7 +229,8 @@ async function mountEditor(
   fields.appendChild(labelField);
 
   const scheduleField = el('div', 'scheduler-field');
-  scheduleField.appendChild(el('span', 'scheduler-field__label', 'Schedule'));
+  const scheduleLabel = el('label', 'scheduler-field__label', 'Schedule');
+  scheduleField.appendChild(scheduleLabel);
   const scheduleMount = mountScheduleField(
     scheduleField,
     formState.schedule,
@@ -208,6 +238,7 @@ async function mountEditor(
       formState.schedule = schedule;
     },
   );
+  scheduleLabel.htmlFor = scheduleMount.kindId;
   fields.appendChild(scheduleField);
 
   const promptField = el('label', 'scheduler-field');
@@ -250,6 +281,7 @@ async function mountEditor(
   modelField.appendChild(el('span', 'scheduler-field__label', 'Model'));
   const modelSelect = el('select', 'settings-select scheduler-model-select') as HTMLSelectElement;
   modelSelect.id = 'schedulerJobModel';
+  modelSelect.setAttribute('aria-label', 'Model');
   modelSelect.innerHTML = '<option value="">Loading models…</option>';
   modelField.appendChild(modelSelect);
 
@@ -283,14 +315,17 @@ async function mountEditor(
       includeEmptyOption: true,
       emptyLabel: '(use menubar default)',
     });
-    syncAuxiliaryModelSelectCombobox(modelSelect);
+    if (mount.isConnected) syncAuxiliaryModelSelectCombobox(modelSelect);
   })();
 
   const workspaceField = el('div', 'scheduler-field');
-  workspaceField.appendChild(el('span', 'scheduler-field__label', 'Workspace'));
+  const workspaceLabel = el('label', 'scheduler-field__label', 'Workspace');
+  workspaceField.appendChild(workspaceLabel);
   const workspaceRow = el('div', 'scheduler-workspace-row');
 
   const workspacePathInput = el('input', 'scheduler-input scheduler-workspace-path') as HTMLInputElement;
+  workspacePathInput.id = nextComponentId('scheduler-workspace');
+  workspaceLabel.htmlFor = workspacePathInput.id;
   workspacePathInput.type = 'text';
   workspacePathInput.readOnly = true;
   workspacePathInput.placeholder = defaultWorkspacePath
@@ -314,9 +349,12 @@ async function mountEditor(
   browseBtn.addEventListener('click', () => {
     void (async () => {
       const result = await openWorkspaceFolderPicker({
-        initialPath: customWorkspace || defaultWorkspacePath || undefined,
+        initialPath: formState.workspacePath || defaultWorkspacePath || undefined,
+        title: 'Choose job workspace',
+        confirmVerb: 'Choose',
+        elevated: true,
       });
-      if (result.cancelled || !result.path) return;
+      if (result.cancelled || !result.path || !mount.isConnected) return;
       formState.workspacePath = result.path;
       workspacePathInput.value = result.path;
       workspacePathInput.title = result.path;
@@ -362,7 +400,12 @@ async function mountEditor(
     }).row,
   );
 
-  panel.appendChild(fields);
+  const error = el('p', 'scheduler-editor__error');
+  error.id = nextComponentId('scheduler-editor-error');
+  error.setAttribute('role', 'alert');
+  error.tabIndex = -1;
+  error.hidden = true;
+  panel.append(error, fields);
 
   const actions = el('div', 'scheduler-editor__actions');
   const saveBtn = el('button', 'settings-action-btn settings-action-btn--primary', 'Save job');
@@ -372,52 +415,117 @@ async function mountEditor(
   actions.append(saveBtn, cancelBtn);
   panel.appendChild(actions);
 
-  saveBtn.addEventListener('click', () => {
-    void (async () => {
-      try {
-        const scheduleUi = scheduleMount.getState();
-        const scheduleCheck = validateScheduleUi(scheduleUi);
-        if (scheduleCheck.ok === false) {
-          notify('err', scheduleCheck.error);
-          scheduleMount.refreshPreview();
-          return;
-        }
-        formState.schedule = uiToSchedule(scheduleUi);
-        const hasPinnedModel =
-          Boolean(formState.providerId?.trim()) && Boolean(formState.modelId?.trim());
-        const jobPayload = {
-          ...formState,
-          githubWatch: kindSelect.value === 'github' ? { repository: repositoryInput.value.trim(), label: 'minnow' } : null,
-          workspacePath: formState.workspacePath?.trim() || '',
-          providerId: hasPinnedModel ? formState.providerId?.trim() : '',
-          modelId: hasPinnedModel ? formState.modelId?.trim() : '',
-        };
-        if (jobPayload.githubWatch && !jobPayload.workspacePath) throw new Error('Choose the GitHub repository workspace.');
-        saveBtn.disabled = true;
-        if (editingId) {
-          await updateSchedulerJob(editingId, jobPayload);
-          notify('ok', 'Job updated');
-        } else {
-          await createSchedulerJob(jobPayload);
-          notify('ok', 'Job created');
-        }
-        closeJobEditorWindow();
-        options.onSaved?.();
-      } catch (err) {
-        notify('err', err instanceof Error ? err.message : String(err));
-      } finally {
-        saveBtn.disabled = false;
-      }
-    })();
-  });
+  const discard = el('div', 'scheduler-editor__discard');
+  const discardMessage = el('p', undefined, 'Discard unsaved changes?');
+  discardMessage.setAttribute('role', 'status');
+  const keepBtn = el('button', 'settings-action-btn', 'Keep editing');
+  keepBtn.type = 'button';
+  const discardBtn = el('button', 'settings-action-btn settings-action-btn--mn-danger', 'Discard changes');
+  discardBtn.type = 'button';
+  discard.append(discardMessage, keepBtn, discardBtn);
+  discard.hidden = true;
+  panel.appendChild(discard);
 
-  cancelBtn.addEventListener('click', () => {
-    closeJobEditorWindow();
-  });
+  const draft = () => JSON.stringify([formState, kindSelect.value, repositoryInput.value, scheduleMount.getState()]);
+  const initialDraft = draft();
+  let saving = false;
+  let focusBeforeDiscard: HTMLElement | null = null;
+  const keepEditing = () => {
+    discard.hidden = true;
+    fields.inert = false;
+    actions.hidden = false;
+    (focusBeforeDiscard ?? cancelBtn).focus();
+  };
+  const dismiss = () => {
+    if (saving) return;
+    if (!discard.hidden) { keepEditing(); return; }
+    if (draft() === initialDraft) { close(); return; }
+    focusBeforeDiscard = document.activeElement as HTMLElement | null;
+    fields.inert = true;
+    actions.hidden = true;
+    discard.hidden = false;
+    keepBtn.focus();
+  };
+  setDismiss(dismiss);
+  cancelBtn.addEventListener('click', dismiss);
+  keepBtn.addEventListener('click', keepEditing);
+  discardBtn.addEventListener('click', close);
+
+  let invalidField: HTMLElement | null = null;
+  const clearError = () => {
+    invalidField?.removeAttribute('aria-invalid');
+    invalidField?.removeAttribute('aria-describedby');
+    invalidField = null;
+    error.hidden = true;
+  };
+  const showError = (message: string, field?: HTMLElement) => {
+    error.textContent = message;
+    error.hidden = false;
+    if (field) {
+      field.setAttribute('aria-invalid', 'true');
+      field.setAttribute('aria-describedby', error.id);
+      invalidField = field;
+    }
+    (field ?? error).focus();
+  };
+  const save = async () => {
+    if (saving || !discard.hidden) return;
+    clearError();
+    const label = formState.label.trim();
+    if (!label) return showError('Enter a label for this job.', labelInput);
+    if (label.length > 120) return showError('Use 120 characters or fewer for the label.', labelInput);
+    const scheduleUi = scheduleMount.getState();
+    const scheduleCheck = validateScheduleUi(scheduleUi);
+    if (scheduleCheck.ok === false) return showError(scheduleCheck.error, scheduleMount.invalidControl());
+    const watching = kindSelect.value === 'github';
+    const repository = repositoryInput.value.trim();
+    if (watching && !/^[a-z\d][a-z\d-]*\/[a-z\d_.-]+$/i.test(repository)) {
+      return showError('Enter the GitHub repository as owner/repository.', repositoryInput);
+    }
+    const workspacePath = formState.workspacePath?.trim() || '';
+    if (watching && !workspacePath) return showError('Choose the GitHub repository workspace.', workspacePathInput);
+    if (!watching && !formState.prompt.trim()) return showError('Enter a prompt for this job.', promptInput);
+    if (formState.prompt.length > 32_000) return showError('Use 32,000 characters or fewer for the prompt.', promptInput);
+    const hasPinnedModel = Boolean(formState.providerId?.trim() && formState.modelId?.trim());
+    const jobPayload = {
+      ...formState,
+      schedule: uiToSchedule(scheduleUi),
+      githubWatch: watching ? { repository, label: 'minnow' } : null,
+      workspacePath,
+      providerId: hasPinnedModel ? formState.providerId?.trim() : '',
+      modelId: hasPinnedModel ? formState.modelId?.trim() : '',
+    };
+    saving = true;
+    fields.inert = true;
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    mount.setAttribute('aria-busy', 'true');
+    mount.focus();
+    try {
+      if (editingId) await updateSchedulerJob(editingId, jobPayload);
+      else await createSchedulerJob(jobPayload);
+      if (!mount.isConnected) return;
+      close();
+      options.onStatus?.('ok', editingId ? 'Job updated' : 'Job created');
+      options.onSaved?.();
+    } catch (failure) {
+      if (mount.isConnected) showError(failure instanceof Error ? failure.message : 'Could not save the job. Try again.');
+    } finally {
+      saving = false;
+      fields.inert = false;
+      saveBtn.disabled = false;
+      cancelBtn.disabled = false;
+      saveBtn.textContent = 'Save job';
+      mount.removeAttribute('aria-busy');
+    }
+  };
+  saveBtn.addEventListener('click', () => { void save(); });
+
+  if (document.activeElement === mount) labelInput.focus();
 }
 
 /** Reset module state (tests). */
 export function resetJobEditorWindowForTests(): void {
-  overlayRoot?.remove();
-  overlayRoot = null;
+  closeJobEditorWindow();
 }

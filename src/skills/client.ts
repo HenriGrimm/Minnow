@@ -54,7 +54,7 @@ interface SkillDetailResponse {
   skill: SkillDetail;
 }
 
-let skillCatalog: SkillListItem[] = [];
+let skillCatalog: SkillListItem[] | undefined;
 const detailCache = new Map<string, SkillDetail>();
 
 /** Built-in list from generated manifest (dev without server). */
@@ -64,25 +64,25 @@ function getBuiltinListFromManifest(): SkillListItem[] {
 }
 
 /** Catalog rows that are enabled in settings (default: enabled). */
-function filterEnabledSkills(skills: SkillListItem[]): SkillListItem[] {
+function filterEnabledSkills(skills: readonly SkillListItem[]): SkillListItem[] {
   return skills.filter((skill) => isSkillEnabled(skill.id));
 }
 
 /** Current merged catalog (built-in + user when server available). */
 export function getSkillCatalog(): readonly SkillListItem[] {
-  return filterEnabledSkills(skillCatalog);
+  return filterEnabledSkills(getAllSkillCatalog());
 }
 
 /** Full catalog including disabled skills (settings UI). */
 /** Turn clamp a skill applies (`access:` front matter), or null. */
 export function getSkillTurnClamp(id: string | null | undefined): 'read-only' | 'plans' | null {
   if (!id) return null;
-  const row = skillCatalog.find((s) => s.id === id) ?? getBuiltinListFromManifest().find((s) => s.id === id);
+  const row = getAllSkillCatalog().find((s) => s.id === id) ?? getBuiltinListFromManifest().find((s) => s.id === id);
   return row?.access === 'read-only' || row?.access === 'plans' ? row.access : null;
 }
 
 export function getAllSkillCatalog(): readonly SkillListItem[] {
-  return skillCatalog;
+  return skillCatalog ??= getBuiltinListFromManifest();
 }
 
 /** Refresh catalog from GET /api/skills or manifest-only fallback. */
@@ -114,7 +114,7 @@ export async function fetchSkillById(id: string): Promise<SkillDetail | null> {
   const cached = detailCache.get(id);
   if (cached && !id.startsWith('plugin-')) return cached;
 
-  const inCatalog = skillCatalog.find((s) => s.id === id);
+  const inCatalog = getAllSkillCatalog().find((s) => s.id === id);
   if (!inCatalog || !isSkillEnabled(id)) return null;
 
   if (!isLocalServerAvailable()) {

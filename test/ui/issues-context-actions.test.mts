@@ -11,6 +11,7 @@ document.body.innerHTML = '<main id="issuesView"></main>';
 const { initIssuesPage, openIssues, renderIssuesPanel } = await import('../../src/ui/issues-page.ts');
 const { closeContextMenu } = await import('../../src/ui/context-menu.ts');
 const store = await import('../../src/state/issues-store.ts');
+const { setIssuesGithubMode } = await import('../../src/state/issues-github.ts');
 const config = await import('../../src/tools/config.ts');
 config.setLocalServerAvailableForTests(false);
 const issue = (id: string, status: string) => ({
@@ -47,6 +48,28 @@ function checkNewPanel(): void {
   document.getElementById('btnIssuesNewCancel')!.click();
 }
 
+test('Sync all sits beside New issue independently of the filters', () => {
+  const sync = document.querySelector<HTMLButtonElement>('#btnIssuesSyncAll')!;
+  const filters = document.getElementById('btnIssuesFilters')!;
+  assert.equal(sync.previousElementSibling?.id, 'btnIssuesNew');
+  assert.equal(sync.closest('.issues-extra-filters'), null);
+  assert.ok(sync.classList.contains('mn-btn--secondary'));
+  assert.equal(sync.hidden, true);
+
+  try {
+    setIssuesGithubMode('mirror');
+    assert.equal(filters.getAttribute('aria-expanded'), 'false');
+    assert.equal(sync.hidden, false);
+    filters.click();
+    assert.equal(filters.getAttribute('aria-expanded'), 'true');
+    assert.equal(sync.hidden, false);
+  } finally {
+    if (filters.getAttribute('aria-expanded') === 'true') filters.click();
+    setIssuesGithubMode('off');
+  }
+  assert.equal(sync.hidden, true);
+});
+
 test('blank list and board menus expose filters and open the New issue panel', async () => {
   for (const view of ['issuesViewList', 'issuesViewBoard']) {
     document.getElementById(view)!.click();
@@ -58,6 +81,22 @@ test('blank list and board menus expose filters and open the New issue panel', a
     checkNewPanel();
   }
   document.getElementById('issuesViewList')!.click();
+});
+
+test('populated groups own their list items and the Add label button keeps keyboard activation', () => {
+  const row = mount().querySelector<HTMLElement>('.issues-row')!;
+  assert.equal(row.parentElement?.getAttribute('role'), 'list');
+  assert.equal(row.getAttribute('role'), 'listitem');
+  assert.equal(row.hasAttribute('aria-selected'), false);
+  const add = row.querySelector<HTMLButtonElement>('button[aria-label="Add label"]')!;
+  add.focus();
+  const activation = new dom.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+  add.dispatchEvent(activation);
+  assert.equal(activation.defaultPrevented, false);
+  add.click(); // happy-dom does not dispatch the native activation click from a synthetic key.
+  assert.equal(add.getAttribute('aria-expanded'), 'true');
+  assert.doesNotMatch(window.location.hash, /MIN-\d+/);
+  add.click();
 });
 
 test('blank-area filters change the visible issues and can show completed issues', async () => {

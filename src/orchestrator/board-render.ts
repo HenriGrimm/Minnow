@@ -69,6 +69,7 @@ export interface TaskFilesView {
 export interface BoardViewOptions {
   selectedTaskId: string | null;
   pendingTaskIds: ReadonlySet<string>;
+  desktopLayout?: boolean;
   liveActivity?: ReadonlyMap<string, LiveActivity>;
   /** When recorded attempts started. View-only; never part of the fold. */
   attemptStartedAt?: ReadonlyMap<string, number>;
@@ -158,6 +159,7 @@ export function renderBoardHeader(
   state: BoardState,
   connected: boolean,
   controls?: HTMLElement,
+  desktopLayout = false,
 ): HTMLElement {
   const header = el('header', 'board-header ob-runhead');
 
@@ -168,7 +170,8 @@ export function renderBoardHeader(
   title.title = state.planPath;
   leading.appendChild(title);
   leading.appendChild(renderStatusBadge(state, connected));
-  leading.appendChild(renderHeaderTelemetry(state));
+  const telemetry = renderHeaderTelemetry(state);
+  if (!desktopLayout) leading.appendChild(telemetry);
 
   toolbar.appendChild(leading);
   const cluster = controls ?? el('div', 'board-header__controls');
@@ -178,7 +181,8 @@ export function renderBoardHeader(
   toolbar.appendChild(cluster);
   header.appendChild(toolbar);
 
-  const meta = renderHeaderMeta(state, connected);
+  const meta = renderHeaderMeta(state, connected, desktopLayout);
+  if (desktopLayout) meta?.appendChild(telemetry);
   if (meta) header.appendChild(meta);
 
   return header;
@@ -271,8 +275,8 @@ function renderHeaderTelemetry(state: BoardState): HTMLElement {
   return telemetry;
 }
 
-function renderHeaderMeta(state: BoardState, connected: boolean): HTMLElement | null {
-  const bits: string[] = [];
+function renderHeaderMeta(state: BoardState, connected: boolean, desktopLayout: boolean): HTMLElement | null {
+  const bits: string[] = desktopLayout ? [state.planPath, ...(state.baseBranch ? [state.baseBranch] : [])] : [];
   if (state.status === 'stopped' && state.stopReason === 'quota') {
     bits.push('stopped: provider out of usage');
   } else if (state.status === 'stopped' && state.stopReason) {
@@ -386,7 +390,32 @@ export function renderTaskList(
     const heading = el('h3', 'ov2-wave__title', name ? `Wave ${wave} — ${name}` : `Wave ${wave}`);
     const headingId = `ov2-wave-${wave}`;
     heading.id = headingId;
-    section.appendChild(heading);
+    if (options.desktopLayout) {
+      const waveHead = el('div', 'ov2-wave__header');
+      const tasks = ids.map(id => state.tasks.get(id)).filter((task): task is TaskState => Boolean(task));
+      const merged = tasks.every(task => task.phase === 'merged');
+      const settled = tasks.every(task => task.phase === 'merged' || task.phase === 'skipped' || task.phase === 'abandoned');
+      const started = tasks.some(task => task.phase !== 'idle' || task.attempts.length > 0);
+      heading.replaceChildren(el('span', 'ov2-wave__number', `Wave ${wave}`));
+      if (name) heading.append(el('span', 'ov2-wave__name', name));
+      const badge = pill(merged ? 'Merged' : settled ? 'Resolved' : started ? 'In progress' : 'Not started',
+        merged ? 'good' : settled ? 'warn' : started ? 'live' : 'neutral');
+      waveHead.append(heading, el('span', 'ov2-wave__divider'), badge);
+      section.append(waveHead);
+    } else section.append(heading);
+
+    if (options.desktopLayout) {
+      const grid = el('div', 'ov2-wave-grid');
+      grid.setAttribute('role', 'group');
+      grid.setAttribute('aria-labelledby', headingId);
+      for (const id of ids) {
+        const task = state.tasks.get(id);
+        if (task) grid.appendChild(renderTaskCard(state, task, actions, options));
+      }
+      section.appendChild(grid);
+      list.appendChild(section);
+      continue;
+    }
 
     const buckets = bucketWave(state, ids);
     const grid = el('div', 'ov2-kanban');
@@ -476,7 +505,13 @@ function renderTaskCard(
     if (!selected) actions.select(task.id);
   });
 
-  head.appendChild(el('span', 'ov2-task__id', task.id));
+  if (options.desktopLayout) {
+    const identity = el('span', 'ov2-task__identity');
+    identity.append(el('span', 'ov2-task__id', task.id));
+    const role = activeAttempt?.role ?? task.attempts.filter(attempt => !attempt.retired && attempt.role !== 'merge').at(-1)?.role;
+    if (role) identity.append(el('span', 'ov2-task__role', role));
+    head.append(identity);
+  } else head.append(el('span', 'ov2-task__id', task.id));
   head.appendChild(el('span', 'ov2-task__title', task.title));
   const badges = el('span', 'ov2-task__badges');
   badges.appendChild(pill(phaseLabel(state, task), interruption ? 'neutral' : blocked ? 'warn' : PHASE_TONE[task.phase]));
@@ -530,6 +565,15 @@ function renderTaskCard(
   }
 
   card.appendChild(renderCardControls(state, task, actions, options));
+  if (options.desktopLayout) {
+    const stage = { idle: 0, building: 1, testing: 2, merging: 3, merged: 4, abandoned: 0, skipped: 0 }[task.phase];
+    const progress = el('progress', 'ov2-task__stage');
+    progress.max = 4;
+    progress.value = stage;
+    progress.setAttribute('aria-label', `Delivery stage for ${task.id}`);
+    progress.setAttribute('aria-valuetext', phaseLabel(state, task));
+    card.append(progress);
+  }
   return card;
 }
 
@@ -869,6 +913,26 @@ function attachKeyboardGrid(list: HTMLElement): void {
     }
     const current = (event.target as HTMLElement | null)?.closest<HTMLElement>('.ov2-task__head');
     if (!current) return;
+    const wave = current.closest('.ov2-wave-grid');
+    if (wave) {
+      const origin = current.getBoundingClientRect();
+      const horizontal = key === 'ArrowLeft' || key === 'ArrowRight';
+      const sign = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1;
+      let best: HTMLElement | undefined;
+      let distance = Infinity;
+      for (const candidate of wave.querySelectorAll<HTMLElement>('.ov2-task__head')) {
+        const rect = candidate.getBoundingClientRect();
+        const dx = rect.left - origin.left;
+        const dy = rect.top - origin.top;
+        const along = sign * (horizontal ? dx : dy);
+        const across = Math.abs(horizontal ? dy : dx);
+        if (along <= 1 || (horizontal && across > 1)) continue;
+        const score = along + across * 2;
+        if (score < distance) { best = candidate; distance = score; }
+      }
+      if (best) { best.focus(); event.preventDefault(); }
+      return;
+    }
     const grid = current.closest<HTMLElement>('.ov2-kanban');
     if (!grid) return;
 

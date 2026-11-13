@@ -1,415 +1,213 @@
 import {
-  formatCssColor,
-  parseCssColorOrDefault,
-  rgbaToColorInputValue,
-} from '../appearance/color-format';
-import {
-  exportCustomThemeJson,
-  getCustomThemeTokens,
-  importCustomThemeJson,
-  isCustomThemeAdvanced,
-  isCustomThemeEnabled,
-  readEffectiveThemeTokens,
-  readPresetTokenValue,
-  replaceCustomThemeTokens,
-  resetCustomTheme,
-  setCustomThemeAdvanced,
-  setCustomThemeEnabled,
-  setCustomThemeTokens,
+  getCustomThemeTokens, isCustomThemeEnabled, parseCustomThemeJson, readPresetTokenValue,
+  resetCustomTheme, saveCustomThemeOverrides, subscribeCustomThemeChanges,
 } from '../appearance/custom-theme';
+import { formatCssColor, parseCssColor } from '../appearance/color-format';
 import { warnContrastPairs } from '../appearance/contrast';
-import {
-  deriveThemeTokensFromSeeds,
-  extractSimplifiedSeeds,
-  labelForSimplifiedKey,
-  SIMPLIFIED_THEME_KEYS,
-  type SimplifiedThemeKey,
-} from '../appearance/theme-derive';
-import {
-  CORE_THEME_TOKEN_KEYS,
-  THEME_TOKEN_GROUPS,
-  type CoreThemeTokenKey,
-} from '../appearance/types';
-import { applyResolvedTheme } from './theme';
+import { THEME_TOKEN_GROUPS, type CoreThemeTokenKey, type CustomThemeTokens } from '../appearance/types';
 import { getStoredTheme } from '../theme';
+import { createAppearanceColorInput } from './appearance-color-input';
+import { createButton } from './components/button';
+import { createField, createSelect } from './components/field';
+import { openPopover, type PopoverHandle } from './components/popover';
 import { createSettingsToggleRow } from './settings-switch';
-import { showToast } from './toast';
+import { applyResolvedTheme } from './theme';
 
-/** Trigger a browser download for a JSON payload (works in Electron and plain browsers). */
-function downloadJsonFile(filename: string, json: string): void {
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
+const COLOR_NAMES = {
+  bg: 'Workspace background',
+  'surface-0': 'Workbench panels',
+  'surface-1': 'Menus and inputs',
+  'surface-2': 'Chat bubbles',
+  border: 'Panel dividers',
+  'border-strong': 'Input outlines',
+  fg: 'Main text',
+  'fg-muted': 'Secondary text',
+  'fg-subtle': 'Hints and placeholders',
+  'fg-on-accent': 'Primary button text',
+  accent: 'Primary buttons',
+  'accent-soft': 'Highlight fill',
+  'accent-border': 'Highlight outline',
+  'accent-ink': 'Links and highlights',
+  success: 'Success indicators',
+  'success-soft': 'Success background',
+  'success-border': 'Success outline',
+  'success-ink': 'Success text',
+  warning: 'Warning indicators',
+  danger: 'Error indicators',
+  'danger-soft': 'Error background',
+  'danger-border': 'Error outline',
+  'danger-ink': 'Error text',
+  'focus-ring': 'Keyboard focus ring',
+  shadow: 'Floating panel shadow',
+  folder: 'Folder icons',
+} as const satisfies Record<CoreThemeTokenKey, string>;
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
+function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
+  if (text) node.textContent = text;
   return node;
 }
 
-function labelForKey(key: CoreThemeTokenKey): string {
-  return key
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
+export function appendAppearanceCustomColors(mount: HTMLElement): () => void {
+  let popover: PopoverHandle | undefined;
+  const status = element('span', 'appearance-advanced__status');
+  status.setAttribute('role', 'status');
+  const anchor = createButton({ label: 'Edit colors…', icon: 'palette', onClick: open });
+  anchor.setAttribute('aria-haspopup', 'dialog');
+  anchor.setAttribute('aria-expanded', 'false');
+  const row = element('div', 'appearance-advanced');
+  row.append(status, anchor);
+  mount.append(row);
 
-interface ColorTokenControl {
-  root: HTMLElement;
-  getValue: () => string;
-  setValue: (css: string) => void;
-  setDisabled: (disabled: boolean) => void;
-}
-
-interface ColorControlOptions {
-  label: string;
-  showAlpha?: boolean;
-}
-
-/** One token row: native color swatch, optional alpha slider, and formatted CSS readout. */
-function createColorTokenControl(
-  options: ColorControlOptions,
-  onChange: (value: string) => void,
-): ColorTokenControl {
-  const showAlpha = options.showAlpha !== false;
-  let current = parseCssColorOrDefault('');
-
-  const field = el('label', 'settings-appearance-color-field');
-  field.appendChild(el('span', 'settings-appearance-color-field__label', options.label));
-
-  const control = el('div', 'settings-appearance-color-control');
-
-  const swatch = document.createElement('input');
-  swatch.type = 'color';
-  swatch.className = 'settings-appearance-color-swatch';
-  swatch.setAttribute('aria-label', `${options.label} color`);
-
-  const alphaWrap = el('div', 'settings-appearance-color-alpha');
-  alphaWrap.appendChild(el('span', 'settings-appearance-color-alpha__label', 'A'));
-  const alphaRange = document.createElement('input');
-  alphaRange.type = 'range';
-  alphaRange.className = 'settings-appearance-color-alpha__range';
-  alphaRange.min = '0';
-  alphaRange.max = '100';
-  alphaRange.step = '1';
-  alphaRange.setAttribute('aria-label', `${options.label} opacity`);
-  const alphaReadout = el('span', 'settings-appearance-color-alpha__readout', '100%');
-  alphaWrap.append(alphaRange, alphaReadout);
-
-  if (showAlpha) {
-    control.append(swatch, alphaWrap);
-  } else {
-    control.appendChild(swatch);
+  function refresh(): void {
+    const count = Object.keys(getCustomThemeTokens()).length;
+    status.textContent = !count ? 'Default colors'
+      : !isCustomThemeEnabled() ? 'Overrides paused'
+      : count === 1 ? '1 color override' : `${count} color overrides`;
   }
-  field.appendChild(control);
 
-  const valueReadout = el('span', 'settings-appearance-color-value');
-  field.appendChild(valueReadout);
-
-  function paintUi(): void {
-    swatch.value = rgbaToColorInputValue(current);
-    if (showAlpha) {
-      const alphaPct = Math.round(current.a * 100);
-      alphaRange.value = String(alphaPct);
-      alphaReadout.textContent = `${alphaPct}%`;
+  function open(): void {
+    if (popover?.isOpen()) {
+      popover.close('anchor');
+      return;
     }
-    valueReadout.textContent = formatCssColor(current);
-  }
+    const original = getCustomThemeTokens();
+    const wasEnabled = isCustomThemeEnabled();
+    let tokens: CustomThemeTokens = { ...original };
+    const panel = element('div', 'appearance-color-panel');
+    const heading = element('strong', undefined, 'Advanced colors');
+    const select = createSelect({ options: [] });
+    const options = new Map<CoreThemeTokenKey, HTMLOptionElement>();
+    for (const group of THEME_TOKEN_GROUPS) {
+      const optgroup = element('optgroup');
+      optgroup.label = group.id === 'semantic' ? 'Status and icons' : group.label;
+      for (const key of group.keys) {
+        const option = element('option', undefined, COLOR_NAMES[key]);
+        option.value = key;
+        optgroup.append(option);
+        options.set(key, option);
+      }
+      select.append(optgroup);
+    }
+    const role = createField({ label: 'Interface element', control: select });
+    const selected = () => select.value as CoreThemeTokenKey;
+    const enabled = createSettingsToggleRow('Use overrides', { checked: wasEnabled });
+    const contrast = element('details', 'appearance-color-panel__details appearance-color-panel__contrast');
+    const contrastTitle = element('summary');
+    const contrastList = element('ul');
+    contrast.append(contrastTitle, contrastList);
+    contrast.addEventListener('toggle', () => popover?.reposition());
+    const picker = createAppearanceColorInput((value) => {
+      tokens[selected()] = value;
+      enabled.input.checked = true;
+      paint(false);
+    }, true);
 
-  function commit(): void {
-    const css = formatCssColor(current);
-    valueReadout.textContent = css;
-    onChange(css);
-  }
+    const reset = createButton({ label: 'Reset color', variant: 'ghost', size: 'sm', onClick: () => {
+      delete tokens[selected()];
+      paint();
+    } });
+    const details = element('details', 'appearance-color-panel__details');
+    const file = element('input');
+    file.type = 'file';
+    file.accept = '.json,application/json';
+    file.hidden = true;
+    const fileStatus = element('p', 'appearance-color-panel__file-status');
+    fileStatus.setAttribute('role', 'status');
+    file.addEventListener('change', async () => {
+      const picked = file.files?.[0];
+      file.value = '';
+      if (!picked) return;
+      let palette;
+      try {
+        palette = parseCustomThemeJson(await picked.text());
+      } catch {}
+      if (!panel.isConnected) return;
+      if (!palette) {
+        fileStatus.textContent = 'Choose a valid Minnow palette file.';
+        popover?.reposition();
+        return;
+      }
+      tokens = {};
+      for (const key of options.keys()) {
+        const color = palette.tokens[key];
+        if (color && color.length <= 64 && CSS.supports('color', color)) tokens[key] = color;
+      }
+      enabled.input.checked = palette.enabled;
+      fileStatus.textContent = 'Palette loaded. Apply to use it.';
+      paint();
+    });
+    const fileActions = element('div', 'appearance-color-panel__actions');
+    fileActions.append(
+      createButton({ label: 'Import', size: 'sm', onClick: () => file.click() }),
+      createButton({ label: 'Export', size: 'sm', onClick: () => {
+        const url = URL.createObjectURL(new Blob([
+          JSON.stringify({ version: 1, enabled: enabled.input.checked, tokens }, null, 2),
+        ], { type: 'application/json' }));
+        const link = element('a');
+        link.href = url;
+        link.download = 'minnow-theme.json';
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } }),
+      createButton({ label: 'Reset all', size: 'sm', variant: 'ghost', onClick: () => {
+        tokens = {};
+        paint();
+      } }),
+    );
+    details.append(element('summary', undefined, 'Palette options'), fileActions, file, fileStatus);
+    details.addEventListener('toggle', () => popover?.reposition());
 
-  swatch.addEventListener('input', () => {
-    const parsed = parseCssColorOrDefault(swatch.value);
-    current = { ...parsed, a: showAlpha ? current.a : 1 };
-    paintUi();
-    commit();
-  });
+    const apply = createButton({ label: 'Apply colors', variant: 'primary', onClick: () => {
+      if (!picker.commit()) {
+        picker.hex.focus();
+        return;
+      }
+      if (Object.keys(tokens).length) saveCustomThemeOverrides(tokens, enabled.input.checked);
+      else resetCustomTheme();
+      applyResolvedTheme(getStoredTheme());
+      popover?.close();
+    } });
+    const actions = element('div', 'appearance-color-panel__actions appearance-color-panel__footer');
+    actions.append(createButton({ label: 'Cancel', variant: 'ghost', onClick: () => popover?.close() }), apply);
 
-  if (showAlpha) {
-    alphaRange.addEventListener('input', () => {
-      const pct = Number(alphaRange.value);
-      current = { ...current, a: pct / 100 };
-      paintUi();
-      commit();
+    function paint(syncPicker = true): void {
+      const key = selected();
+      if (syncPicker) picker.setValue(tokens[key] ?? readPresetTokenValue(key));
+      const hasOverrides = Object.keys(tokens).length > 0;
+      enabled.input.disabled = !hasOverrides;
+      if (!hasOverrides) enabled.input.checked = false;
+      reset.disabled = !tokens[key];
+      apply.disabled = wasEnabled === enabled.input.checked
+        && [...options.keys()].every((key) => original[key] === tokens[key]);
+      for (const [key, option] of options) option.textContent = tokens[key] ? `${COLOR_NAMES[key]} · edited` : COLOR_NAMES[key];
+      const values: Record<string, string> = {};
+      for (const key of ['fg', 'fg-muted', 'bg', 'surface-1', 'fg-on-accent', 'accent', 'accent-ink'] as const) {
+        const color = parseCssColor(tokens[key] ?? readPresetTokenValue(key));
+        if (color) values[key] = formatCssColor(color);
+      }
+      const warnings = enabled.input.checked ? warnContrastPairs(values) : [];
+      contrast.hidden = !warnings.length;
+      contrastTitle.textContent = 'Low text contrast';
+      contrastList.replaceChildren(...warnings.map(({ pair, ratio, minimum }) =>
+        element('li', undefined, `${pair} · ${ratio.toFixed(1)}:1 (target ${minimum}:1)`)));
+      popover?.reposition();
+    }
+
+    select.addEventListener('change', () => paint());
+    enabled.input.addEventListener('change', () => paint(false));
+    panel.append(heading, role.root, picker.root, reset, enabled.row, contrast, details, actions);
+    paint();
+    popover = openPopover({
+      anchor, content: panel, placement: 'bottom-end', ariaLabel: 'Advanced colors',
+      className: 'appearance-color-popover', initialFocus: select,
     });
   }
-
-  paintUi();
-
-  return {
-    root: field,
-    getValue: () => formatCssColor(current),
-    setValue: (css: string) => {
-      current = parseCssColorOrDefault(css);
-      if (!showAlpha) current = { ...current, a: 1 };
-      paintUi();
-    },
-    setDisabled: (disabled: boolean) => {
-      swatch.disabled = disabled;
-      if (showAlpha) alphaRange.disabled = disabled;
-      field.classList.toggle('is-disabled', disabled);
-    },
+  refresh();
+  const unsubscribe = subscribeCustomThemeChanges(refresh);
+  return () => {
+    popover?.close();
+    unsubscribe();
   };
-}
-
-/** Mount custom color overrides, import/export, and contrast warnings. */
-export function appendAppearanceCustomColors(mount: HTMLElement): void {
-  const warningsMount = el('div', 'settings-appearance-warnings');
-
-  const { row: enableRow, input: enableInput } = createSettingsToggleRow(
-    'Use custom colors',
-    { checked: isCustomThemeEnabled() },
-  );
-  mount.appendChild(enableRow);
-
-  const { row: advancedRow, input: advancedInput } = createSettingsToggleRow(
-    'Advanced mode',
-    {
-      checked: isCustomThemeAdvanced(),
-      description: 'Edit every palette token individually. Turning this off regenerates colors from the four simplified picks.',
-    },
-  );
-  mount.appendChild(advancedRow);
-
-  const simplifiedIntro = el(
-    'p',
-    'settings-field-hint settings-appearance-simplified__hint',
-    'Pick four colors — Minnow generates surfaces, borders, semantic states, and accents automatically.',
-  );
-
-  const simplifiedGrid = el('div', 'settings-appearance-simplified');
-  const simplifiedControls = new Map<SimplifiedThemeKey, ColorTokenControl>();
-
-  const advancedGrid = el('div', 'settings-appearance-color-grid');
-  const advancedControls = new Map<CoreThemeTokenKey, ColorTokenControl>();
-
-  function readTokenSnapshot(): Record<CoreThemeTokenKey, string> {
-    const tokens = {} as Record<CoreThemeTokenKey, string>;
-    for (const key of CORE_THEME_TOKEN_KEYS) {
-      const control = advancedControls.get(key);
-      tokens[key] = control?.getValue() || readEffectiveThemeTokens()[key];
-    }
-    return tokens;
-  }
-
-  function refreshWarnings(): void {
-    warningsMount.replaceChildren();
-    const tokens = readTokenSnapshot();
-    for (const w of warnContrastPairs(tokens)) {
-      const p = el(
-        'p',
-        'settings-field-hint settings-appearance-warn',
-        `${w.pair}: contrast ${w.ratio.toFixed(2)} (minimum ${w.minimum})`,
-      );
-      warningsMount.appendChild(p);
-    }
-  }
-
-  function applyDerivedFromSimplified(): void {
-    const seeds = extractSimplifiedSeeds(
-      Object.fromEntries(
-        SIMPLIFIED_THEME_KEYS.map((key) => [key, simplifiedControls.get(key)?.getValue() ?? '']),
-      ),
-      readEffectiveThemeTokens(),
-    );
-    const derived = deriveThemeTokensFromSeeds(seeds);
-    replaceCustomThemeTokens(derived);
-    for (const key of CORE_THEME_TOKEN_KEYS) {
-      advancedControls.get(key)?.setValue(derived[key]);
-    }
-    refreshWarnings();
-  }
-
-  function syncSimplifiedFromTokens(tokens: Partial<Record<CoreThemeTokenKey, string>>): void {
-    const seeds = extractSimplifiedSeeds(tokens, readEffectiveThemeTokens());
-    for (const key of SIMPLIFIED_THEME_KEYS) {
-      simplifiedControls.get(key)?.setValue(seeds[key]);
-    }
-  }
-
-  function setEditorDisabled(disabled: boolean): void {
-    for (const control of simplifiedControls.values()) control.setDisabled(disabled);
-    for (const control of advancedControls.values()) control.setDisabled(disabled);
-  }
-
-  function updateEditorVisibility(): void {
-    const enabled = enableInput.checked;
-    const advanced = advancedInput.checked;
-
-    advancedRow.hidden = !enabled;
-    simplifiedIntro.hidden = !enabled || advanced;
-    simplifiedGrid.hidden = !enabled || advanced;
-    advancedGrid.hidden = !enabled || !advanced;
-    warningsMount.hidden = !enabled;
-    actions.hidden = !enabled;
-  }
-
-  function syncInputsFromStorage(): void {
-    const stored = getCustomThemeTokens();
-    const effective = readEffectiveThemeTokens();
-
-    for (const key of CORE_THEME_TOKEN_KEYS) {
-      const control = advancedControls.get(key);
-      if (!control) continue;
-      const value = stored[key] ?? effective[key] ?? readPresetTokenValue(key);
-      control.setValue(value);
-    }
-
-    syncSimplifiedFromTokens(
-      Object.keys(stored).length > 0 ? { ...effective, ...stored } : effective,
-    );
-
-    const disabled = !enableInput.checked;
-    setEditorDisabled(disabled);
-    updateEditorVisibility();
-    refreshWarnings();
-  }
-
-  for (const key of SIMPLIFIED_THEME_KEYS) {
-    const control = createColorTokenControl(
-      { label: labelForSimplifiedKey(key), showAlpha: false },
-      () => {
-        if (!enableInput.checked || advancedInput.checked) return;
-        applyDerivedFromSimplified();
-      },
-    );
-    simplifiedControls.set(key, control);
-    simplifiedGrid.appendChild(control.root);
-  }
-
-  for (const group of THEME_TOKEN_GROUPS) {
-    const section = el('div', 'settings-appearance-color-group');
-    section.appendChild(el('h4', 'settings-appearance-color-group__title', group.label));
-    const fields = el('div', 'settings-appearance-color-fields');
-
-    for (const key of group.keys) {
-      const control = createColorTokenControl({ label: labelForKey(key) }, (value) => {
-        if (!enableInput.checked || !advancedInput.checked) return;
-        setCustomThemeTokens({ [key]: value });
-        refreshWarnings();
-      });
-      advancedControls.set(key, control);
-      fields.appendChild(control.root);
-    }
-
-    section.appendChild(fields);
-    advancedGrid.appendChild(section);
-  }
-
-  mount.append(simplifiedIntro, simplifiedGrid, advancedGrid, warningsMount);
-
-  const actions = el('div', 'settings-actions');
-
-  const forkBtn = el('button', 'settings-action-btn settings-action-btn--primary', 'Fork from preset');
-  forkBtn.type = 'button';
-  forkBtn.addEventListener('click', () => {
-    applyResolvedTheme(getStoredTheme());
-    const snapshot = readEffectiveThemeTokens();
-    if (advancedInput.checked) {
-      replaceCustomThemeTokens(snapshot);
-    } else {
-      syncSimplifiedFromTokens(snapshot);
-      applyDerivedFromSimplified();
-    }
-    enableInput.checked = true;
-    setCustomThemeEnabled(true);
-    syncInputsFromStorage();
-  });
-
-  const resetBtn = el('button', 'settings-action-btn', 'Reset custom colors');
-  resetBtn.type = 'button';
-  resetBtn.addEventListener('click', () => {
-    resetCustomTheme();
-    enableInput.checked = false;
-    advancedInput.checked = false;
-    applyResolvedTheme(getStoredTheme());
-    syncInputsFromStorage();
-  });
-
-  const exportBtn = el('button', 'settings-action-btn', 'Export JSON');
-  exportBtn.type = 'button';
-  exportBtn.addEventListener('click', () => {
-    const json = exportCustomThemeJson();
-    downloadJsonFile('minnow-theme.json', json);
-    showToast('Downloaded minnow-theme.json');
-  });
-
-  const importLabel = el('label', 'settings-action-btn settings-appearance-import');
-  importLabel.textContent = 'Import JSON';
-  const importInput = document.createElement('input');
-  importInput.type = 'file';
-  importInput.accept = 'application/json,.json';
-  importInput.hidden = true;
-  importInput.addEventListener('change', async () => {
-    const file = importInput.files?.[0];
-    importInput.value = '';
-    if (!file) return;
-    const text = await file.text();
-    if (!importCustomThemeJson(text)) return;
-    enableInput.checked = isCustomThemeEnabled();
-    advancedInput.checked = isCustomThemeAdvanced();
-    applyResolvedTheme(getStoredTheme());
-    syncInputsFromStorage();
-  });
-  importLabel.appendChild(importInput);
-  importLabel.addEventListener('click', () => importInput.click());
-
-  actions.append(forkBtn, resetBtn, exportBtn, importLabel);
-  mount.appendChild(actions);
-
-  advancedInput.addEventListener('change', () => {
-    setCustomThemeAdvanced(advancedInput.checked);
-    if (!enableInput.checked) {
-      updateEditorVisibility();
-      return;
-    }
-    if (advancedInput.checked) {
-      updateEditorVisibility();
-      refreshWarnings();
-      return;
-    }
-    applyDerivedFromSimplified();
-    updateEditorVisibility();
-  });
-
-  enableInput.addEventListener('change', () => {
-    setCustomThemeEnabled(enableInput.checked);
-    if (enableInput.checked) {
-      const partial = getCustomThemeTokens();
-      if (Object.keys(partial).length === 0) {
-        applyResolvedTheme(getStoredTheme());
-        const snapshot = readEffectiveThemeTokens();
-        if (advancedInput.checked) {
-          replaceCustomThemeTokens(snapshot);
-        } else {
-          syncSimplifiedFromTokens(snapshot);
-          applyDerivedFromSimplified();
-        }
-      } else {
-        applyResolvedTheme(getStoredTheme());
-      }
-    } else {
-      applyResolvedTheme(getStoredTheme());
-    }
-    syncInputsFromStorage();
-  });
-
-  syncInputsFromStorage();
 }

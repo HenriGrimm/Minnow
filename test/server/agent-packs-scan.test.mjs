@@ -137,7 +137,6 @@ describe('ensureAgentPacksLayout', () => {
     const templateDir = join(freshHome, 'agent-packs', '_template');
     await access(join(templateDir, 'manifest.json'));
     await access(join(templateDir, 'prompts', 'example.full.md'));
-    await access(join(templateDir, 'prompts', 'example.lite.md'));
     await access(join(templateDir, 'README.md'));
   });
 
@@ -150,6 +149,5 @@ describe('ensureAgentPacksLayout', () => {
     await ensureAgentPacksLayout();
 
     await access(join(templateDir, 'prompts', 'example.full.md'));
-    await access(join(templateDir, 'prompts', 'example.lite.md'));
   });
 });

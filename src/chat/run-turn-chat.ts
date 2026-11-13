@@ -193,7 +193,7 @@ import {
   getPendingAttachments,
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
-import { decodeModelSelectKey } from '../lib/model-select-key';
+import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import { resolveCursorVariantId, cursorVariantParts } from '../models/cursor-variants.mjs';
 import { isLocalProvider } from '../providers/provider-host';
 import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
@@ -241,6 +241,7 @@ import {
   resolveActiveSkill,
 } from '../skills';
 import { getSkillTurnClamp } from '../skills/client';
+import { GRAPHITE_SIDE_CHAT_ROLE, isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import { burstPartyConfetti } from '../ui/party-confetti';
 import {
   appendBubble,
@@ -578,6 +579,7 @@ function chatTurnContextLimits(
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
 export async function composeRunTurnChatSystemPrompt(input: {
+  signal?: AbortSignal;
   separateCliContext?: boolean;
   chat: Chat;
   rawText: string;
@@ -599,11 +601,6 @@ export async function composeRunTurnChatSystemPrompt(input: {
     contextDocuments: null,
   };
   if (!composed) {
-    const legacy =
-      typeof document !== 'undefined'
-        ? (document.getElementById('systemPrompt') as HTMLTextAreaElement | null)
-            ?.value?.trim() ?? ''
-        : '';
     let skillBody: string | null = input.skillBody?.trim() ? input.skillBody : null;
     if (!skillBody && input.skillId) {
       const skill = await resolveActiveSkill(input.skillId);
@@ -629,7 +626,8 @@ export async function composeRunTurnChatSystemPrompt(input: {
     if (skillBody && uiDesignerCtx.active) {
       skillBody = augmentSkillBodyForUiDesigner(skillBody, uiDesignerCtx);
     }
-    const outbound = await resolveOutboundSystemMessages(input.chat, legacy, {
+    const outbound = await resolveOutboundSystemMessages(input.chat, {
+      signal: input.signal,
       separateCliContext: input.separateCliContext,
       userMessagePreview: input.userText || input.rawText,
       routeUserText: input.userText || input.rawText,
@@ -641,7 +639,7 @@ export async function composeRunTurnChatSystemPrompt(input: {
         turnClamp: getSkillTurnClamp(input.skillId ?? null),
       },
     });
-    composed = (input.separateCliContext ? outbound.cliStable : outbound.composed)?.trim() || outbound.composed.trim() || legacy;
+    composed = (input.separateCliContext ? outbound.cliStable : outbound.composed)?.trim() || outbound.composed.trim();
     cliTurnContext = outbound.cliTurnContext;
     injectionBlocks = outbound.injectionBlocks;
     if (outbound.userRules?.trim()) {
@@ -702,7 +700,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     pushUser,
     rawText,
     userText,
-    skillId,
+    skillId: requestedSkillId,
     historyContent,
     validAttachments,
     titleSeed = userText || rawText,
@@ -725,6 +723,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     codeMap,
   } = options;
 
+  const sideChat = isGraphiteSideChat(chat);
+  const skillId = sideChat ? 'ask' : requestedSkillId;
   const hideUserEcho = suppressUserEcho;
 
   if (!beginChatTurnSetup(chat.id)) {
@@ -736,6 +736,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     turnLease = options.turnLease ?? (isServerStorageMode() ? await acquireChatTurn(chat.id) : localChatTurnLease());
   } catch (error) {
     endChatTurnSetup(chat.id);
+    if (sideChat) throw error;
     if (pushUser) setStatus('err', error instanceof Error ? error.message : 'Could not connect to the computer.');
     return false;
   }
@@ -833,6 +834,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (replaySnapshot) {
       chat.providerId = replaySnapshot.providerId;
       chat.modelId = replaySnapshot.modelId;
+      if (replaySnapshot.cliFastMode === true) chat.cliFastMode = true;
+      else delete chat.cliFastMode;
     } else if (chat.modelId?.trim()) {
       syncPerChatModelBindingFromCatalog(chat);
     } else {
@@ -1001,6 +1004,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     } catch (err) {
       if (err instanceof WorkAgentConfigError) {
+        if (sideChat) throw err;
         setStatus('err', err.message);
         if (uiDesignerCtx.active) {
           chat.workAgentId = savedWorkAgentId;
@@ -1019,6 +1023,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       throw err;
     }
 
+    if (chat.providerId !== sendProviderId || chat.modelId !== sendModelId) delete chat.cliFastMode;
     chat.modelId = sendModelId;
     chat.providerId = sendProviderId;
 
@@ -1403,6 +1408,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     };
     try {
       const composed = await composeRunTurnChatSystemPrompt({
+        signal: chatSignal,
         separateCliContext: provider.apiKind === 'agent-cli-v1',
         chat,
         rawText,
@@ -1410,7 +1416,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         skillId,
         skillBody: presetSkillBody,
         composedSystemPromptOverride:
-          composedSystemPromptOverride?.trim() || replaySnapshot?.composedSystemPrompt,
+          composedSystemPromptOverride?.trim(),
         ephemeralContext,
         firstUserSend: firstUserSendForInjections,
         attachmentWorkspacePaths: validAttachments
@@ -1466,6 +1472,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       global: globalSampler,
     });
 
+    const cliFastMode = chat.cliFastMode === true && provider.apiKind === 'agent-cli-v1'
+      && modelCache.get(encodeModelSelectKey(provider.id, sendModelId))?.supportsFastMode === true;
     if (!resumeGenerationId) {
       const forkHistoryIndex = resolveForkHistoryIndex(chat, pushUser);
       const userRow = chat.history[forkHistoryIndex];
@@ -1507,6 +1515,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             0.7,
           maxTokens: resolvedSampler.maxTokens,
           thinkingMode: resolvedThinking.mode,
+          cliFastMode,
           skillId,
           userContent,
         });
@@ -1546,6 +1555,11 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     });
     store = chatStore;
     const deps = createRendererRunnerDeps(chatStore);
+    if (cliFastMode) {
+      const post = deps.postChatCompletions;
+      deps.postChatCompletions = (target, body, signal, options) => post(target,
+        target.id === provider.id ? { ...body, minnow_cli_fast_mode: true } : body, signal, options);
+    }
     const applyPolicy = deps.applyContextPolicy;
     deps.applyContextPolicy = async (input) => {
       const prev =
@@ -1593,7 +1607,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       const next: PostChatCompletionsOptions = {
         ...postOptions,
         persist: true,
-        fallbackRole: postOptions?.fallbackRole ?? 'main-chat',
+        fallbackRole: sideChat ? GRAPHITE_SIDE_CHAT_ROLE : postOptions?.fallbackRole ?? 'main-chat',
         chatId: chat.id,
         onGenerationId: (id) => {
           chat.currentGenerationId = id;
@@ -1811,7 +1825,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       signal: chatSignal,
       deps,
       limits: { ...chatTurnContextLimits(chat, sendModelId, servedWindow), progressGuard: chat.modeId === 'build' && chat.workAgentId === 'builder' },
-      ask: createChatAskCapability({ chatId: chat.id }),
+      ask: sideChat ? null : createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       refreshRoundConfig: async () => {
@@ -1820,6 +1834,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         const nextSignature = JSON.stringify(nextTools);
         if (chat.modeId === roundModeId && nextSignature === roundToolsSignature) return null;
         const composed = await composeRunTurnChatSystemPrompt({
+          signal: chatSignal,
           chat, rawText, userText, skillId, skillBody: presetSkillBody,
           ephemeralContext, firstUserSend: false,
           separateCliContext: provider.apiKind === 'agent-cli-v1',
@@ -1851,13 +1866,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
 
         const toolLoopModeId = normalizeModeId(chat.modeId);
-        setSubAgentExecutorContext({
-          parentTurnId: turnRunId ?? chat.id,
-          modeId: toolLoopModeId,
-          parentChatId: chat.id,
-          parentToolCallId: ctx.toolCallId,
-        });
-        setBugBoardExecutorContext({ chatId: chat.id });
+        if (!sideChat) {
+          setSubAgentExecutorContext({
+            parentTurnId: turnRunId ?? chat.id,
+            modeId: toolLoopModeId,
+            parentChatId: chat.id,
+            parentToolCallId: ctx.toolCallId,
+          });
+          setBugBoardExecutorContext({ chatId: chat.id });
+        }
 
         const scopedWorkspaceRoot = resolveChatToolWorkspaceRoot(
           chat,
@@ -1870,7 +1887,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           toolCallId: ctx.toolCallId,
           modeId: toolLoopModeId,
           workAgentId: chat.workAgentId ?? null,
-          turnClamp: getSkillTurnClamp(skillId),
+          turnClamp: sideChat ? 'read-only' : getSkillTurnClamp(skillId),
           signal: chatSignal,
           ...(scopedWorkspaceRoot ? { workspaceRoot: scopedWorkspaceRoot } : {}),
         });
@@ -2094,8 +2111,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   } finally {
     turnTeardownRan = true;
     turnLease.signal.removeEventListener('abort', cancelUnownedGeneration);
-    setSubAgentExecutorContext(null);
-    setBugBoardExecutorContext(null);
+    if (!sideChat) {
+      setSubAgentExecutorContext(null);
+      setBugBoardExecutorContext(null);
+    }
     await Promise.all(ledgerWrites);
     streamingStatsPublisher?.reset();
     streamingStatsPublisher = null;
@@ -2147,7 +2166,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             chat.pendingMessageQueue?.some(item => item.kind === 'steer') ||
             getPendingMessageQueueCount(chat) > 0,
         );
-      if (!followUpQueued) {
+      if (!sideChat && !followUpQueued) {
         try {
           notifyChatTurnEnded(chat.id, turnRunId);
         } catch {

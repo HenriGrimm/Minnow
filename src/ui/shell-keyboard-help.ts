@@ -2,6 +2,7 @@ import { markPreviewOccluder } from './preview-occlusion';
 import { isDeveloperReleased } from '../os/app-registry';
 import type { AppId } from '../os/types';
 import { isTypingTarget } from './a11y/typing-target';
+import { createIcon } from './icon';
 
 export interface ShortcutDoc {
   keys: string;
@@ -19,7 +20,7 @@ const SHELL_SHORTCUTS: ShortcutDoc[] = [
     label: 'Command palette (works from any app)',
   },
   { section: 'Shell', keys: '?', label: 'Open this keyboard shortcuts list' },
-  { section: 'Shell', keys: 'Escape', label: 'Close overlays, popovers, side panels, and Research' },
+  { section: 'Shell', keys: 'Escape', label: 'Close a menu, dialog or panel' },
   { section: 'Shell', keys: 'Ctrl + Scroll wheel', label: 'Zoom the interface in / out' },
   {
     section: 'Shell',
@@ -30,6 +31,8 @@ const SHELL_SHORTCUTS: ShortcutDoc[] = [
 ];
 
 const CHAT_SHORTCUTS: ShortcutDoc[] = [
+  { section: 'Chat', keys: 'Ctrl + ↑ / ↓', label: 'Open the previous or next chat in the sidebar' },
+  { section: 'Chat', keys: 'Ctrl/Cmd + N', label: 'Start a new chat' },
   { section: 'Chat', keys: 'Enter', label: 'Send message (composer focused)' },
   { section: 'Chat', keys: 'Shift + Enter', label: 'New line in composer' },
   { section: 'Chat', keys: '/', label: 'Open skill picker in composer' },
@@ -44,6 +47,10 @@ const CHAT_SHORTCUTS: ShortcutDoc[] = [
 
 // Ctrl/Cmd+P is omitted: there is no fuzzy file switcher, only the palette.
 const CODE_SHORTCUTS: ShortcutDoc[] = [
+  { section: 'Code', keys: 'Ctrl/Cmd + .', label: 'Open the thread card' },
+  { section: 'Code', keys: 'Ctrl/Cmd + J', label: 'Toggle the side panel' },
+  { section: 'Code', keys: 'Ctrl + `', label: 'Toggle Terminal in its current panel' },
+  { section: 'Code', keys: 'D / T / F / B / A / P / I / S / N / M', label: 'Open a surface from the focused launcher' },
   {
     section: 'Code',
     keys: 'Ctrl/Cmd + K',
@@ -174,7 +181,7 @@ function renderKeyChips(keys: string): HTMLElement {
 }
 
 /** Render grouped shortcut sections (each section owns its own definition list). */
-function renderShortcutSections(shortcuts: ShortcutDoc[]): DocumentFragment {
+function renderShortcutSections(shortcuts: ShortcutDoc[], graphite: boolean): DocumentFragment {
   const fragment = document.createDocumentFragment();
   const groups = new Map<string, ShortcutDoc[]>();
 
@@ -201,7 +208,12 @@ function renderShortcutSections(shortcuts: ShortcutDoc[]): DocumentFragment {
       keys.appendChild(renderKeyChips(row.keys));
       const label = document.createElement('dd');
       label.textContent = row.label;
-      list.append(keys, label);
+      if (graphite) {
+        const line = document.createElement('div');
+        line.className = 'shell-keyboard-help__row';
+        line.append(keys, label);
+        list.append(line);
+      } else list.append(keys, label);
     }
     group.appendChild(list);
     fragment.appendChild(group);
@@ -221,7 +233,8 @@ export function showShellKeyboardHelp(): void {
   previousFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-  const mount = resolveKeyboardHelpMount();
+  const graphite = document.documentElement.classList.contains('mn-graphite-workspace');
+  const mount = graphite ? document.body : resolveKeyboardHelpMount();
   const scoped = mount !== document.body;
 
   const backdrop = document.createElement('div');
@@ -234,6 +247,7 @@ export function showShellKeyboardHelp(): void {
   const panel = document.createElement('div');
   panel.id = 'shellKeyboardHelpPanel';
   panel.className = 'shell-keyboard-help-sheet';
+  if (graphite) panel.classList.add('shell-keyboard-help-sheet--graphite');
   markPreviewOccluder(panel, 'dialog');
   if (scoped) panel.classList.add('is-scoped');
   panel.setAttribute('role', 'dialog');
@@ -243,6 +257,7 @@ export function showShellKeyboardHelp(): void {
 
   const header = document.createElement('header');
   header.className = 'shell-keyboard-help__header';
+  if (graphite) header.append(createIcon('keyboard', { size: 14 }));
 
   const title = document.createElement('h2');
   title.className = 'shell-keyboard-help__title';
@@ -253,7 +268,7 @@ export function showShellKeyboardHelp(): void {
   closeBtn.type = 'button';
   closeBtn.className = 'shell-keyboard-help__close-icon';
   closeBtn.setAttribute('aria-label', 'Close keyboard shortcuts');
-  closeBtn.textContent = '✕';
+  closeBtn.append(createIcon('close', { size: 13 }));
   closeBtn.addEventListener('click', closeKeyboardHelp);
   header.appendChild(closeBtn);
   panel.appendChild(header);
@@ -265,7 +280,7 @@ export function showShellKeyboardHelp(): void {
 
   const body = document.createElement('div');
   body.className = 'shell-keyboard-help__body';
-  body.appendChild(renderShortcutSections(getVisibleKeyboardShortcuts()));
+  body.appendChild(renderShortcutSections(getVisibleKeyboardShortcuts(), graphite));
   panel.appendChild(body);
 
   const footer = document.createElement('footer');

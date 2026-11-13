@@ -87,7 +87,7 @@ export function buildIssuePlanSeed(issue: IssueCard, planPath?: string): string 
   return buildIssuesPlanSeed([issue], path);
 }
 
-/** Shared interactive planning contract for one issue or a Dashboard batch. */
+/** Shared interactive planning contract for one issue or a project batch. */
 export function buildIssuesPlanSeed(issues: IssueCard[], path: string): string {
   return [
     'Plan work for these issues using /plan. Do not implement.',

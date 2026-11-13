@@ -17,6 +17,10 @@ import { getAppWindowId, isAppWindowRenderer } from './app-window';
 import { openShellOverlay, shellOverlayClosed } from '../ui/shell-overlay-state';
 import { isMobileShell } from '../mobile/mode';
 import { markPreviewOccluder, unmarkPreviewOccluder } from '../ui/preview-occlusion';
+import { isolateModalBackground, trapTabKey } from '../ui/components/internal';
+import { isWorkspaceFolderPickerOpen } from '../ui/workspace-folder-picker';
+import { isAppDialogOpen } from '../ui/app-dialog';
+import { isDialogOpen } from '../ui/components/dialog';
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
@@ -26,6 +30,9 @@ let gateOpen = false;
 let holdGateUntilAppReady = false;
 let bootGatePromise: Promise<void> | null = null;
 let resolveBootGate: (() => void) | null = null;
+let releaseGateBackground: (() => void) | null = null;
+let gateOpener: HTMLElement | null = null;
+let switchingWorkspace = false;
 
 const WORKSPACE_GATE_SESSION_KEY = 'minnow:workspace-gate-passed';
 
@@ -107,9 +114,39 @@ function showGateElement(): void {
   welcome.classList.add('is-open');
   welcome.classList.add('welcome-page--os-overlay');
   gateOpen = true;
+  releaseGateBackground ??= isolateModalBackground(
+    gate, switchingWorkspace ? document.body : gate.parentElement ?? document.body,
+  );
   document.documentElement.classList.add('os-workspace-gate-open');
   markPreviewOccluder(gate, 'panel');
+  window.dispatchEvent(new window.Event('minnow:workspace-gate-changed'));
   syncPreviewVisibility();
+}
+
+function onGateKeydown(event: KeyboardEvent): void {
+  const gate = getGateRoot();
+  if (!gate || !switchingWorkspace || event.defaultPrevented || isWorkspaceFolderPickerOpen()
+    || isAppDialogOpen() || isDialogOpen()) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!gate.classList.contains('workspace-gate--opening')) closeWorkspaceGate();
+    return;
+  }
+  trapTabKey(gate, event);
+}
+
+function releaseGateFocus(): void {
+  releaseGateBackground?.();
+  releaseGateBackground = null;
+  const gate = getGateRoot();
+  gate?.removeEventListener('keydown', onGateKeydown);
+  gate?.removeAttribute('role');
+  gate?.removeAttribute('aria-modal');
+  gate?.removeAttribute('aria-label');
+  if (gateOpener?.isConnected) gateOpener.focus({ preventScroll: true });
+  gateOpener = null;
+  switchingWorkspace = false;
 }
 
 function syncPreviewVisibility(): void {
@@ -130,6 +167,8 @@ function hideGateElement(): void {
   welcome?.classList.remove('is-open', 'welcome-page--os-overlay');
   if (welcome) welcome.hidden = true;
   document.documentElement.classList.remove('os-workspace-gate-open');
+  window.dispatchEvent(new window.Event('minnow:workspace-gate-changed'));
+  releaseGateFocus();
   syncPreviewVisibility();
 }
 
@@ -137,11 +176,28 @@ function hideGateElement(): void {
  * Open the workspace picker (boot or menubar switch).
  * Reuses welcome-page UI inside #osWorkspaceGate.
  */
-export function openWorkspaceGate(options?: { switch?: boolean }): void {
+export function openWorkspaceGate(options?: { switch?: boolean; opener?: HTMLElement }): void {
   if (!isOsShellEnabled()) return;
-  if (options?.switch) openShellOverlay('workspace', closeWorkspaceGate);
+  if (options?.switch && !switchingWorkspace) {
+    gateOpener = options.opener ?? (document.activeElement as HTMLElement | null);
+    openShellOverlay('workspace', closeWorkspaceGate);
+    releaseGateBackground?.();
+    releaseGateBackground = null;
+    switchingWorkspace = true;
+  }
   mountWorkspaceGateDom();
   showGateElement();
+  if (switchingWorkspace) {
+    const gate = getGateRoot();
+    if (gate) {
+      gate.setAttribute('role', 'dialog');
+      gate.setAttribute('aria-modal', 'true');
+      gate.setAttribute('aria-label', 'Choose a workspace');
+      gate.tabIndex = -1;
+      gate.addEventListener('keydown', onGateKeydown);
+      if (!gate.contains(document.activeElement)) gate.focus({ preventScroll: true });
+    }
+  }
   void import('../ui/welcome-page').then((m) => {
     if (options?.switch) {
       m.onWorkspaceGateOpenedForSwitch();
@@ -315,6 +371,7 @@ export function initWorkspaceGate(): void {
 /** Reset module state (tests). */
 export function resetWorkspaceGateForTests(): void {
   shellOverlayClosed('workspace');
+  releaseGateFocus();
   gateOpen = false;
   gateMounted = false;
   holdGateUntilAppReady = false;

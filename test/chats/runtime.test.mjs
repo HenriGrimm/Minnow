@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import Database from 'better-sqlite3';
 import { upsertMessageRow } from '../../server/config/sessions-import.js';
@@ -48,7 +49,7 @@ function upstreamReply(response, value = 'Completed') {
   response.end('data: ' + JSON.stringify({ choices: [{ delta }] }) + '\n\ndata: ' +
     JSON.stringify({ choices: [{ delta: {}, finish_reason: calls ? 'tool_calls' : 'stop' }] }) + '\n\ndata: [DONE]\n\n');
 }
-async function fixture(t, respond, extraNames = [], runtimeOptions = {}) {
+async function fixture(t, respond, extraNames = [], runtimeOptions = {}, beforeStart) {
   const workspace = await fs.mkdtemp(path.join(root, 'workspace-')); modules.openWorkspace(workspace);
   let runtime, server, db, upstream;
   t.after(async () => {
@@ -105,6 +106,7 @@ async function fixture(t, respond, extraNames = [], runtimeOptions = {}) {
   server = http.createServer((req, res) => modules.runWithViewWorkspace(workspace, () =>
     chatMiddleware(req, res, () => turnMiddleware(req, res, () => { res.statusCode = 404; res.end('{}'); }))));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await beforeStart?.({ repository, db, workspace, runtime });
   await runtime.start();
   async function request(route, body, timeoutMs = 5000) {
     const response = await fetch('http://127.0.0.1:' + server.address().port + route,
@@ -114,6 +116,62 @@ async function fixture(t, respond, extraNames = [], runtimeOptions = {}) {
   }
   return { workspace, repository, db, runtime, turns, request, calls, settings };
 }
+
+test('startup recovers an interrupted command and permits fresh work without a review form', { timeout: 15000 }, async t => {
+  const executionId = 'interrupted-shell';
+  const f = await fixture(t, () => 'Continued.', [], {}, async ({ repository, db, workspace }) => {
+    await promisify(execFile)('git', ['init'], { cwd: workspace, windowsHide: true });
+    await fs.writeFile(path.join(workspace, 'kept.txt'), 'Original effect');
+    const fence = repository.claimExecution({ chatId: 'chat', executionId, ownerId: 'minnow-server' });
+    repository.recordToolIntent({ chatId: 'chat', executionId, invocationId: 'shell-intent', toolCallId: 'shell-call',
+      toolName: 'execute_command', input: { command: 'should never run' } }, { fence });
+    const prefix = 'm-' + createHash('sha256').update(executionId).digest('hex').slice(0, 32) + '-';
+    repository.appendMessage('chat', { role: 'user', content: 'Original request' }, { fence, messageId: 'original' });
+    repository.appendMessage('chat', { role: 'assistant', content: '', tool_calls: [toolCall('execute_command', { command: 'should never run' }, 'shell-call')] },
+      { fence, messageId: prefix + '1' });
+    db.prepare("INSERT INTO chat_workspace_checkpoints VALUES (?,?,'chat',?,'executing',?)")
+      .run(executionId, 'shell-call', workspace, JSON.stringify({ cwd: workspace, pre: { sha: 'old-baseline' } }));
+  });
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.repository.getExecution(executionId).status, 'stopped');
+  assert.equal(f.repository.getExecution(executionId).result.automaticRecovery.quiescence.verified, true);
+  assert.equal(f.repository.getToolInvocation('shell-intent').result.indeterminate, true);
+  assert.equal(f.db.prepare('SELECT state FROM chat_workspace_checkpoints WHERE execution_id=?').get(executionId).state, 'retired');
+  assert.equal(await fs.readFile(path.join(f.workspace, 'kept.txt'), 'utf8'), 'Original effect');
+  assert.deepEqual(f.repository.readTranscript('chat').messages.map(row => row.role), ['user', 'assistant', 'tool', 'user']);
+  const accepted = await f.request('/api/chats/chat/commands', { action: 'send', text: 'Check the current state', clientRequestId: 'after-recovery' });
+  assert.equal(accepted.status, 202, JSON.stringify(accepted.body));
+  await f.runtime.service.idle('chat');
+  assert.equal(f.repository.getCommand(accepted.body.receipt.commandId).state, 'settled');
+  assert.equal(f.calls.length, 1);
+  assert.ok(f.calls[0].messages.some(message => message.role === 'tool' && /outcome is unknown/.test(message.content)));
+});
+
+test('a queued follow-up waits for the interrupted command to stop and then runs once', { timeout: 15000 }, async t => {
+  let running = true;
+  const executionId = 'interrupted-live-command';
+  const f = await fixture(t, () => 'Continued.', [], {}, async ({ repository, workspace, runtime }) => {
+    await promisify(execFile)('git', ['init'], { cwd: workspace, windowsHide: true });
+    const fence = repository.claimExecution({ chatId: 'chat', executionId, ownerId: 'minnow-server' });
+    repository.recordToolIntent({ chatId: 'chat', executionId, invocationId: 'live-intent', toolCallId: 'live-call',
+      toolName: 'execute_command', input: { command: 'should never run' } }, { fence });
+    runtime.hasRunningRecoveryCommand = async () => running;
+  });
+  assert.equal(f.repository.getExecution(executionId).status, 'recovery_required');
+  const accepted = await f.request('/api/chats/chat/commands', { action: 'send', text: 'A new follow-up', clientRequestId: 'queued-during-recovery' });
+  assert.equal(accepted.status, 202, JSON.stringify(accepted.body));
+  await f.runtime.service.idle('chat');
+  const commandId = accepted.body.receipt.commandId;
+  assert.equal(f.repository.getCommand(commandId).state, 'queued');
+  assert.equal(f.calls.length, 0);
+  running = false;
+  for (let attempt = 0; attempt < 100 && f.repository.getCommand(commandId).state !== 'settled'; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 30));
+  }
+  assert.equal(f.repository.getExecution(executionId).status, 'stopped');
+  assert.equal(f.repository.getCommand(commandId).state, 'settled');
+  assert.equal(f.calls.length, 1);
+});
 
 test('production managed HTTP send runs the shared composer/transport/canonical host without UI or a report tool', { timeout: 15000 }, async t => {
   const f = await fixture(t, () => 'Root managed prose.');

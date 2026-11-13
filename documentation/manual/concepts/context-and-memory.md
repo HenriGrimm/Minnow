@@ -12,7 +12,7 @@ Three separate mechanisms feed it, and they solve different problems:
 
 ## The context window
 
-The ring beside **Send** shows how much of the model's window this conversation occupies. Click it for the breakdown.
+The ring beside **Send** shows how much of the model's window this conversation occupies. Click it to see the token count and when automatic compaction starts. Open **Details** for the context breakdown, request and session usage, and system prompt controls.
 
 The breakdown separates **context used** (the latest request’s prompt and reply, plus pending input) from **session usage** (tokens across all recorded requests, including tool rounds and the chat title). Each tool round sends history again, so session usage can greatly exceed the context size. Cached input may have a different price; token totals are not a bill.
 
@@ -47,13 +47,13 @@ Under the policy, **Compaction tuning** sets when compaction starts (80% of the 
 
 Compaction applies to chats too, and it never deletes anything. It starts when the conversation reaches about 80% of the window and folds older turns until it is near half. The folded messages stay in the transcript, dimmed, because they are no longer in the model context. A **Context compacted** divider marks where it happened, with how many turns were folded and the token count before and after; expand it to see exactly what the model now reads instead. Board task and sub-agent transcripts show the same divider. Your latest message is always sent word for word. When the model needs an exact detail from a folded part, it can look it up with the `recall_history` tool.
 
-Type **`/compact`**, or click **Compact now** in the context ring's breakdown, to compact a chat right away. Add text after it to say what the summary must keep, for example `/compact keep the API decisions`. `/compress` and `/summarize` do the same thing.
+Type **`/compact`**, or click **Compact now** in the context popover, to compact a chat right away. Add text after it to say what the summary must keep, for example `/compact keep the API decisions`. `/compress` and `/summarize` do the same thing.
 
 ## Memory
 
 Memory in Minnow is not a hidden vector blob. It is **Brain** — a real wiki of markdown pages in your Minnow home that you can open, read, edit and delete.
 
-When memory is on, Minnow retrieves relevant pages on the first user turn of a chat and saves the excerpts with it. Later turns replay that snapshot. To refresh notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`; a new chat refreshes automatic retrieval. Defaults: semantic embeddings enabled, up to 12 hits retrieved, roughly 500 characters of query-relevant excerpt per hit rather than a generic preview, capped at about 8,000 characters injected on the full prompt profile. Retrieved content is fenced as untrusted data, the same as a web page.
+When memory is on, Minnow retrieves relevant pages on the first user turn of a chat and saves the excerpts with it. Later turns replay that snapshot. To refresh notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`; a new chat refreshes automatic retrieval. Defaults: semantic embeddings enabled, up to 12 hits retrieved, roughly 500 characters of query-relevant excerpt per hit rather than a generic preview, capped at about 8,000 characters injected. Retrieved content is fenced as untrusted data, the same as a web page.
 
 ### Saving a memory
 
@@ -81,12 +81,11 @@ Rules are standing instructions injected into every system prompt. "Always use T
 
 Keep them short and testable. Rules cost context on every single turn, so a page of them is a page you pay for constantly. If something applies to one project only, a memory page is usually better than a global rule.
 
-## Prompt profiles
+## System prompt
 
-**Settings → Agents** exposes prompt profiles: **Full** for maximum guidance, **Lite** for a much smaller system prompt, or a custom profile of your own. Lite is worth trying with small local models, where the system prompt can be a serious fraction of the window. The section shows a live token estimate as you change it. **Base system prompt → Require Flaticon interface icons** controls the default instruction that agents use `@flaticon/flaticon-uicons` instead of emoji for interface icons.
+**Settings → Agents** lets you edit the base system prompt and see estimated tokens for the prompt, tools, and rules. **Require Flaticon interface icons** adds guidance to use `@flaticon/flaticon-uicons` for interface icons.
 
-Setup profiles bundle prompts and tool configuration together so you can export a working configuration and import it elsewhere.
-
+Setup profiles package agent settings, rules, and skill preferences for export and import.
 ## Recall
 
 Once a conversation has been compacted, the model gets the `recall_history` tool. It can search the whole conversation, folded parts included, or read specific messages word for word by the `#` numbers the summary cites. That way it retrieves the actual earlier detail instead of relying on the summary. Board tasks and sub-agents have it too.

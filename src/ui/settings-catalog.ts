@@ -38,7 +38,7 @@ export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
 export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> = {
   general: 'Terminal behavior, filesystem and LAN access, notifications, audio devices, and where settings are saved.',
   apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
-  appearance: 'Interface zoom, theme, fonts, and custom accent colors.',
+  appearance: 'Interface zoom, color mode, accent colors, and fonts.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
   agents: 'The one agent: its prompts, workflow skills, sub-agent limits, rules, and boards.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
@@ -138,11 +138,11 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['login', 'sign in', 'authentication', 'gh', 'pull requests', 'CI', 'repository'],
     description: 'Connect the GitHub account shared by pull requests, CI and issue sync.',
   }),
-  field('general.updates', 'App updates', 'general', 'general', {
-    keywords: ['update', 'version', 'upgrade', 'beta', 'release', 'restart', 'auto-update'],
-    description: 'Stay on the latest build. Downloads run in the background; restart when you are ready.',
+  field('general.updates', 'Software updates', 'general', 'general', {
+    keywords: ['update', 'version', 'upgrade', 'beta', 'release', 'restart', 'auto-update', 'cli', 'codex', 'claude', 'cursor'],
+    description: 'Check Minnow and installed CLI providers for new releases.',
   }),
-  field('general.updates.channel', 'Update channel', 'general', 'general', {
+  field('general.updates.channel', 'Release channel', 'general', 'general', {
     keywords: ['beta', 'stable', 'prerelease', 'channel'],
     description: 'Choose Stable releases or Beta pre-releases for auto-update.',
   }),
@@ -287,18 +287,27 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('appearance.chatView', 'Chat view', 'appearance', 'appearance', {
     keywords: ['compact', 'full', 'transcript', 'working', 'thinking', 'tools', 'activity'],
   }),
-  field('appearance.theme', 'Theme presets', 'appearance', 'appearance', {
-    keywords: ['color', 'dark', 'light', 'swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint', 'palette'],
+  field('appearance.theme', 'Appearance controls', 'appearance', 'appearance', {
+    keywords: ['color', 'dark', 'light', 'palette'],
   }),
-  field('appearance.theme.family', 'Theme family', 'appearance', 'appearance'),
   field('appearance.theme.mode', 'Theme mode', 'appearance', 'appearance', {
     keywords: ['dark mode', 'light mode', 'follow system'],
+  }),
+  field('appearance.theme.color', 'Surface tint', 'appearance', 'appearance', {
+    keywords: ['tint', 'surface', 'intensity', 'background color'],
+  }),
+  field('appearance.theme.accent', 'Accent color', 'appearance', 'appearance', {
+    keywords: ['swatch', 'custom color', 'hex', 'color picker'],
+  }),
+  field('appearance.density', 'Density', 'appearance', 'appearance'),
+  field('appearance.reduceMotion', 'Reduce motion', 'appearance', 'appearance', {
+    keywords: ['accessibility', 'animation'],
   }),
   field('appearance.fonts', 'Fonts', 'appearance', 'appearance', {
     keywords: ['typography', 'mono', 'ui font'],
   }),
-  field('appearance.customColors', 'Custom colors', 'appearance', 'appearance', {
-    keywords: ['tokens', 'override'],
+  field('appearance.customColors', 'Advanced colors', 'appearance', 'appearance', {
+    keywords: ['custom colors', 'tokens', 'override', 'palette'],
   }),
 
   field('models.providers', 'Providers', 'models', 'providers', {
@@ -344,6 +353,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
 
   field('agents.center', 'Agent', 'agents', 'agent-center', {
     keywords: ['agent', 'prompts', 'system prompt', 'sub-agents', 'skills', 'plan', 'ask', 'debug'],
+  }),
+  field('agents.permissions', 'Permission level', 'agents', 'agent-center', {
+    keywords: ['manual', 'auto', 'full access', 'approval', 'tool permission'],
   }),
   field('agents.localModelGuidance', 'Local model guidance', 'agents', 'agent-center', {
     keywords: ['local', 'lm studio', 'llama', 'small model', 'appendix'],
@@ -409,8 +421,8 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.autopilot.guardCdOutsideWorktree', 'Guard cd outside worktree', 'agents', 'autopilot', {
     keywords: ['worktree', 'cd', 'guard', 'isolation'],
   }),
-  field('agents.prompting', 'Prompt profiles', 'agents', 'agent-center', {
-    keywords: ['prompt', 'system prompt', 'full', 'lite', 'custom'],
+  field('agents.prompting', 'System prompt settings', 'agents', 'agent-center', {
+    keywords: ['prompt', 'system prompt', 'estimate'],
   }),
   field('agents.prompting.profiles', 'Setup profiles', 'agents', 'agent-center', {
     keywords: ['bundle', 'export', 'import'],
@@ -518,7 +530,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('integrations.browser.patterns', 'Allowed origin patterns', 'integrations', 'browser'),
   field('integrations.browser.devtoolsDock', 'DevTools dock', 'integrations', 'browser'),
 
-  field('advanced.diagnostics', 'Health & diagnostics', 'advanced', 'diagnostics', {
+  field('advanced.diagnostics', 'Health and diagnostics', 'advanced', 'diagnostics', {
     keywords: ['errors', 'logs', 'crash', 'report', 'health strip', 'subsystem'],
     description: 'Subsystem probes, grouped errors, and a local log tail. Nothing is sent off-device.',
   }),
@@ -526,7 +538,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['server', 'memory', 'brain', 'lsp', 'pty', 'status strip'],
   }),
   field('advanced.diagnostics.actions', 'Diagnostic actions', 'advanced', 'diagnostics', {
-    keywords: ['copy report', 'refresh', 'clear logs'],
+    keywords: ['copy report', 'export diagnostics', 'refresh', 'clear logs'],
   }),
   field(
     'advanced.diagnostics.fileErrorsToIssues',
@@ -590,6 +602,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['version', 'platform', 'node', 'electron'],
   }),
   field('about.version', 'App version', 'general', 'about'),
+  field('about.boot', 'Performance diagnostics', 'general', 'about', {
+    keywords: ['startup', 'boot', 'shell ready', 'interactive', 'page load'],
+  }),
 ];
 
 /** Searchable catalog rows (release-gated apps, internal diagnostics omitted). */

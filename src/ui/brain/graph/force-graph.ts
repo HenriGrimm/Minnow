@@ -4,6 +4,8 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   type Simulation,
   type SimulationLinkDatum,
   type SimulationNodeDatum,
@@ -55,6 +57,10 @@ export interface ForceGraphApi {
   focusNode(id: string): void;
   /** Remove the sticky focus highlight; reverts to normal selection highlight. */
   clearFocus(): void;
+  hasNode(id: string): boolean;
+  isNodeFocused(id: string): boolean;
+  isNodePinned(id: string): boolean;
+  setNodePinned(id: string, pinned: boolean): void;
   /** Fade out whole node classes (legend filtering). */
   setMutedKinds(keys: Set<GraphEmphasisKey>): void;
   /** Reserve edge space covered by floating panels so fits land in clear canvas. */
@@ -78,7 +84,7 @@ type SimNode = GraphNode &
     /** Eased 0–1 entrance progress. */
     appear: number;
   };
-type SimEdge = SimulationLinkDatum<SimNode> & { kind: GraphEdge['kind']; id: string; seed: number };
+type SimEdge = SimulationLinkDatum<SimNode> & { kind: GraphEdge['kind']; id: string };
 
 /** Base world-space radius before degree weighting. */
 const KIND_BASE_RADIUS: Record<GraphNodeKind, number> = { page: 5.5, tag: 4 };
@@ -90,45 +96,6 @@ const DIM_EMPHASIS_SELECTED = 0.42;
 const MUTED_EMPHASIS = 0.08;
 /** A node needs this many edges before it earns a permanent label. */
 const HUB_LABEL_DEGREE = 3;
-
-/** Alpha ramp for the ambient field, as [offset, alpha] pairs. */
-/** Field opacity at the centre — depth cue, not a wash. */
-const FIELD_PEAK_ALPHA = 0.085;
-
-const FIELD_STOPS: ReadonlyArray<readonly [number, number]> = [
-  [0, 1],
-  [0.16, 0.79],
-  [0.32, 0.56],
-  [0.48, 0.35],
-  [0.64, 0.19],
-  [0.78, 0.087],
-  [0.9, 0.027],
-  [1, 0],
-];
-
-interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-/** Swamp accent, used only if a theme colour fails to resolve. */
-const FALLBACK_ACCENT: Rgb = { r: 158, g: 197, b: 167 };
-
-/** Flatten any CSS colour — including the `color-mix` theme tokens — to sRGB channels, by borrowing an element's computed style. */
-function resolveRgb(host: HTMLElement, value: string): Rgb {
-  const previous = host.style.color;
-  host.style.color = '';
-  host.style.color = value;
-  const computed = host.style.color ? getComputedStyle(host).color : '';
-  host.style.color = previous;
-  if (!computed.startsWith('rgb')) return FALLBACK_ACCENT;
-  const parts = computed.match(/-?[\d.]+/g);
-  if (!parts || parts.length < 3) return FALLBACK_ACCENT;
-  return { r: Number(parts[0]), g: Number(parts[1]), b: Number(parts[2]) };
-}
-
-const rgba = (c: Rgb, alpha: number): string => `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 
 /** Read Brain graph theme tokens from the document root. */
 export function readForceGraphTheme(root: HTMLElement = document.documentElement): ForceGraphTheme {
@@ -143,7 +110,8 @@ export function readForceGraphTheme(root: HTMLElement = document.documentElement
   return {
     stageBg,
     surface: pick('--mn-surface-1', stageBg),
-    border: pick('--mn-border', edge),
+    border: pick('--mn-border-strong', edge),
+    shadow: pick('--mn-shadow', 'transparent'),
     nodePage,
     nodePageMuted: pick('--brain-node-page-muted', nodePage),
     nodeTag,
@@ -158,20 +126,9 @@ export function readForceGraphTheme(root: HTMLElement = document.documentElement
     edgeTag: pick('--brain-edge-tag', edge),
     label: pick('--mn-fg', 'oklch(32% 0.02 250)'),
     labelMuted: pick('--mn-fg-muted', 'oklch(52% 0.02 250)'),
-    accent: pick('--mn-accent', '#9ec5a7'),
     glow: pick('--brain-glow', 'oklch(55% 0.12 250 / 0.35)'),
     grid: pick('--brain-grid', pick('--mn-fg-subtle', 'oklch(60% 0.02 250)')),
   };
-}
-
-/** Stable 0–1 value from an edge id, used to stagger flow particles. */
-function hashUnit(text: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 1000) / 1000;
 }
 
 /** Create an interactive force-directed graph on a canvas element. */
@@ -187,7 +144,6 @@ export function createForceGraph(
   if (!ctx) throw new Error('Canvas 2d context unavailable');
 
   let theme = readForceGraphTheme();
-  let accentRgb = resolveRgb(canvas, theme.accent);
   let nodes: SimNode[] = [];
   let edges: SimEdge[] = [];
   let nodeById = new Map<string, SimNode>();
@@ -199,8 +155,10 @@ export function createForceGraph(
   let focusId: string | null = null;
   let mutedKinds = new Set<GraphEmphasisKey>();
   let insets: ViewportInsets = { top: 0, right: 0, bottom: 0, left: 0 };
-  let pendingFit = false;
-  let rafId = 0;
+  // null fits the catalog, a set fits a neighborhood, false preserves a manually positioned camera.
+  let cameraFit: Set<string> | null | false = null;
+  let viewportCenter: [number, number] | null = null;
+  let rafId: number | null = null;
   let destroyed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
@@ -335,39 +293,28 @@ export function createForceGraph(
   };
 
   /** Ease emphasis and entrance one frame forward. */
-  const advanceAnimation = (): void => {
+  const advanceAnimation = (): boolean => {
     const hovering = Boolean(hoverId);
     const active = hoverId ? computeNeighborSet(hoverId) : highlightIds;
     const dimFloor = hovering || focusId ? DIM_EMPHASIS_HOVER : DIM_EMPHASIS_SELECTED;
     const dims = Boolean(active) && (hovering || Boolean(focusId) || Boolean(selectedId));
+    let animating = false;
 
     for (const node of nodes) {
       let target = 1;
       if (mutedKinds.has(emphasisKey(node))) target = MUTED_EMPHASIS;
       else if (dims && !active!.has(node.id)) target = dimFloor;
 
-      node.emphasis = reducedMotion
-        ? target
-        : node.emphasis + (target - node.emphasis) * 0.16;
+      const delta = target - node.emphasis;
+      node.emphasis = reducedMotion || Math.abs(delta) <= 0.01 ? target : node.emphasis + delta * 0.16;
       node.appear = reducedMotion ? 1 : Math.min(1, node.appear + 0.05);
+      animating ||= node.emphasis !== target || node.appear < 1;
     }
+    return animating;
   };
 
-  /** Ambient lattice + accent field: depth cues that also make pan/zoom legible. */
-  const drawBackdrop = (w: number, h: number): void => {
-    ctx.fillStyle = theme.stageBg;
-    ctx.fillRect(0, 0, w, h);
-
-    const radius = Math.hypot(w, h) * 0.85;
-    const field = ctx.createRadialGradient(w / 2, h * 0.45, 0, w / 2, h * 0.45, radius);
-    for (const [offset, alpha] of FIELD_STOPS) {
-      field.addColorStop(offset, rgba(accentRgb, alpha * FIELD_PEAK_ALPHA));
-    }
-    ctx.save();
-    ctx.fillStyle = field;
-    ctx.fillRect(0, 0, w, h);
-    ctx.restore();
-
+  /** Draw the zoom-dependent lattice above the CSS stage background. */
+  const drawLattice = (w: number, h: number): void => {
     const latticeAlpha = Math.min(0.5, Math.max(0, (transform.k - 0.3) * 0.5));
     if (latticeAlpha <= 0.01) return;
     const spacing = 56;
@@ -386,7 +333,7 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const drawEdges = (now: number): void => {
+  const drawEdges = (): void => {
     const px = 1 / transform.k;
     for (const edge of edges) {
       const s = edge.source as SimNode;
@@ -415,19 +362,6 @@ export function createForceGraph(
         drawArrowhead(t, cx, cy, stroke, emphasis, px, highlighted);
       }
 
-      if (highlighted && !reducedMotion) {
-        const progress = ((now / 2200) + edge.seed) % 1;
-        const inv = 1 - progress;
-        const bx = inv * inv * s.x + 2 * inv * progress * cx + progress * progress * t.x;
-        const by = inv * inv * s.y + 2 * inv * progress * cy + progress * progress * t.y;
-        ctx.save();
-        ctx.globalAlpha = 0.75 * Math.sin(progress * Math.PI);
-        ctx.fillStyle = theme.edgeHighlight;
-        ctx.beginPath();
-        ctx.arc(bx, by, 2.1 * px, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
     }
   };
 
@@ -461,14 +395,14 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const drawNodes = (now: number): void => {
+  const drawNodes = (): void => {
     const px = 1 / transform.k;
     for (const node of nodes) {
       if (node.x == null || node.y == null) continue;
       const emphasis = node.emphasis;
       if (emphasis <= 0.02) continue;
       const eased = 1 - Math.pow(1 - node.appear, 3);
-      const r = node.radius * (0.4 + eased * 0.6);
+      const r = Math.max(1.8 * px, node.radius * (0.4 + eased * 0.6));
       const active = node.id === selectedId;
       const hovered = node.id === hoverId;
       const color = nodeColor(node);
@@ -510,13 +444,12 @@ export function createForceGraph(
       ctx.restore();
 
       if (active) {
-        const phase = reducedMotion ? 0 : (Math.sin(now / 620) + 1) / 2;
         ctx.save();
-        ctx.globalAlpha = 0.75 - phase * 0.35;
+        ctx.globalAlpha = 0.75;
         ctx.strokeStyle = theme.nodeActive;
         ctx.lineWidth = 1.4 * px;
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r + (4 + phase * 5) * px, 0, Math.PI * 2);
+        ctx.arc(node.x, node.y, r + 4 * px, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       } else if (hovered) {
@@ -607,14 +540,14 @@ export function createForceGraph(
     const sy = transform.applyY(node.y);
     const pos = placeCallout(sx, sy, node.radius * transform.k, boxWidth, boxHeight, w, h);
 
-    ctx.shadowColor = theme.glow;
-    ctx.shadowBlur = 18;
+    ctx.shadowColor = theme.shadow;
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
     addRoundedRectPath(pos.x, pos.y, boxWidth, boxHeight, 8);
     ctx.fillStyle = theme.surface;
-    ctx.globalAlpha = 0.97;
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.globalAlpha = 1;
+    ctx.shadowOffsetY = 0;
     ctx.strokeStyle = theme.border;
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -635,21 +568,22 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const draw = (now: number): void => {
+  const draw = (): void => {
     if (destroyed || !ctx) return;
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
+    if (!w || !h) return;
 
     ctx.save();
     ctx.clearRect(0, 0, w, h);
-    drawBackdrop(w, h);
+    drawLattice(w, h);
 
     ctx.save();
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
-    drawEdges(now);
-    drawNodes(now);
+    drawEdges();
+    drawNodes();
     ctx.restore();
 
     drawHubLabels(w, h);
@@ -657,64 +591,82 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const tickLoop = (): void => {
-    if (destroyed) return;
-    const now = performance.now();
-    advanceAnimation();
-    draw(now);
-    rafId = requestAnimationFrame(tickLoop);
+  const requestDraw = (): void => {
+    if (destroyed || rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      const animating = advanceAnimation();
+      draw();
+      if (animating) requestDraw();
+    });
   };
 
-  const fitToNodes = (ids?: Set<string>): void => {
-    const target = ids ? nodes.filter((n) => ids.has(n.id)) : nodes;
-    if (!target.length) {
-      transform = zoomIdentity;
-      select(canvas).call(zoomBehavior.transform, zoomIdentity);
+  const visibleViewport = () => {
+    const { width, height } = canvas.getBoundingClientRect();
+    const w = width - insets.left - insets.right;
+    const h = height - insets.top - insets.bottom;
+    if (w <= 0 || h <= 0) return null;
+    return { w, h, x: insets.left + w / 2, y: insets.top + h / 2 };
+  };
+
+  const reframeCamera = (): void => {
+    const viewport = visibleViewport();
+    if (!viewport) return;
+    const previousCenter = viewportCenter;
+    const { w, h, x, y } = viewport;
+    viewportCenter = [x, y];
+    if (cameraFit === false) {
+      if (previousCenter) {
+        const [oldX, oldY] = previousCenter;
+        const dx = x - oldX;
+        const dy = y - oldY;
+        if (dx || dy) {
+          const next = zoomIdentity.translate(transform.x + dx, transform.y + dy).scale(transform.k);
+          select(canvas).call(zoomBehavior.transform, next);
+        }
+      }
       return;
     }
+    const ids = cameraFit;
+    const target = ids ? nodes.filter((n) => ids.has(n.id)) : nodes;
+    if (!target.length) return;
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
     for (const n of target) {
       if (n.x == null || n.y == null) continue;
-      minX = Math.min(minX, n.x);
-      minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x);
-      maxY = Math.max(maxY, n.y);
+      minX = Math.min(minX, n.x - n.radius);
+      minY = Math.min(minY, n.y - n.radius);
+      maxX = Math.max(maxX, n.x + n.radius);
+      maxY = Math.max(maxY, n.y + n.radius);
     }
     if (!isFinite(minX)) return;
-    const rect = canvas.getBoundingClientRect();
-    const pad = 40;
-    const availW = Math.max(120, rect.width - insets.left - insets.right - pad * 2);
-    const availH = Math.max(120, rect.height - insets.top - insets.bottom - pad * 2);
-    const centerX = insets.left + pad + availW / 2;
-    const centerY = insets.top + pad + availH / 2;
+    const availW = w - Math.min(80, w * 0.24);
+    const availH = h - Math.min(80, h * 0.24);
     const gw = Math.max(1, maxX - minX);
     const gh = Math.max(1, maxY - minY);
     const k = Math.min(availW / gw, availH / gh, 2.5);
-    const tx = centerX - ((minX + maxX) / 2) * k;
-    const ty = centerY - ((minY + maxY) / 2) * k;
+    const tx = x - ((minX + maxX) / 2) * k;
+    const ty = y - ((minY + maxY) / 2) * k;
     transform = zoomIdentity.translate(tx, ty).scale(k);
     select(canvas).call(zoomBehavior.transform, transform);
   };
 
   const centerOnNode = (id: string): void => {
     const node = nodeById.get(id);
-    if (!node || node.x == null || node.y == null) return;
-    const rect = canvas.getBoundingClientRect();
+    const viewport = visibleViewport();
+    if (!viewport || !node || node.x == null || node.y == null) return;
+    cameraFit = false;
     const k = transform.k;
-    const tx = insets.left + (rect.width - insets.left - insets.right) / 2 - node.x * k;
-    const ty = insets.top + (rect.height - insets.top - insets.bottom) / 2 - node.y * k;
+    const tx = viewport.x - node.x * k;
+    const ty = viewport.y - node.y * k;
     transform = zoomIdentity.translate(tx, ty).scale(k);
     select(canvas).call(zoomBehavior.transform, transform);
   };
 
   const restartSimulation = (): void => {
     simulation?.stop();
-    const rect = canvas.getBoundingClientRect();
-    const cx = rect.width / 2;
-    const cy = rect.height / 2;
 
     simulation = forceSimulation(nodes)
       .force(
@@ -730,66 +682,72 @@ export function createForceGraph(
           .strength((l) => (l.kind === 'tag' ? 0.35 : l.kind === 'similar' ? 0.4 : 0.6)),
       )
       .force('charge', forceManyBody<SimNode>().strength((d) => -150 - d.degree * 14))
-      .force('center', forceCenter(cx, cy))
+      .force('center', forceCenter(0, 0))
+      // Disconnected groups still need to stay near the catalog when zooming to fit.
+      .force('x', forceX<SimNode>(0).strength(0.025))
+      .force('y', forceY<SimNode>(0).strength(0.025))
       .force('collide', forceCollide<SimNode>().radius((d) => d.radius + 14))
-      .alpha(reducedMotion ? 0 : 0.9)
-      .alphaDecay(reducedMotion ? 1 : 0.035);
+      .alpha(0.9)
+      .alphaDecay(0.035);
 
     if (reducedMotion) {
-      simulation.tick(160);
-      if (pendingFit) {
-        pendingFit = false;
-        fitToNodes();
-      }
+      simulation.stop().tick(160);
     } else {
-      simulation.on('end', () => {
-        if (pendingFit) {
-          pendingFit = false;
-          fitToNodes();
-        }
+      simulation.on('tick', () => {
+        if (cameraFit !== false) reframeCamera();
+        requestDraw();
       });
     }
+    reframeCamera();
+    requestDraw();
   };
 
   const zoomBehavior: ZoomBehavior<HTMLCanvasElement, unknown> = zoom<HTMLCanvasElement, unknown>()
-    .scaleExtent([0.15, 4])
+    .scaleExtent([0.01, 4])
+    .filter((event) => {
+      if ((event.ctrlKey && event.type !== 'wheel') || event.button) return false;
+      if (event.type === 'mousedown' || event.type === 'dblclick') {
+        return !pickNode(event.clientX, event.clientY);
+      }
+      return true;
+    })
     .on('zoom', (event) => {
+      if (event.sourceEvent) cameraFit = false;
       transform = event.transform;
+      requestDraw();
     });
 
   select(canvas).call(zoomBehavior);
 
   let draggingNode: SimNode | null = null;
+  let nodeMoved = false;
 
   const dragBehavior = drag<HTMLCanvasElement, unknown>()
     .filter((event) => {
       if (event.button !== 0) return false;
-      const target = pickNode(event.sourceEvent.clientX, event.sourceEvent.clientY);
-      return Boolean(target);
+      return Boolean(pickNode(event.clientX, event.clientY));
     })
     .on('start', (event) => {
-      const target = pickNode(event.sourceEvent.clientX, event.sourceEvent.clientY);
-      if (!target) return;
-      draggingNode = target;
-      draggingNode.fx = draggingNode.x;
-      draggingNode.fy = draggingNode.y;
-      simulation?.alphaTarget(0.25).restart();
-      select(canvas).on('.zoom', null);
+      draggingNode = pickNode(event.sourceEvent.clientX, event.sourceEvent.clientY);
+      nodeMoved = false;
     })
     .on('drag', (event) => {
       if (!draggingNode) return;
+      if (!nodeMoved) {
+        nodeMoved = true;
+        cameraFit = false;
+        simulation?.alphaTarget(0.25).restart();
+      }
       const pt = screenToGraph(event.sourceEvent.clientX, event.sourceEvent.clientY);
       draggingNode.fx = pt.x;
       draggingNode.fy = pt.y;
     })
     .on('end', () => {
-      if (draggingNode) {
-        draggingNode.fx = draggingNode.x ?? null;
-        draggingNode.fy = draggingNode.y ?? null;
+      if (nodeMoved) {
+        simulation?.alphaTarget(0);
+        callbacks.onNodeActionsChange?.();
       }
       draggingNode = null;
-      simulation?.alphaTarget(0);
-      select(canvas).call(zoomBehavior);
     });
 
   select(canvas).call(dragBehavior);
@@ -812,6 +770,8 @@ export function createForceGraph(
     if (!node) focusId = null;
     selectedId = node?.id ?? null;
     highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
+    requestDraw();
+    callbacks.onNodeActionsChange?.();
     callbacks.onSelect?.(node);
   };
 
@@ -821,12 +781,15 @@ export function createForceGraph(
     if (nextId === hoverId) return;
     hoverId = nextId;
     canvas.style.cursor = node ? 'pointer' : 'grab';
+    requestDraw();
     callbacks.onHover?.(node);
   };
 
   const onCanvasMouseLeave = (): void => {
+    if (hoverId === null) return;
     hoverId = null;
     canvas.style.cursor = 'grab';
+    requestDraw();
     callbacks.onHover?.(null);
   };
 
@@ -836,30 +799,29 @@ export function createForceGraph(
 
   const themeObserver = new MutationObserver(() => {
     theme = readForceGraphTheme();
-    accentRgb = resolveRgb(canvas, theme.accent);
+    requestDraw();
   });
   themeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ['data-theme', 'class'],
+    attributeFilter: ['data-theme', 'data-tint', 'data-graphite-accent', 'style'],
   });
 
   const scheduleCanvasResize = scheduleAnimationFrame(() => {
+    if (destroyed) return;
     resizeCanvas();
-    draw(performance.now());
+    reframeCamera();
+    requestDraw();
   });
   const resizeObserver = new ResizeObserver(scheduleCanvasResize);
   resizeObserver.observe(canvas);
 
   const handleKeydown = (ev: KeyboardEvent): void => {
-    if (ev.key === 'Escape') {
-      focusId = null;
-      highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
-    }
+    if (ev.key === 'Escape' && focusId !== null) api.clearFocus();
   };
   document.addEventListener('keydown', handleKeydown);
 
   resizeCanvas();
-  rafId = requestAnimationFrame(tickLoop);
+  requestDraw();
 
   const api: ForceGraphApi = {
     setData(rawNodes, rawEdges) {
@@ -870,55 +832,101 @@ export function createForceGraph(
       }
       nodes = rawNodes.map((n) => {
         const degree = degrees.get(n.id) ?? 0;
+        const previous = nodeById.get(n.id);
         return {
           ...n,
+          x: previous?.x,
+          y: previous?.y,
+          fx: previous?.fx,
+          fy: previous?.fy,
           degree,
           radius: KIND_BASE_RADIUS[n.kind] + Math.min(9, Math.sqrt(degree) * 2.4),
-          emphasis: reducedMotion ? 1 : 0,
-          appear: reducedMotion ? 1 : 0,
+          emphasis: previous?.emphasis ?? (reducedMotion ? 1 : 0),
+          appear: previous?.appear ?? (reducedMotion ? 1 : 0),
         };
       });
       nodeById = new Map(nodes.map((n) => [n.id, n]));
-      edges = rawEdges.map((e) => ({ ...e, seed: hashUnit(e.id) })) as SimEdge[];
+      edges = rawEdges.map((e) => ({ ...e })) as SimEdge[];
       selectedId = null;
       hoverId = null;
       focusId = null;
       highlightIds = null;
-      pendingFit = true;
+      cameraFit = null;
       restartSimulation();
     },
     selectNode(id) {
       selectedId = id;
       focusId = null;
       highlightIds = id ? computeNeighborSet(id) : null;
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
     },
     setHoverNode(id) {
+      if (hoverId === id) return;
       hoverId = id;
+      requestDraw();
     },
     fitToView() {
-      fitToNodes();
+      cameraFit = null;
+      reframeCamera();
     },
     fitToNodes(ids) {
-      fitToNodes(ids);
+      cameraFit = ids ?? null;
+      reframeCamera();
     },
     centerOnNode(id) {
       centerOnNode(id);
     },
     focusNode(id) {
+      if (!nodeById.has(id)) return;
       focusId = id;
       selectedId = id;
       highlightIds = computeNeighborSet(id);
-      fitToNodes(highlightIds);
+      cameraFit = highlightIds;
+      reframeCamera();
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
     },
     clearFocus() {
       focusId = null;
       highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
+    },
+    hasNode(id) {
+      return nodeById.has(id);
+    },
+    isNodeFocused(id) {
+      return focusId === id;
+    },
+    isNodePinned(id) {
+      return nodeById.get(id)?.fx != null;
+    },
+    setNodePinned(id, pinned) {
+      const node = nodeById.get(id);
+      if (!node || node.x == null || node.y == null || (node.fx != null) === pinned) return;
+      node.fx = pinned ? node.x : null;
+      node.fy = pinned ? node.y : null;
+      if (!pinned && simulation) {
+        simulation.alpha(Math.max(simulation.alpha(), 0.25));
+        if (reducedMotion) {
+          simulation.stop().tick(160);
+          reframeCamera();
+        } else simulation.restart();
+      }
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
     },
     setMutedKinds(keys) {
       mutedKinds = new Set(keys);
+      requestDraw();
     },
     setViewportInsets(next) {
-      insets = { ...insets, ...next };
+      const updated = { ...insets, ...next };
+      if (updated.top === insets.top && updated.right === insets.right &&
+          updated.bottom === insets.bottom && updated.left === insets.left) return;
+      insets = updated;
+      reframeCamera();
     },
     getStats() {
       const kinds: Record<GraphNodeKind, number> = { page: 0, tag: 0 };
@@ -942,19 +950,19 @@ export function createForceGraph(
       };
     },
     zoomBy(factor) {
-      const rect = canvas.getBoundingClientRect();
-      const cx = rect.width / 2;
-      const cy = rect.height / 2;
-      transform = transform.translate(cx, cy).scale(factor).translate(-cx, -cy);
-      select(canvas).call(zoomBehavior.transform, transform);
+      const viewport = visibleViewport();
+      if (!viewport) return;
+      cameraFit = false;
+      select(canvas).call(zoomBehavior.scaleBy, factor, [viewport.x, viewport.y]);
     },
     resize() {
       resizeCanvas();
-      restartSimulation();
+      reframeCamera();
+      requestDraw();
     },
     destroy() {
       destroyed = true;
-      cancelAnimationFrame(rafId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       simulation?.stop();
       themeObserver.disconnect();
       resizeObserver.disconnect();

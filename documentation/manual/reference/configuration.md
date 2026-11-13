@@ -44,7 +44,7 @@ Copying by hand has two traps. `sessions/sessions.db` is a live database: copy i
 | `servers.json`, `servers/` | Managed local servers (SearXNG, `llama-cpp`) |
 | `skills.json`, `skills/` | Skill enable flags and installed skills |
 | `rules.json` | Your standing rules |
-| `prompts/`, `prompt-configs/`, `profiles/` | Prompt overrides and portable setup bundles |
+| `prompts/`, `profiles/` | Prompt overrides and portable setup bundles |
 | `work-agents.json`, `sub-agents.json` | Agent overrides and sub-agent types |
 | `agent-packs/` | Installed agent packs |
 | `issues/` | Issue store and taxonomy |

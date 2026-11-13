@@ -103,6 +103,7 @@ function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, 
   try {
     const parsed = JSON.parse(requestBody.toString('utf8'));
     if (parsed && typeof parsed === 'object') {
+      delete parsed.minnow_cli_fast_mode;
       const sanitized = sanitizeCompletionBodyForProvider(
         withUtilityOutputBudget(parsed, profile.baseUrl, fallbackRole),
         {

@@ -111,6 +111,19 @@ test('loading ticks retain every row, focused quantization and loading label', (
   assert.equal(label?.textContent, 'Creating context');
 });
 
+test('a first scan shows progress until the discovered model count is known', () => {
+  const state = getModelsState();
+  const discovered = state.library;
+  state.library = [];
+  state.scanning = true;
+  render();
+  assert.equal(document.querySelector('.models-library-summary')?.textContent, 'Scanning for models…');
+  state.library = discovered;
+  state.scanning = false;
+  render();
+  assert.match(document.querySelector('.models-library-summary')?.textContent ?? '', /2 models/);
+});
+
 test('unrelated downloads and serve metadata keep the library rows mounted', () => {
   const row = document.querySelector('.models-row');
   const state = getModelsState();
@@ -161,4 +174,25 @@ test('the same state renders into a new mount', () => {
   render();
   assert.equal(document.querySelectorAll('.models-row').length, 2);
   assert.equal(document.querySelector('.models-row__loading')?.textContent, 'Loading weights');
+});
+
+test('library controls disclose the existing filters and loading updates the compact row in place', () => {
+  const toolbar = document.getElementById('modelsLibraryControls');
+  const toggle = document.querySelector<HTMLButtonElement>('.models-library-toolbar-toggle')!;
+  assert.ok(toolbar?.querySelector('input[type="search"]'));
+  assert.equal(toggle.getAttribute('aria-controls'), toolbar.id);
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  assert.ok(document.getElementById('modelsInstalledBody')?.classList.contains('is-controls-open'));
+  toggle.click();
+
+  const progress = document.querySelector<HTMLProgressElement>('.models-row__graphite-progress')!;
+  assert.equal(progress.value, 12);
+  getModelsState().loads[0].percent = 68;
+  render();
+  assert.equal(document.querySelector('.models-row__graphite-progress'), progress);
+  assert.equal(progress.value, 68);
+  getModelsState().loads[0].percent = null;
+  render();
+  assert.equal(progress.hasAttribute('value'), false);
 });

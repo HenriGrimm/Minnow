@@ -28,6 +28,8 @@
   /* Desktop window chrome — smaller than --touch-min (mobile composer targets). */
   --os-window-btn-size: 32px;
   --os-window-btn-icon-size: 12px;
+  --mn-window-controls-gap: var(--mn-space-0-5);
+  --mn-menubar-inline-padding: var(--mn-space-3-5);
 
   /* motion + radii (prototype values, aligned where Minnow matches) */
   --os-ease: cubic-bezier(0.2, 0.7, 0.2, 1);

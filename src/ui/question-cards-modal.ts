@@ -1,6 +1,5 @@
 import { getChatAbort } from '../app-state';
 import { resolveIssueChatQuestionHost } from '../chat/issue-chat-host';
-import { resolveHomeQuestionHost } from '../home/question-host';
 import {
   isAskQuestionDomVisible,
   notifyAskQuestionDisplayContextChanged,
@@ -84,7 +83,6 @@ const BOARD_ONBOARDING_QUESTIONS_HOST_ID = 'boardOnboardingQuestions';
 const ONBOARDING_GUIDE_QUESTIONS_HOST_ID = 'onboardingGuideQuestions';
 
 const EMBEDDED_QUESTIONS_HOST_IDS = new Set([
-  'homeFlowQuestions',
   PLAN_SCREEN_QUESTIONS_HOST_ID,
   BOARD_ONBOARDING_QUESTIONS_HOST_ID,
   ONBOARDING_GUIDE_QUESTIONS_HOST_ID,
@@ -269,13 +267,6 @@ function unparkQuestionModal(state: ActiveQuestionModalState): void {
   if (!state.parked) return;
   if (!isAskQuestionDomVisible(state.chatId)) return;
 
-  const homeHost = resolveHomeQuestionHost(state.chatId);
-  if (homeHost) {
-    attachPanelToHost(state, homeHost);
-    activateEmbeddedQuestionChrome(state);
-    return;
-  }
-
   const planHost = resolveIssueChatQuestionHost(state.chatId) ?? resolveOrchestratePlanScreenQuestionHost(state.chatId);
   if (planHost) {
     attachPanelToHost(state, planHost);
@@ -319,7 +310,6 @@ export function syncAskQuestionModalOnDisplayContextChange(): void {
     if (!isAskQuestionDomVisible(state.chatId) && !state.parked) {
       if (
         state.embedded &&
-        state.host.id !== 'homeFlowQuestions' &&
         isEmbeddedQuestionsHost(state.host) &&
         state.host.isConnected
       ) {
@@ -449,8 +439,6 @@ export function showQuestionCardsModal(
 
     let embedded = options.embedded === true;
     let host = options.host;
-    const homeHost = resolveHomeQuestionHost(chatIdForAbort);
-    if (!host && homeHost) { host = homeHost; embedded = true; }
     if (!host && options.chatId) {
       const planHost = resolveIssueChatQuestionHost(options.chatId) ?? resolveOrchestratePlanScreenQuestionHost(options.chatId);
       if (planHost) {

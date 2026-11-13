@@ -21,6 +21,7 @@ import {
   resetModelProviderBrowser,
   type ModelBrowserGroup,
 } from './model-provider-browser';
+import { positionAnchoredModelPicker } from './model-picker-position';
 import { isModelLoaded, resolveModelState, type ModelLoadState } from './model-state-dot';
 import {
   getModelLoadUnloadTargetSelectValue,
@@ -866,7 +867,8 @@ export function mountModelMenuActions(
   const settingsBtn = document.createElement('button');
   settingsBtn.type = 'button';
   settingsBtn.className = 'model-menu-action model-menu-action--settings';
-  settingsBtn.textContent = 'Open settings';
+  settingsBtn.innerHTML = iconHtml('appSettings', { size: 16 });
+  settingsBtn.setAttribute('aria-label', 'Open model settings');
   settingsBtn.title = 'Open this model in Models → My models load settings';
   settingsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   settingsBtn.addEventListener('click', (e) => {
@@ -1195,15 +1197,8 @@ export function mountAuxiliaryModelSelectCombobox(
   root.appendChild(panel);
 
   const position = () => {
-    const box = (typeof options === 'object' && options.anchor || trigger).getBoundingClientRect();
-    const width = Math.min(620, Math.max(0, window.innerWidth - 16));
-    panel.style.width = `${width}px`;
-    panel.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
-    panel.style.left = `${Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8))}px`;
-    const height = panel.getBoundingClientRect().height;
-    const below = window.innerHeight - box.bottom - 12;
-    const top = below >= height || below >= box.top - 12 ? box.bottom + 4 : box.top - height - 4;
-    panel.style.top = `${Math.max(8, Math.min(top, window.innerHeight - height - 8))}px`;
+    const anchor = typeof options === 'object' && options.anchor || trigger;
+    positionAnchoredModelPicker(panel, anchor, 'below', 4, 620);
   };
   const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, panel, search, hostFilter: 'all', position, composerButton, pick: () => {} };
   if (typeof options === 'object') {
@@ -1237,6 +1232,7 @@ export function mountAuxiliaryModelSelectCombobox(
     closeModelSelectMenu();
     closeAuxiliaryModelSelectMenu();
     openAuxiliaryPicker = picker;
+    delete panel.dataset.placement;
     picker.root.classList.add('is-open');
     picker.panel.classList.remove('hidden');
     markPreviewOccluder(picker.panel, 'menu');
@@ -1247,6 +1243,8 @@ export function mountAuxiliaryModelSelectCombobox(
     position();
     const onScroll = (event: Event) => { if (!panel.contains(event.target as Node)) position(); };
     window.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
     document.addEventListener('scroll', onScroll, true);
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(position);
     observer?.observe(panel);
@@ -1258,6 +1256,8 @@ export function mountAuxiliaryModelSelectCombobox(
       observer?.disconnect();
       removalObserver?.disconnect();
       window.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('scroll', position);
       document.removeEventListener('scroll', onScroll, true);
     };
     activeIndex = -1;
@@ -1442,6 +1442,10 @@ function appendModelOptionRow(
     }
   });
 
+  if (li.getAttribute('aria-selected') === 'true') {
+    li.insertAdjacentHTML('beforeend', iconHtml('check', { className: 'model-select-option-check' }));
+  }
+
   const favorite = document.createElement('button');
   favorite.type = 'button';
   favorite.className = 'model-select-favorite';
@@ -1453,13 +1457,17 @@ function appendModelOptionRow(
   favorite.innerHTML = iconHtml(starred ? 'starFilled' : 'star');
   favorite.addEventListener('mousedown', event => event.stopPropagation());
   favorite.addEventListener('click', event => {
+    const browser = menu.closest('.model-select-menu') ?? menu;
     event.stopPropagation();
     toggleModelPickerFavorite(favoriteKey);
     const keyboard = event.detail === 0;
     onFavoriteChange?.();
     if (keyboard) {
-      [...(menu.closest('.model-select-menu, .model-provider-browser') ?? menu).querySelectorAll<HTMLButtonElement>('.model-select-favorite')]
-        .find(button => button.dataset.favoriteKey === favoriteKey)?.focus();
+      const next = [...browser.querySelectorAll<HTMLButtonElement>('.model-select-favorite')]
+        .find(button => button.dataset.favoriteKey === favoriteKey)
+        ?? browser.querySelector<HTMLElement>(document.documentElement.classList.contains('mn-phone')
+          ? '.model-browser-back' : '.model-browser-favorites-tab');
+      next?.focus();
     }
   });
 
@@ -1663,8 +1671,10 @@ export function renderModelSelectMenuRows(
       group.entries.push(entry);
       if (preferences.favorites.includes(favoriteKeyForEntry(entry))) group.hasFavorites = true;
     }
+    const selectedOption = options.find(option => option.value === selectedValue);
     renderModelProviderBrowser(menu, [...groups.values()],
-      entries.filter(entry => preferences.favorites.includes(favoriteKeyForEntry(entry))), appendEntry, rerender);
+      entries.filter(entry => preferences.favorites.includes(favoriteKeyForEntry(entry))), appendEntry, rerender,
+      selectedOption && providerIdForOption(selectedOption));
   }
   menu.scrollTop = scrollTop;
   void import('../api/models').then((m) => m.updateModelLoadUnloadButtons());

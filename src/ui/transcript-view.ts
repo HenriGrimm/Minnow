@@ -162,7 +162,7 @@ export interface TranscriptDisclosureState {
   onToolExpandedChange: (toolCallId: string, expanded: boolean) => void;
 }
 
-/** Use the shared pending text animation during live sub-agent turns. */
+/** Use the shared response status during live sub-agent turns. */
 export function createTranscriptStreamStatus(
   phase: 'thinking' | 'generating',
 ): HTMLElement {
@@ -512,6 +512,7 @@ export function renderTranscriptView(
               stored.attachments,
               argsObj,
               stored.codeChange,
+              { showFailure: true },
             );
           } else if (options.pendingToolStatus) {
             renderToolInterruption(wrap, options.pendingToolStatus);

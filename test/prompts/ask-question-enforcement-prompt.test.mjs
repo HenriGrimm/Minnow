@@ -19,7 +19,7 @@ describe('ask-question-enforcement prompts', () => {
   });
 
   test('fragment requires ask_question for choices and drops legacy rows', () => {
-    const body = loadPromptById('tool-usage', 'ask-question-enforcement', 'full')?.body ?? '';
+    const body = loadPromptById('tool-usage', 'ask-question-enforcement')?.body ?? '';
     assert.match(body, /`ask_question`/);
     assert.match(body, /numbered list/);
     assert.doesNotMatch(body, /propose_mode_switch|request_browser_origin_access/);

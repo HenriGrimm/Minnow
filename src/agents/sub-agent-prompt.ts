@@ -1,7 +1,6 @@
 import { interpolatePromptBody } from '../chat/prompts/interpolate';
 import { loadPromptById } from '../chat/prompts/prompt-loader';
 import { fetchPromptFile } from '../chat/prompts/prompt-file-api';
-import { getPromptMetaSettingsSync } from '../config/prompt-meta';
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
 import { fetchMemoryEnabled, retrieveMemoryBlock } from '../memory/client';
 import {
@@ -13,10 +12,10 @@ import { SHIPPED_SUB_AGENT_PROMPTS } from './shipped-sub-agent-prompts';
 import { getWorkAgentPromptOverride } from './work-agent-registry';
 import { fetchWorkAgentPrompt } from './work-agent-prompt-api';
 import type { SubAgentTypeConfig } from './types';
-import { UNTRUSTED_CONTEXT_POLICY_LITE } from '../lib/untrusted.mjs';
+import { UNTRUSTED_CONTEXT_POLICY_FULL } from '../lib/untrusted.mjs';
 
-function loadShippedSubAgentPrompt(typeId: string, profile: 'full' | 'lite'): string {
-  const key = `${typeId}.${profile}`;
+function loadShippedSubAgentPrompt(typeId: string): string {
+  const key = `${typeId}`;
   return SHIPPED_SUB_AGENT_PROMPTS[key]?.trim() ?? '';
 }
 
@@ -28,22 +27,18 @@ export async function resolveSubAgentBasePrompt(
     const override = getWorkAgentPromptOverride(typeConfig.workAgentId);
     if (override) return override;
 
-    const meta = getPromptMetaSettingsSync();
-    const profile = meta.activePromptProfile === 'lite' ? 'lite' : 'full';
-    const fetched = await fetchWorkAgentPrompt(typeConfig.workAgentId, profile);
+    const fetched = await fetchWorkAgentPrompt(typeConfig.workAgentId);
     if (fetched?.content?.trim()) return fetched.content.trim();
   }
 
-  const meta = getPromptMetaSettingsSync();
-  const profile = meta.activePromptProfile === 'lite' ? 'lite' : 'full';
 
   await detectConfigServer();
   if (isServerStorageMode()) {
-    const fromApi = await fetchPromptFile('sub-agents', typeId, profile);
+    const fromApi = await fetchPromptFile('sub-agents', typeId);
     if (fromApi?.content?.trim()) return fromApi.content.trim();
   }
 
-  const shipped = loadShippedSubAgentPrompt(typeId, profile);
+  const shipped = loadShippedSubAgentPrompt(typeId);
   if (shipped) return shipped;
 
   return `You are a focused sub-agent (${typeId}). Complete tasks efficiently and return a concise summary.`;
@@ -52,7 +47,7 @@ export async function resolveSubAgentBasePrompt(
 const SUB_AGENT_UNTRUSTED_POLICY = `
 
 ### Untrusted external data
-${UNTRUSTED_CONTEXT_POLICY_LITE}`;
+${UNTRUSTED_CONTEXT_POLICY_FULL}`;
 
 const SUB_AGENT_ASK_QUESTION_RULES = `
 
@@ -97,18 +92,16 @@ export async function appendSubAgentMemorySection(
     return appendSubAgentSaveMemoryRules(systemPrompt, enabledToolNames);
   }
 
-  const meta = getPromptMetaSettingsSync();
-  const profile = meta.activePromptProfile === 'lite' ? 'lite' : 'full';
-  const block = await retrieveMemoryBlock({ query: task, profile });
+  const block = await retrieveMemoryBlock({ query: task });
 
   let result = systemPrompt;
   if (block.trim()) {
-    const loaded = loadPromptById('info', 'memory', profile);
+    const loaded = loadPromptById('info', 'memory');
     const template = loaded?.body?.trim() ?? 'Prior notes:\n\n{{memory}}';
     const section = interpolatePromptBody(template, {
       mode: '',
       mode_label: '',
-      profile,
+      profile: 'full',
       expert: '',
       cwd: '',
       memory: block,

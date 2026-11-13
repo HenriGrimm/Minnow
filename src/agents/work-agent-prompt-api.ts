@@ -1,7 +1,6 @@
 import { mergeUserWorkAgentOverride } from './work-agent-registry';
 import type { ContextEnforcementPolicy } from '../chat/context-budget';
 
-export type WorkAgentPromptProfile = 'full' | 'lite';
 
 export interface WorkAgentPromptResponse {
   content: string;
@@ -10,11 +9,10 @@ export interface WorkAgentPromptResponse {
 
 export async function fetchWorkAgentPrompt(
   agentId: string,
-  profile: WorkAgentPromptProfile = 'full',
 ): Promise<WorkAgentPromptResponse | null> {
   try {
     const res = await fetch(
-      `/api/work-agents/${encodeURIComponent(agentId)}/prompt?profile=${profile}`,
+      `/api/work-agents/${encodeURIComponent(agentId)}/prompt`,
       { cache: 'no-store' },
     );
     if (!res.ok) return null;
@@ -26,11 +24,10 @@ export async function fetchWorkAgentPrompt(
 
 export async function fetchWorkAgentBuiltinBaseline(
   agentId: string,
-  profile: WorkAgentPromptProfile = 'full',
 ): Promise<WorkAgentPromptResponse | null> {
   try {
     const res = await fetch(
-      `/api/work-agents/${encodeURIComponent(agentId)}/prompt?profile=${profile}&baseline=builtin`,
+      `/api/work-agents/${encodeURIComponent(agentId)}/prompt?baseline=builtin`,
       { cache: 'no-store' },
     );
     if (!res.ok) return null;
@@ -42,11 +39,10 @@ export async function fetchWorkAgentBuiltinBaseline(
 
 export async function resetWorkAgentPromptOverride(
   agentId: string,
-  profile: WorkAgentPromptProfile,
 ): Promise<WorkAgentPromptResponse | null> {
   try {
     const res = await fetch(
-      `/api/work-agents/${encodeURIComponent(agentId)}/prompt?profile=${profile}`,
+      `/api/work-agents/${encodeURIComponent(agentId)}/prompt`,
       { method: 'DELETE' },
     );
     if (!res.ok) return null;
@@ -58,14 +54,13 @@ export async function resetWorkAgentPromptOverride(
 
 export async function saveWorkAgentPromptOverride(
   agentId: string,
-  profile: WorkAgentPromptProfile,
   content: string,
 ): Promise<boolean> {
   try {
     const res = await fetch(`/api/work-agents/${encodeURIComponent(agentId)}/prompt`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, content }),
+      body: JSON.stringify({ content }),
     });
     return res.ok;
   } catch {

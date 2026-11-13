@@ -80,11 +80,12 @@
 }
 
 .message-actions__menu {
+  --msg-actions-menu-min-width: 176px;
   position: absolute;
   top: 32px;
   right: 4px;
   z-index: 20;
-  min-width: 176px;
+  min-width: var(--msg-actions-menu-min-width);
   padding: var(--mn-menu-padding);
   border: 1px solid var(--mn-menu-border);
   border-radius: var(--mn-menu-radius);

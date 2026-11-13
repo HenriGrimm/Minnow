@@ -6,6 +6,7 @@ import { popScreen } from './nav';
 export interface HeaderOptions {
   title: string;
   subtitle?: string;
+  leading?: HTMLElement;
   /** Show a back button that pops the stack. */
   back?: boolean;
   actions?: HTMLElement[];
@@ -37,7 +38,7 @@ export function screenHeader(options: HeaderOptions): ScreenHeader {
   const header = el(
     'header',
     { className: `m-header${options.large ? ' m-header--large' : ''}` },
-    back,
+    back ?? options.leading,
     el('div', { className: 'm-header__titles' }, title, subtitle),
     el('div', { className: 'm-header__actions' }, ...(options.actions ?? [])),
   );
@@ -75,12 +76,12 @@ export function segmented<T extends string>(
   onChange: (value: T) => void,
 ): Segmented<T> {
   const buttons = new Map<T, { button: HTMLButtonElement; count: HTMLElement }>();
-  const host = el('div', { className: 'm-segments', attrs: { role: 'tablist', 'aria-label': label } });
+  const host = el('div', { className: 'm-segments', attrs: { role: 'group', 'aria-label': label } });
   let current = value;
   const sync = () => {
     for (const [key, { button }] of buttons) {
       const selected = key === current;
-      button.setAttribute('aria-selected', String(selected));
+      button.setAttribute('aria-pressed', String(selected));
       button.classList.toggle('is-selected', selected);
     }
   };
@@ -90,13 +91,16 @@ export function segmented<T extends string>(
       'button',
       {
         className: 'm-segment',
-        attrs: { type: 'button', role: 'tab' },
+        attrs: { type: 'button' },
         on: {
           click: () => {
             if (current === option.value) return;
             current = option.value;
             sync();
-            button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            const strip = host.getBoundingClientRect();
+            const chip = button.getBoundingClientRect();
+            if (chip.right > strip.right) host.scrollLeft += chip.right - strip.right;
+            else if (chip.left < strip.left) host.scrollLeft += chip.left - strip.left;
             onChange(option.value);
           },
         },
@@ -165,7 +169,7 @@ export function searchField(placeholder: string, onInput: (text: string) => void
     clearBtn.hidden = !input.value;
     onInput(input.value.trim());
   });
-  const host = el('label', { className: 'm-search' }, icon('fi-rr-search', 16), input, clearBtn);
+  const host = el('div', { className: 'm-search', attrs: { role: 'search' } }, icon('fi-rr-search', 16), input, clearBtn);
   return {
     el: host,
     input,
@@ -195,7 +199,7 @@ export function attachPullToRefresh(scroller: HTMLElement, refresh: () => Promis
   scroller.addEventListener(
     'touchstart',
     (event) => {
-      if (busy || scroller.scrollTop > 0) return;
+      if (busy || scroller.scrollTop > 0 || event.touches.length !== 1) return;
       startY = event.touches[0]!.clientY;
       pulling = true;
       distance = 0;
@@ -222,25 +226,18 @@ export function attachPullToRefresh(scroller: HTMLElement, refresh: () => Promis
     busy = true;
     indicator.classList.add('is-busy');
     set(threshold);
-    void refresh().finally(() => {
+    void refresh().catch(() => {
+      // The screen's data source owns its error state.
+    }).finally(() => {
       busy = false;
       indicator.classList.remove('is-busy');
       set(0);
     });
   };
   scroller.addEventListener('touchend', end, { passive: true });
-  scroller.addEventListener('touchcancel', end, { passive: true });
-}
-
-/** Floating primary action above the tab bar. */
-export function fab(glyph: string, label: string, onClick: () => void): HTMLButtonElement {
-  return el(
-    'button',
-    {
-      className: 'm-fab',
-      attrs: { type: 'button', 'aria-label': label, title: label },
-      on: { click: onClick },
-    },
-    icon(glyph, 22),
-  );
+  scroller.addEventListener('touchcancel', () => {
+    if (!pulling) return;
+    pulling = false;
+    set(0);
+  }, { passive: true });
 }

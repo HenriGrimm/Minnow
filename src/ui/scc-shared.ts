@@ -1,5 +1,5 @@
 import { createIcon, iconHtml, type IconName } from './icon';
-import type { CheckState } from '../state/forge-api';
+import type { CheckState, ForgeStatus } from '../state/forge-api';
 
 /** Everything a section needs from the shell. */
 export interface SccContext {
@@ -124,6 +124,24 @@ export function emptyState(options: {
     wrap.appendChild(actions);
   }
   return wrap;
+}
+
+/** Blocking explanation: why a whole section cannot work right now. */
+export function forgeUnavailableCopy(status: ForgeStatus, feature: 'Pull requests' | 'CI'): {
+  title: string;
+  body: string;
+  hint?: string;
+} {
+  if (status.ok && !status.remoteUrl && status.host === 'none') {
+    return { title: 'No remote configured', body: `Add a GitHub remote to use ${feature === 'CI' ? 'Actions' : 'pull requests'} here.` };
+  }
+  const isGitHub = status.host === 'github' || status.host === 'github-enterprise';
+  if (status.ok && isGitHub && !status.cliInstalled) {
+    return { title: 'GitHub CLI not found', body: status.reason, hint: 'winget install GitHub.cli' };
+  }
+  const hint = status.ok && isGitHub && !status.authenticated && status.reason.includes('gh auth login')
+    ? 'gh auth login' : undefined;
+  return { title: `${feature} unavailable`, body: status.reason, hint };
 }
 
 /** Blocking explanation: why a whole section cannot work right now. */

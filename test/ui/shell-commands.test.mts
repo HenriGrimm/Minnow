@@ -27,6 +27,7 @@ test('Code actions are scoped to Code and only create composer modes', () => {
   assert.deepEqual(codeCommands(true).filter((command) => command.id.startsWith('chat.new.')).map((command) => command.id), [
     'chat.new.general', 'chat.new.build', 'chat.new.plan', 'chat.new.debug',
   ]);
+  assert.ok(codeCommands(true).some((command) => command.id === 'chat.group.new'));
 });
 
 test('shell registration is idempotent and excludes hidden apps', () => {
@@ -34,7 +35,7 @@ test('shell registration is idempotent and excludes hidden apps', () => {
   initShellCommands();
   const ids = listCommands().map((command) => command.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.ok(ids.includes('app.home'));
+  assert.ok(!ids.includes('app.home'));
   for (const hidden of ['research', 'experts', 'bench', 'compare']) assert.ok(!ids.includes(`app.${hidden}`));
 });
 
@@ -47,9 +48,13 @@ test('Code commands hide controls without targets and reveal them when mounted',
     const save = commands.find((command) => command.id === 'code.save')!;
     assert.equal(search.available?.(), false);
     assert.equal(save.available?.(), false);
-    document.body.innerHTML = '<button id="btnChatSearch"></button><div class="cm-editor"></div>';
+    document.body.innerHTML = '<header id="graphiteThreadHeader"></header><div class="cm-editor"></div>';
     assert.equal(search.available?.(), true);
     assert.equal(save.available?.(), true);
+    document.getElementById('graphiteThreadHeader')!.hidden = true;
+    assert.equal(search.available?.(), false);
+    document.body.insertAdjacentHTML('afterbegin', '<button class="mn-os-mb-search"></button>');
+    assert.equal(search.available?.(), true);
   } finally {
     win.close();
   }

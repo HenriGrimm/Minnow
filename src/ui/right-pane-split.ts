@@ -23,6 +23,7 @@ import {
 } from './right-pane-slot-tabs';
 import { adoptActiveViewerTabPath, getActiveViewerTabPath } from './file-viewer-tab-store';
 import { activatePreviewTab } from './preview-tab-store';
+import { getGraphitePreviewSlot, splitGraphitePanel, usesGraphiteContentTabs } from './surfaces/surface-bridge';
 
 /** Same surface rule as the workspace gate (no floating desktop drawers). */
 function isWorkspaceGateSurface(): boolean {
@@ -35,7 +36,7 @@ export function isRightPaneSplitActive(): boolean {
   const state = getFilePanelState();
   return (
     state.rightPaneSplit.enabled &&
-    !isMobileLayout() &&
+    (!isMobileLayout() || usesGraphiteContentTabs()) &&
     !isWorkspaceGateSurface()
   );
 }
@@ -43,7 +44,8 @@ export function isRightPaneSplitActive(): boolean {
 /** True when persisted state is split layout (ignores desktop hosting surface DOM guard). */
 export function isRightPaneSplitLayoutEnabled(): boolean {
   const state = getFilePanelState();
-  return state.rightPaneSplit.enabled && state.rightPaneMode === 'split' && !isMobileLayout();
+  return state.rightPaneSplit.enabled && state.rightPaneMode === 'split' &&
+    (!isMobileLayout() || usesGraphiteContentTabs());
 }
 
 export function getFocusedPaneSlot(): PaneSlotId {
@@ -74,6 +76,11 @@ export function getFocusedPreviewInstanceId(): string {
 /** Instance id for a slot that is showing preview content. */
 export function previewInstanceIdForSlot(slot: PaneSlotId): string {
   return slot === 'primary' ? 'workspace-preview' : WORKSPACE_PREVIEW_SECONDARY_INSTANCE;
+}
+
+export function previewInstanceIdForTab(tabId: string): string | undefined {
+  const slot = getGraphitePreviewSlot(tabId) ?? slotOwningPreviewId(tabId);
+  return slot ? previewInstanceIdForSlot(slot) : undefined;
 }
 
 function slotElements(slot: PaneSlotId): {
@@ -122,11 +129,14 @@ function syncSlotPaneVisibility(slot: PaneSlotId, content: SlotContent): void {
   const showViewer = !showPreview;
 
   if (viewerPane) viewerPane.classList.toggle('hidden', !showViewer);
-  if (previewPane) previewPane.classList.toggle('hidden', !showPreview);
+  if (previewPane && !previewPane.classList.contains('graphite-browser-detached')) {
+    previewPane.classList.toggle('hidden', !showPreview);
+  }
 }
 
 /** Apply split chrome, slot visibility, and focus ring from persisted state. */
 export function applyRightPaneSplitDom(): void {
+  if (usesGraphiteContentTabs()) return;
   const state = getFilePanelState();
   const split = state.rightPaneSplit;
   // Collapsed right pane: leave every slot hidden instead of re-showing panes.
@@ -258,6 +268,10 @@ export function enableRightPaneSplit(secondary?: SlotContent): void {
 
 /** Split right from whichever pane is focused, moving its active tab across. */
 export function splitRightPane(): void {
+  if (usesGraphiteContentTabs()) {
+    splitGraphitePanel();
+    return;
+  }
   if (isMobileLayout() || isWorkspaceGateSurface()) return;
 
   if (!isRightPaneSplitLayoutEnabled()) {

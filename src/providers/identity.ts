@@ -7,7 +7,7 @@ const HOST_LOGOS: Record<string, string> = {
   'api.groq.com': 'groq',
   'api.mistral.ai': 'mistral',
   'opencode.ai': 'opencode',
-  'api.anthropic.com': 'anthropic',
+  'api.anthropic.com': 'claude',
   'api.deepseek.com': 'deepseek',
   'generativelanguage.googleapis.com': 'google',
   'api.githubcopilot.com': 'githubcopilot',
@@ -21,7 +21,7 @@ export function providerLogoId(provider: Pick<ProviderPublic, 'id' | 'label' | '
   if (provider.apiKind === 'agent-cli-v1') {
     const kind = provider.agentCli?.kind ?? provider.id.replace(/-cli$/, '');
     if (kind === 'codex') return 'openai';
-    if (kind === 'claude' || kind === 'claude-code') return 'anthropic';
+    if (kind === 'claude' || kind === 'claude-code') return 'claude';
     if (kind === 'cursor' || kind === 'cursor-agent') return 'cursor';
   }
   try {
@@ -38,6 +38,7 @@ export function providerLogoId(provider: Pick<ProviderPublic, 'id' | 'label' | '
   );
   if (!preset) return null;
   if (preset.id === 'lm-studio') return 'lmstudio';
+  if (preset.id === 'anthropic') return 'claude';
   if (preset.id.startsWith('opencode-')) return 'opencode';
   if (preset.id === 'github-copilot') return 'githubcopilot';
   return preset.id;

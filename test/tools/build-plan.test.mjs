@@ -50,7 +50,7 @@ test('board intake rejects Build plans even when their body contains a valid tas
 });
 
 test('all shipped Build templates validate with the same schema', () => {
-  for (const file of ['src/chat/prompts/work-agents/planner/agent.full.md', 'src/chat/prompts/work-agents/planner/agent.lite.md', 'src/chat/prompts/modes/plan.full.md', 'src/chat/prompts/modes/plan.lite.md', 'src/skills/plan-work/plan-template.md']) {
+  for (const file of ['src/chat/prompts/work-agents/planner/agent.full.md', 'src/chat/prompts/modes/plan.full.md', 'src/skills/plan-work/plan-template.md']) {
     const prompt = fs.readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
     const template = prompt.slice(prompt.indexOf('## Build plan schema')).match(/```markdown\n([\s\S]*?)\n```/)[1];
     assert.equal(readPlanType(template), 'build', file);

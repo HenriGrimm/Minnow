@@ -6,20 +6,34 @@ import { buildPageGraph, filterGraphByQuery } from './graph/graph-data';
 import { createForceGraph, type ForceGraphApi, type ForceGraphStats } from './graph/force-graph';
 import type { GraphEmphasisKey } from './graph/types';
 import { closeBrainInspector, renderBrainInspector } from './inspector';
-import { initBrainGraphSidebarResize } from './graph-sidebar-resize';
+import { initBrainGraphSidebarResize, restoreBrainGraphSidebarWidth } from './graph-sidebar-resize';
 import { restoreBrainInspectorWidth } from './inspector-resize';
 
 const SHOW_ARCHIVES_KEY = 'minnow.brain.showArchives';
 const READOUT_COLLAPSED_KEY = 'minnow.brain.readoutCollapsed';
+const LAYOUT_KEY = 'minnow.brain.graphLayout';
+const TAGS_KEY = 'minnow.brain.graphTags';
 
 // ── Prefs ────────────────────────────────────────────────────────────────────
 
-function readShowArchivesPref(): boolean {
+function readPref(key: string): string | null {
   try {
-    return localStorage.getItem(SHOW_ARCHIVES_KEY) === '1';
+    return localStorage.getItem(key);
   } catch {
-    return false;
+    return null;
   }
+}
+
+function writePref(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Preferences are optional in browsing contexts without local storage.
+  }
+}
+
+function readShowArchivesPref(): boolean {
+  return readPref(SHOW_ARCHIVES_KEY) === '1';
 }
 
 function filterCatalogPages(pages: BrainPageMeta[]): BrainPageMeta[] {
@@ -30,18 +44,30 @@ function filterCatalogPages(pages: BrainPageMeta[]): BrainPageMeta[] {
 let selectedPath: string | null = null;
 let catalogPages: BrainPageMeta[] = [];
 let graphApi: ForceGraphApi | null = null;
+let renderGeneration = 0;
 
-/** Stop graph interaction when leaving the Graph section (other Brain panels stay usable). */
-export function teardownGraphSection(): void {
+/** Stop graph interaction when leaving Graph; leaving Brain also clears the reader. */
+export function teardownGraphSection(options?: { clearSelection?: boolean }): void {
+  renderGeneration += 1;
+  if (options?.clearSelection) {
+    setGraphSelectedPath(null);
+    const inspector = document.getElementById('brainInspector');
+    if (inspector) closeBrainInspector(inspector);
+    syncTreeSelection();
+  }
   document.body.style.removeProperty('cursor');
   const canvas = document.getElementById('brainGraphCanvas');
   canvas?.style.removeProperty('cursor');
   graphApi?.destroy();
   graphApi = null;
+  overlayOffsetObserver?.disconnect();
+  overlayOffsetObserver = null;
+  sidebarObserver?.disconnect();
+  sidebarObserver = null;
 }
 // Tags are on by default so the graph opens in the tag view; the toggle still lets users hide them.
-let includeTags = true;
-let layoutMode: 'graph' | 'tree' = 'graph';
+let includeTags = readPref(TAGS_KEY) !== '0';
+let layoutMode: 'graph' | 'tree' = readPref(LAYOUT_KEY) === 'tree' ? 'tree' : 'graph';
 let highlightOrphans = false;
 let orphanPaths = new Set<string>();
 let searchQuery = '';
@@ -51,12 +77,13 @@ let bindingsDone = false;
 let firstRunHint = true;
 let overlayOffsetObserver: ResizeObserver | null = null;
 let sidebarObserver: ResizeObserver | null = null;
+let graphStageWidth = 0;
 
 // ── Overlay ──────────────────────────────────────────────────────────────────
 
 /** Deferred layout sync for ResizeObserver callbacks (avoids observer feedback loops). */
 const scheduleGraphLayoutSync = scheduleAnimationFrame(() => {
-  syncGraphOverlayOffsets();
+  if (graphApi) syncGraphOverlayOffsets();
 });
 
 /** Keep inspector/state banners aligned below the graph toolbar when it wraps. */
@@ -65,6 +92,12 @@ function syncGraphOverlayOffsets(): void {
   const toolbar = document.querySelector('.brain-graph-toolbar');
   if (!root || !toolbar) return;
 
+  const stageWidth = root.querySelector('.brain-stage')?.getBoundingClientRect().width ?? 0;
+  if (stageWidth > 0 && stageWidth !== graphStageWidth) {
+    graphStageWidth = stageWidth;
+    restoreBrainInspectorWidth();
+    restoreBrainGraphSidebarWidth();
+  }
   const styles = getComputedStyle(root);
   const pad = Number.parseFloat(styles.getPropertyValue('--brain-graph-overlay-pad')) || 0;
   const gap = Number.parseFloat(styles.getPropertyValue('--brain-graph-overlay-gap')) || 0;
@@ -84,7 +117,8 @@ function syncGraphViewportInsets(): void {
     const el = document.querySelector(selector);
     if (!el || el.classList.contains('hidden') || el.classList.contains('is-collapsed')) return 0;
     const rect = el.getBoundingClientRect();
-    if (!rect.width || !rect.height) return 0;
+    if (!rect.width || !rect.height || rect.right <= canvasRect.left || rect.left >= canvasRect.right ||
+        rect.bottom <= canvasRect.top || rect.top >= canvasRect.bottom) return 0;
     if (edge === 'top') return Math.max(0, rect.bottom - canvasRect.top);
     if (edge === 'left') return Math.max(0, rect.right - canvasRect.left);
     if (edge === 'bottom') return Math.max(0, canvasRect.bottom - rect.top);
@@ -99,12 +133,13 @@ function syncGraphViewportInsets(): void {
   };
   const readerSheet = isSheet('#brainInspector.is-open');
   const listSheet = isSheet('.brain-graph-sidebar');
+  const floatingReadout = layoutMode === 'graph' && document.documentElement.classList.contains('mn-graphite-apps');
   graphApi.setViewportInsets({
     top: Math.max(
       overlap('.brain-graph-toolbar', 'top'),
       listSheet ? overlap('.brain-graph-sidebar', 'top') : 0,
     ),
-    left: listSheet ? 0 : overlap('.brain-graph-sidebar', 'left'),
+    left: listSheet || floatingReadout ? 0 : overlap('.brain-graph-sidebar', 'left'),
     right: readerSheet ? 0 : overlap('#brainInspector.is-open', 'right'),
     bottom: readerSheet ? overlap('#brainInspector.is-open', 'bottom') : 0,
   });
@@ -127,22 +162,23 @@ function bindSidebarObserver(): void {
   sidebarObserver.observe(sidebar);
   const inspector = document.getElementById('brainInspector');
   if (inspector) sidebarObserver.observe(inspector);
+  const stage = sidebar.closest('.brain-stage');
+  if (stage) sidebarObserver.observe(stage);
 }
 
 /** Lightweight selection path: reuses the existing simulation instead of rebuilding. */
-function selectGraphPage(relPath: string): void {
+function selectGraphPage(relPath: string, opener?: HTMLElement): void {
   const inCatalog = catalogPages.some((p) => p.path === relPath);
+  setGraphSelectedPath(relPath);
   if (!graphApi || !inCatalog) {
-    selectedPath = relPath;
     void renderGraphSection();
     return;
   }
-  selectedPath = relPath;
   const nodeId = `page:${relPath}`;
   graphApi.selectNode(nodeId);
-  graphApi.centerOnNode(nodeId);
   syncTreeSelection();
-  void openInspector(relPath);
+  void openInspector(relPath, opener);
+  graphApi.centerOnNode(nodeId);
 }
 
 /** Open a page from graph, tree, wikilinks, or lint. */
@@ -191,34 +227,29 @@ function bindGraphToolbar(): void {
 
   document.getElementById('brainGraphLayoutToggle')?.addEventListener('click', () => {
     layoutMode = layoutMode === 'graph' ? 'tree' : 'graph';
-    const btn = document.getElementById('brainGraphLayoutToggle');
-    if (btn) {
-      btn.textContent = layoutMode === 'graph' ? 'Tree' : 'Graph';
-      btn.setAttribute('aria-pressed', layoutMode === 'tree' ? 'true' : 'false');
-    }
+    writePref(LAYOUT_KEY, layoutMode);
     syncLayoutVisibility();
   });
 
   document.getElementById('brainGraphTagToggle')?.addEventListener('click', () => {
     includeTags = !includeTags;
+    writePref(TAGS_KEY, includeTags ? '1' : '0');
     const btn = document.getElementById('brainGraphTagToggle');
     btn?.setAttribute('aria-pressed', includeTags ? 'true' : 'false');
-    void refreshGraphCanvas();
+    refreshGraphCanvas();
   });
+  document.getElementById('brainGraphTagToggle')?.setAttribute('aria-pressed', String(includeTags));
 
   document.getElementById('brainGraphOrphanToggle')?.addEventListener('click', () => {
     highlightOrphans = !highlightOrphans;
     const btn = document.getElementById('brainGraphOrphanToggle');
     btn?.setAttribute('aria-pressed', highlightOrphans ? 'true' : 'false');
-    void refreshGraphCanvas();
+    refreshGraphCanvas();
   });
 
   document.getElementById('brainGraphArchiveToggle')?.addEventListener('click', () => {
     const next = !readShowArchivesPref();
-    try {
-      localStorage.setItem(SHOW_ARCHIVES_KEY, next ? '1' : '0');
-    } catch {
-    }
+    writePref(SHOW_ARCHIVES_KEY, next ? '1' : '0');
     const btn = document.getElementById('brainGraphArchiveToggle');
     btn?.setAttribute('aria-pressed', next ? 'true' : 'false');
     void renderGraphSection();
@@ -236,7 +267,7 @@ function bindGraphToolbar(): void {
   const searchEl = document.getElementById('brainGraphSearch') as HTMLInputElement | null;
   searchEl?.addEventListener('input', () => {
     searchQuery = searchEl.value;
-    void refreshGraphCanvas();
+    refreshGraphCanvas();
   });
 
   const treeToggle = document.getElementById('brainGraphTreeToggle');
@@ -263,19 +294,10 @@ function bindGraphToolbar(): void {
   };
   readoutToggle?.addEventListener('click', () => {
     const collapsed = !readoutPanel?.classList.contains('is-collapsed');
-    try {
-      localStorage.setItem(READOUT_COLLAPSED_KEY, collapsed ? '1' : '0');
-    } catch {
-    }
+    writePref(READOUT_COLLAPSED_KEY, collapsed ? '1' : '0');
     applyReadoutCollapsed(collapsed);
   });
-  try {
-    applyReadoutCollapsed(localStorage.getItem(READOUT_COLLAPSED_KEY) === '1');
-  } catch {
-  }
-
-  bindOverlayOffsetObserver();
-  syncGraphOverlayOffsets();
+  applyReadoutCollapsed(readPref(READOUT_COLLAPSED_KEY) === '1');
 }
 
 /** Tree layout hides the canvas and widens the left rail; the page tree in the rail *is* the tree view, so there is only ever one tree rendered. */
@@ -284,16 +306,22 @@ function syncLayoutVisibility(): void {
   const stage = document.getElementById('brainGraphStage');
   const treePanel = document.getElementById('brainGraphTreePanel');
   const treeMode = layoutMode === 'tree';
+  const btn = document.getElementById('brainGraphLayoutToggle');
+  if (btn) {
+    btn.textContent = treeMode ? 'Graph' : 'Tree';
+    btn.setAttribute('aria-pressed', String(treeMode));
+  }
   canvasWrap?.classList.toggle('hidden', treeMode);
   canvasWrap?.setAttribute('aria-hidden', treeMode ? 'true' : 'false');
   stage?.classList.toggle('is-tree-layout', treeMode);
   if (treeMode) treePanel?.classList.remove('is-collapsed');
+  syncInspectorGraphActions();
   syncGraphViewportInsets();
 }
 
 // ── Canvas ───────────────────────────────────────────────────────────────────
 
-async function refreshGraphCanvas(): Promise<void> {
+function refreshGraphCanvas(): void {
   const canvas = document.getElementById('brainGraphCanvas') as HTMLCanvasElement | null;
   const statsEl = document.getElementById('brainGraphStats');
   if (!canvas) return;
@@ -302,20 +330,21 @@ async function refreshGraphCanvas(): Promise<void> {
     graphApi = createForceGraph(canvas, {
       onSelect: (node) => {
         if (!node?.path) return;
-        selectedPath = node.path;
+        setGraphSelectedPath(node.path);
         syncTreeSelection();
         void openInspector(node.path);
       },
       onDoubleClick: (node) => {
         if (!node?.path) return;
         graphApi?.focusNode(node.id);
-        selectedPath = node.path;
+        setGraphSelectedPath(node.path);
         syncTreeSelection();
         void openInspector(node.path);
       },
       onHover: (node) => {
         graphApi?.setHoverNode(node?.id ?? null);
       },
+      onNodeActionsChange: syncInspectorGraphActions,
     });
   }
 
@@ -324,6 +353,18 @@ async function refreshGraphCanvas(): Promise<void> {
     orphanPaths: highlightOrphans ? orphanPaths : undefined,
   });
   const data = searchQuery.trim() ? filterGraphByQuery(full, searchQuery) : full;
+
+  const metrics = document.getElementById('brainGraphRailMetrics');
+  if (metrics) {
+    const rows = [['Pages', catalogPages.length], ['Graph links', full.edges.length]] as const;
+    metrics.replaceChildren(...rows.map(([label, value]) => {
+      const row = document.createElement('span');
+      const count = document.createElement('b');
+      count.textContent = value.toLocaleString();
+      row.append(label, count);
+      return row;
+    }));
+  }
 
   graphApi.setData(data.nodes, data.edges);
   graphApi.setMutedKinds(mutedKinds);
@@ -343,6 +384,7 @@ async function refreshGraphCanvas(): Promise<void> {
     graphApi.selectNode(nodeId);
     syncTreeSelection();
   }
+  syncInspectorGraphActions();
 }
 
 /** Build one label/value cell for the readout metric grid. */
@@ -365,6 +407,7 @@ function syncGraphReadout(stats: ForceGraphStats): void {
   const body = document.getElementById('brainGraphReadoutBody');
   if (!body) return;
   body.replaceChildren();
+  const graphite = document.documentElement.classList.contains('mn-graphite-apps');
 
   const metrics = document.createElement('div');
   metrics.className = 'brain-graph-readout__metrics';
@@ -372,23 +415,24 @@ function syncGraphReadout(stats: ForceGraphStats): void {
     buildMetricCell('Pages', String(stats.kinds.page)),
     buildMetricCell('Links', String(stats.edgeCount)),
   );
-  if (includeTags) metrics.append(buildMetricCell('Tags', String(stats.kinds.tag)));
-  metrics.append(buildMetricCell('Density', stats.density.toFixed(1)));
-  if (stats.orphanCount > 0) {
-    metrics.append(buildMetricCell('Orphans', String(stats.orphanCount), 'warn'));
+  if (includeTags || graphite) metrics.append(buildMetricCell('Tags', String(stats.kinds.tag)));
+  if (!graphite) metrics.append(buildMetricCell('Density', stats.density.toFixed(1)));
+  if (stats.orphanCount > 0 || graphite) {
+    metrics.append(buildMetricCell('Orphans', String(stats.orphanCount), stats.orphanCount ? 'warn' : undefined));
   }
   body.append(metrics);
 
-  if (stats.hubs.length) {
+  const visibleHubs = graphite ? stats.hubs.filter(hub => hub.path).slice(0, 5) : stats.hubs.slice(0, 3);
+  if (visibleHubs.length) {
     const hubs = document.createElement('div');
     hubs.className = 'brain-graph-hubs';
     const heading = document.createElement('p');
     heading.className = 'brain-graph-hubs__title';
-    heading.textContent = 'Most connected';
+    heading.textContent = graphite ? 'Hubs' : 'Most connected';
     hubs.append(heading);
 
-    const max = stats.hubs[0].degree || 1;
-    for (const hub of stats.hubs.slice(0, 3)) {
+    const max = visibleHubs[0].degree || 1;
+    for (const hub of visibleHubs) {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'brain-graph-hub';
@@ -451,10 +495,46 @@ function syncGraphReadout(stats: ForceGraphStats): void {
 
 // ── Inspector ────────────────────────────────────────────────────────────────
 
-async function openInspector(relPath: string): Promise<void> {
+function syncInspectorGraphActions(): void {
+  const actions = document.querySelector<HTMLElement>('.brain-inspector__graph-actions');
+  if (!actions) return;
+  const id = actions.dataset.nodeId!;
+  actions.hidden = layoutMode !== 'graph' || !graphApi?.hasNode(id);
+  actions.querySelector('[data-graph-action="focus"]')?.setAttribute('aria-pressed', String(graphApi?.isNodeFocused(id) ?? false));
+  actions.querySelector('[data-graph-action="pin"]')?.setAttribute('aria-pressed', String(graphApi?.isNodePinned(id) ?? false));
+}
+
+function createInspectorGraphActions(relPath: string): HTMLElement {
+  const id = `page:${relPath}`;
+  const actions = document.createElement('div');
+  actions.className = 'brain-inspector__graph-actions';
+  actions.dataset.nodeId = id;
+  actions.hidden = true;
+  actions.setAttribute('role', 'group');
+  actions.setAttribute('aria-label', 'Graph actions');
+  for (const [action, label] of [['focus', 'Focus neighborhood'], ['pin', 'Pin node']] as const) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'brain-action-btn';
+    button.dataset.graphAction = action;
+    button.textContent = label;
+    button.setAttribute('aria-pressed', 'false');
+    button.addEventListener('click', () => {
+      if (!graphApi?.hasNode(id)) return;
+      if (action === 'pin') graphApi.setNodePinned(id, !graphApi.isNodePinned(id));
+      else if (graphApi.isNodeFocused(id)) graphApi.clearFocus();
+      else graphApi.focusNode(id);
+    });
+    actions.append(button);
+  }
+  return actions;
+}
+
+async function openInspector(relPath: string, opener?: HTMLElement): Promise<void> {
   const inspector = document.getElementById('brainInspector');
   if (!inspector) return;
-  await renderBrainInspector(
+  const graphActions = createInspectorGraphActions(relPath);
+  const reading = renderBrainInspector(
     inspector,
     relPath,
     catalogPages,
@@ -465,8 +545,21 @@ async function openInspector(relPath: string): Promise<void> {
     async () => {
       await renderGraphSection();
     },
+    () => {
+      setGraphSelectedPath(null);
+      graphApi?.selectNode(null);
+      syncTreeSelection();
+      syncGraphOverlayOffsets();
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    },
+    graphActions,
   );
-  syncGraphViewportInsets();
+  syncGraphOverlayOffsets();
+  await reading;
+  syncInspectorGraphActions();
+  if (selectedPath === relPath && opener && document.activeElement === opener) {
+    inspector.querySelector<HTMLElement>('.brain-inspector__title')?.focus({ preventScroll: true });
+  }
 }
 
 // ── Tree ─────────────────────────────────────────────────────────────────────
@@ -475,8 +568,8 @@ function renderGraphTree(mount: HTMLElement, tree: Record<string, unknown>): voi
   mount.replaceChildren();
   const list = document.createElement('ul');
   list.className = 'brain-tree';
-  list.setAttribute('role', 'tree');
 
+  let folderId = 0;
   const appendNodes = (parent: HTMLElement, node: Record<string, unknown>): void => {
     const entries = Object.entries(node).sort(([a], [b]) => a.localeCompare(b));
     for (const [name, value] of entries) {
@@ -492,10 +585,9 @@ function renderGraphTree(mount: HTMLElement, tree: Record<string, unknown>): voi
         btn.className = 'brain-tree__page';
         btn.dataset.path = path;
         btn.textContent = String(record.title ?? name);
-        btn.setAttribute('role', 'treeitem');
         btn.setAttribute('aria-current', path === selectedPath ? 'page' : 'false');
-        btn.addEventListener('click', () => {
-          navigateBrainGraphPage(path);
+        btn.addEventListener('click', (event) => {
+          selectGraphPage(path, event.detail === 0 ? btn : undefined);
         });
         item.append(btn);
         parent.append(item);
@@ -510,6 +602,8 @@ function renderGraphTree(mount: HTMLElement, tree: Record<string, unknown>): voi
         folderBtn.setAttribute('aria-expanded', 'true');
         const childList = document.createElement('ul');
         childList.className = 'brain-tree__children';
+        childList.id = `brain-page-folder-${++folderId}`;
+        folderBtn.setAttribute('aria-controls', childList.id);
         const children = record.children as Record<string, unknown> | undefined;
         if (children) appendNodes(childList, children);
         folderBtn.addEventListener('click', () => {
@@ -556,9 +650,14 @@ export async function renderGraphSection(): Promise<void> {
   const emptyEl = document.getElementById('brainGraphEmpty');
   const stageEl = document.getElementById('brainGraphStage');
   if (!treeMount || !stageEl) return;
+  const generation = ++renderGeneration;
+  const inspector = document.getElementById('brainInspector');
+  bindOverlayOffsetObserver();
   bindSidebarObserver();
+  syncLayoutVisibility();
 
   const tree = await fetchBrainTree();
+  if (generation !== renderGeneration) return;
   const online = tree !== null;
   offlineEl?.classList.toggle('hidden', online);
   stageEl.classList.toggle('is-offline', !online);
@@ -567,11 +666,15 @@ export async function renderGraphSection(): Promise<void> {
     treeMount.replaceChildren();
     graphApi?.destroy();
     graphApi = null;
+    if (inspector) closeBrainInspector(inspector);
     emptyEl?.classList.add('hidden');
     return;
   }
 
   catalogPages = filterCatalogPages(flattenBrainTree(tree));
+  if (selectedPath && !catalogPages.some((p) => p.path === selectedPath)) {
+    setGraphSelectedPath(null);
+  }
   const treeRecord = filterBrainTreeForDisplay(
     tree,
     readShowArchivesPref(),
@@ -585,25 +688,13 @@ export async function renderGraphSection(): Promise<void> {
   if (!hasPages) {
     graphApi?.destroy();
     graphApi = null;
+    if (inspector) closeBrainInspector(inspector);
     return;
   }
 
-  const initial =
-    selectedPath ??
-    catalogPages.find((p) => p.path === 'index.md')?.path ??
-    catalogPages[0]?.path ??
-    null;
-  if (initial) {
-    selectedPath = initial;
-    await openInspector(initial);
-  } else {
-    const inspector = document.getElementById('brainInspector');
-    if (inspector) closeBrainInspector(inspector);
-  }
-
-  await refreshGraphCanvas();
-  syncLayoutVisibility();
-  syncGraphOverlayOffsets();
+  if (selectedPath) void openInspector(selectedPath);
+  else if (inspector) closeBrainInspector(inspector);
+  refreshGraphCanvas();
   showFirstRunHint();
 }
 

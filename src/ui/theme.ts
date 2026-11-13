@@ -28,6 +28,7 @@ import {
   subscribeAppearanceFonts,
 } from '../appearance/fonts';
 import { seedLocalStorageFromAppearanceBoot } from '../appearance/persist';
+import { applyGraphitePreferences } from '../appearance/graphite-preferences';
 
 export {
   getFollowSystem,
@@ -62,6 +63,7 @@ function syncHljsDarkStylesheet(effective: ThemeMode): void {
 
 /** Apply effective theme to DOM and dependent surfaces. */
 export function applyResolvedTheme(id: ThemeId): void {
+  applyGraphitePreferences();
   applyThemeId(id, { persist: false });
   if (isCustomThemeEnabled()) {
     applyCustomTheme();
@@ -69,7 +71,6 @@ export function applyResolvedTheme(id: ThemeId): void {
   void applyAppearanceFonts();
   syncHljsDarkStylesheet(getMode(id));
   refreshHljsInDocument();
-  void import('./terminal-xterm').then((m) => m.refreshXtermTheme());
 }
 
 /** @deprecated Use applyResolvedTheme(getStoredTheme()). */
@@ -101,7 +102,7 @@ export function initTheme(): void {
   applyResolvedTheme(getStoredTheme());
 }
 
-/** Persist preference and refresh hljs/xterm. */
+/** Persist preference and refresh syntax highlighting. */
 export function setThemePreference(pref: LegacyThemePreference): void {
   persistThemePreference(pref);
   syncThemeListeners();

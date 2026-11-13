@@ -48,12 +48,12 @@ function stackForFamily(family: string | undefined, fallback: string): string {
 }
 
 function stacksFromCatalog(
-  catalog: readonly { id: string; google?: GoogleFontSpec }[],
+  catalog: readonly { id: string; bundledFamily?: string; google?: GoogleFontSpec }[],
   fallback: string,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const entry of catalog) {
-    out[entry.id] = stackForFamily(entry.google?.family, fallback);
+    out[entry.id] = stackForFamily(entry.bundledFamily ?? entry.google?.family, fallback);
   }
   return out;
 }

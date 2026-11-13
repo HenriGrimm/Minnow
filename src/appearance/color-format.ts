@@ -22,7 +22,27 @@ function hexPair(n: number): string {
   return clampByte(n).toString(16).padStart(2, '0');
 }
 
-/** Parse hex (#rgb, #rrggbb, #rgba, #rrggbbaa) or rgb()/rgba() into RGBA. */
+let colorProbe: CanvasRenderingContext2D | null | undefined;
+
+function parseBrowserColor(value: string): RgbaColor | null {
+  if (typeof document === 'undefined' || !globalThis.CSS?.supports('color', value)) return null;
+  colorProbe ??= document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  if (!colorProbe) return null;
+  // Reset twice so context-dependent values such as unresolved var() do not
+  // accidentally return the previous token’s color.
+  colorProbe.fillStyle = '#000';
+  colorProbe.fillStyle = value;
+  const dark = colorProbe.fillStyle;
+  colorProbe.fillStyle = '#fff';
+  colorProbe.fillStyle = value;
+  if (colorProbe.fillStyle !== dark) return null;
+  colorProbe.clearRect(0, 0, 1, 1);
+  colorProbe.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = colorProbe.getImageData(0, 0, 1, 1).data;
+  return { r, g, b, a: a / 255 };
+}
+
+/** Parse hex and rgb()/rgba(), with browser resolution for computed palette colors. */
 export function parseCssColor(input: string): RgbaColor | null {
   const s = input.trim();
   if (!s) return null;
@@ -77,7 +97,7 @@ export function parseCssColor(input: string): RgbaColor | null {
     };
   }
 
-  return null;
+  return parseBrowserColor(s);
 }
 
 /** Format RGBA as #rrggbb when opaque, otherwise rgba(r, g, b, a). */

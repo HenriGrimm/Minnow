@@ -17,3 +17,16 @@ export function getManagedChatView(): string { return mountedChatId; }
 export function subscribeManagedChatView(listener: (chatId: string) => void): () => void {
   listeners.add(listener); return () => listeners.delete(listener);
 }
+
+let embeddedChatId = '';
+const embeddedListeners = new Set<() => void>();
+export function getEmbeddedManagedChatView(): string { return embeddedChatId; }
+export function setEmbeddedManagedChatView(chatId: string): void {
+  if (embeddedChatId === chatId) return;
+  embeddedChatId = chatId;
+  for (const listener of embeddedListeners) listener();
+}
+export function subscribeEmbeddedManagedChatView(listener: () => void): () => void {
+  embeddedListeners.add(listener);
+  return () => embeddedListeners.delete(listener);
+}

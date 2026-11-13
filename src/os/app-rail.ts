@@ -28,12 +28,13 @@ import { getWorkspacePath } from '../state/workspace';
 import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { isCoarsePointer } from '../ui/mobile-layout';
 import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-panel';
-import { launchApp } from './router';
+import { getCurrentRoute, launchApp, navigateToCodeBoards } from './router';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import type { AppId } from './types';
 import type { IssueCard } from '../types';
 import { buildMenuItems } from '../ui/menu-registry';
 import { openContextMenu } from '../ui/context-menu';
+import { createIcon } from '../ui/icon';
 import {
   appWindowMenuLabel,
   canOpenAppWindow,
@@ -177,7 +178,7 @@ function bindRailTooltip(btn: HTMLButtonElement, getText: () => string): void {
 
 function handleRailClick(appId: AppId): void {
   if (appId === 'settings' && isShellOverlayOpen('settings')) {
-    closeShellOverlay();
+    closeShellOverlay('settings');
     return;
   }
   launchApp(appId);
@@ -294,7 +295,10 @@ function buildRailButton(
   }
   btn.setAttribute('aria-label', label);
   const icon = createAppIcon((def?.icon ?? 'code') as 'code');
-  btn.appendChild(icon);
+  const text = document.createElement('span');
+  text.className = 'mn-os-app-rail__label';
+  text.textContent = appId === 'source-control' ? 'Source control' : label;
+  btn.append(icon, text);
   bindRailTooltip(btn, () => label);
   btn.addEventListener('click', () => handleRailClick(appId));
   bindRailTileContextMenu(btn, appId);
@@ -410,6 +414,20 @@ export function initAppRail(root: HTMLElement): () => void {
 
   const nav = document.createElement('div');
   nav.className = 'mn-os-app-rail__nav';
+  const boards = document.createElement('button');
+  boards.type = 'button';
+  boards.className = 'mn-os-app-rail__btn mn-os-app-rail__boards';
+  const boardsLabel = document.createElement('span');
+  boardsLabel.className = 'mn-os-app-rail__label';
+  boardsLabel.textContent = 'Boards';
+  boards.append(createIcon('boardView', { size: 14 }), boardsLabel);
+  boards.addEventListener('click', navigateToCodeBoards);
+
+  function syncBoards(): void {
+    const active = getForegroundAppId() === 'code' && getCurrentRoute().codeSection === 'boards';
+    boards.classList.toggle('is-active', active);
+    boards.setAttribute('aria-current', active ? 'page' : 'false');
+  }
 
   const tileByAppId = new Map<AppId, HTMLButtonElement>();
   /** Per-tile listener disposers; cleared on every rebuild. */
@@ -431,8 +449,10 @@ export function initAppRail(root: HTMLElement): () => void {
       tileByAppId.set(app.id, btn);
       nav.appendChild(btn);
     }
+    nav.appendChild(boards);
 
     syncRailButtons(tileByAppId);
+    syncBoards();
   }
 
   const onNavPointerLeave = (): void => {
@@ -446,6 +466,7 @@ export function initAppRail(root: HTMLElement): () => void {
 
   const onInstances = (): void => {
     syncRailButtons(tileByAppId);
+    syncBoards();
     syncRailVisibility(root);
   };
 
@@ -463,11 +484,13 @@ export function initAppRail(root: HTMLElement): () => void {
 
   window.addEventListener('resize', onLayoutChange, { passive: true });
   window.addEventListener('scroll', onLayoutChange, { passive: true, capture: true });
+  window.addEventListener('hashchange', syncBoards);
 
   return () => {
     nav.removeEventListener('pointerleave', onNavPointerLeave);
     window.removeEventListener('resize', onLayoutChange);
     window.removeEventListener('scroll', onLayoutChange, true);
+    window.removeEventListener('hashchange', syncBoards);
     unsubInstances();
     unsubPrefs();
     unsubRegistry();

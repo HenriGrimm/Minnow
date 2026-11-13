@@ -1,29 +1,5 @@
 /* ─── Responsive adapt (mobile, tablet, touch, landscape) ─── */
 
-/* Tablet: stats grid reflows before desktop single row */
-@media (max-width: 899px) {
-  .stats-panel {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .token-cell {
-    grid-column: 1 / -1;
-    border-right: none;
-    border-top: 1px solid var(--mn-border);
-  }
-
-  .minfo-cell {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--mn-border);
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 12px 20px;
-  }
-
-  .stat-cell:nth-child(2) { border-right: none; }
-  .stat-cell:nth-child(4) { border-right: none; }
-}
-
 @media (max-width: 600px) {
   .topbar {
     gap: 6px;
@@ -66,30 +42,6 @@
     grid-template-columns: 1fr;
   }
 
-  .stats-expand-btn {
-    display: flex;
-    min-height: var(--touch-min);
-  }
-
-  .stats-panel {
-    display: none;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .stats-strip.is-expanded .stats-panel {
-    display: grid;
-  }
-
-  .stat-cell.green,
-  .stat-cell.yellow {
-    display: none;
-  }
-
-  .stats-strip.is-expanded .stat-cell.green,
-  .stats-strip.is-expanded .stat-cell.yellow {
-    display: block;
-  }
-
   .drawer {
     width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
     padding-left: env(safe-area-inset-left, 0px);
@@ -122,11 +74,6 @@
 
   .empty-state {
     padding: 20px;
-  }
-
-  .stats-expand-btn {
-    padding-top: 8px;
-    padding-bottom: 8px;
   }
 
   .input-bar {

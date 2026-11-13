@@ -10,6 +10,7 @@ import { getModelsState, refreshHardware, refreshModels, subscribeModelsStore } 
 import { createDiscoverInspector, type DiscoverSelection } from './discover-inspector';
 import { syncDownloadShelf } from './discover-downloads';
 import { createModelIdentity, resolveModelCreator } from './creator-logo';
+import { createModelsResizeHandle, usesGraphiteModels } from './graphite-chrome';
 
 let bound = false;
 let dispose: (() => void) | null = null;
@@ -61,10 +62,7 @@ export function render(): void {
   let searchSequence = 0;
 
   const top = el('header', 'discover-heading');
-  top.append(
-    el('h2', undefined, 'Find a model for your machine'),
-    el('p', 'models-muted', 'Choose a model, check its memory needs, and download the right file.'),
-  );
+  top.append(el('h2', undefined, 'Discover'), el('p', 'models-muted', 'Find a model for your machine'));
   const hardware = el('div', 'discover-hardware');
   const workbench = el('div', 'discover-workbench');
   const browser = el('section', 'discover-browser');
@@ -113,9 +111,17 @@ export function render(): void {
   );
   top.append(contextControl);
   toolbar.append(search, controls);
-  browser.append(tabs, toolbar, title, status, list, pagination);
-  workbench.append(browser, aside);
-  host.append(top, hardware, workbench);
+  const filterHeader = el('div', 'discover-filter-header');
+  filterHeader.append(top, hardware, tabs, toolbar);
+  const scroll = el('div', 'discover-results-scroll');
+  scroll.append(title, status, list, pagination);
+  browser.append(filterHeader, scroll);
+  const divider = createModelsResizeHandle(workbench, {
+    label: 'Resize model details', property: '--models-graphite-discover-width', initial: 360, min: 284, max: 450, reverse: true,
+  });
+  divider.classList.add('discover-resize');
+  workbench.append(browser, divider, aside);
+  host.append(workbench);
 
   function choose(model: DiscoverSelection): void {
     selectedRepo = model.repoId;
@@ -258,6 +264,7 @@ export function render(): void {
       hardware: getModelsState().hardware,
     });
     const row = el('article', `discover-pick${selectedRepo === pick.repo ? ' is-selected' : ''}`);
+    row.dataset.discoverRepo = pick.repo;
     const copy = el('div', 'discover-pick__copy');
     const creator = resolveModelCreator(pick.repo, pick.name);
     copy.append(
@@ -273,29 +280,29 @@ export function render(): void {
     const action = el('div', 'discover-pick__action');
     const estimate = el('span', `discover-fit discover-fit--${fit.tone}`, fit.label);
     estimate.title = fit.detail;
-    action.append(
-      estimate,
-      el(
-        'span',
-        'models-muted',
-        fit.memoryGb
-          ? `~${fit.memoryGb.toFixed(1)} GiB at ${formatCount(preferences.context)} context`
-          : 'Check hardware and context',
-      ),
-      textButton('Inspect files', () =>
-        choose({
-          repoId: pick.repo,
-          name: pick.name.split('/').pop()!,
-          reason: pick.reason,
-          params: pick.parameters,
-          arch: pick.architecture,
-          maxContext: pick.context,
-          format: 'gguf',
-        }),
-      ),
-    );
+    const memory = el('span', 'models-muted', fit.memoryGb ? `~${fit.memoryGb.toFixed(1)} GiB` : 'Unknown memory');
+    const readout = el('span', 'discover-pick__memory');
+    readout.append(estimate, memory);
+    const hardware = getModelsState().hardware;
+    const capacity = hardware?.gpuVramGb ?? hardware?.totalRamGb;
+    const meter = el('span', `discover-pick__meter discover-fit--${fit.tone}`);
+    meter.setAttribute('aria-hidden', 'true');
+    if (fit.memoryGb && capacity && capacity > 0) meter.style.setProperty('--fit-ratio', String(Math.min(1, fit.memoryGb / capacity)));
+    action.append(readout, meter);
+    const inspect = textButton('Inspect files', () => choose(recommendedSelection(pick)));
+    inspect.classList.add('discover-pick__inspect');
+    inspect.setAttribute('aria-label', `Inspect ${pick.name.split('/').pop()}`);
+    inspect.setAttribute('aria-pressed', String(selectedRepo === pick.repo));
     row.append(copy, action);
+    row.append(inspect);
+    row.addEventListener('click', (event) => {
+      if (!(event.target as Element).closest('button, a')) inspect.click();
+    });
     return row;
+  }
+
+  function recommendedSelection(pick: (typeof recommended)[number]): DiscoverSelection {
+    return { repoId: pick.repo, name: pick.name.split('/').pop()!, reason: pick.reason, params: pick.parameters, arch: pick.architecture, maxContext: pick.context, format: 'gguf' };
   }
 
   function hubRow(model: HubSearchResult): HTMLElement {
@@ -329,6 +336,7 @@ export function render(): void {
 
   function paintResults(): void {
     if (!alive) return;
+    const focusRepo = document.activeElement?.closest<HTMLElement>('[data-discover-repo]')?.dataset.discoverRepo;
     list.replaceChildren();
     pagination.replaceChildren();
     if (preferences.source === 'recommended') {
@@ -354,8 +362,15 @@ export function render(): void {
         }))
         .filter(({ fit }) => !preferences.fitsOnly || fit.fits)
         .sort((a, b) => Number(b.fit.fits) - Number(a.fit.fits));
-      status.textContent = `${picks.length} curated models · Memory estimates, not performance benchmarks · Reviewed ${recommended[0].reviewedAt}`;
+      const first = picks[0]?.pick;
+      if (first && !selectedRepo && usesGraphiteModels()) {
+        selectedRepo = first.repo;
+        void inspector.select(recommendedSelection(first));
+      }
+      status.textContent = `${picks.length} models`;
+      status.title = `Memory estimates, not performance benchmarks · Reviewed ${recommended[0].reviewedAt}`;
       for (const { pick } of picks) list.append(recommendedRow(pick));
+      if (focusRepo) [...list.querySelectorAll<HTMLElement>('[data-discover-repo]')].find((row) => row.dataset.discoverRepo === focusRepo)?.querySelector('button')?.focus({ preventScroll: true });
       if (!picks.length) {
         list.append(
           el(

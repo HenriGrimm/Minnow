@@ -340,6 +340,8 @@
  * divider live on the `li` and the row button stays flat.
  */
 .welcome-page__recents-item {
+  --workspace-action-size: 28px;
+  --workspace-primary-width: 100px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
@@ -349,6 +351,10 @@
 
 .welcome-page__recents-item:last-child {
   border-bottom: none;
+}
+
+.welcome-page__recents-item[hidden] {
+  display: none;
 }
 
 .welcome-page__recents-item:hover {
@@ -382,9 +388,27 @@
 }
 
 .welcome-page__recents-glyph {
-  display: flex;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
-  color: var(--mn-accent);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-surface-2);
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.welcome-page__recents-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.welcome-page__recents-icon[hidden] {
+  display: none;
 }
 
 .welcome-page__recents-glyph .minnow-glyph {
@@ -425,10 +449,14 @@
 }
 
 .welcome-page__recents-badge {
-  flex-shrink: 0;
-  padding: 1px 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  padding: 0 6px;
   font-size: 11px;
   line-height: 1.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   border: 1px solid var(--mn-border);
   border-radius: 999px;
@@ -439,47 +467,56 @@
   border-style: dashed;
 }
 
+.welcome-page__recents-open {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 var(--workspace-primary-width);
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 28px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-surface-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .welcome-page__recents-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, var(--workspace-action-size));
   align-items: center;
-  gap: 6px;
-  padding-right: 12px;
+  gap: 4px;
+  padding-inline-end: 10px;
 }
 
 .welcome-page__recents-new-window,
 .welcome-page__recents-close,
 .welcome-page__recents-remove {
-  padding: 3px 10px;
-  font: inherit;
-  font-size: 12px;
-  white-space: nowrap;
-  border: 1px solid var(--mn-border);
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  height: var(--workspace-action-size);
+  padding: 0;
+  border: 0;
   border-radius: var(--mn-radius-sm);
   background: transparent;
-  color: var(--mn-fg-subtle);
+  color: var(--mn-fg-muted);
   cursor: pointer;
-  opacity: 0;
 }
 
-.welcome-page__recents-item:hover .welcome-page__recents-new-window,
-.welcome-page__recents-item:hover .welcome-page__recents-close,
-.welcome-page__recents-item:hover .welcome-page__recents-remove,
-.welcome-page__recents-new-window:focus-visible,
-.welcome-page__recents-close:focus-visible,
-.welcome-page__recents-remove:focus-visible,
-.welcome-page__recents-item:has(.welcome-page__recents-row--missing) .welcome-page__recents-remove {
-  opacity: 1;
+.welcome-page__recents-remove {
+  grid-column: 2;
 }
 
-.welcome-page__recents-new-window:hover,
-.welcome-page__recents-remove:hover {
+.welcome-page__recents-actions button:hover:not(:disabled) {
+  background: var(--mn-surface-2);
   color: var(--mn-fg);
-  border-color: var(--mn-fg-subtle);
 }
 
-.welcome-page__recents-close:hover {
-  color: var(--mn-danger, #d64545);
-  border-color: var(--mn-danger, #d64545);
+.welcome-page__recents-actions .welcome-page__recents-close:hover:not(:disabled) {
+  color: var(--mn-danger);
 }
 
 .welcome-page__recents-new-window:focus-visible,
@@ -489,11 +526,24 @@
   outline-offset: 1px;
 }
 
-@media (hover: none) {
-  .welcome-page__recents-new-window,
-  .welcome-page__recents-close,
-  .welcome-page__recents-remove {
-    opacity: 1;
+@media (pointer: coarse) {
+  .welcome-page__recents-item {
+    --workspace-action-size: 44px;
+  }
+}
+
+@media (max-width: 440px) {
+  .welcome-page .welcome-page__recents-item {
+    --workspace-primary-width: 80px;
+  }
+
+  .welcome-page .welcome-page__recents-row {
+    gap: 8px;
+    padding-inline: 6px;
+  }
+
+  .welcome-page__recents-actions {
+    padding-inline-end: 4px;
   }
 }
 

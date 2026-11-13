@@ -510,15 +510,13 @@ html.mn-phone .mn-os-research-toolbar-btn {
 
 /* The header controls wrapped into four rows, and with the tabs, search and
    filter chips the list started 477px down an 844px screen. Pack them into two
-   rows: scope + List/Board + Files, then Group + capture + New issue. */
+   rows, keeping the New issue and Sync all actions together. */
 html.mn-phone .issues-header__controls {
   gap: 8px;
 }
 
 html.mn-phone .issues-header__controls > .issues-filter {
   order: 1;
-  /* The 120px bases are the row breaks: they leave no room for Group on row
-     one, and exactly enough for Group + capture + New issue on row two. */
   flex: 1 1 120px;
   min-width: 0;
 }
@@ -531,22 +529,18 @@ html.mn-phone .issues-header__controls > #btnIssuesFiles {
   order: 3;
 }
 
-html.mn-phone .issues-header__controls > #btnIssuesSyncAll {
+html.mn-phone .issues-header__controls > #btnIssuesGroupBy {
   order: 4;
 }
 
-html.mn-phone .issues-header__controls > #btnIssuesGroupBy {
-  order: 5;
-}
-
 html.mn-phone .issues-header__controls > .issues-quick-capture {
-  order: 6;
+  order: 5;
   flex: 1 1 120px;
   min-width: 0;
 }
 
-html.mn-phone .issues-header__controls > #btnIssuesNew {
-  order: 7;
+html.mn-phone .issues-header__controls > .issues-header__actions {
+  order: 6;
 }
 
 /* An open issue takes the whole stage. Docked below that header, its scroll
@@ -574,7 +568,7 @@ html.mn-phone .issues-shell.is-detail-expanded .issues-detail-host {
   border-radius: 0;
 }
 
-html.mn-phone .issues-shell.is-detail-expanded .issues-detail__scroll {
+html.mn-phone .issues-shell.is-detail-expanded .issues-detail__scroll:not([hidden]) {
   display: flex;
   flex-direction: column;
   padding: 8px var(--mn-phone-pad-right) 24px var(--mn-phone-pad-left);
@@ -778,6 +772,10 @@ html.mn-phone .scc-head__repo {
 html.mn-phone .scc-head__identity .scc-head__context-btn {
   flex: 0 1 auto;
   min-width: 0;
+}
+
+html.mn-phone .scc-head__context-btn:not(.scc-head__branch, .is-secondary-worktree) {
+  display: none;
 }
 
 html.mn-phone .scc-head__palette-btn .scc-btn__label {

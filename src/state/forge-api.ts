@@ -58,12 +58,13 @@ export interface PullRequestSummary {
 
 export interface PullRequestDetail extends PullRequestSummary {
   body: string;
+  headRefOid?: string;
   mergeStateStatus: string;
   crossRepository: boolean;
   files: { path: string; additions: number; deletions: number }[];
   commits: { sha: string; subject: string; author: string }[];
   reviews: { author: string; state: string; body: string }[];
-  statusChecks: { name: string; status: string; conclusion: string; url: string }[];
+  statusChecks: { name: string; status: string; conclusion: string; url: string; startedAt?: string; completedAt?: string }[];
 }
 
 export interface WorkflowRunSummary {
@@ -219,6 +220,7 @@ export function prMerge(input: {
   method?: 'merge' | 'squash' | 'rebase';
   deleteBranch?: boolean;
   auto?: boolean;
+  expectedHeadOid?: string;
 }): Promise<ForgeResult> {
   return postForge('prMerge', input);
 }

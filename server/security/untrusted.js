@@ -9,7 +9,6 @@ export {
   isWrappedUntrusted,
   sanitizeSourceLabel,
   UNTRUSTED_CONTEXT_POLICY_FULL,
-  UNTRUSTED_CONTEXT_POLICY_LITE,
   wrapUntrusted,
 } from '../../src/lib/untrusted.mjs';
 

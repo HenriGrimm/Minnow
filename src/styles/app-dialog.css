@@ -26,7 +26,7 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
   color: var(--mn-fg);
@@ -95,6 +95,50 @@
   color: var(--mn-fg-muted);
 }
 
+.app-dialog-overlay:has(.graphite-resume-list) {
+  align-items: flex-start;
+  padding-top: min(140px, 15dvh);
+  background: var(--mn-graphite-scrim, var(--mn-overlay));
+}
+
+.app-dialog-panel:has(.graphite-resume-list) {
+  width: min(480px, 100%);
+  max-height: calc(100dvh - min(140px, 15dvh) - 12px);
+  position: relative;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  border-radius: 14px;
+  box-shadow: var(--mn-graphite-popup, var(--shadow-popover-soft));
+}
+
+.app-dialog-panel:has(.graphite-resume-list) > :is(h2, p) { margin-inline-start: 44px; }
+.app-dialog-panel:has(.graphite-resume-list) > p { margin-top: -10px; font-size: 12.5px; }
+.graphite-resume-body > .icon-svg {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  inset: 18px auto auto 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent);
+}
+
+.graphite-resume-list {
+  gap: 0;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 10px;
+}
+
+.graphite-resume-list > li { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.graphite-resume-list > li + li { border-top: 1px solid var(--mn-graphite-line, var(--mn-border)); }
+.graphite-resume-list label { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px; cursor: pointer; }
+.graphite-resume-list input { margin: 0; accent-color: var(--mn-accent); }
+.graphite-resume-list__copy { display: flex; flex-direction: column; gap: 2px; }
+
 .app-dialog-panel__input {
   width: 100%;
   font-family: var(--font-mono);
@@ -109,6 +153,11 @@
 .app-dialog-panel__input:focus {
   outline: 2px solid var(--mn-accent);
   outline-offset: -1px;
+}
+
+textarea.app-dialog-panel__input {
+  resize: vertical;
+  font: inherit;
 }
 
 .app-dialog-panel__actions {

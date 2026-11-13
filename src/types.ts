@@ -1087,6 +1087,8 @@ export interface TurnSnapshot {
   thinkingMode: ThinkingResolvedMode;
   /** Resolved reasoning effort frozen for replay (when dropdown applies). */
   reasoningEffort?: ReasoningEffortOption;
+  /** Fast mode for the captured CLI binding. */
+  cliFastMode?: boolean;
   modeId: ModeId;
   workAgentId: string | null;
   workAgentAuto: boolean;
@@ -1216,6 +1218,9 @@ export interface SessionSummariesState {
 }
 
 export interface Chat {
+  /** Server-only transcript version paired with the loaded canonical history. */
+  historyDigest?: string;
+  historyRewriteRevision?: number;
   id: string;
   /** Server-owned persistent child identity; generic session writes cannot replace it. */
   agentConversation?: import('../server/chats/contracts').AgentConversationMeta;
@@ -1229,7 +1234,7 @@ export interface Chat {
   /** Lightweight server view; it carries no transcript, prompts or pending answer bodies. */
   agentExecution?: { executionId: string; commandId?: string | null; runId?: string | null; status: string;
     createdAt?: number; updatedAt?: number; settledAt?: number | null; workDurationMs?: number; modelSelection?: import('../server/chats/contracts').ModelSelection;
-    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string };
+    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string; needsManualRecovery?: true };
   agentPendingCommand?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentPendingCommand']>;
   agentActivityCursor?: import('../server/chats/activity').ChatActivityCursor;
   /** Server-projected next-message selection; queued inputs retain their own captured value. */
@@ -1288,6 +1293,8 @@ export interface Chat {
   reasoningEffort?: ReasoningEffortOption;
   /** Cursor Agent fast variant preference for this chat. */
   cursorFast?: boolean;
+  /** Opt-in speed override for the current Codex or Claude Code model. */
+  cliFastMode?: boolean;
   /** Active Work Agent; null = default / auto from mode (Step 08). */
   workAgentId?: string | null;
   /** When true, mode switch picks defaultForModes agent (Step 08). */
@@ -1504,19 +1511,7 @@ export interface SessionState {
   codeChangeTotalsByWorkspace?: Record<string, ChatCodeChangeTotals>;
 }
 
-/** Built-in system prompt template for the settings drawer. */
-export interface SystemPromptPreset {
-  id: string;
-  label: string;
-  text: string;
-}
-
 /** `localStorage` payload under `minnow.systemPrompt`. */
-export interface SystemPromptSettings {
-  presetId: string;
-  text: string;
-}
-
 // ── Completions ──────────────────────────────────────────────────────────────
 
 /** Provenance for a detected model capability (feature #11). */
@@ -1548,6 +1543,7 @@ export interface LmModelRecord {
   id: string;
   /** Optional catalog label; the id remains the value sent to the provider. */
   display_name?: string;
+  supportsFastMode?: boolean;
   type?: string;
   state?: string;
   quantization?: string;

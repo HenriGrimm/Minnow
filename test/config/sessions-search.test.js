@@ -115,6 +115,15 @@ describe('GET /api/config/sessions/search (FTS5)', () => {
     assert.ok(alpha.score >= 200);
   });
 
+  test('message-only results keep the matching transcript index when the title also matches', async () => {
+    const res = await httpRequest(baseUrl, 'GET', '/api/config/sessions/search?q=login&match=message&workspace=/ws/alpha');
+    assert.equal(res.status, 200);
+    const hit = res.json.results.find(row => row.chatId === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    assert.equal(hit?.matchedIn, 'message');
+    assert.ok(Number.isSafeInteger(hit.messageIndex) && hit.messageIndex >= 0);
+    assert.match(hit.snippet, /login/i);
+  });
+
   test('workspace scope limits results', async () => {
     const res = await httpRequest(
       baseUrl,

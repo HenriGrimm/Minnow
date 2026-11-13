@@ -14,7 +14,7 @@ test('search results open matching lines with mouse and keyboard; name-only resu
     namedExports: { openFileInViewer: (...args: unknown[]) => { opened.push(args); } },
   });
   mock.module('../../src/tools/client.ts', {
-    namedExports: { executeTool: async () => ({ content: 'src/app.ts:12:needle\nnotes.md:4:needle' }) },
+    namedExports: { executeWorkspaceFileAction: async () => ({ content: 'src/app.ts:12:needle\nnotes.md:4:needle' }) },
   });
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ files: ['src/app.ts', 'notes.md', 'needle.txt'] });

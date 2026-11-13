@@ -1,4 +1,5 @@
-import { iconHtml } from './icon';
+import { createIcon, iconHtml } from './icon';
+import { ROUTER_PROVIDER_ID } from '../models/routers';
 import { providerLogoId } from '../providers/identity';
 import { getCachedProviderList } from '../providers/store';
 import {
@@ -16,23 +17,16 @@ export interface ModelBrowserGroup<T> {
 }
 
 interface BrowserState {
-  active: string | null;
-  pinned: boolean;
-  timer?: ReturnType<typeof setTimeout>;
+  active?: string | typeof FAVORITES;
   navigate?: (event: KeyboardEvent) => boolean;
-  collapse?: () => void;
 }
+
+const FAVORITES = Symbol('Favorites');
 const browsers = new WeakMap<HTMLElement, BrowserState>();
 let browserId = 0;
 
 export function resetModelProviderBrowser(menu: HTMLElement): void {
-  const state = browsers.get(menu);
-  if (!state) return;
-  clearTimeout(state.timer);
-  state.active = null;
-  state.pinned = false;
-  state.navigate = undefined;
-  state.collapse = undefined;
+  browsers.delete(menu);
 }
 
 /** Owners with capture-phase keyboard handlers delegate before their legacy list navigation. */
@@ -46,130 +40,147 @@ export function renderModelProviderBrowser<T>(
   favorites: T[],
   appendEntry: (list: HTMLUListElement, entry: T) => void,
   rerender: () => void,
+  selectedProviderId?: string,
 ): void {
-  const state: BrowserState = browsers.get(menu) ?? { active: null, pinned: false };
-  if (!browsers.has(menu)) {
-    browsers.set(menu, state);
-    menu.addEventListener('keydown', event => {
-      if (!event.defaultPrevented) handleModelProviderBrowserKeydown(menu, event);
-    });
-    menu.addEventListener('pointerleave', () => {
-      clearTimeout(state.timer);
-      if (!state.pinned && !menu.contains(document.activeElement)) state.collapse?.();
-    });
-  }
-  const current = state;
-  clearTimeout(current.timer);
+  const state = browsers.get(menu) ?? {};
+  browsers.set(menu, state);
+  menu.onkeydown = event => {
+    if (!event.defaultPrevented) handleModelProviderBrowserKeydown(menu, event);
+  };
   const prefs = readModelPickerPreferences();
-  const usage = new Map(Object.entries(prefs.usage));
   groups.sort((a, b) => {
     if (prefs.sort === 'local') return Number(b.local) - Number(a.local) || a.label.localeCompare(b.label);
     if (prefs.sort === 'smart') {
       const rank = Number(b.hasFavorites) - Number(a.hasFavorites)
-        || (usage.get(b.id) ?? 0) - (usage.get(a.id) ?? 0);
+        || (prefs.usage[b.id] ?? 0) - (prefs.usage[a.id] ?? 0);
       if (rank) return rank;
     }
     return a.label.localeCompare(b.label);
   });
+
   menu.classList.add('model-provider-browser');
   menu.setAttribute('role', 'group');
   menu.setAttribute('aria-label', 'Browse models');
-  const id = `model-provider-pane-${++browserId}`;
-  const favoriteSection = document.createElement('li');
-  favoriteSection.className = 'model-picker-favorites';
-  favoriteSection.setAttribute('role', 'presentation');
-  const heading = document.createElement('div');
-  heading.className = 'model-browser-heading';
-  heading.innerHTML = iconHtml('star');
-  const title = document.createElement('span');
-  title.textContent = 'Favorites';
-  const count = document.createElement('span');
-  count.className = 'model-browser-count';
-  count.textContent = String(favorites.length);
-  heading.append(title, count);
-  const favoriteList = document.createElement('ul');
-  favoriteList.className = 'model-browser-models model-browser-favorite-list';
-  favoriteList.setAttribute('role', 'listbox');
-  favoriteList.setAttribute('aria-label', 'Favorite models');
-  for (const entry of favorites) appendEntry(favoriteList, entry);
-  favoriteSection.append(heading, favoriteList);
-  if (!favorites.length) {
-    const empty = document.createElement('div');
-    empty.className = 'model-browser-favorites-empty';
-    empty.textContent = 'Star a model to keep it here.';
-    favoriteSection.appendChild(empty);
-  }
-
   const browse = document.createElement('li');
   browse.className = 'model-browser-providers';
   browse.setAttribute('role', 'presentation');
-  const toolbar = document.createElement('div');
-  toolbar.className = 'model-browser-heading';
-  const providersLabel = document.createElement('span');
-  providersLabel.textContent = 'Providers';
-  const sort = document.createElement('select');
-  sort.className = 'model-browser-sort';
-  sort.setAttribute('aria-label', 'Sort providers');
-  sort.title = 'Smart order puts providers with favorites first, then your most used providers';
-  for (const [value, label] of [['smart', 'Smart order'], ['name', 'Name A–Z'], ['local', 'Local first']]) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.text = label;
-    sort.appendChild(option);
-  }
-  sort.value = prefs.sort;
-  sort.addEventListener('change', () => { setModelProviderSort(sort.value as ModelProviderSort); rerender(); });
-  toolbar.append(providersLabel, sort);
   const columns = document.createElement('div');
   columns.className = 'model-browser-columns';
   const rail = document.createElement('div');
   rail.className = 'model-browser-rail';
-  rail.setAttribute('role', 'group');
-  rail.setAttribute('aria-label', 'Providers');
+  const tabList = document.createElement('div');
+  tabList.setAttribute('role', 'tablist');
+  tabList.setAttribute('aria-label', 'Model providers and favorites');
+  tabList.setAttribute('aria-orientation', 'vertical');
+  rail.append(tabList);
   const pane = document.createElement('div');
   pane.className = 'model-browser-pane';
-  pane.id = id;
-  const buttons: HTMLButtonElement[] = [];
-  function activate(providerId: string | null, pinned: boolean): void {
-    clearTimeout(current.timer);
-    const group = groups.find(candidate => candidate.id === providerId);
-    current.active = group?.id ?? null;
-    current.pinned = Boolean(group && pinned);
-    buttons.forEach(button => button.setAttribute('aria-expanded', String(button.dataset.providerId === current.active)));
-    pane.replaceChildren();
-    if (!group) {
-      const empty = document.createElement('div');
-      empty.className = 'model-browser-empty';
-      const label = document.createElement('strong');
-      label.textContent = 'Browse a provider';
-      const hint = document.createElement('span');
-      hint.textContent = 'Hover to preview models. Click to keep a group open.';
-      empty.append(label, hint);
-      pane.appendChild(empty);
-    } else {
-      const label = document.createElement('div');
-      label.className = 'model-browser-pane-heading';
-      label.textContent = `${group.label} · ${group.local ? 'Local' : 'Cloud'}${current.pinned ? ' · Pinned' : ''}`;
-      const list = document.createElement('ul');
-      list.className = 'model-browser-models';
-      list.setAttribute('role', 'listbox');
-      list.setAttribute('aria-label', `${group.label} models`);
-      group.entries.forEach(entry => appendEntry(list, entry));
-      pane.append(label, list);
-    }
-    menu.removeAttribute('aria-activedescendant');
-    menu.querySelectorAll('.model-select-option--active').forEach(row => row.classList.remove('model-select-option--active'));
+  pane.id = `model-provider-pane-${++browserId}`;
+  pane.setAttribute('role', 'tabpanel');
+  const tabs = new Map<string | typeof FAVORITES, HTMLButtonElement>();
+  const isPhone = document.documentElement.classList.contains('mn-phone');
+  const defaultProvider = groups.find(group => group.id === selectedProviderId)?.id ?? groups[0]?.id;
+
+  const sort = document.createElement('select');
+  sort.className = 'model-browser-sort';
+  sort.setAttribute('aria-label', 'Sort providers');
+  for (const [value, label] of [['smart', 'Smart order'], ['name', 'Name A–Z'], ['local', 'Local first']]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.text = label;
+    sort.append(option);
   }
-  for (const group of groups) {
+  sort.value = prefs.sort;
+  sort.addEventListener('change', () => {
+    setModelProviderSort(sort.value as ModelProviderSort);
+    rerender();
+    menu.querySelector<HTMLSelectElement>('.model-browser-sort')?.focus();
+  });
+
+  function activate(key?: string | typeof FAVORITES): void {
+    state.active = key;
+    columns.classList.toggle('is-provider-open', key !== undefined);
+    const activeTab = key === undefined ? undefined : tabs.get(key);
+    for (const tab of tabs.values()) {
+      tab.setAttribute('aria-selected', String(tab === activeTab));
+      tab.tabIndex = tab === (activeTab ?? tabs.get(FAVORITES)) ? 0 : -1;
+    }
+    pane.replaceChildren();
+    if (!activeTab) {
+      pane.removeAttribute('aria-labelledby');
+      rail.prepend(sort);
+      return;
+    }
+    pane.setAttribute('aria-labelledby', activeTab.id);
+    const group = groups.find(candidate => candidate.id === key);
+    const heading = document.createElement('div');
+    heading.className = 'model-browser-pane-heading';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'model-browser-back';
+    back.setAttribute('aria-label', 'Back to providers');
+    back.innerHTML = iconHtml('chevronLeft');
+    back.addEventListener('click', () => {
+      activate();
+      for (const tab of tabs.values()) tab.tabIndex = tab === activeTab ? 0 : -1;
+      activeTab.focus();
+    });
+    heading.append(back, group?.label ?? 'Favorites');
+    if (!isPhone) heading.append(sort);
+    const list = document.createElement('ul');
+    list.className = 'model-browser-models';
+    if (!group) list.classList.add('model-browser-favorite-list');
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', group ? `${group.label} models` : 'Favorite models');
+    for (const entry of group?.entries ?? favorites) appendEntry(list, entry);
+    pane.append(heading, list);
+    if (!group && !favorites.length) {
+      const empty = document.createElement('p');
+      empty.className = 'model-browser-favorites-empty';
+      empty.textContent = 'Star a model to keep it here.';
+      const emptyRow = document.createElement('li');
+      emptyRow.setAttribute('role', 'presentation');
+      emptyRow.append(empty);
+      list.append(emptyRow);
+    }
+  }
+
+  function addTab(key: string | typeof FAVORITES, label: string, mark: HTMLElement): void {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'model-browser-provider';
-    button.dataset.providerId = group.id;
-    button.setAttribute('aria-controls', id);
-    button.setAttribute('aria-expanded', 'false');
+    button.className = key === FAVORITES ? 'model-browser-tab model-browser-favorites-tab' : 'model-browser-tab model-browser-provider';
+    if (typeof key === 'string') button.dataset.providerId = key;
+    button.id = `${pane.id}-tab-${tabs.size}`;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', pane.id);
+    const name = document.createElement('span');
+    name.className = 'model-browser-provider-name';
+    name.textContent = label;
+    button.append(mark, name);
+    button.addEventListener('click', () => {
+      if (button.getAttribute('aria-selected') !== 'true') activate(key);
+      if (isPhone) pane.querySelector<HTMLButtonElement>('.model-browser-back')?.focus({ preventScroll: true });
+    });
+    tabs.set(key, button);
+    tabList.append(button);
+  }
+
+  const star = document.createElement('span');
+  star.className = 'model-browser-provider-mark';
+  star.setAttribute('aria-hidden', 'true');
+  star.innerHTML = iconHtml('starFilled');
+  addTab(FAVORITES, 'Favorites', star);
+  for (const group of groups) {
     const mark = document.createElement('span');
     mark.className = 'model-browser-provider-mark';
     mark.setAttribute('aria-hidden', 'true');
+    if (group.id === ROUTER_PROVIDER_ID) {
+      mark.append(createIcon('modelPool'));
+      addTab(group.id, group.label, mark);
+      continue;
+    }
     const provider = getCachedProviderList()?.providers.find(candidate => candidate.id === group.id);
     const logo = group.id === 'minnow-library' ? 'minnow' : providerLogoId(provider ?? {
       id: group.id,
@@ -184,64 +195,43 @@ export function renderModelProviderBrowser<T>(
       mark.dataset.logo = logo;
       mark.append(glyph);
     } else {
-      mark.innerHTML = iconHtml('globe');
+      mark.textContent = group.label.slice(0, 2).toUpperCase();
     }
-    const name = document.createElement('span');
-    name.className = 'model-browser-provider-name';
-    name.textContent = group.label;
-    const count = document.createElement('span');
-    count.className = 'model-browser-count';
-    count.textContent = String(group.entries.length);
-    const chevron = document.createElement('span');
-    chevron.innerHTML = iconHtml('chevronRight');
-    chevron.setAttribute('aria-hidden', 'true');
-    button.append(mark, name, count, chevron);
-    button.addEventListener('pointerenter', event => {
-      if (event.pointerType === 'touch' || current.pinned || current.active === group.id) return;
-      clearTimeout(current.timer);
-      current.timer = setTimeout(() => {
-        if (button.isConnected && !current.pinned) activate(group.id, false);
-      }, 180);
-    });
-    button.addEventListener('pointerleave', () => clearTimeout(current.timer));
-    button.addEventListener('focus', () => { if (!current.pinned && current.active !== group.id) activate(group.id, false); });
-    button.addEventListener('click', () => {
-      if (current.active === group.id && current.pinned) activate(null, false);
-      else activate(group.id, true);
-    });
-    buttons.push(button);
-    rail.appendChild(button);
+    addTab(group.id, group.label, mark);
   }
   columns.append(rail, pane);
-  browse.append(toolbar, columns);
-  menu.append(favoriteSection, browse);
-  activate(current.active, current.pinned);
-  current.collapse = () => activate(null, false);
-  current.navigate = event => {
+  browse.append(columns);
+  menu.append(browse);
+  activate(state.active !== undefined && tabs.has(state.active) ? state.active : isPhone ? undefined : defaultProvider);
+
+  state.navigate = event => {
     const target = event.target as HTMLElement | null;
-    if (!target?.closest) return false;
-    // Stars, sorting, and reasoning keep their native keyboard behavior.
-    if (target.closest('.model-select-favorite, select, .model-menu-actions, .composer-model-reasoning')) return false;
-    const provider = target.closest<HTMLButtonElement>('.model-browser-provider');
-    const row = target.closest<HTMLElement>('.model-select-option');
-    if (provider && event.key === 'ArrowRight') {
-      activate(provider.dataset.providerId ?? null, true);
+    if (!target?.closest || target.closest('.model-select-favorite, select, .model-menu-actions, .composer-model-reasoning')) return false;
+    const tab = target.closest<HTMLButtonElement>('.model-browser-tab');
+    const rows = [...pane.querySelectorAll<HTMLElement>('.model-select-option')];
+    if (tab && event.key === 'ArrowRight') {
+      tab.click();
       pane.querySelector<HTMLElement>('.model-select-option')?.focus();
     } else if (pane.contains(target) && event.key === 'ArrowLeft') {
-      buttons.find(button => button.dataset.providerId === current.active)?.focus();
+      if (isPhone) pane.querySelector<HTMLButtonElement>('.model-browser-back')?.click();
+      else rail.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
     } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
       if (target.tagName === 'INPUT' && ['Home', 'End'].includes(event.key)) return false;
-      let targets: HTMLElement[];
-      if (provider) targets = buttons;
-      else if (row && pane.contains(row)) targets = [...pane.querySelectorAll<HTMLElement>('.model-select-option')];
-      else targets = [...menu.querySelectorAll<HTMLElement>('.model-select-reset'), ...favoriteList.querySelectorAll<HTMLElement>('.model-select-option'), ...buttons];
+      const targets = tab ? [...tabs.values()] : rows.includes(target) ? rows
+        : [...menu.querySelectorAll<HTMLElement>('.model-select-reset'), ...rows, ...(!rows.length ? tabs.values() : [])];
       if (!targets.length) return false;
       const index = targets.indexOf(target);
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? targets.length - 1
         : index < 0 ? (event.key === 'ArrowUp' ? targets.length - 1 : 0)
           : Math.max(0, Math.min(targets.length - 1, index + (event.key === 'ArrowUp' ? -1 : 1)));
-      targets[next]?.focus();
-      targets[next]?.scrollIntoView({ block: 'nearest' });
+      const element = targets[next];
+      if (tab && !isPhone) element.click();
+      else if (tab) {
+        tab.tabIndex = -1;
+        element.tabIndex = 0;
+      }
+      element.focus();
+      element.scrollIntoView({ block: 'nearest' });
     } else return false;
     event.preventDefault();
     event.stopPropagation();

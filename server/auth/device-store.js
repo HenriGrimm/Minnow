@@ -447,14 +447,15 @@ export function renameDevice(id, name) {
 /**
  * Remove a device and every credential it holds, synchronously.
  * @param {string} id
+ * @param {import('http').ServerResponse} [reply] The device's own disconnect response, if any.
  */
-export function revokeDevice(id) {
+export function revokeDevice(id, reply) {
   const store = readStore();
   const nextDevices = store.devices.filter((device) => device.id !== id);
   if (nextDevices.length === store.devices.length) return false;
   pendingActivity.delete(id);
   writeStore({ ...store, devices: nextDevices });
-  closeDeviceTransports(id);
+  closeDeviceTransports(id, undefined, reply);
   return true;
 }
 

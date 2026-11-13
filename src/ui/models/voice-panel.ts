@@ -50,6 +50,7 @@ import { fetchSttStatus, fetchTtsStatus, synthesizeSpeech } from '../voice-contr
 import { createSettingsActionsRow } from '../settings-controls';
 import { appendSettingsCrosslinks, appendSettingsGroup } from '../settings-layout';
 import { withButtonBusy } from './dom';
+import { createIcon } from '../icon';
 
 type VoiceSubSection = 'stt' | 'tts';
 
@@ -946,8 +947,8 @@ async function saveTtsSettings(): Promise<void> {
 
 let ttsTestAudio: HTMLAudioElement | null = null;
 
-async function runTtsVoiceTest(): Promise<void> {
-  const resultEl = document.getElementById('modelsVoiceTtsTestResult');
+async function runTtsVoiceTest(persistForm = true): Promise<void> {
+  const resultEl = document.getElementById(persistForm ? 'modelsVoiceTtsTestResult' : 'modelsVoiceQuickPreviewResult');
   const sample =
     (document.getElementById('modelsVoiceTtsTestText') as HTMLInputElement | null)?.value?.trim() ||
     'Hello from Minnow voice.';
@@ -956,13 +957,14 @@ async function runTtsVoiceTest(): Promise<void> {
   try {
     if (ttsBackend === 'browser') {
       const { speakWithBrowser } = await import('../voice-controls');
-      const browser = readTtsBrowserFromForm(voiceConfig ?? (await loadVoiceMeta()));
+      const config = voiceConfig ?? (await loadVoiceMeta());
+      const browser = persistForm ? readTtsBrowserFromForm(config) : config.tts.browser;
       speakWithBrowser(sample, browser.voiceUri, browser.rate, browser.pitch, browser.volume);
       if (resultEl) resultEl.textContent = 'Playing via browser speechSynthesis.';
       return;
     }
 
-    await saveTtsSettings();
+    if (persistForm) await saveTtsSettings();
     const blob = await synthesizeSpeech(sample);
     if (ttsTestAudio) {
       ttsTestAudio.pause();
@@ -1132,6 +1134,92 @@ async function refreshActiveBackendSummary(): Promise<void> {
           ? 'System voice'
           : `Provider · ${config.tts.provider.providerId || 'not configured'}`;
   }
+  const quickStt = document.querySelector<HTMLSelectElement>('#modelsVoiceQuickStt');
+  const quickTts = document.querySelector<HTMLSelectElement>('#modelsVoiceQuickTts');
+  if (quickStt && sttSummary) {
+    quickStt.querySelector<HTMLOptionElement>(`option[value="${sttBackend}"]`)!.text = sttSummary.textContent ?? sttBackend;
+    quickStt.value = sttBackend;
+    quickStt.disabled = false;
+  }
+  if (quickTts && ttsSummary) {
+    quickTts.querySelector<HTMLOptionElement>(`option[value="${ttsBackend}"]`)!.text = ttsSummary.textContent ?? ttsBackend;
+    quickTts.value = ttsBackend;
+    quickTts.disabled = false;
+  }
+}
+
+function mountGraphiteVoiceOverview(shell: HTMLElement, catalog: HTMLElement): void {
+  const heading = el('div', 'models-graphite-section-heading models-voice-overview-heading');
+  heading.append(el('h2', undefined, 'Voice'), el('p', undefined, 'Dictation in the composer and read-aloud.'));
+  const overview = el('div', 'models-voice-overview');
+  const options = {
+    stt: { builtin: 'Built-in dictation', local: 'Local speech model', provider: 'Connected provider' },
+    tts: { browser: 'System voice', local: 'Local voice model', provider: 'Connected provider' },
+  } as const;
+  const controls: HTMLSelectElement[] = [];
+  for (const id of ['stt', 'tts'] as const) {
+    const title = id === 'stt' ? 'Speech to text' : 'Text to speech';
+    const card = el('section', 'models-voice-quick-card');
+    const cardHeading = el('h3');
+    cardHeading.append(createIcon(id === 'stt' ? 'mic' : 'speaker', { size: 14 }), title);
+    const select = el('select');
+    select.id = id === 'stt' ? 'modelsVoiceQuickStt' : 'modelsVoiceQuickTts';
+    select.setAttribute('aria-label', `${title} backend`);
+    select.disabled = true;
+    controls.push(select);
+    for (const [value, label] of Object.entries(options[id])) select.append(new Option(label, value));
+    select.addEventListener('change', () => {
+      const value = select.value;
+      controls.forEach((control) => { control.disabled = true; });
+      void (async () => {
+        try {
+          const patch = id === 'stt'
+            ? { stt: { backend: value as VoiceConfig['stt']['backend'] } }
+            : { tts: { backend: value as VoiceConfig['tts']['backend'] } };
+          const saved = await saveVoiceMeta(patch);
+          if (!saved) {
+            setStatus('err', 'Could not save voice backend. Open or restart Minnow.');
+            return;
+          }
+          voiceConfig = saved;
+          if (id === 'stt') renderSttSettingsSection();
+          else await renderTtsSettingsSection();
+        } catch {
+          setStatus('err', 'Could not update voice settings.');
+        } finally {
+          await refreshActiveBackendSummary();
+        }
+      })();
+    });
+    const actions = el('div', 'models-voice-quick-card__actions');
+    if (id === 'tts') {
+      const preview = voiceActionButton('Preview voice');
+      preview.addEventListener('click', () => { void withButtonBusy(preview, 'Preparing…', () => runTtsVoiceTest(false)); });
+      actions.append(preview);
+    }
+    const manage = voiceActionButton(id === 'stt' ? 'Dictation settings' : 'Voice settings');
+    manage.setAttribute('aria-controls', catalog.id);
+    manage.setAttribute('aria-expanded', 'false');
+    manage.addEventListener('click', () => {
+      const wasExpanded = manage.getAttribute('aria-expanded') === 'true';
+      overview.querySelectorAll('[aria-expanded]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+      catalog.classList.toggle('is-expanded', !wasExpanded);
+      if (!wasExpanded) {
+        manage.setAttribute('aria-expanded', 'true');
+        setActiveSubSection(id);
+      }
+    });
+    actions.append(manage);
+    card.append(cardHeading, select, actions);
+    if (id === 'tts') {
+      const result = el('p', 'models-voice-quick-card__status');
+      result.id = 'modelsVoiceQuickPreviewResult';
+      result.setAttribute('role', 'status');
+      card.append(result);
+    }
+    overview.append(card);
+  }
+  shell.append(heading, overview, catalog);
 }
 
 /** Mount Models → Voice panel on first activation. */
@@ -1143,6 +1231,9 @@ export function mountVoicePanel(): void {
   body.replaceChildren();
   const shell = el('div', 'settings-general settings-voice');
   body.appendChild(shell);
+  const catalog = el('div', 'models-voice-catalog');
+  catalog.id = 'modelsVoiceCatalog';
+  mountGraphiteVoiceOverview(shell, catalog);
 
   const advanced = el('details', 'settings-voice-advanced');
   advanced.appendChild(el('summary', 'settings-row__title', 'Advanced local voice setup'));
@@ -1172,7 +1263,7 @@ export function mountVoicePanel(): void {
     btn.addEventListener('click', () => setActiveSubSection(id));
     tabs.appendChild(btn);
   }
-  shell.appendChild(tabs);
+  catalog.appendChild(tabs);
 
   const content = el('div', 'settings-general__content settings-voice-panels');
   const sttPanel = el('section', 'settings-voice-panel');
@@ -1190,10 +1281,10 @@ export function mountVoicePanel(): void {
   mountTtsPanel(ttsPanel);
   content.appendChild(ttsPanel);
 
-  shell.appendChild(content);
-  shell.appendChild(advanced);
+  catalog.appendChild(content);
+  catalog.appendChild(advanced);
 
-  appendSettingsCrosslinks(shell, [{ label: 'Audio devices', sectionId: 'audio' }]);
+  appendSettingsCrosslinks(catalog, [{ label: 'Audio devices', sectionId: 'audio' }]);
 
   setActiveSubSection(activeSub);
 

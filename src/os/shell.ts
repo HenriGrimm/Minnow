@@ -10,8 +10,17 @@ import { renderMenubar } from './menubar';
 import { initWorkspaceGate } from './workspace-gate';
 import { isOsShellEnabled } from './page-bridge';
 import { isAppWindowRenderer } from './app-window';
+import { initGraphiteWorkspace } from './graphite-workspace';
+import { initGraphiteAppChrome } from './graphite-app-chrome';
 
 let shellCleanup: (() => void) | null = null;
+
+/** Release shell subscriptions and view-owned timers. */
+export function disposeOsShell(): void {
+  const cleanup = shellCleanup;
+  shellCleanup = null;
+  cleanup?.();
+}
 
 function ensureShellDom(): { menubar: HTMLElement } {
   let root = document.getElementById('minnowOsRoot');
@@ -89,7 +98,7 @@ function ensureShellDom(): { menubar: HTMLElement } {
 export function initOsShell(): void {
   if (!isOsShellEnabled()) return;
 
-  shellCleanup?.();
+  disposeOsShell();
 
   document.documentElement.classList.add('minnow-os-enabled');
 
@@ -101,6 +110,10 @@ export function initOsShell(): void {
   const cleanupRail = appWindow || !railEl
     ? () => {}
     : initAppRail(railEl);
+  const cleanupGraphiteWorkspace = appWindow || !railEl
+    ? () => {}
+    : initGraphiteWorkspace(railEl, menubar);
+  const cleanupAppChrome = initGraphiteAppChrome();
   if (appWindow && railEl) {
     railEl.hidden = true;
     railEl.replaceChildren();
@@ -109,6 +122,9 @@ export function initOsShell(): void {
     initWorkspaceGate();
   }
   shellCleanup = () => {
+    window.removeEventListener('beforeunload', disposeOsShell);
+    cleanupGraphiteWorkspace();
+    cleanupAppChrome();
     cleanupMenubar();
     cleanupRail();
   };
@@ -120,12 +136,5 @@ export function initOsShell(): void {
     m.syncAppSurfaceMruFromShell();
   });
 
-  window.addEventListener(
-    'beforeunload',
-    () => {
-      shellCleanup?.();
-      shellCleanup = null;
-    },
-    { once: true },
-  );
+  window.addEventListener('beforeunload', disposeOsShell, { once: true });
 }

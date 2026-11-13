@@ -16,6 +16,7 @@ export function normalizeModelsForUi(
   return data.map((m) => ({
     id: m.id,
     ...(m.display_name ? { display_name: m.display_name } : {}),
+    ...(apiKind === 'agent-cli-v1' && m.supportsFastMode === true ? { supportsFastMode: true } : {}),
     type:
       m.type ||
       (apiKind === 'openai-v1' || apiKind === 'anthropic-v1' || apiKind === 'agent-cli-v1'

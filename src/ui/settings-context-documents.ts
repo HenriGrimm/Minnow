@@ -53,7 +53,7 @@ function renderPresetList(
   documents: ContextDocumentsConfig,
   onChange: (next: ContextDocumentsConfig) => void,
 ): void {
-  const stack = el('div', 'settings-field-stack');
+  const stack = el('div', 'settings-field-stack settings-group__panel');
   stack.dataset.settingsSearchKey = 'agents.injection.contextDocuments.presets';
 
   const labelId = 'settingsContextDocumentsPresetsLabel';
@@ -61,12 +61,12 @@ function renderPresetList(
   label.id = labelId;
   stack.appendChild(label);
 
-  const list = el('div', 'settings-checklist settings-context-documents-checklist');
+  const list = el('div', 'settings-context-documents-checklist');
   list.setAttribute('role', 'group');
   list.setAttribute('aria-labelledby', labelId);
 
   for (const preset of CONTEXT_DOCUMENT_PRESETS) {
-    const row = el('label', 'settings-checklist__option settings-checklist__option--stacked');
+    const row = el('label', 'settings-checklist__option');
 
     const input = el('input') as HTMLInputElement;
     input.type = 'checkbox';
@@ -81,11 +81,11 @@ function renderPresetList(
       onChange({ ...documents, enabledPresets: [...enabled] });
     });
 
-    const text = el('span', 'settings-context-documents-checklist__text');
-    text.appendChild(el('span', 'settings-checklist__label-text', preset.label));
-    text.appendChild(el('span', 'settings-context-documents-checklist__desc', preset.description));
+    const text = el('span', 'settings-row__label');
+    text.appendChild(el('span', 'settings-row__title', preset.label));
+    text.appendChild(el('span', 'settings-row__desc', preset.description));
 
-    row.append(input, text);
+    row.append(text, input);
     list.appendChild(row);
   }
 
@@ -98,7 +98,7 @@ function renderCustomPaths(
   documents: ContextDocumentsConfig,
   onChange: (next: ContextDocumentsConfig) => void,
 ): void {
-  const stack = el('div', 'settings-field-stack settings-context-documents-custom');
+  const stack = el('div', 'settings-field-stack settings-group__panel');
   stack.dataset.settingsSearchKey = 'agents.injection.contextDocuments.custom';
 
   const labelId = 'settingsContextDocumentsCustomLabel';
@@ -163,7 +163,7 @@ function renderCustomPaths(
     paths.push('');
     onChange({ ...documents, customPaths: [...paths] });
     renderRows();
-    const lastInput = list.querySelector<HTMLInputElement>('.settings-context-documents-custom__row .settings-input');
+    const lastInput = list.lastElementChild?.querySelector<HTMLInputElement>('.settings-input');
     lastInput?.focus();
   });
   stack.appendChild(addBtn);
@@ -231,8 +231,6 @@ export async function renderContextDocumentsInjectionSection(
     });
   };
 
-  const panel = el('div', 'settings-context-documents-panel');
-  renderPresetList(panel, documents, onDocumentsChange);
-  renderCustomPaths(panel, documents, onDocumentsChange);
-  groupBody.appendChild(panel);
+  renderPresetList(groupBody, documents, onDocumentsChange);
+  renderCustomPaths(groupBody, documents, onDocumentsChange);
 }

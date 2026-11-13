@@ -30,6 +30,24 @@ export interface CreateProviderPayload {
   pricing?: ProviderPricing | null;
 }
 
+/** Check an unsaved provider's model catalog without writing its settings or key. */
+export async function testDraftProviderConnection(
+  draft: Pick<CreateProviderPayload, 'baseUrl' | 'apiKind' | 'authStyle' | 'modelsPath'> & { apiKey?: string },
+  signal?: AbortSignal,
+): Promise<number> {
+  const response = await fetch('/api/providers/connection/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+    signal,
+  });
+  const body = await response.json() as { modelCount?: number; error?: string };
+  if (!response.ok || typeof body.modelCount !== 'number') {
+    throw new Error(body.error || 'Could not test the connection. Try again.');
+  }
+  return body.modelCount;
+}
+
 /** Body for PUT /api/providers/:id (id is not mutable). */
 export interface UpdateProviderPayload {
   label?: string;

@@ -1,5 +1,5 @@
 /**
- * Per-chat pinned slash skill resolution (sticky thread injection).
+ * Resolve the turn's slash skill and any persistent chat pin.
  */
 
 import {
@@ -34,35 +34,21 @@ export function isCavemanStopPhrase(text: string): boolean {
   return CAVEMAN_STOP_RE.test(text.trim());
 }
 
-function clonePinned(pinned: PinnedSkillState | null | undefined): PinnedSkillState | null {
-  if (!pinned) return null;
-  return { ...pinned };
-}
-
-function pinFromSlash(
-  slashSkillId: string,
+function cavemanPin(
   userText: string,
   previous: PinnedSkillState | null,
 ): PinnedSkillState {
-  if (slashSkillId === CAVEMAN_SKILL_ID) {
-    const parsed = parseCavemanIntensity(userText);
-    const intensity =
-      parsed ??
-      (isCavemanIntensity(previous?.intensity)
-        ? previous.intensity
-        : DEFAULT_CAVEMAN_INTENSITY);
-    return { id: CAVEMAN_SKILL_ID, intensity };
-  }
-  return { id: slashSkillId };
+  const intensity = parseCavemanIntensity(userText) ??
+    (isCavemanIntensity(previous?.intensity) ? previous.intensity : DEFAULT_CAVEMAN_INTENSITY);
+  return { id: CAVEMAN_SKILL_ID, intensity };
 }
 
 /**
- * Resolve effective skill for this turn and update pinned state.
- * Slash wins over pin; stop phrases clear caveman pin.
+ * A slash skill takes precedence for this turn. Caveman and Party Mode also pin themselves.
  */
 export function resolveTurnSkill(input: ResolveTurnSkillInput): ResolveTurnSkillResult {
   const { slashSkillId, userText, isSkillEnabled } = input;
-  let nextPinned = clonePinned(input.pinned);
+  let nextPinned = input.pinned ?? null;
 
   if (isCavemanStopPhrase(userText)) {
     if (nextPinned?.id === CAVEMAN_SKILL_ID) {
@@ -86,7 +72,8 @@ export function resolveTurnSkill(input: ResolveTurnSkillInput): ResolveTurnSkill
     if (!isSkillEnabled(slashSkillId)) {
       return { skillId: null, nextPinned, fromPin: false };
     }
-    nextPinned = pinFromSlash(slashSkillId, userText, nextPinned);
+    if (slashSkillId === CAVEMAN_SKILL_ID) nextPinned = cavemanPin(userText, nextPinned);
+    if (slashSkillId === PARTYMODE_SKILL_ID) nextPinned = { id: PARTYMODE_SKILL_ID };
     return { skillId: slashSkillId, nextPinned, fromPin: false };
   }
 

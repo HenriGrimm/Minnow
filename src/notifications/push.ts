@@ -9,6 +9,7 @@ import { noteAgentMessage } from '../os/instances';
 import { shouldNotifyForChatTurn } from './background';
 import { notifyOs } from './os-notification';
 import { isNotificationKindEnabled, loadNotificationPrefs } from './prefs';
+import { allowsPhoneAlert } from './phone-prefs';
 import { playNotificationSound, shouldPlayNotificationSound } from './sound';
 import {
   appendNotification,
@@ -73,7 +74,7 @@ export function pushNotification(input: PushNotificationInput): NotificationReco
 
   appendNotification(record);
 
-  if (input.silent || !isNotificationKindEnabled(input.kind)) return record;
+  if (input.silent || !isNotificationKindEnabled(input.kind) || !allowsPhoneAlert(record)) return record;
 
   const legacyMsg = input.preview.trim() || input.title;
   noteAgentMessage(input.appId, legacyMsg);
@@ -111,7 +112,7 @@ export function pushNotificationOrActiveChatSound(
 
   if (onActiveChat) {
     const record = pushNotification({ ...input, silent: true });
-    if (!record || input.silent || !prefs.soundOnActiveChat || !isNotificationKindEnabled(input.kind)) return record;
+    if (!record || input.silent || !prefs.soundOnActiveChat || !isNotificationKindEnabled(input.kind) || !allowsPhoneAlert(record)) return record;
     if (shouldPlayNotificationSound(input.kind, input.chatId)) {
       playNotificationSound(input.kind);
     }

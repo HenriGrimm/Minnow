@@ -125,12 +125,12 @@ function bindFilePanelControls(): void {
   }
 
   window.addEventListener('keydown', (e) => {
-    if (e.key !== '\\' || !(e.ctrlKey || e.metaKey)) return;
+    if (e.defaultPrevented || e.repeat || e.altKey || e.shiftKey || e.key !== '\\' || !(e.ctrlKey || e.metaKey)) return;
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
     if (
       !target.closest(
-        '#rightPaneSlotPrimary, #rightPaneSlotSecondary, #fileViewerHost, #previewBody',
+        '#rightPaneSlotPrimary, #rightPaneSlotSecondary, .file-viewer-pane, .preview-pane',
       )
     ) {
       return;

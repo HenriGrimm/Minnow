@@ -10,7 +10,7 @@ const fixtures = JSON.parse(
   readFileSync(join(__dirname, '../fixtures/step01/stream-labels.json'), 'utf8'),
 );
 
-const { attachStreamStatus, STREAM_LABEL_GENERATING, STREAM_LABEL_LOADING_MODEL, STREAM_LABEL_THINKING } =
+const { attachStreamStatus, createStreamStatusElement, STREAM_LABEL_GENERATING, STREAM_LABEL_LOADING_MODEL, STREAM_LABEL_THINKING } =
   await import('../../src/ui/stream-status.ts');
 
 function setupDom() {
@@ -41,13 +41,51 @@ test('attachStreamStatus starts in generating', () => {
   assert.equal(labelEl?.textContent, fixtures.generating);
   assert.equal(labelEl?.textContent, STREAM_LABEL_GENERATING);
   assert.equal(status?.getAttribute('aria-busy'), 'true');
-  assert.equal(labelEl.querySelector('.activity-shimmer__text').textContent, fixtures.generating);
-  assert.equal(labelEl.querySelector('.activity-shimmer__visual').getAttribute('aria-hidden'), 'true');
-  assert.equal(status.querySelector('.stream-status__dots'), null);
-  assert.equal(labelEl.querySelectorAll('.activity-shimmer__dot').length, 3);
+  assert.equal(status.getAttribute('role'), 'status');
   const letter = labelEl.querySelector('.activity-shimmer__char');
+  assert.ok(letter);
+  assert.equal(labelEl.querySelectorAll('.activity-shimmer__dot').length, 3);
   handle.setPhase('generating');
-  assert.equal(labelEl.querySelector('.activity-shimmer__char'), letter, 'repeated phases preserve the animation');
+  assert.ok(labelEl.querySelector('.activity-shimmer__char') === letter, 'repeated phases leave the ripple running');
+  handle.dispose();
+});
+
+test('Sending crossfades into the active phase without rebuilding the outgoing animation', () => {
+  const window = setupDom();
+  const wrap = document.createElement('div');
+  const status = createStreamStatusElement('Sending…');
+  wrap.append(status);
+  document.body.append(wrap);
+  const sending = status.querySelector('.activity-shimmer__visual');
+  const sendingLetter = sending.querySelector('.activity-shimmer__char');
+  const handle = attachStreamStatus(wrap);
+
+  assert.ok(wrap.querySelector('.stream-status') === status);
+  assert.ok(sending.classList.contains('activity-shimmer__visual--outgoing'));
+  assert.ok(sending.querySelector('.activity-shimmer__char') === sendingLetter);
+  const incoming = status.querySelector('.activity-shimmer__visual--incoming');
+  assert.ok(incoming?.querySelector('.activity-shimmer__char'));
+  assert.equal(status.querySelector('.stream-status__label').textContent, STREAM_LABEL_GENERATING);
+
+  handle.setPhase('loading_model');
+  assert.ok(status.querySelector('.activity-shimmer__visual--incoming') === incoming, 'a rapid phase update keeps the fade in progress');
+  assert.ok(status.querySelector('.activity-shimmer__visual--outgoing') === sending);
+  assert.equal(status.querySelector('.stream-status__label').textContent, STREAM_LABEL_LOADING_MODEL);
+  sending.dispatchEvent(Object.assign(new window.Event('animationend'), { animationName: 'activity-shimmer-exit' }));
+  assert.equal(status.querySelector('.activity-shimmer__visual--outgoing'), null);
+  handle.dispose();
+});
+
+test('reduced motion updates the label immediately', () => {
+  setupDom();
+  document.documentElement.setAttribute('data-reduce-motion', '');
+  const wrap = document.createElement('div');
+  const status = createStreamStatusElement('Sending…');
+  wrap.append(status);
+  const handle = attachStreamStatus(wrap);
+  assert.equal(status.querySelector('.stream-status__label').textContent, STREAM_LABEL_GENERATING);
+  assert.equal(status.querySelectorAll('.activity-shimmer__visual').length, 1);
+  assert.equal(status.querySelector('.activity-shimmer__visual--incoming'), null);
   handle.dispose();
 });
 

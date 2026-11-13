@@ -10,7 +10,6 @@ import type {
   Message,
   SessionState,
   SessionSummariesState,
-  SystemPromptSettings,
 } from '../types';
 import type { IssuesTaxonomy } from '../issues/taxonomy';
 import type { SkillConfig } from '../skills/config';
@@ -20,7 +19,6 @@ import type { ResearchConfig } from './research-config';
 import type { UserRulesSettings } from './user-rules';
 import {
   defaultSessionState,
-  defaultSystemPromptSettings,
   defaultSkillConfig,
   defaultToolConfig,
   defaultUserRulesSettings,
@@ -178,7 +176,7 @@ export async function getChatHistory(
  * without `outputMessages`/`snapshot`), sub-agent runs, terminal history,
  * injected context and runner timings.
  */
-export type ChatDetail = Pick<Chat, 'injectedContext' | 'runnerTiming'> & {
+export type ChatDetail = Pick<Chat, 'injectedContext' | 'runnerTiming' | 'historyDigest' | 'historyRewriteRevision'> & {
   runs: NonNullable<Chat['runs']>;
   subAgentRuns: NonNullable<Chat['subAgentRuns']>;
   terminalHistory: NonNullable<Chat['terminalHistory']>;
@@ -206,6 +204,7 @@ export interface SessionSearchHit {
   lastMessageAt?: number;
   score: number;
   matchedIn: 'title' | 'message';
+  messageIndex?: number;
   role?: 'user' | 'assistant';
   snippet: string;
 }
@@ -215,7 +214,7 @@ export interface SessionSearchHit {
  */
 export async function searchSessions(
   query: string,
-  opts?: { workspace?: string; limit?: number },
+  opts?: { workspace?: string; limit?: number; match?: 'title' | 'message' },
 ): Promise<SessionSearchHit[]> {
   const params = new URLSearchParams();
   params.set('q', query);
@@ -223,6 +222,7 @@ export async function searchSessions(
     params.set('workspace', opts.workspace);
   }
   if (opts?.limit != null) params.set('limit', String(opts.limit));
+  if (opts?.match) params.set('match', opts.match);
   const res = await fetch(`/api/config/sessions/search?${params}`, { cache: 'no-store' });
   const body = await parseJsonResponse<{ results: SessionSearchHit[] }>(res);
   return Array.isArray(body.results) ? body.results : [];
@@ -663,22 +663,6 @@ export async function putSkills(config: SkillConfig): Promise<void> {
   await parseJsonResponse<{ ok: boolean }>(res);
 }
 
-/** GET /api/config/system-prompt */
-export async function getSystemPrompt(): Promise<SystemPromptSettings> {
-  const res = await fetch('/api/config/system-prompt', { cache: 'no-store' });
-  return parseJsonResponse<SystemPromptSettings>(res);
-}
-
-/** PUT /api/config/system-prompt */
-export async function putSystemPrompt(settings: SystemPromptSettings): Promise<void> {
-  const res = await fetch('/api/config/system-prompt', {
-    method: 'PUT',
-    headers: JSON_HEADERS,
-    body: JSON.stringify(settings),
-  });
-  await parseJsonResponse<{ ok: boolean }>(res);
-}
-
 /** GET /api/config/rules */
 export async function getRules(): Promise<UserRulesSettings> {
   const res = await fetch('/api/config/rules', { cache: 'no-store' });
@@ -709,6 +693,5 @@ export {
   defaultSessionState,
   defaultSkillConfig,
   defaultToolConfig,
-  defaultSystemPromptSettings,
   defaultUserRulesSettings,
 };

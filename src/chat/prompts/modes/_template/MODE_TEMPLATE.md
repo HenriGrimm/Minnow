@@ -1,6 +1,6 @@
 # MODE_TEMPLATE — Minnow operating mode prompt
 
-Use this when authoring a new mode under `src/chat/prompts/modes/`. Production files use split `*.full.md` / `*.lite.md` pairs.
+Use this when authoring a new mode under `src/chat/prompts/modes/`. Production files use one `*.full.md` file per prompt.
 
 ---
 
@@ -68,7 +68,7 @@ What this mode must **not** do (e.g. Plan: no drive-by refactors).
 | `{{mode}}` | `ModeId` | e.g. `plan` |
 | `{{mode_label}}` | Registry label | e.g. `Plan` |
 | `{{cwd}}` | `ComposeContext.cwd` | Origin or project root |
-| `{{profile}}` | `full` \| `lite` \| `custom` | Optional in body |
+| `{{profile}}` | `full` (legacy interpolation token) | Optional in body |
 
 Embed test markers:
 
@@ -77,21 +77,3 @@ Embed test markers:
 ```
 
 ---
-
-## 8. Lite trimming rules
-
-- Target **≤ 40%** of full body length; hard cap **&lt; 600 characters** body (excluding front matter) for CI.
-- No examples in lite; imperative bullets only.
-- Include `<!-- LITE -->` and `<!-- MINNOW_MODE_MARKER: {id} lite -->`.
-
----
-
-## Example full body opener
-
-```markdown
-<!-- MINNOW_MODE_MARKER: my-mode full -->
-
-# Operating mode: My Mode ({{mode_label}})
-
-...
-```

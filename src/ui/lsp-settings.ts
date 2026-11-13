@@ -16,7 +16,7 @@ import {
 import { detectLocalServer } from '../tools/client';
 import { isLocalServerAvailable } from '../tools/config';
 import { appendSettingsCrosslinks, appendSettingsGroup, linkToSettingsSection } from './settings-layout';
-import { createSettingsSwitch } from './settings-switch';
+import { createSettingsSwitch, createSettingsToggleRow } from './settings-switch';
 import { appConfirm } from './app-dialog';
 import { appendSettingsOfflineHint } from './settings-controls';
 import { setStatus } from './status';
@@ -71,8 +71,8 @@ function parseCommaList(raw: string): string[] {
     .filter(Boolean);
 }
 
-/** Compact instrumentation row: master switch plus live counts. */
-function appendLspToolbar(
+/** Master switch and live server counts. */
+function appendLspStatus(
   mount: HTMLElement,
   opts: {
     masterOn: boolean;
@@ -82,22 +82,13 @@ function appendLspToolbar(
     onMasterChange: (checked: boolean) => void;
   },
 ): void {
-  const bar = el('div', 'settings-lsp-toolbar');
-  bar.setAttribute('role', 'group');
-  bar.setAttribute('aria-label', 'Language server status');
-
-  const control = el('div', 'settings-lsp-toolbar__control');
-  const { root: switchRoot } = createSettingsSwitch({
+  const { row } = createSettingsToggleRow('Enable language servers', {
     checked: opts.masterOn,
     ariaLabel: 'Enable all language servers',
     onChange: opts.onMasterChange,
   });
-  control.append(
-    switchRoot,
-    el('span', 'settings-lsp-toolbar__label', 'Enable language servers'),
-  );
-  bar.append(control);
 
+  const summary = el('div', 'settings-group__panel');
   const stats = el('div', 'settings-lsp-stats');
   const chips: Array<{ label: string; value: string; tone?: 'ok' | 'muted' }> = [
     { label: 'Configured', value: String(opts.configured) },
@@ -123,35 +114,13 @@ function appendLspToolbar(
     item.append(value);
     stats.append(item);
   }
-  bar.append(stats);
-
   const storage = el('p', 'settings-lsp-storage');
   storage.append(document.createTextNode('Overrides: '));
   const pathCode = document.createElement('code');
   pathCode.textContent = '~/.minnow/lsp.json';
   storage.append(pathCode);
-  mount.append(bar, storage);
-}
-
-/** Label + switch for Installed / Enabled columns on each server row. */
-function createLspMiniToggle(
-  label: string,
-  options: {
-    checked: boolean;
-    disabled?: boolean;
-    ariaLabel: string;
-    onChange?: (checked: boolean) => void;
-  },
-): { cell: HTMLDivElement; input: HTMLInputElement } {
-  const cell = el('div', 'settings-lsp-mini-toggle');
-  const { root, input } = createSettingsSwitch({
-    checked: options.checked,
-    disabled: options.disabled,
-    ariaLabel: options.ariaLabel,
-    onChange: options.onChange,
-  });
-  cell.append(el('span', 'settings-lsp-mini-toggle__label', label), root);
-  return { cell, input };
+  summary.append(stats, storage);
+  mount.append(row, summary);
 }
 
 /** In-flight bundle install/uninstall rows block full section re-render. */
@@ -197,13 +166,13 @@ function bindBundleInstallActions(
 
   const showProgress = (percent: number, message: string) => {
     progress.hidden = false;
-    progressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    progressFill.style.setProperty('--mn-progress', String(Math.max(0, Math.min(100, percent)) / 100));
     progressText.textContent = message;
   };
 
   const hideProgress = () => {
     progress.hidden = true;
-    progressFill.style.width = '0%';
+    progressFill.style.removeProperty('--mn-progress');
     progressText.textContent = '';
   };
 
@@ -329,10 +298,7 @@ function createLspSettingsRow(
   row.dataset.serverId = server.id;
   if (bundle) row.dataset.bundleId = bundle.id;
 
-  const head = el('div', 'settings-lsp-row-head');
-  const toggles = el('div', 'settings-lsp-row-toggles');
-
-  let enableInput: HTMLInputElement | null = null;
+  const head = el('div', 'settings-row settings-row--actions settings-lsp-row-head');
   let bundleProgress: HTMLElement | null = null;
 
   let installBtn: HTMLButtonElement | null = null;
@@ -340,16 +306,17 @@ function createLspSettingsRow(
 
   if (bundle) {
     if (!bundle.installed) {
-      installBtn = el('button', 'settings-action-btn settings-lsp-install-btn', 'Install');
+      installBtn = el('button', 'settings-action-btn', 'Install');
       installBtn.type = 'button';
       installBtn.setAttribute('aria-label', `Install ${bundle.label}`);
     } else if (!bundle.prebundled) {
-      removeBtn = el('button', 'settings-inline-btn settings-lsp-remove', 'Remove');
+      removeBtn = el('button', 'settings-inline-btn', 'Remove');
       removeBtn.type = 'button';
       removeBtn.setAttribute('aria-label', `Remove ${bundle.label}`);
     }
 
     bundleProgress = el('div', 'settings-lsp-bundle-progress');
+    bundleProgress.setAttribute('role', 'status');
     bundleProgress.hidden = true;
     const progressBar = el('div', 'settings-lsp-bundle-progress-bar');
     const progressFill = el('div', 'settings-lsp-bundle-progress-fill');
@@ -365,45 +332,15 @@ function createLspSettingsRow(
       progressFill,
       progressText,
     );
-
-    const canEnable = bundle.installed;
-    const enableToggle = createLspMiniToggle('Enabled', {
-      checked: canEnable && !server.disabled,
-      disabled: !canEnable,
-      ariaLabel: `${server.disabled ? 'Enable' : 'Disable'} ${server.label}`,
-      onChange: (enabled) => onToggle(server.id, enabled),
-    });
-    enableInput = enableToggle.input;
-    toggles.append(enableToggle.cell);
-  } else {
-    const enableToggle = createLspMiniToggle('Enabled', {
-      checked: !server.disabled,
-      ariaLabel: `${server.disabled ? 'Enable' : 'Disable'} ${server.label}`,
-      onChange: (enabled) => onToggle(server.id, enabled),
-    });
-    enableInput = enableToggle.input;
-    toggles.append(enableToggle.cell);
   }
 
-  head.append(toggles);
-
-  const identity = el('div', 'settings-lsp-row-identity');
-  identity.append(el('span', 'settings-lsp-name', server.label));
+  const identity = el('div', 'settings-row__label');
+  identity.append(el('span', 'settings-row__title', server.label));
   if (bundle?.description) {
-    const desc = el('span', 'settings-lsp-row-desc');
-    desc.textContent = bundle.description;
-    desc.title = bundle.description;
-    identity.append(desc);
+    identity.append(el('span', 'settings-row__desc', bundle.description));
   }
-  head.append(identity);
 
-  const headMeta = el('div', 'settings-lsp-row-head-meta');
-  if (bundle && (installBtn || removeBtn)) {
-    const actions = el('div', 'settings-lsp-row-actions');
-    if (installBtn) actions.append(installBtn);
-    if (removeBtn) actions.append(removeBtn);
-    headMeta.append(actions);
-  }
+  const headMeta = el('div', 'settings-actions');
   if (bundle?.installed) {
     const status = el(
       'span',
@@ -441,14 +378,26 @@ function createLspSettingsRow(
   } else if (server.builtin) {
     headMeta.append(el('span', 'settings-lsp-badge settings-lsp-badge--builtin', 'Built-in'));
   } else {
-    const removeBtn = el('button', 'settings-inline-btn settings-lsp-remove', 'Remove');
+    removeBtn = el('button', 'settings-inline-btn', 'Remove');
     removeBtn.type = 'button';
     removeBtn.setAttribute('aria-label', `Remove ${server.label}`);
     removeBtn.addEventListener('click', () => onDelete(server.id));
-    headMeta.append(removeBtn);
   }
 
-  head.append(headMeta);
+  if (installBtn) headMeta.append(installBtn);
+  if (removeBtn) headMeta.append(removeBtn);
+
+  const canEnable = !bundle || bundle.installed;
+  const { root: enableSwitch } = createSettingsSwitch({
+    checked: canEnable && !server.disabled,
+    disabled: !canEnable,
+    ariaLabel: `${server.disabled ? 'Enable' : 'Disable'} ${server.label}`,
+    onChange: (enabled) => onToggle(server.id, enabled),
+  });
+  const toggle = el('div', 'settings-lsp-mini-toggle');
+  toggle.append(el('span', 'settings-lsp-mini-toggle__label', 'Enabled'), enableSwitch);
+  headMeta.append(toggle);
+  head.append(identity, headMeta);
   row.append(head);
 
   const detailBits: string[] = [];
@@ -462,15 +411,7 @@ function createLspSettingsRow(
     detailBits.push(reqHint);
   }
   if (detailBits.length > 0) {
-    const detail = el('p', 'settings-lsp-row-detail');
-    detail.textContent = detailBits.join(' · ');
-    detail.title = detailBits.join(' · ');
-    row.append(detail);
-  }
-
-  if (enableInput && bundle && !bundle.installed) {
-    enableInput.disabled = true;
-    enableInput.checked = false;
+    identity.append(el('span', 'settings-lsp-row-detail', detailBits.join(' · ')));
   }
 
   if (bundleProgress) {
@@ -499,16 +440,14 @@ function appendServerCategory(
 }
 
 function appendGodotRuntimeCard(mount: HTMLElement, status: Awaited<ReturnType<typeof fetchGodotRuntimeStatus>>): void {
-  const row = el('article', 'settings-lsp-row');
-  const head = el('div', 'settings-lsp-row-head');
-  const identity = el('div', 'settings-lsp-row-identity');
+  const row = el('article', 'settings-row settings-row--actions');
+  const identity = el('div', 'settings-row__label');
   identity.append(
-    el('span', 'settings-lsp-name', 'Godot Engine'),
-    el('span', 'settings-lsp-row-desc', 'GDScript language server, scene runner, and debugger'),
+    el('span', 'settings-row__title', 'Godot Engine'),
+    el('span', 'settings-row__desc', 'GDScript language server, scene runner, and debugger'),
   );
-  head.append(identity);
 
-  const meta = el('div', 'settings-lsp-row-head-meta');
+  const meta = el('div', 'settings-actions');
   const detected = Boolean(status?.engine?.path);
   meta.append(el(
     'span',
@@ -516,7 +455,7 @@ function appendGodotRuntimeCard(mount: HTMLElement, status: Awaited<ReturnType<t
     detected ? 'Ready' : 'Not installed',
   ));
   if (!detected && status?.installAvailable !== false) {
-    const install = el('button', 'settings-action-btn settings-lsp-install-btn', 'Install Godot');
+    const install = el('button', 'settings-action-btn', 'Install Godot');
     install.type = 'button';
     install.addEventListener('click', () => {
       void (async () => {
@@ -533,10 +472,8 @@ function appendGodotRuntimeCard(mount: HTMLElement, status: Awaited<ReturnType<t
         await renderLspSection();
       })();
     });
-    meta.prepend(install);
+    meta.append(install);
   }
-  head.append(meta);
-  row.append(head);
 
   const version = typeof status?.engine?.version === 'string'
     ? status.engine.version
@@ -544,7 +481,8 @@ function appendGodotRuntimeCard(mount: HTMLElement, status: Awaited<ReturnType<t
   const detail = detected
     ? [version, status?.engine?.source, status?.engine?.path].filter(Boolean).join(' · ')
     : 'Minnow can download a checksum-verified official build to ~/.minnow/runtimes/godot.';
-  row.append(el('p', 'settings-lsp-row-detail', detail));
+  identity.append(el('span', detected ? 'settings-lsp-row-detail' : 'settings-row__desc', detail));
+  row.append(identity, meta);
   mount.append(row);
 }
 
@@ -659,7 +597,7 @@ function buildCustomServerForm(onAdded: () => void): HTMLFormElement {
   );
   form.append(extField);
 
-  const actions = el('div', 'settings-lsp-form-actions');
+  const actions = el('div', 'settings-form-actions');
   const submit = el('button', 'settings-action-btn', 'Add server');
   submit.type = 'submit';
   const resetBtn = el('button', 'settings-inline-btn', 'Clear form');
@@ -738,10 +676,14 @@ export async function renderLspSection(): Promise<void> {
   shell.appendChild(lead);
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
+  const loading = el('p', 'settings-field-hint', 'Checking language servers…');
+  loading.setAttribute('role', 'status');
+  content.appendChild(loading);
 
   await detectLocalServer();
   const online = isLocalServerAvailable();
   if (!online) {
+    loading.remove();
     appendSettingsOfflineHint(
       content,
       'Open Minnow to load language server status, toggle analyzers, and save <code>~/.minnow/lsp.json</code>.',
@@ -754,6 +696,7 @@ export async function renderLspSection(): Promise<void> {
     fetchLspBundles(),
     fetchGodotRuntimeStatus(),
   ]);
+  loading.remove();
 
   if (!config) {
     appendSettingsOfflineHint(
@@ -771,7 +714,7 @@ export async function renderLspSection(): Promise<void> {
   const statusGroup = appendSettingsGroup(content, 'Status', undefined, 'integrations.lsp', {
     emphasis: true,
   });
-  appendLspToolbar(statusGroup, {
+  appendLspStatus(statusGroup, {
     masterOn,
     configured: servers.length,
     enabled: enabledCount,
