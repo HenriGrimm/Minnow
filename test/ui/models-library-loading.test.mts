@@ -111,6 +111,19 @@ test('loading ticks retain every row, focused quantization and loading label', (
   assert.equal(label?.textContent, 'Creating context');
 });
 
+test('a first scan shows progress until the discovered model count is known', () => {
+  const state = getModelsState();
+  const discovered = state.library;
+  state.library = [];
+  state.scanning = true;
+  render();
+  assert.equal(document.querySelector('.models-library-summary')?.textContent, 'Scanning for models…');
+  state.library = discovered;
+  state.scanning = false;
+  render();
+  assert.match(document.querySelector('.models-library-summary')?.textContent ?? '', /2 models/);
+});
+
 test('unrelated downloads and serve metadata keep the library rows mounted', () => {
   const row = document.querySelector('.models-row');
   const state = getModelsState();

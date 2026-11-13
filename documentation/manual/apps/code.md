@@ -35,7 +35,9 @@ The sidebar holds the workspace switcher, apps, threads, and Archive. Open **Act
 
 To organize threads, run **New chat group** from the command palette and name the group in the sidebar. Drag threads into the group to add them.
 
-The chat fills the workspace. The composer stays at the bottom, with inference metrics underneath. Select the branch chip or press **Mod+.** to open the thread card for its checkout, dev server, model, permissions, and linked work.
+The chat fills the workspace. The composer stays at the bottom, with inference metrics underneath. Select the branch chip or press **Mod+.** to open the thread card for its checkout, changes, dev servers, model, and linked work. Select the changed-files row to review that checkout in Diff.
+
+When the agent creates a checklist, **Todo list** shows its latest tasks and completion count. It stays to the left of the conversation in wide chats and docks against the top of the composer in narrow chats. Select its header to collapse or expand it.
 
 Open the **side panel** with **Mod+J** or the **bottom panel** from the thread header. Use **+** in either panel to pick a surface. Terminal starts in the bottom panel. **Files** opens the file tree, and selecting a file adds a tab beside it. Choose **Browser** to add a browser tab in that panel. Files, browser pages, Terminal, and other surfaces share the same tab strip. Both panels can stay open, and each thread remembers its tabs and their placement. Use the panel header to move a tab, maximize, restore, or hide a panel. Drag its inner edge to resize it.
 

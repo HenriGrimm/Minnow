@@ -259,7 +259,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (!body) return null;
     let host = document.getElementById('issuesDetailHost');
     if (!host) {
-      host = document.createElement('aside');
+      host = document.createElement('div');
       host.id = 'issuesDetailHost';
       host.className = 'issues-detail-host';
       host.setAttribute('aria-label', 'Issue detail');
@@ -780,7 +780,10 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         titleInput.blur();
       }
     });
-    sticky.appendChild(titleInput);
+    const titleHeading = document.createElement('h2');
+    titleHeading.className = 'visually-hidden';
+    titleHeading.textContent = issue.title;
+    sticky.append(titleHeading, titleInput);
 
     const props = document.createElement('div');
     props.className = 'issues-detail__props';

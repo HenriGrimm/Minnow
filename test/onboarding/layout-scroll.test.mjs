@@ -1,53 +1,25 @@
-/**
- * MIN-453 — onboarding step content and sidebar phases scroll when they overflow.
- */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { describe, test } from 'node:test';
+import { test } from 'node:test';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
-const onboardingCss = readFileSync(join(root, 'src/styles/onboarding.css'), 'utf8');
+const onboardingCss = readFileSync(new URL('../../src/styles/onboarding.css', import.meta.url), 'utf8');
 
 function ruleBlock(selector) {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = onboardingCss.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{[^}]+\\}`, 's'));
-  return match?.[0] ?? '';
+  return onboardingCss.split(`\n${selector} {`)[1]?.split('}')[0] ?? '';
 }
 
-describe('onboarding layout scroll (MIN-453)', () => {
-  test('overlay constrains grid children to the viewport', () => {
-    const rootRule = ruleBlock('.mn-onboarding');
-    const mainRule = ruleBlock('.mn-onboarding__main');
-    assert.match(rootRule, /overflow:\s*hidden/);
-    assert.match(mainRule, /min-height:\s*0/);
-    assert.match(mainRule, /overflow:\s*hidden/);
-  });
+test('setup uses a bounded dialog above the visible workspace', () => {
+  assert.match(ruleBlock('.mn-onboarding'), /background:\s*var\(--mn-overlay\)/);
+  const dialogRule = ruleBlock('.mn-onboarding__dialog');
+  assert.match(dialogRule, /width:\s*min\(100%,\s*640px\)/);
+  assert.match(dialogRule, /max-height:\s*100%/);
+  assert.match(dialogRule, /grid-template-rows:\s*auto minmax\(0, 1fr\) auto/);
+  assert.doesNotMatch(onboardingCss, /onboarding-active[^{]*\{[^}]*visibility:\s*hidden/);
+});
 
-  test('step content scrolls instead of clipping tall steps', () => {
-    const contentRule = onboardingCss.match(
-      /\.mn-onboarding__content,\s*\n\.mn-onboarding-step\s*\{[^}]+\}/s,
-    )?.[0];
-    assert.ok(contentRule, 'expected shared content/step rule');
-    assert.match(contentRule, /overflow-y:\s*auto/);
-    assert.match(contentRule, /justify-content:\s*safe center/);
-    assert.doesNotMatch(contentRule, /justify-content:\s*flex-start/);
-  });
-
-  test('welcome step keeps centered layout', () => {
-    const welcomeRule = onboardingCss.match(
-      /\.mn-onboarding-step--welcome,\s*\n\.mn-onboarding\.is-welcome \.mn-onboarding__content,\s*\n\.mn-onboarding\.is-welcome \.mn-onboarding-step\s*\{[^}]+\}/s,
-    )?.[0];
-    assert.ok(welcomeRule, 'expected welcome content rule');
-    assert.match(welcomeRule, /justify-content:\s*flex-start/);
-  });
-
-  test('sidebar phase list scrolls independently of brand and progress', () => {
-    const asideRule = ruleBlock('.mn-onboarding__aside');
-    const phasesRule = ruleBlock('.mn-onboarding__phases');
-    assert.match(asideRule, /overflow:\s*hidden/);
-    assert.match(phasesRule, /overflow-y:\s*auto/);
-    assert.match(phasesRule, /min-height:\s*0/);
-  });
+test('long setup steps scroll within the dialog while footer actions remain reachable', () => {
+  const contentRule = ruleBlock('.mn-onboarding-step');
+  assert.match(contentRule, /min-height:\s*0/);
+  assert.match(contentRule, /overflow-y:\s*auto/);
+  assert.match(contentRule, /overscroll-behavior:\s*contain/);
 });

@@ -21,6 +21,7 @@ import { githubSyncCaption } from '../issues/github-sync-status';
 import type { IssueCard } from '../types';
 import { openExternalGitUrl } from '../chat/issues/git-actions';
 import { createIcon } from './icon';
+import { setButtonLabel as setSharedButtonLabel } from './components/button';
 import {
   beginGitActivity,
   finishGitActivityError,
@@ -162,12 +163,8 @@ export async function runIssuesGithubSyncAll(
   }
   if (syncAllInFlight) return;
 
-  const btn = document.getElementById('btnIssuesSyncAll') as HTMLButtonElement | null;
   syncAllInFlight = true;
-  if (btn) {
-    btn.disabled = true;
-    setButtonLabel(btn, 'Syncing…');
-  }
+  syncIssuesGithubSyncAllButton();
 
   const activity = beginGitActivity('Syncing with GitHub…');
   try {
@@ -209,13 +206,13 @@ export async function runIssuesGithubSyncAll(
 
 /** Show or hide the header Sync all control based on GitHub mode. */
 export function syncIssuesGithubSyncAllButton(): void {
-  const btn = document.getElementById('btnIssuesSyncAll');
+  const btn = document.querySelector<HTMLButtonElement>('#btnIssuesSyncAll');
   if (!btn) return;
 
   const enabled = githubSyncEnabled();
   btn.hidden = !enabled;
   btn.toggleAttribute('disabled', !enabled || syncAllInFlight);
-  btn.textContent = syncAllInFlight ? 'Syncing…' : SYNC_ALL_IDLE_LABEL;
+  setSharedButtonLabel(btn, syncAllInFlight ? 'Syncing…' : SYNC_ALL_IDLE_LABEL);
 }
 
 function showConflict(

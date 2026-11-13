@@ -145,7 +145,7 @@ function openSection(section: 'recommend' | 'settings' | 'server'): void {
   void import('../models-page').then((m) => m.openModels(section));
 }
 
-function renderHeading(groups: LibraryVariantGroup[]): HTMLElement {
+function renderHeading(groups: LibraryVariantGroup[], scanningEmpty: boolean): HTMLElement {
   const head = el('header', 'models-workspace-heading');
   const title = el('div', 'models-workspace-heading__main');
   title.append(
@@ -161,7 +161,8 @@ function renderHeading(groups: LibraryVariantGroup[]): HTMLElement {
   actions.append(storage, discover);
   head.append(title, actions);
   const summary = el('div', 'models-library-summary');
-  summary.append(icon('disk'), el('span', undefined, totals(groups)));
+  summary.append(icon('disk'), el('span', undefined, scanningEmpty ? 'Scanning for models…' : totals(groups)));
+  if (scanningEmpty) summary.setAttribute('role', 'status');
   const loaded = getModelsState().serves.filter((s) => s.status === 'running').length;
   if (loaded) {
     const server = textButton(`${loaded} serving`, () => openSection('server'));
@@ -638,9 +639,10 @@ export function render(): void {
 
   const installable = loadableLibrary(state.library, { backend: state.hardware?.backend });
   const allGroups = prepareLibraryGroups(installable, {}, state.selectedId, state.serves, variantPreferences);
-  const heading = renderHeading(allGroups);
+  const scanningEmpty = state.scanning && !state.library.length;
+  const heading = renderHeading(allGroups, scanningEmpty);
 
-  if (state.scanning && !state.library.length) {
+  if (scanningEmpty) {
     host.replaceChildren(
       heading,
       skeletonRows(6),

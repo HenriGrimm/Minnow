@@ -38,7 +38,7 @@ export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
 export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> = {
   general: 'Terminal behavior, filesystem and LAN access, notifications, audio devices, and where settings are saved.',
   apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
-  appearance: 'Interface zoom, theme, fonts, and custom accent colors.',
+  appearance: 'Interface zoom, color mode, accent colors, and fonts.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
   agents: 'The one agent: its prompts, workflow skills, sub-agent limits, rules, and boards.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
@@ -287,17 +287,18 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('appearance.chatView', 'Chat view', 'appearance', 'appearance', {
     keywords: ['compact', 'full', 'transcript', 'working', 'thinking', 'tools', 'activity'],
   }),
-  field('appearance.theme', 'Theme', 'appearance', 'appearance', {
-    keywords: ['color', 'dark', 'light', 'graphite', 'swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint', 'palette'],
+  field('appearance.theme', 'Appearance controls', 'appearance', 'appearance', {
+    keywords: ['color', 'dark', 'light', 'palette'],
   }),
-  field('appearance.theme.family', 'Theme family', 'appearance', 'appearance'),
   field('appearance.theme.mode', 'Theme mode', 'appearance', 'appearance', {
     keywords: ['dark mode', 'light mode', 'follow system'],
   }),
-  field('appearance.theme.color', 'Color intensity', 'appearance', 'appearance', {
+  field('appearance.theme.color', 'Surface tint', 'appearance', 'appearance', {
     keywords: ['tint', 'surface', 'subtle', 'rich'],
   }),
-  field('appearance.theme.accent', 'Accent', 'appearance', 'appearance'),
+  field('appearance.theme.accent', 'Accent color', 'appearance', 'appearance', {
+    keywords: ['swatch', 'custom color', 'hex', 'color picker'],
+  }),
   field('appearance.density', 'Density', 'appearance', 'appearance'),
   field('appearance.reduceMotion', 'Reduce motion', 'appearance', 'appearance', {
     keywords: ['accessibility', 'animation'],
@@ -305,8 +306,8 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('appearance.fonts', 'Fonts', 'appearance', 'appearance', {
     keywords: ['typography', 'mono', 'ui font'],
   }),
-  field('appearance.customColors', 'Custom colors', 'appearance', 'appearance', {
-    keywords: ['tokens', 'override'],
+  field('appearance.customColors', 'Advanced colors', 'appearance', 'appearance', {
+    keywords: ['custom colors', 'tokens', 'override', 'palette'],
   }),
 
   field('models.providers', 'Providers', 'models', 'providers', {

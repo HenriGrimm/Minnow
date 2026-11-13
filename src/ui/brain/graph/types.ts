@@ -66,6 +66,8 @@ export interface ForceGraphCallbacks {
   onSelect?: (node: GraphNode | null) => void;
   onDoubleClick?: (node: GraphNode) => void;
   onHover?: (node: GraphNode | null) => void;
+  /** Refresh controls that reflect neighborhood focus or pin state. */
+  onNodeActionsChange?: () => void;
 }
 
 /** Options passed when creating a force graph instance. */

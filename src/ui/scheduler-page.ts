@@ -6,7 +6,7 @@ import { createAppIcon } from '../os/icons';
 import { isOsAppHash, isOsShellEnabled } from '../os/page-bridge';
 import { navigateToDesktop } from '../os/router';
 import { renderSchedulerPanel } from './scheduler/scheduler-panel';
-import { openJobEditorWindow } from './scheduler/job-editor-overlay';
+import { closeJobEditorWindow, openJobEditorWindow } from './scheduler/job-editor-overlay';
 import type { ScheduledJob } from '../scheduler/client';
 
 let initialized = false;
@@ -147,6 +147,7 @@ export async function openScheduler(): Promise<void> {
 }
 
 export function closeScheduler(options?: { skipNavigate?: boolean }): void {
+  closeJobEditorWindow();
   const root = getRoot();
   if (!root) return;
   root.classList.remove('is-open');

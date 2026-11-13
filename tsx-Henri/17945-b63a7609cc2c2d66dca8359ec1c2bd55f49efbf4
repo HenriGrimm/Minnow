@@ -1,0 +1,1 @@
+{"code":"export*from\"../models/selection\";\n","warnings":[],"map":{"version":3,"mappings":"AACA,WAAc","names":[],"ignoreList":[],"sources":["C:\\Users\\dukky\\Documents\\Development\\Minnow\\src\\ui\\default-model.ts"],"sourcesContent":["/** Compatibility exports; model state is independent of the chat DOM. */\r\nexport * from '../models/selection';\r\n"]}}

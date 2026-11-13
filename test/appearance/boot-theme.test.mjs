@@ -43,10 +43,22 @@ test('palette CSS blocks the first paint independently of the app entry module',
   assert.doesNotMatch(critical, /html\[data-theme=.*background:/);
 });
 
-test('saved palette wins over a stale origin cache before the app starts', () => {
-  assert.equal(boot({ saved: { themeId: 'human-light' }, cached: { 'minnow.theme': 'ocean-dark' } }).theme, 'human-light');
-  assert.equal(boot({ saved: { followSystem: true, family: 'mint' }, light: true }).theme, 'mint-light');
-  assert.equal(boot({ cached: { 'minnow.theme': 'desert-dark' } }).theme, 'desert-dark');
+test('legacy themes supply their accent and mode to the shared palette before boot', () => {
+  const saved = boot({ saved: { themeId: 'human-light' }, cached: { 'minnow.theme': 'ocean-dark' } });
+  assert.equal(saved.theme, 'graphite-light');
+  assert.equal(saved.attributes.get('data-graphite-accent'), 'human');
+  const system = boot({ saved: { followSystem: true, family: 'mint' }, light: true });
+  assert.equal(system.theme, 'graphite-light');
+  assert.equal(system.attributes.get('data-graphite-accent'), 'mint');
+  const cached = boot({ cached: { 'minnow.theme': 'desert-dark' } });
+  assert.equal(cached.theme, 'graphite-dark');
+  assert.equal(cached.attributes.get('data-graphite-accent'), 'desert');
+});
+
+test('a custom accent is applied before the first paint', () => {
+  const { tokens, attributes } = boot({ saved: { graphiteAccent: '#AB75EC' } });
+  assert.equal(attributes.get('data-graphite-accent'), '#ab75ec');
+  assert.equal(tokens.get('--mn-graphite-picked-accent'), '#ab75ec');
 });
 
 test('Graphite defaults and saved visual preferences apply before the loader paints', () => {

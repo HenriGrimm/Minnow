@@ -1,4 +1,5 @@
 import { githubAuthRequest, type GitHubAccount } from '../state/github-auth';
+import { createGitHubMark } from './icon';
 import '../styles/github-account.css';
 
 /** Shared account UI; credentials remain owned by GitHub CLI. */
@@ -12,10 +13,7 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
   heading.textContent = 'Your GitHub account';
   const intro = document.createElement('header');
   intro.className = 'github-account__intro';
-  const mark = document.createElement('span');
-  mark.setAttribute('aria-hidden', 'true');
-  mark.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .75C5.79.75.75 5.79.75 12c0 4.97 3.22 9.18 7.69 10.67.56.1.77-.24.77-.54v-2.1c-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.64-1.25-1.64-1.02-.7.08-.69.08-.69 1.13.08 1.73 1.16 1.73 1.16 1 .1 1.55 2.19 3.28 1.59.1-.72.39-1.2.71-1.48-2.5-.28-5.13-1.25-5.13-5.57 0-1.23.44-2.23 1.16-3.02-.12-.28-.5-1.42.11-2.96 0 0 .95-.3 3.1 1.15a10.8 10.8 0 0 1 5.63 0c2.15-1.46 3.1-1.15 3.1-1.15.61 1.54.23 2.68.11 2.96.72.79 1.16 1.79 1.16 3.02 0 4.33-2.63 5.28-5.14 5.56.4.35.76 1.03.76 2.08v3.08c0 .3.2.65.77.54A11.25 11.25 0 0 0 23.25 12C23.25 5.79 18.21.75 12 .75Z"/></svg>';
-  mark.className = 'github-account__mark';
+  const mark = createGitHubMark({ size: 40 });
   const description = document.createElement('p');
   description.textContent = 'Connect once for pull requests, CI checks, and GitHub issue sync across Minnow.';
   const copy = document.createElement('div');

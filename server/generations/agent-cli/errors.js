@@ -11,13 +11,13 @@ export function safeAgentCliDiagnostic(value, secrets = []) {
 /** Protocol errors, including exit-zero auth failures, take priority over a process exit code. */
 export function classifyAgentCliFailure({ error, terminal, exitCode, stderr = '' }) {
   const message = terminal?.error || error?.message || stderr || `Agent CLI exited with code ${exitCode ?? 'unknown'} without a completion event.`;
-  if (error?.code === 'ENOENT') return { kind: 'fatal', message: 'Agent CLI executable was not found. Check its path in Models → CLIs.' };
+  if (error?.code === 'ENOENT') return { kind: 'fatal', message: 'Agent CLI executable was not found. Check its path in Models → Subscriptions.' };
   if (terminal?.ok === true && !error) return null;
   if (/model.*not supported.*ChatGPT account/i.test(message)) {
-    return { kind: 'fatal', message: `${message} Refresh the model list and select a model offered by your installed Codex CLI. To use newer models, update Codex from Models → CLIs.` };
+    return { kind: 'fatal', message: `${message} Refresh the model list and select a model offered by your installed Codex CLI. To use newer models, update Codex from Models → Subscriptions.` };
   }
   if (/unauthori[sz]ed|unauthenticated|not (?:logged|signed) in|authentication|invalid.*(?:key|token)|login required|401|403/i.test(message)) {
-    return { kind: 'fatal', message: `Agent CLI authentication failed. Sign in from Models → CLIs. ${message}` };
+    return { kind: 'fatal', message: `Agent CLI authentication failed. Sign in from Models → Subscriptions. ${message}` };
   }
   const failure = allowanceFailure(message, { quotaExceeded: error?.quotaExceeded });
   if (failure?.kind === 'quota') return { kind: 'fatal', message, quotaExceeded: true, failure: { ...failure, scope: 'provider' } };

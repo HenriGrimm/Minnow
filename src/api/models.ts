@@ -665,7 +665,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
       if (routers) routerOptions(sel, routers);
       restoreDefaultModelOption(sel);
       syncModelSelectPicker();
-      setStatus('err', 'No providers configured. Use Settings → Providers.');
+      setStatus('err', 'No providers configured. Open Models → Providers to add one.');
       updateModelLoadUnloadButtons();
       return;
     }
@@ -676,9 +676,9 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
       const { providers: listed } = await listProviders();
       const enabledCount = listed.filter((p) => p.enabled !== false).length;
       if (enabledCount === 0) {
-        setStatus('err', 'No providers configured. Use Settings → Providers.');
+        setStatus('err', 'No providers configured. Open Models → Providers to add one.');
       } else {
-        setStatus('err', 'Cannot reach one or more providers. Check Settings → Providers.');
+        setStatus('err', 'Cannot reach one or more providers. Check Models → Providers.');
       }
       updateModelLoadUnloadButtons();
       return;
@@ -693,7 +693,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
       setStatus(
         'err',
         failures.length === results.length
-          ? `Cannot reach providers (${names || 'unknown'}). Check Settings → Providers.`
+          ? `Cannot reach providers (${names || 'unknown'}). Check Models → Providers.`
           : 'No models returned from any provider.',
       );
       updateModelLoadUnloadButtons();
@@ -712,7 +712,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
 
     if (failures.length > 0) {
       const failedLabels = failures.map((f) => f.provider.label).join(', ');
-      setStatus('err', `Cannot reach providers (${failedLabels}). Check Settings → Providers.`);
+      setStatus('err', `Cannot reach providers (${failedLabels}). Check Models → Providers.`);
     }
 
     updateModelStateDot(sel.value);

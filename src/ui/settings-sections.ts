@@ -507,8 +507,8 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
 
   const setup = appendSettingsGroup(
     shell,
-    'Setup wizard',
-    'Re-run the first-launch setup flow (theme, provider, permissions).',
+    'Minnow setup',
+    'Connect a provider and choose a default chat model.',
     'general.onboarding',
     { emphasis: true },
   );

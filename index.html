@@ -9,17 +9,6 @@
 </script>
 <script>
 (function () {
-  var THEME_BG = {
-    'graphite-dark': '#09090b', 'graphite-light': '#ececee',
-    'swamp-dark': '#0f1216', 'swamp-light': '#f7f7f4',
-    'desert-dark': '#16140f', 'desert-light': '#f7f4ec',
-    'ocean-dark': '#0d1117', 'ocean-light': '#f4f6f9',
-    'coral-dark': '#141416', 'coral-light': '#fafaf8',
-    'mono-dark': '#2b2b2b', 'mono-light': '#f7f7f7',
-    'matrix-dark': '#040604', 'matrix-light': '#eef2ee',
-    'human-dark': '#0f0f0f', 'human-light': '#fbf1ea',
-    'mint-dark': '#141615', 'mint-light': '#f2faf6'
-  };
   var LEGACY_FAMILY = {
     sage: 'swamp', amber: 'desert', cyan: 'ocean', salt: 'mono', retro: 'matrix', ember: 'human'
   };
@@ -91,7 +80,7 @@
     var id = resolveThemeId();
     var mode = id.indexOf('-light') > 0 ? 'light' : 'dark';
     var root = document.documentElement;
-    root.setAttribute('data-theme', id);
+    root.setAttribute('data-theme', 'graphite-' + mode);
     root.setAttribute('data-tint', 'subtle');
     root.style.colorScheme = mode;
     root.classList.add('theme-no-transition');
@@ -101,7 +90,12 @@
       var tint = localStorage.getItem('minnow.appearance.colorIntensity');
       if (/^(none|subtle|rich)$/.test(tint || '')) root.setAttribute('data-tint', tint);
       var accent = localStorage.getItem('minnow.appearance.graphiteAccent');
-      if (/^(teal|blue|amber|violet|rose)$/.test(accent || '')) root.setAttribute('data-graphite-accent', accent);
+      var family = id.slice(0, id.lastIndexOf('-'));
+      if (family !== 'graphite') accent = family;
+      if (/^(teal|blue|amber|violet|rose|swamp|ocean|desert|coral|human|mint|mono|matrix|#[\da-f]{6})$/i.test(accent || '')) {
+        root.setAttribute('data-graphite-accent', accent.toLowerCase());
+        if (accent.charAt(0) === '#') root.style.setProperty('--mn-graphite-picked-accent', accent);
+      }
       var density = localStorage.getItem('minnow.appearance.density');
       if (/^(compact|cozy|roomy)$/.test(density || '')) root.setAttribute('data-density', density);
       if (localStorage.getItem('minnow.appearance.reduceMotion') === '1') root.setAttribute('data-reduce-motion', '');
@@ -121,7 +115,7 @@
         }
       }
     } catch (e) { /* ignore */ }
-    if (meta) meta.setAttribute('content', customBg || THEME_BG[id] || '#09090b');
+    if (meta) meta.setAttribute('content', customBg || (mode === 'light' ? '#ececee' : '#09090b'));
   } catch (e) { /* private mode */ }
 })();
 </script>
@@ -1214,7 +1208,7 @@
       <div class="models-nav__group" role="group" aria-labelledby="modelsNavInference">
         <span id="modelsNavInference" class="models-nav__group-label">Inference</span>
         <button type="button" data-models-nav="providers">Providers</button>
-        <button type="button" data-models-nav="clis">CLIs</button>
+        <button type="button" data-models-nav="clis">Subscriptions</button>
         <button type="button" data-models-nav="routing">Routing</button>
         <button type="button" data-models-nav="routers">Model pools</button>
         <button type="button" data-models-nav="sampler">Sampler</button>
@@ -2242,6 +2236,14 @@
       <div class="chat-viewport-dock">
         <button type="button" id="chatJumpLatest" class="chat-jump-latest hidden" aria-label="Jump to latest messages">Jump to latest</button>
       </div>
+
+      <!-- Run status sits above the checklist when it docks against the composer. -->
+      <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
+        <span class="composer-run-status__dot" aria-hidden="true"></span>
+        <span class="composer-run-status__label">Working</span>
+        <span class="composer-run-status__time"></span>
+        <span class="composer-run-status__count"></span>
+      </div>
     </div>
 
     <!-- Tool approval: mounted here by showToolApprovalModal (above composer, not a full-screen popup) -->
@@ -2249,14 +2251,6 @@
 
     <!-- Ask question: structured Q&A strip (below tool approval, above composer) -->
     <div id="questionHost" class="question-host" aria-live="polite" hidden></div>
-
-    <!-- Run status: sits above the composer card only while the active chat's run is live (chat-work.ts) -->
-    <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
-      <span class="composer-run-status__dot" aria-hidden="true"></span>
-      <span class="composer-run-status__label">Working</span>
-      <span class="composer-run-status__time"></span>
-      <span class="composer-run-status__count"></span>
-    </div>
 
     <!-- Input bar -->
     <div class="input-bar">

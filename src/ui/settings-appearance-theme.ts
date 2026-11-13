@@ -1,36 +1,23 @@
 import {
   APPEARANCE_DENSITIES,
   COLOR_INTENSITIES,
-  GRAPHITE_ACCENTS,
   type AppearanceDensity,
   type ColorIntensity,
 } from '../lib/appearance-choices.mjs';
 import { readGraphitePreferences, setGraphitePreference } from '../appearance/graphite-preferences';
-import { isCustomThemeEnabled, setCustomThemeEnabled } from '../appearance/custom-theme';
+import { subscribeCustomThemeChanges } from '../appearance/custom-theme';
+import { createAppearanceAccents } from './settings-accent';
 import {
   getFollowSystem,
   getMode,
-  getStoredFamily,
   getStoredTheme,
   setFollowSystem,
-  setThemeFamily,
   setThemeMode,
-  THEME_FAMILIES,
-  THEME_FAMILY_META,
-  type ThemeFamily,
 } from '../theme';
 import { createSegmentedControl, createSwitch } from './components';
 import { setActivityShimmerText } from './activity-shimmer';
-import { createIcon } from './icon';
 import { applyResolvedTheme } from './theme';
 
-const ACCENT_LABELS = {
-  teal: 'Minnow teal',
-  blue: 'Blue',
-  amber: 'Amber',
-  violet: 'Violet',
-  rose: 'Rose',
-};
 const TINT_LABELS = { none: 'Off', subtle: 'Subtle', rich: 'Rich' };
 const DENSITY_LABELS = { compact: 'Compact', cozy: 'Cozy', roomy: 'Roomy' };
 
@@ -54,32 +41,7 @@ function appearanceRow(title: string, description?: string): HTMLDivElement {
   return row;
 }
 
-function themeTile(family: ThemeFamily, name: string) {
-  const label = el('label', 'graphite-theme-tile');
-  const input = el('input', 'visually-hidden');
-  input.type = 'radio';
-  input.name = 'graphite-appearance-family';
-  input.value = family;
-  const miniature = el('span', 'settings-theme-preview graphite-theme-tile__preview');
-  const rail = el('span', 'graphite-theme-tile__rail');
-  rail.append(el('i', 'graphite-theme-tile__accent'), el('i', ''), el('i', ''));
-  const sheet = el('span', 'graphite-theme-tile__sheet');
-  sheet.append(el('i', 'graphite-theme-tile__bubble'), el('i', ''), el('i', 'graphite-theme-tile__accent'));
-  miniature.append(rail, sheet);
-  miniature.setAttribute('aria-hidden', 'true');
-  const title = el('span', 'graphite-theme-tile__title', name);
-  const dot = el('span', 'graphite-theme-tile__dot settings-theme-preview');
-  dot.setAttribute('aria-hidden', 'true');
-  title.prepend(dot);
-  const check = createIcon('check', { size: 12, className: 'graphite-theme-tile__check' });
-  check.hidden = true;
-  title.append(check);
-  label.append(input, miniature, title);
-  return { label, input, miniature, dot, check };
-}
-
-/** Graphite’s appearance controls and shared palette preview. */
-export function appendAppearanceThemePresets(mount: HTMLElement): void {
+export function appendAppearanceThemePresets(mount: HTMLElement): () => void {
   const card = el('section', 'graphite-appearance-card');
   card.setAttribute('aria-label', 'Appearance controls');
   card.dataset.settingsSearchKey = 'appearance.theme';
@@ -105,28 +67,11 @@ export function appendAppearanceThemePresets(mount: HTMLElement): void {
   });
   modeRow.append(mode.root);
 
-  const theme = appearanceRow('Theme', 'Each theme sets the accent and tints the surfaces.');
-  theme.dataset.settingsSearchKey = 'appearance.theme.family';
-  theme.classList.add('graphite-appearance-row--theme');
-  const grid = el('div', 'graphite-appearance-families');
-  grid.setAttribute('role', 'radiogroup');
-  grid.setAttribute('aria-label', 'Theme');
-  const families = THEME_FAMILIES.filter((family) => family !== 'matrix').map((family) => {
-    const title = THEME_FAMILY_META.find((preset) => preset.id === family)?.name ?? family;
-    const tile = themeTile(family, title);
-    tile.input.addEventListener('change', () => {
-      if (tile.input.checked) chooseTheme(family);
-    });
-    grid.append(tile.label);
-    return { family, ...tile };
-  });
-  theme.append(grid);
-
-  const colorRow = appearanceRow('Color', "How much of the theme's color shows in surfaces and selection.");
+  const colorRow = appearanceRow('Surface tint', 'How much accent color reaches backgrounds and selections.');
   colorRow.dataset.settingsSearchKey = 'appearance.theme.color';
   const color = createSegmentedControl({
     className: 'graphite-appearance-segment',
-    ariaLabel: 'Color intensity',
+    ariaLabel: 'Surface tint',
     size: 'sm',
     options: COLOR_INTENSITIES.map((value) => ({ value, label: TINT_LABELS[value] })),
     value: readGraphitePreferences().colorIntensity,
@@ -137,26 +82,11 @@ export function appendAppearanceThemePresets(mount: HTMLElement): void {
   });
   colorRow.append(color.root);
 
-  const accentRow = appearanceRow('Accent', '');
+  const accentRow = appearanceRow('Accent color');
+  accentRow.classList.add('graphite-appearance-row--accents');
   accentRow.dataset.settingsSearchKey = 'appearance.theme.accent';
-  const accentHint = accentRow.querySelector('.graphite-appearance-row__hint')!;
-  const accents = el('div', 'graphite-appearance-accents');
-  accents.setAttribute('role', 'group');
-  accents.setAttribute('aria-label', 'Accent');
-  const swatches = GRAPHITE_ACCENTS.map((id) => {
-    const button = el('button', 'graphite-appearance-swatch');
-    button.type = 'button';
-    button.dataset.accent = id;
-    button.setAttribute('aria-label', ACCENT_LABELS[id]);
-    button.title = ACCENT_LABELS[id];
-    button.addEventListener('click', () => {
-      setGraphitePreference('graphiteAccent', id);
-      chooseTheme('graphite');
-    });
-    accents.append(button);
-    return { id, button };
-  });
-  accentRow.append(accents);
+  const accents = createAppearanceAccents();
+  accentRow.append(accents.root);
 
   const densityRow = appearanceRow('Density', 'Adjust spacing in sidebars, menus, chats, and lists.');
   densityRow.dataset.settingsSearchKey = 'appearance.density';
@@ -180,40 +110,11 @@ export function appendAppearanceThemePresets(mount: HTMLElement): void {
     onChange: (checked) => setGraphitePreference('reduceMotion', checked),
   });
   motion.append(reduce.root);
-  card.append(modeRow, theme, colorRow, accentRow, densityRow, motion);
-
-  // Matrix remains available for existing profiles and as an extra theme choice.
-  const matrix = el('button', 'graphite-appearance-matrix', 'Matrix');
-  matrix.type = 'button';
-  matrix.addEventListener('click', () => chooseTheme('matrix'));
-  const extras = el('details', 'graphite-appearance-extra-theme');
-  extras.append(el('summary', '', 'More themes'), matrix);
-
-  function chooseTheme(family: ThemeFamily): void {
-    if (isCustomThemeEnabled()) setCustomThemeEnabled(false);
-    setThemeFamily(family);
-    applyResolvedTheme(getStoredTheme());
-    refresh();
-  }
+  card.append(modeRow, accentRow, colorRow, densityRow, motion);
 
   function refresh(): void {
-    const family = getStoredFamily();
-    const activeMode = getMode(getStoredTheme());
-    mode.setValue(getFollowSystem() ? 'system' : activeMode, { silent: true });
-    for (const tile of families) {
-      tile.input.checked = tile.family === family;
-      tile.check.hidden = !tile.input.checked;
-      tile.miniature.dataset.theme = tile.dot.dataset.theme = `${tile.family}-${activeMode}`;
-    }
-    const name = THEME_FAMILY_META.find((preset) => preset.id === family)?.name ?? family;
-    accentHint.textContent = family === 'graphite'
-      ? 'Graphite takes any accent.'
-      : `Set by ${name}. Picking one switches to Graphite.`;
-    const { graphiteAccent } = readGraphitePreferences();
-    for (const { id, button } of swatches) {
-      button.setAttribute('aria-pressed', String(family === 'graphite' && id === graphiteAccent));
-    }
-    matrix.setAttribute('aria-pressed', String(family === 'matrix'));
+    mode.setValue(getFollowSystem() ? 'system' : getMode(getStoredTheme()), { silent: true });
+    accents.refresh();
   }
 
   const preview = el('section', 'graphite-appearance-preview');
@@ -234,7 +135,11 @@ export function appendAppearanceThemePresets(mount: HTMLElement): void {
   example.append(heading, el('p', '', 'Wired the renderer gate to decidePermission. Running the engine suite next.'), activity);
   preview.append(example);
 
-  mount.append(card, preview, extras);
-  if (getStoredFamily() === 'matrix') extras.open = true;
+  mount.append(card, preview);
   refresh();
+  const unsubscribe = subscribeCustomThemeChanges(accents.refresh);
+  return () => {
+    unsubscribe();
+    accents.close();
+  };
 }

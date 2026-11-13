@@ -167,7 +167,7 @@ function bindSidebarObserver(): void {
 }
 
 /** Lightweight selection path: reuses the existing simulation instead of rebuilding. */
-function selectGraphPage(relPath: string): void {
+function selectGraphPage(relPath: string, opener?: HTMLElement): void {
   const inCatalog = catalogPages.some((p) => p.path === relPath);
   setGraphSelectedPath(relPath);
   if (!graphApi || !inCatalog) {
@@ -177,7 +177,7 @@ function selectGraphPage(relPath: string): void {
   const nodeId = `page:${relPath}`;
   graphApi.selectNode(nodeId);
   syncTreeSelection();
-  void openInspector(relPath);
+  void openInspector(relPath, opener);
   graphApi.centerOnNode(nodeId);
 }
 
@@ -315,6 +315,7 @@ function syncLayoutVisibility(): void {
   canvasWrap?.setAttribute('aria-hidden', treeMode ? 'true' : 'false');
   stage?.classList.toggle('is-tree-layout', treeMode);
   if (treeMode) treePanel?.classList.remove('is-collapsed');
+  syncInspectorGraphActions();
   syncGraphViewportInsets();
 }
 
@@ -343,6 +344,7 @@ function refreshGraphCanvas(): void {
       onHover: (node) => {
         graphApi?.setHoverNode(node?.id ?? null);
       },
+      onNodeActionsChange: syncInspectorGraphActions,
     });
   }
 
@@ -382,6 +384,7 @@ function refreshGraphCanvas(): void {
     graphApi.selectNode(nodeId);
     syncTreeSelection();
   }
+  syncInspectorGraphActions();
 }
 
 /** Build one label/value cell for the readout metric grid. */
@@ -492,9 +495,45 @@ function syncGraphReadout(stats: ForceGraphStats): void {
 
 // ── Inspector ────────────────────────────────────────────────────────────────
 
-async function openInspector(relPath: string): Promise<void> {
+function syncInspectorGraphActions(): void {
+  const actions = document.querySelector<HTMLElement>('.brain-inspector__graph-actions');
+  if (!actions) return;
+  const id = actions.dataset.nodeId!;
+  actions.hidden = layoutMode !== 'graph' || !graphApi?.hasNode(id);
+  actions.querySelector('[data-graph-action="focus"]')?.setAttribute('aria-pressed', String(graphApi?.isNodeFocused(id) ?? false));
+  actions.querySelector('[data-graph-action="pin"]')?.setAttribute('aria-pressed', String(graphApi?.isNodePinned(id) ?? false));
+}
+
+function createInspectorGraphActions(relPath: string): HTMLElement {
+  const id = `page:${relPath}`;
+  const actions = document.createElement('div');
+  actions.className = 'brain-inspector__graph-actions';
+  actions.dataset.nodeId = id;
+  actions.hidden = true;
+  actions.setAttribute('role', 'group');
+  actions.setAttribute('aria-label', 'Graph actions');
+  for (const [action, label] of [['focus', 'Focus neighborhood'], ['pin', 'Pin node']] as const) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'brain-action-btn';
+    button.dataset.graphAction = action;
+    button.textContent = label;
+    button.setAttribute('aria-pressed', 'false');
+    button.addEventListener('click', () => {
+      if (!graphApi?.hasNode(id)) return;
+      if (action === 'pin') graphApi.setNodePinned(id, !graphApi.isNodePinned(id));
+      else if (graphApi.isNodeFocused(id)) graphApi.clearFocus();
+      else graphApi.focusNode(id);
+    });
+    actions.append(button);
+  }
+  return actions;
+}
+
+async function openInspector(relPath: string, opener?: HTMLElement): Promise<void> {
   const inspector = document.getElementById('brainInspector');
   if (!inspector) return;
+  const graphActions = createInspectorGraphActions(relPath);
   const reading = renderBrainInspector(
     inspector,
     relPath,
@@ -511,10 +550,16 @@ async function openInspector(relPath: string): Promise<void> {
       graphApi?.selectNode(null);
       syncTreeSelection();
       syncGraphOverlayOffsets();
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
     },
+    graphActions,
   );
   syncGraphOverlayOffsets();
   await reading;
+  syncInspectorGraphActions();
+  if (selectedPath === relPath && opener && document.activeElement === opener) {
+    inspector.querySelector<HTMLElement>('.brain-inspector__title')?.focus({ preventScroll: true });
+  }
 }
 
 // ── Tree ─────────────────────────────────────────────────────────────────────
@@ -523,8 +568,8 @@ function renderGraphTree(mount: HTMLElement, tree: Record<string, unknown>): voi
   mount.replaceChildren();
   const list = document.createElement('ul');
   list.className = 'brain-tree';
-  list.setAttribute('role', 'tree');
 
+  let folderId = 0;
   const appendNodes = (parent: HTMLElement, node: Record<string, unknown>): void => {
     const entries = Object.entries(node).sort(([a], [b]) => a.localeCompare(b));
     for (const [name, value] of entries) {
@@ -540,10 +585,9 @@ function renderGraphTree(mount: HTMLElement, tree: Record<string, unknown>): voi
         btn.className = 'brain-tree__page';
         btn.dataset.path = path;
         btn.textContent = String(record.title ?? name);
-        btn.setAttribute('role', 'treeitem');
         btn.setAttribute('aria-current', path === selectedPath ? 'page' : 'false');
-        btn.addEventListener('click', () => {
-          navigateBrainGraphPage(path);
+        btn.addEventListener('click', (event) => {
+          selectGraphPage(path, event.detail === 0 ? btn : undefined);
         });
         item.append(btn);
         parent.append(item);
@@ -558,6 +602,8 @@ function renderGraphTree(mount: HTMLElement, tree: Record<string, unknown>): voi
         folderBtn.setAttribute('aria-expanded', 'true');
         const childList = document.createElement('ul');
         childList.className = 'brain-tree__children';
+        childList.id = `brain-page-folder-${++folderId}`;
+        folderBtn.setAttribute('aria-controls', childList.id);
         const children = record.children as Record<string, unknown> | undefined;
         if (children) appendNodes(childList, children);
         folderBtn.addEventListener('click', () => {

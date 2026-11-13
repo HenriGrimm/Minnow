@@ -210,7 +210,7 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
     const version = /\/(\d+)\.(\d+)\.(\d+)/.exec(info.userAgent ?? '');
     if (!invocationFactory && (!version || Number(version[1]) === 0
       && (Number(version[2]) < 153 || Number(version[2]) === 153 && Number(version[3]) < 4))) {
-      throw new Error('Update Codex to CLI 0.153.4 or newer from Models → CLIs to use app-server.');
+      throw new Error('Update Codex to CLI 0.153.4 or newer from Models → Subscriptions to use app-server.');
     }
     const startParams = {
       model: candidate.modelId, cwd: session.home, ephemeral: !persistent, sandbox: 'read-only', approvalPolicy: 'never',

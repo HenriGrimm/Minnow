@@ -839,6 +839,58 @@ test('failed todo updates preserve the successful list and empty updates clear i
   assert.equal(mount.querySelector('.chat-turn-todos'), null);
 });
 
+test('the chat viewport shows one checklist beside the transcript and retains its disclosure across repaints', () => {
+  const viewport = document.createElement('div');
+  viewport.className = 'chat-viewport';
+  mount.before(viewport);
+  viewport.append(mount);
+  chat.history = [
+    { role: 'user', content: 'First task' },
+    ...todoRound('todo1', [{ text: 'Previous task', status: 'completed' }]),
+    { role: 'user', content: 'Next task' },
+    ...todoRound('todo2', [{ text: 'Current task', status: 'in_progress' }]),
+    { role: 'assistant', content: 'Working.' },
+  ];
+  const selector = ':scope > .chat-todo-panel';
+  renderChatFromHistory(chat);
+  const panel = viewport.querySelector(selector);
+  assert.equal(viewport.querySelectorAll(selector).length, 1);
+  assert.equal(mount.querySelector('.chat-turn-todos'), null);
+  assert.match(panel.textContent, /Current task/);
+  assert.doesNotMatch(panel.textContent, /Previous task/);
+  assert.equal(panel.open, true);
+  panel.querySelector('summary').click();
+  assert.equal(panel.open, false);
+  renderChatFromHistory(chat);
+  assert.equal(viewport.querySelector(selector).open, false);
+  renderChatFromHistory(createEmptyChatObject(''));
+  assert.equal(viewport.querySelector(selector), null);
+});
+
+test('managed checklist updates and clears while the tool receipt is pending', async () => {
+  const viewport = document.createElement('div');
+  viewport.className = 'chat-viewport';
+  mount.before(viewport);
+  viewport.append(mount);
+  const selector = ':scope > .chat-todo-panel';
+  chat.chatCommandVersion = 1;
+  chat.todos = [{ text: 'Start', status: 'in_progress' }];
+  chat.history.push(...todoRound('todo1', chat.todos));
+  renderChatFromHistory(chat);
+  const panel = viewport.querySelector(selector);
+  const update = async (todos) => {
+    chat.todos = todos;
+    notifyManagedChatMetadata(chat.id);
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+  };
+  await update([{ text: 'Finish', status: 'completed' }]);
+  assert.equal(viewport.querySelector(selector), panel);
+  assert.match(panel.textContent, /1 of 1 complete.*Finish/);
+  assert.equal(panel.open, false);
+  await update(undefined);
+  assert.equal(viewport.querySelector(selector), null);
+});
+
 test('Review opens recorded changes in the shared side-by-side viewer', async () => {
   const pane = document.createElement('div');
   pane.id = 'fileViewerPane';

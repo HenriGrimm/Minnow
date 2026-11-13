@@ -3,26 +3,23 @@ import { hasHostSessionToken } from '../api/session-token';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { findIncompleteToolBatchAtTail } from '../chat/incomplete-tool-batch';
 import { getPendingTranscriptMessages } from '../chat/message-queue';
-import { getPermissionLevelCached, onToolSecurityMetaChange } from '../config/tool-security-meta';
-import { PERMISSION_LEVELS } from '../lib/permissions.mjs';
-import { getCurrentRoute, launchApp } from '../os/router';
+import { getCurrentRoute } from '../os/router';
 import { isChatArchived } from '../state/chat-archive';
 import { isChatPinned, setChatPinned } from '../state/chat-groups';
 import { resolveChatWorktreeRoot } from '../state/chat-worktree';
+import { gitStatus } from '../state/git-api';
 import { listIssues } from '../state/issues-store';
 import { clearActiveGoal, ensureChatHistoryLoaded, getActiveGoal, getChatMessageCount, sessionState } from '../state/sessions';
 import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import type { Chat, IssueCard, Message } from '../types';
+import { createButton } from './components/button';
 import { openPopover, type PopoverHandle } from './components/popover';
 import { mountGraphiteNewThread } from './graphite-new-thread';
 import { createIcon, type IconName } from './icon';
-import { choosePermissionLevel } from './permission-level';
 import { createChatWithMode, renderSidebar, setChatsArchivedWithUndo, subscribeSidebarRender } from './sidebar';
 import { chatGitState, getWorkspaceGitSummary, refreshSidebarGitFacts, subscribeSidebarGitState } from './sidebar-git-state';
 import { mountSurfacePanelToggles, openSurface } from './surfaces/surfaces-column';
 import { showToast } from './toast';
-
-const PERMISSION_LABELS = { manual: 'Manual', auto: 'Auto', full: 'Full' } as const;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, value?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -65,23 +62,11 @@ function activeChat(): Chat | undefined {
   return sessionState?.chats.find(chat => chat.id === sessionState?.activeId);
 }
 
-function fileManagerName(): string {
-  const platform = navigator.platform;
-  if (/mac/i.test(platform)) return 'Finder';
-  if (/win/i.test(platform)) return 'File Explorer';
-  return 'Files';
-}
-
 export function findThreadIssue(chat: Chat): IssueCard | undefined {
   return listIssues().find(issue => issue.chatIds?.includes(chat.id) || issue.boardChatId === chat.id || issue.agent?.chatId === chat.id);
 }
 
-function changedLines(chat: Chat): { additions: number; deletions: number } {
-  return { additions: chat.codeChangeTotals?.additions ?? 0, deletions: chat.codeChangeTotals?.deletions ?? 0 };
-}
-
-function appendLineCounts(parent: HTMLElement, chat: Chat): void {
-  const { additions, deletions } = changedLines(chat);
+function appendLineCounts(parent: HTMLElement, { additions, deletions }: { additions: number; deletions: number }): void {
   parent.append(
     el('span', 'graphite-thread-mono graphite-thread-addition', `+${additions}`),
     el('span', 'graphite-thread-mono graphite-thread-deletion', `−${deletions}`),
@@ -90,24 +75,6 @@ function appendLineCounts(parent: HTMLElement, chat: Chat): void {
 
 function checkoutFor(chat: Chat): string {
   return resolveChatWorktreeRoot(chat) ?? getWorkspacePath();
-}
-
-async function revealCheckout(chat: Chat, workspace: string): Promise<void> {
-  if (activeChat()?.id !== chat.id || workspace !== getWorkspacePath()) return;
-  const label = fileManagerName();
-  try {
-    const response = await fetch('/api/workspace/open-in-app', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ app: 'finder', path: '.', checkout: checkoutFor(chat) }),
-    });
-    const result = await response.json() as { ok?: boolean; error?: string };
-    if (!response.ok || !result.ok) {
-      throw new Error(result.error || `Could not reveal in ${label}`);
-    }
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : `Could not reveal in ${label}`, 'error');
-  }
 }
 
 export async function forkThreadWithModel(chat: Chat): Promise<void> {
@@ -253,7 +220,7 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
   };
   const reposition = () => currentCard?.reposition();
   let subview: AbortController | undefined;
-  let unsubscribe: (() => void) | undefined;
+  let statusRequest: AbortController | undefined;
   let currentBranch: string | undefined;
   let checkoutRow: HTMLButtonElement;
 
@@ -292,7 +259,9 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
   }
 
   function renderOverview(): void {
-    unsubscribe?.();
+    statusRequest?.abort();
+    statusRequest = new AbortController();
+    const { signal } = statusRequest;
     overview.replaceChildren();
     const checkout = checkoutFor(chat);
     const worktree = resolveChatWorktreeRoot(chat);
@@ -301,22 +270,7 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
     const git = getWorkspaceGitSummary(checkout);
     const issue = findThreadIssue(chat);
     const goal = getActiveGoal(chat);
-    const environment = row('deviceDesktop', isHost ? (/mac/i.test(navigator.platform) ? 'This Mac' : 'This computer') : 'Host computer', checkout);
-    const environmentDetails = el('div', 'graphite-thread-card__environment');
-    environmentDetails.hidden = true;
-    environmentDetails.append(rowButton('deviceMobile', 'Phone access', 'Manage paired devices', action(() => launchApp('settings', { settingsSection: 'devices' }))));
-    const reveal = button(`Reveal in ${fileManagerName()}`, () => void revealCheckout(chat, workspace), 'folder', true);
-    reveal.disabled = !isHost;
-    const environmentToggle = button('Where this thread runs', () => {
-      environmentDetails.hidden = !environmentDetails.hidden;
-      environmentToggle.setAttribute('aria-expanded', String(!environmentDetails.hidden));
-      currentCard?.reposition();
-    }, 'chevronDown', true);
-    environmentToggle.setAttribute('aria-expanded', 'false');
-    environment.append(reveal, environmentToggle);
-    overview.append(environment, environmentDetails);
-
-    const devServer = rowButton('terminal', 'Dev servers', 'Run and configure servers', () => {
+    const devServer = rowButton('terminal', 'Dev servers', undefined, () => {
       const panel = showSubview('Dev servers', () => devServer);
       void import('./thread-dev-servers').then(({ mountThreadDevServers }) => {
         if (!panel.signal.aborted && isCurrent()) {
@@ -327,8 +281,6 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
         }
       }).catch(() => showLoadError(panel, 'Could not load dev servers.'));
     });
-    overview.append(devServer, el('div', 'graphite-thread-card__divider'));
-
     checkoutRow = rowButton('gitBranch', (currentBranch ?? git?.branch ?? chat.gitBranch) || 'Checkout',
       worktree ? `worktree · ${worktree.split(/[\\/]/).at(-1)}` : 'main checkout', () => {
         const panel = showSubview('Checkout', () => checkoutRow);
@@ -349,53 +301,60 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
           });
         }).catch(() => showLoadError(panel, 'Could not load checkouts.'));
       }, true);
-    const changed = currentBranch && git?.branch !== currentBranch ? undefined : git?.changed;
-    const changes = rowButton('gitGraph',
-      changed === undefined ? 'Changes' : `${changed} changed ${changed === 1 ? 'file' : 'files'}`,
-      undefined, action(() => openSurface('changes')));
-    if (state.additions || state.deletions) {
-      const lines = el('span', 'graphite-thread-card__counts');
-      appendLineCounts(lines, chat);
-      changes.insertBefore(lines, changes.lastChild);
-    }
+    const changes = rowButton('gitGraph', 'Changes', undefined, action(() => {
+      if (!openSurface('changes', { force: true, target: { kind: 'changes' } })) {
+        showToast('Could not open changes.', 'error');
+      }
+    }));
+    const label = changes.querySelector('.graphite-thread-card__row-body > span')!;
+    const lines = el('span', 'graphite-thread-card__counts');
+    lines.hidden = true;
+    changes.insertBefore(lines, changes.lastChild);
     const gitActions = el('div', 'graphite-thread-card__git-actions');
-    const commit = button('Commit and push', action(() => openSurface('changes', { force: true, target: { kind: 'commit' } })), 'gitCommit');
-    commit.disabled = !(changed || state.additions || state.deletions);
-    gitActions.append(commit,
-      button(state.prNumber ? 'View PR' : 'Open PR', action(() => {
+    const commit = createButton({
+      label: 'Commit and push', icon: 'gitCommit', size: 'sm', variant: 'ghost',
+      onClick: action(() => openSurface('changes', { force: true, target: { kind: 'commit' } })),
+    });
+    const pullRequest = createButton({
+      label: state.prNumber ? 'View PR' : 'Open PR', icon: 'gitPullRequest',
+      size: 'sm', variant: 'ghost',
+      onClick: action(() => {
         if (state.prNumber && openSurface('pr', { target: state.prNumber })) return;
         void import('./source-control-center').then(({ openSourceControlCenter }) => {
           if (isCurrent()) void openSourceControlCenter({ section: 'pulls', cwd: checkout });
         });
-      }), 'gitPullRequest'));
+      }),
+    });
+    gitActions.append(pullRequest);
     overview.append(checkoutRow, changes, gitActions, el('div', 'graphite-thread-card__divider'));
+
+    function syncFileCount(count?: number): void {
+      label.textContent = count === undefined ? 'Changes' : count === 0 ? 'No changed files'
+        : `${count} changed ${count === 1 ? 'file' : 'files'}`;
+      if (!count) commit.remove();
+      else if (!commit.parentElement) gitActions.prepend(commit);
+    }
+    syncFileCount(currentBranch && git?.branch !== currentBranch ? undefined : git?.changed);
+    void gitStatus(checkout, signal, { lineStats: true }).then(status => {
+      if (signal.aborted || !isCurrent() || checkoutFor(chat) !== checkout || !status.ok) return;
+      const entries = [...status.staged ?? [], ...status.unstaged ?? [], ...status.untracked ?? []];
+      syncFileCount(new Set(entries.map(file => file.path)).size);
+      const measured = entries.filter(file => file.additions !== undefined || file.deletions !== undefined);
+      if (!measured.length) return;
+      const totals = measured.reduce((sum, file) => ({
+        additions: sum.additions + (file.additions ?? 0),
+        deletions: sum.deletions + (file.deletions ?? 0),
+      }), { additions: 0, deletions: 0 });
+      appendLineCounts(lines, totals);
+      lines.hidden = false;
+      changes.setAttribute('aria-label', `${label.textContent}, ${totals.additions} additions, ${totals.deletions} deletions`);
+    });
 
     const model = row('appModels', chat.modelId || 'No model selected', chat.providerId);
     const fork = button('Fork…', action(() => void forkThreadWithModel(chat)), 'gitBranch');
     fork.disabled = getChatMessageCount(chat) === 0 || Boolean(chat.agentConversation);
     model.append(fork);
-    overview.append(model);
-
-    const permissions = row('permAuto', 'Permissions');
-    const segment = el('div', 'graphite-thread-card__permissions');
-    segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Permission level');
-    const syncPermission = () => {
-      for (const control of segment.querySelectorAll('button')) {
-        control.setAttribute('aria-pressed', String(control.dataset.permission === getPermissionLevelCached()));
-      }
-    };
-    for (const level of PERMISSION_LEVELS) {
-      const control = button(PERMISSION_LABELS[level], () => {
-        if (isCurrent()) void choosePermissionLevel(level).then(syncPermission);
-      });
-      control.dataset.permission = level;
-      segment.append(control);
-    }
-    syncPermission();
-    unsubscribe = onToolSecurityMetaChange(syncPermission);
-    permissions.append(segment);
-    overview.append(permissions);
+    overview.append(devServer, model);
 
     if (issue) overview.append(rowButton('appIssues', `Issue · ${issue.id}`, issue.title, action(() => {
       if (!openSurface('issue', { target: issue.id })) {
@@ -434,7 +393,7 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
     offset: 9,
     onClose: reason => {
       subview?.abort();
-      unsubscribe?.();
+      statusRequest?.abort();
       unsubscribeWorkspace();
       currentCard = undefined;
       currentCardChat = undefined;
@@ -512,14 +471,14 @@ export function mountGraphiteThreadHeader(): void {
     branch.hidden = !hasThread;
     goal.hidden = !hasThread || !getActiveGoal(chat!);
     if (goal.hidden || !isThreadView || goalPopoverChat !== chat?.id) goalPopover?.close();
-    const totals = chat ? changedLines(chat) : undefined;
+    const totals = chat?.codeChangeTotals;
     diff.hidden = !hasThread || !(totals?.additions || totals?.deletions);
     if (!chat) return;
     const checkout = checkoutFor(chat);
     branchLabel.textContent = getWorkspaceGitSummary(checkout)?.branch || chat.gitBranch || 'This thread';
-    if (!diff.hidden) {
+    if (!diff.hidden && totals) {
       diff.replaceChildren(createIcon('gitGraph', { size: 14 }));
-      appendLineCounts(diff, chat);
+      appendLineCounts(diff, totals);
     }
   }
 

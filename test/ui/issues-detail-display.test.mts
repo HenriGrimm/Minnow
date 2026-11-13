@@ -341,9 +341,12 @@ describe('issues detail display', () => {
 
     // A section with content folds, and the fold survives a re-render.
     const codeLabel = scroll.querySelector(
-      '[data-section="code"] button.issues-detail__row',
+      '[data-section="code"] button.issues-detail__row-trigger',
     ) as HTMLButtonElement | null;
     assert.ok(codeLabel, 'a section with content is collapsible');
+    const codeAction = codeLabel.parentElement?.querySelector('.issues-detail__row-trailing button');
+    assert.ok(codeAction, 'a populated resource keeps its separate add action');
+    assert.equal(codeLabel.contains(codeAction), false);
     assert.equal(codeLabel.getAttribute('aria-expanded'), 'false');
     codeLabel.click();
     assert.equal(codeLabel.getAttribute('aria-expanded'), 'true');
@@ -354,14 +357,15 @@ describe('issues detail display', () => {
     assert.ok(repainted);
     assert.equal(
       repainted
-        .querySelector('[data-section="code"] button.issues-detail__row')
+        .querySelector('[data-section="code"] button.issues-detail__row-trigger')
         ?.getAttribute('aria-expanded'),
       'true',
       'the fold is remembered across renders',
     );
 
     // Empty sections still expose an add action, so their row is a button.
-    assert.ok(repainted.querySelector('[data-section="attachments"] button.issues-detail__row'));
+    assert.equal(repainted.querySelectorAll('[data-section="attachments"] .issues-detail__row button').length, 1);
+    assert.ok(repainted.querySelector('[data-section="attachments"] button.issues-detail__row-trigger[aria-label]'));
   });
 
   test('linked GitHub issue lives in Git, not a second GITHUB block', () => {
@@ -444,7 +448,7 @@ describe('issues detail display', () => {
     assert.ok(scroll);
     assert.ok(headingTexts(scroll).includes('Git'));
     const gitActions = scroll.querySelector(
-      '[data-section="git"] .issues-detail__sec-btn[aria-label="Git actions"]',
+      '[data-section="git"] button[aria-label="Git actions"]',
     ) as HTMLButtonElement | null;
     assert.ok(gitActions);
     gitActions.click();
@@ -453,6 +457,13 @@ describe('issues detail display', () => {
         (btn) => btn.textContent?.includes('Push to GitHub'),
       ),
     );
+    const link = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')]
+      .find(btn => btn.textContent?.includes('Link a commit or URL'));
+    assert.ok(link);
+    link.click();
+    const sha = scroll.querySelector<HTMLInputElement>('input[aria-label="Commit sha"]');
+    assert.ok(sha);
+    assert.equal(sha.closest('[hidden]'), null);
   });
 
   test('typing a description in peek is written to the store on close', () => {

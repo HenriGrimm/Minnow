@@ -165,7 +165,7 @@ export function codeCommands(inCode = getForegroundAppId() === 'code'): Command[
       run: async () => (await import('./surfaces/surfaces-column')).toggleSurfaceMaximize(),
     },
     {
-      id: 'chat.thread-card', title: 'Thread card', group: 'Chat', keywords: 'thread branch worktree model permissions',
+      id: 'chat.thread-card', title: 'Thread card', group: 'Chat', keywords: 'thread branch worktree model changes',
       shortcut: 'Ctrl/Cmd+.',
       run: async () => (await import('./thread-card')).toggleThreadCard(),
     },

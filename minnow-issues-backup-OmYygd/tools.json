@@ -1,0 +1,9 @@
+{
+  "keys": {
+    "braveApiKey": "",
+    "tavilyApiKey": ""
+  },
+  "webSearchProvider": "tavily",
+  "plugins": {},
+  "lazyTools": true
+}

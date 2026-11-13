@@ -1,4 +1,4 @@
-import type { Chat } from '../types';
+import type { Chat, ChatTodo } from '../types';
 import { CHAT_VIEW_CHANGED, getChatView, type ChatView } from '../appearance/chat-view';
 import { collectTranscriptTurns, formatWorkDuration, type TranscriptTurn } from '../chat/transcript-turns';
 import { formatTurnSummary, narrationSentence, summarizeTurn, type TurnSummary } from '../chat/turn-summary';
@@ -6,7 +6,10 @@ import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createTurnChanges } from './chat-turn-changes';
 import { getTurnPresentedFiles } from '../chat/presented-files';
 import { createPresentedFileCards } from './presented-file-cards';
-import { createTurnTodoPanel, getTurnTodos } from './todo-panel';
+import { createTurnTodoPanel, getTurnTodos, updateTodoPanel } from './todo-panel';
+import { getChatTodos } from '../state/sessions';
+import { streamingChatIds } from '../app-state';
+import { markPreviewOccluder } from './preview-occlusion';
 import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
 import { supportsLocalHistoryMutation } from '../state/chat-relationships';
@@ -40,6 +43,7 @@ const LIVE_TEXT_LEAVES = '.stream-status__label, .stream-status__detail, .stream
 
 const controllers = new WeakMap<HTMLElement, { chat: Chat; sync: () => void; dispose: () => void }>();
 const expandedByChat = new WeakMap<Chat, Set<number>>();
+const todoDisclosureByChat = new WeakMap<Chat, boolean>();
 let nextId = 0;
 
 /**
@@ -54,6 +58,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   if (previous?.chat === chat) { previous.sync(); return; }
   previous?.dispose();
   const disposeScrollLayout = options.isolated ? () => {} : observeChatScrollLayout(mount);
+  const todoViewport = !options.isolated && mount.parentElement?.matches('.chat-viewport') ? mount.parentElement : null;
+  let todoPanel: HTMLDetailsElement | null = null;
+  let todoPanelKey: string | undefined;
+  let hadLiveTodos = false;
   const groups = new Map<number, WorkGroup>();
   const expanded = options.expanded ?? expandedByChat.get(chat) ?? new Set<number>();
   if (!options.expanded) expandedByChat.set(chat, expanded);
@@ -135,6 +143,47 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     void import('./composer-undo').then((m) => m.syncComposerUndoFromActiveChat());
   }
 
+  function syncFloatingTodos(turns: TranscriptTurn[]): void {
+    if (!todoViewport) return;
+    let todos: ChatTodo[] | undefined;
+    if (turns.length && mount.querySelector(':scope > .msg, :scope > .tool-call-msg, :scope > .tool-call-batch')) {
+      const saved = getChatTodos(chat);
+      const localStream = streamingChatIds.has(chat.id);
+      if (localStream && saved) hadLiveTodos = true;
+      // Live state can land ahead of the transcript receipt, including a clear.
+      if (chat.chatCommandVersion === 1 || (localStream && hadLiveTodos)) {
+        todos = saved;
+      } else {
+        for (let i = turns.length - 1; i >= 0 && todos === undefined; i--) {
+          todos = getTurnTodos(chat, turns[i].fork, turns[i].end);
+        }
+        todos ??= saved;
+      }
+      if (!localStream) hadLiveTodos = false;
+    }
+    if (!todos?.length) {
+      todoPanel?.remove();
+      todoPanel = null;
+      todoPanelKey = undefined;
+      todoDisclosureByChat.delete(chat);
+      return;
+    }
+    const key = JSON.stringify(todos);
+    if (todoPanelKey === key) return;
+    if (todoPanel) {
+      updateTodoPanel(todoPanel, todos);
+    } else {
+      todoPanel = createTurnTodoPanel(todos, true)!;
+      const panel = todoPanel;
+      panel.querySelector('summary')!.addEventListener('click', () => todoDisclosureByChat.set(chat, !panel.open));
+      markPreviewOccluder(panel);
+      // Keep the jump dock adjacent to the transcript for its fade and scroll styles.
+      todoViewport.prepend(panel);
+    }
+    todoPanel.open = todoDisclosureByChat.get(chat) ?? todos.some(item => item.status !== 'completed');
+    todoPanelKey = key;
+  }
+
   function syncGroup(
     turn: TranscriptTurn,
     rows: HTMLElement[],
@@ -193,16 +242,18 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     group ??= makeGroup(turn.fork);
     if ((group.todos?.nextElementSibling ?? group.button.nextElementSibling) !== firstRow) mount.insertBefore(group.button, firstRow);
-    const todos = getTurnTodos(chat, turn.fork, turn.end);
-    const todosKey = JSON.stringify(todos);
-    if (group.todosKey !== todosKey) {
-      const wasOpen = group.todos?.open;
-      group.todos?.remove();
-      group.todos = createTurnTodoPanel(todos);
-      if (group.todos && wasOpen !== undefined) group.todos.open = wasOpen;
-      group.todosKey = todosKey;
+    if (!todoViewport) {
+      const todos = getTurnTodos(chat, turn.fork, turn.end) ?? [];
+      const todosKey = JSON.stringify(todos);
+      if (group.todosKey !== todosKey) {
+        const wasOpen = group.todos?.open;
+        group.todos?.remove();
+        group.todos = createTurnTodoPanel(todos);
+        if (group.todos && wasOpen !== undefined) group.todos.open = wasOpen;
+        group.todosKey = todosKey;
+      }
+      if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     }
-    if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     // A live turn draws its steps in place; the composer status line carries elapsed time.
     const show = full || group.expanded || live || pending && !options.isolated;
     group.button.classList.toggle('chat-work--live-hidden', live && !options.isolated);
@@ -311,6 +362,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     mount.classList.add('chat-thread');
     mount.dataset.chatView = full ? 'full' : 'compact';
     const turns = collectTranscriptTurns(chat);
+    syncFloatingTodos(turns);
     const byIndex = new Map<number, TranscriptTurn>();
     for (const turn of turns) for (let i = turn.fork; i <= turn.end; i++) byIndex.set(i, turn);
     const buckets = new Map<TranscriptTurn, HTMLElement[]>();
@@ -393,6 +445,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   function dispose(): void {
     disposed = true;
     disposeScrollLayout();
+    todoPanel?.remove();
     observer.disconnect();
     for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.presentedFiles?.remove(); group.foot?.remove(); group.todos?.remove(); }
     for (const row of mount.querySelectorAll('.chat-work-hidden')) row.classList.remove('chat-work-hidden');

@@ -36,7 +36,6 @@
   padding: 10px 0 12px;
   border-right: 1px solid var(--mn-border);
   background: var(--mn-surface-0);
-  transition: width var(--duration-fast) var(--ease-out);
 }
 
 .chat-app-page.is-rail-expanded .chat-app-rail {
@@ -587,7 +586,7 @@
   }
 
   .chat-app-send:hover:not(:disabled) .icon-svg {
-    --mn-icon-size: 22px;
+    transform: scale(1.1);
   }
 }
 
@@ -598,7 +597,7 @@
 
 .chat-app-send .icon-svg {
   --mn-icon-size: 20px;
-  transition: width var(--duration-fast) var(--ease-out), height var(--duration-fast) var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 /* ─── Outputs drawer ─── */
@@ -610,7 +609,6 @@
   border-left: 1px solid var(--mn-border);
   background: var(--mn-surface-0);
   min-height: 0;
-  transition: width 0.2s var(--ease-out);
 }
 
 .chat-app-outputs.is-collapsed {

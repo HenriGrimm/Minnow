@@ -16,6 +16,7 @@ let cwd: string;
 let requests: Record<string, unknown>[];
 let selection: ReturnType<typeof createGitChangeSelection>;
 let rows: HTMLElement[];
+let triggers: HTMLButtonElement[];
 let copied: string[];
 let opened: GitChangeSelectionEntry[];
 const entries: GitChangeSelectionEntry[] = [
@@ -39,10 +40,14 @@ function action(label: string): HTMLButtonElement {
 }
 function render(): void {
   selection.setEntries(entries);
+  triggers = [];
   rows = entries.map((entry) => {
     const row = document.createElement('div');
-    row.textContent = entry.path;
-    selection.bindRow(row, entry);
+    const trigger = document.createElement('button');
+    trigger.textContent = entry.path;
+    row.append(trigger);
+    triggers.push(trigger);
+    selection.bindRow(row, entry, trigger);
     return row;
   });
   root.replaceChildren(...rows);
@@ -82,8 +87,8 @@ test('click, modifier click and range selection only highlight existing rows, wi
   assert.deepEqual(picked(), ['staged.ts', 'b.json', 'new folder/c.ts']);
   assert.equal(opened.length, 1, 'range and modifier selection only highlight the rows');
   assert.equal(root.querySelector('input, [role="checkbox"]'), null);
-  assert.equal(rows[0]!.getAttribute('aria-selected'), 'true');
-  assert.equal(root.getAttribute('aria-multiselectable'), 'true');
+  assert.equal(triggers[0]!.getAttribute('aria-pressed'), 'true');
+  assert.equal(root.getAttribute('role'), 'group');
   render();
   assert.deepEqual(picked(), ['staged.ts', 'b.json', 'new folder/c.ts']);
   click(1);
@@ -151,13 +156,14 @@ test('copy actions include all selected paths and retain relative paths', async 
 });
 
 test('keyboard range selection, Select All and keyboard menus work without changing commit input behavior', () => {
-  rows[0]!.focus();
-  rows[0]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
-  rows[1]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
+  triggers[0]!.focus();
+  triggers[0]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
+  triggers[1]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
   assert.deepEqual(picked(), ['staged.ts', 'a.ts', 'b.json']);
-  rows[2]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true }));
+  assert.equal(document.activeElement, triggers[2]);
+  triggers[2]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true }));
   assert.equal(picked().length, 4);
-  rows[2]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
+  triggers[2]!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
   assert.match(document.querySelector('.mn-menu')!.textContent!, /Discard 4 selected/);
   closeContextMenu();
   const input = document.createElement('textarea'); root.append(input);

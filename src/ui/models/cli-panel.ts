@@ -613,8 +613,8 @@ function render(): void {
     const header = el('div', 'models-cli-header');
     const heading = el('div');
     heading.append(
-      el('h2', undefined, 'CLIs'),
-      el('p', 'models-lead', 'Connect your coding agents. Use their models and subscriptions in Minnow.'),
+      el('h2', undefined, 'Subscriptions'),
+      el('p', 'models-lead', 'Use your existing Claude Code, Codex, or Cursor account in Minnow.'),
     );
     const scan = makeButton('Scan again');
     scan.addEventListener('click', () => void scanAll());

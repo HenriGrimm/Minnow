@@ -166,10 +166,14 @@ test('Graphite opens workspace changes from a worktree thread and loads history 
   assert.equal(root.dataset.gitView, 'history');
   assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'log'), ['log', { cwd: undefined, count: 12 }]);
 
-  await panel.openGitSurfaceTarget(chat, 'commit');
+  await panel.openGitSurfaceTarget(chat, 'changes');
   assert.equal(root.dataset.gitView, 'changes');
   assert.equal(panel.getGitPanelCwd(), '/selected-worktree');
   await waitForPanel(() => Boolean(root.querySelector('.git-panel-file-path')));
+
+  panel.setGitPanelCwd('/workspace');
+  await panel.openGitSurfaceTarget(chat, 'commit');
+  assert.equal(panel.getGitPanelCwd(), '/selected-worktree');
 });
 
 test('removing the active worktree selects the workspace HEAD while retaining the removed branch', async () => {

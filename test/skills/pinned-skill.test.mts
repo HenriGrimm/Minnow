@@ -89,16 +89,26 @@ describe('resolveTurnSkill', () => {
     assert.equal(out.nextPinned, null);
   });
 
-  it('replaces pin when another slash skill is used', () => {
+  it('uses an ordinary slash skill for one turn without replacing a chat pin', () => {
+    const pinned = { id: 'caveman', intensity: 'ultra' };
     const out = resolveTurnSkill({
       slashSkillId: 'git-commit',
       userText: 'draft message',
-      pinned: { id: 'caveman', intensity: 'ultra' },
+      pinned,
       isSkillEnabled: alwaysEnabled,
     });
     assert.equal(out.skillId, 'git-commit');
-    assert.equal(out.nextPinned?.id, 'git-commit');
-    assert.equal(out.nextPinned?.intensity, undefined);
+    assert.equal(out.nextPinned, pinned);
+    assert.equal(out.fromPin, false);
+  });
+
+  it('returns to the default workflow after a slash skill in an unpinned chat', () => {
+    for (const id of ['plan', 'ask', 'debug', 'git-commit', 'custom-skill']) {
+      const slash = resolveTurnSkill({ slashSkillId: id, userText: 'Inspect', pinned: null, isSkillEnabled: alwaysEnabled });
+      assert.deepEqual(slash, { skillId: id, nextPinned: null, fromPin: false });
+      const next = resolveTurnSkill({ slashSkillId: null, userText: 'Continue', pinned: slash.nextPinned, isSkillEnabled: alwaysEnabled });
+      assert.deepEqual(next, { skillId: null, nextPinned: null, fromPin: false });
+    }
   });
 
   it('drops pinned skill when disabled', () => {

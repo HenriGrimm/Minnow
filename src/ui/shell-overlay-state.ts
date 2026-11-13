@@ -17,6 +17,7 @@ function bindDismissal(doc: Document): void {
   doc.addEventListener('pointerdown', (event) => {
     const active = overlays.at(-1);
     if (!active || !panels[active.id]) return;
+    if (active.id === 'workspace' && doc.getElementById('osWorkspaceGate')?.classList.contains('workspace-gate--opening')) return;
     const target = event.target as Element | null;
     // Dialogs, sheets and prompts layered above an open overlay belong to it.
     if (target?.closest('[data-shell-overlay], [data-above-shell-overlay]')) return;
@@ -26,6 +27,8 @@ function bindDismissal(doc: Document): void {
   doc.addEventListener('keydown', (event) => {
     const active = overlays.at(-1);
     if (event.defaultPrevented || event.key !== 'Escape' || !active || !panels[active.id]) return;
+    if (active.id === 'workspace' && (doc.getElementById('osWorkspaceGate')?.classList.contains('workspace-gate--opening')
+      || (event.target as Element | null)?.closest?.('[data-above-shell-overlay]'))) return;
     const id = active.id;
     event.preventDefault();
     closeShellOverlay();

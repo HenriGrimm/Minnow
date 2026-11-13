@@ -6,7 +6,8 @@ import { findChatById, touchChat, scheduleSaveSessions } from '../state/sessions
 import { parseSlashCommand, formatHistoryWithSkillTag } from '../skills/parse-slash';
 import { resolveTurnSkill, normalizeCavemanUserText } from '../skills/pinned-skill';
 import { isSkillEnabled } from '../skills/config';
-import { isCavemanIntensity } from '../skills/caveman-client';
+import { CAVEMAN_SKILL_ID, isCavemanIntensity } from '../skills/caveman-client';
+import { syncComposerPinnedSkillFromActiveChat } from '../ui/composer-pinned-skill';
 import type { RemoteChatAction, RemoteChatCommand } from './remote-chat-client';
 import { attachmentImageDataUrl } from '../attachments/attachment-image';
 import { chatReadOnlyReason } from '../state/chat-relationships';
@@ -181,6 +182,7 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
   let endpoint = `/api/chats/${encodeURIComponent(chatId)}/commands`;
   let method = 'POST';
   const payload: Record<string, unknown> = { action };
+  const previousPin = chat.pinnedSkill;
   let directSkill: ReturnType<typeof resolveTurnSkill> | undefined;
   if (action === 'send' || action === 'steer') {
     const attachments = data.attachments ?? [];
@@ -197,7 +199,7 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
         if (slash.skillId && !isSkillEnabled(slash.skillId)) throw new Error(`Skill "${slash.skillId}" is disabled in Settings`);
         directSkill = resolveTurnSkill({ slashSkillId: slash.skillId, userText: slash.userText, pinned: chat.pinnedSkill, isSkillEnabled });
         const userText = normalizeCavemanUserText(directSkill.skillId, slash.skillId, slash.userText);
-        const intensity = directSkill.nextPinned?.intensity;
+        const intensity = directSkill.skillId === CAVEMAN_SKILL_ID ? directSkill.nextPinned?.intensity : undefined;
         selectedIntent = { version: 1, skill: directSkill.skillId ? { id: directSkill.skillId, source: directSkill.fromPin ? 'pinned' : 'slash', input: userText,
           ...(isCavemanIntensity(intensity) ? { intensity } : {}) } : null };
         payload.text = buildHistoryUserContent(directSkill.skillId ? formatHistoryWithSkillTag(userText, directSkill.skillId) : userText, attachments);
@@ -278,7 +280,12 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
   }
   clearReceipt();
   if (action === 'send') acceptFirstMessageSubmission(chat, data.composerSubmissionId, body.receipt.commandId, body.receipt.state);
-  if (directSkill) { chat.pinnedSkill = directSkill.nextPinned; touchChat(chat); scheduleSaveSessions(); }
+  if (directSkill && chat.pinnedSkill === previousPin && directSkill.nextPinned !== (previousPin ?? null)) {
+    chat.pinnedSkill = directSkill.nextPinned;
+    touchChat(chat);
+    scheduleSaveSessions();
+    syncComposerPinnedSkillFromActiveChat();
+  }
   const detail = action === 'configure'
     ? { chatId, fields: body.frame?.fields, receipt: body.receipt }
     : { chatId, ...body };

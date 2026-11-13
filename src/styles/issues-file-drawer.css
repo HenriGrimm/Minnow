@@ -29,7 +29,6 @@ html.issues-file-drawer-open #fileSidebar.file-sidebar--issues-drawer.collapsed 
 /* Keep Issues content clear of the docked panel. */
 html.issues-file-drawer-open #issuesView .issues-shell {
   margin-right: var(--file-sidebar-w, 350px);
-  transition: margin-right var(--duration-normal, 0.2s) var(--ease-out, ease-out);
 }
 
 html.issues-file-drawer-open:has(#fileSidebar.file-sidebar--issues-drawer.collapsed) #issuesView .issues-shell {

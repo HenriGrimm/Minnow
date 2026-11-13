@@ -5,7 +5,6 @@ import '../styles/git-commit-diff.css';
 
 import {
   gitBranches,
-  gitCheckout,
   gitCherryPick,
   gitCreateTag,
   gitFetch,
@@ -36,7 +35,7 @@ import {
   openStashMenuDialog,
   openStashPushDialog,
 } from './git-advanced-actions';
-import { confirmDirtyCheckout } from './git-checkout-confirm';
+import { checkoutBranchWithChoice } from './git-checkout-confirm';
 import {
   isMissingGitRepositoryError,
   renderGitNoRepositoryState,
@@ -596,10 +595,12 @@ async function setCwd(path: string | undefined): Promise<void> {
 
 function openBranchSwitcher(): void {
   if (!branchBtn) return;
+  const cwd = effectiveCwd() ?? getWorkspacePath();
+  const expectedBranch = currentBranch || undefined;
   openGitBranchSwitchPopover({
     anchor: branchBtn,
     title: 'Switch branch',
-    cwd: effectiveCwd(),
+    cwd,
     // The poll keeps these fresh; before its first pass the popover fetches for itself.
     branchLists: localBranches.length
       ? {
@@ -610,11 +611,13 @@ function openBranchSwitcher(): void {
         }
       : undefined,
     onSubmit: async ({ name, kind, startPoint }) => {
-      if (!name || name === currentBranch) return;
-      if (!(await confirmDirtyCheckout(effectiveCwd()))) return;
+      if (!name || name === expectedBranch) return;
 
       await runOp(
-        () => gitCheckout({ branch: name, create: kind !== 'local', startPoint, cwd: effectiveCwd() }),
+        () => checkoutBranchWithChoice(
+          { branch: name, create: kind !== 'local', startPoint, cwd, expectedBranch },
+          () => worktreePathsEqual(cwd, effectiveCwd() ?? getWorkspacePath()),
+        ),
         kind === 'local' ? `Switched to ${name}` : `Created and checked out ${name}`,
       );
     },
@@ -749,23 +752,22 @@ function buildCommands(): Command[] {
       run: () => {
         void showSection('branches');
         const anchor = branchBtn ?? document.getElementById(ROOT_ID) ?? document.body;
+        const cwd = effectiveCwd() ?? getWorkspacePath();
+        const expectedBranch = currentBranch || undefined;
         openGitRefNamePopover({
           anchor,
           title: 'New branch',
           kind: 'branch',
-          cwd: effectiveCwd(),
-          defaultPath: effectiveCwd() || getWorkspacePath(),
+          cwd,
+          defaultPath: cwd,
           reserved: [currentBranch, 'main', 'master'],
           onSubmit: async (result) => {
-            if (!(await confirmDirtyCheckout(effectiveCwd()))) return;
             await runOp(
               () =>
-                gitCheckout({
-                  branch: result.name,
-                  create: true,
-                  startPoint: result.startPoint,
-                  cwd: effectiveCwd(),
-                }),
+                checkoutBranchWithChoice(
+                  { branch: result.name, create: true, startPoint: result.startPoint, cwd, expectedBranch },
+                  () => worktreePathsEqual(cwd, effectiveCwd() ?? getWorkspacePath()),
+                ),
               `Created and checked out ${result.name}`,
             );
           },

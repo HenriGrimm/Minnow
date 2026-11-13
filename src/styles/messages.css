@@ -53,6 +53,67 @@
   position: relative;
 }
 
+.chat-viewport:has(> :where(.chat-todo-panel, .composer-run-status:not([hidden]))) {
+  display: grid;
+  grid-template: minmax(0, 1fr) auto auto / minmax(0, 1fr);
+}
+
+.chat-viewport:has(> .chat-todo-panel) { container-type: size; }
+
+.chat-viewport:has(> :where(.chat-todo-panel, .composer-run-status:not([hidden]))) > :is(.chat-area, .chat-viewport-dock) {
+  grid-area: 1 / 1;
+}
+
+.chat-viewport > .chat-todo-panel {
+  grid-area: 3 / 1;
+  width: calc(0.88 * min(var(--chat-composer-max), 100% - 2 * var(--mn-space-4)));
+  margin: var(--mn-space-1) 0 var(--mn-space-2);
+  align-self: start;
+  justify-self: center;
+}
+
+.chat-viewport > .composer-run-status {
+  grid-area: 2 / 1 / 3 / -1;
+}
+
+@container code-stage (width < 1280px) {
+  .chat-viewport:has(~ .input-bar):not(:has(~ :is(.question-host, .tool-approval-host):not([hidden]))) > .chat-todo-panel {
+    --chat-todo-bottom-radius: 0px;
+    margin-block-end: 0;
+    border-block-end: 0;
+  }
+}
+
+@container code-stage (width >= 1280px) {
+  .chat-viewport:has(> .chat-todo-panel) {
+    /* Equal gutters center the transcript. The checklist stays close to it on wide screens. */
+    --chat-todo-outer-inset: clamp(var(--mn-space-8), 3cqi, 5rem);
+    --chat-todo-min-rail-width: calc(12rem + var(--chat-todo-outer-inset));
+    grid-template: minmax(0, 1fr) auto /
+      minmax(var(--chat-todo-min-rail-width), 1fr)
+      minmax(0, var(--chat-composer-max))
+      minmax(var(--chat-todo-min-rail-width), 1fr);
+    column-gap: clamp(var(--mn-space-8), 3cqi, 4rem);
+  }
+
+  .chat-viewport:has(> .chat-todo-panel) > :is(.chat-area, .chat-viewport-dock) {
+    grid-area: 1 / 2;
+  }
+
+  .chat-viewport:has(> .chat-todo-panel) > .chat-area {
+    --chat-todo-transcript-padding-inline: 0px;
+    padding-inline: var(--chat-todo-transcript-padding-inline);
+  }
+
+  .chat-viewport > .chat-todo-panel {
+    grid-area: 1 / 1;
+    width: min(22rem, calc(100% - var(--chat-todo-outer-inset)));
+    min-width: 0;
+    margin: var(--mn-space-8) 0 0;
+    justify-self: end;
+  }
+}
+
 /* Soften the clipped transcript while leaving the jump button fully visible. */
 .chat-viewport > .chat-area.chat-thread:has(+ .chat-viewport-dock > .chat-jump-latest:not(.hidden)) {
   mask-image: linear-gradient(to bottom, var(--mn-fg) calc(100% - var(--mn-space-8)), transparent);

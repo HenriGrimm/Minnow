@@ -164,7 +164,14 @@ html.is-electron-shell[data-platform='win32']:is(.mn-graphite-sidebar-open, .mn-
   padding-right: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding) + var(--mn-space-2));
 }
 
-/* Other app surfaces start below the controls when there is no thread header. */
+/* Without a thread header, the menubar owns the full titlebar row. Keep its
+   left cluster in the sidebar while making the empty space draggable. */
+html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os:not(:has(.mn-os-app-layer.is-active #graphiteThreadHeader:not([hidden]))) > #osMenubar {
+  width: 100%;
+  padding-inline-end: calc(100% - var(--mn-graphite-sidebar-width) + 10px);
+}
+
+/* Other app surfaces start below the titlebar when there is no thread header. */
 html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-stage.is-in-app:not(:has(.mn-os-app-layer.is-active #graphiteThreadHeader:not([hidden]))) {
   margin-block-start: var(--os-menubar-h);
 }

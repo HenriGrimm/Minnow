@@ -1,6 +1,7 @@
 import { ensureNewIssuePropertyFields } from './issues-new-property-field';
 import { ensureNewIssueWorkspaceField } from './issues-new-workspace-field';
 import { createIcon } from './icon';
+import { createButton } from './components/button';
 
 const CHROME_MARK = 'data-issues-chrome';
 
@@ -132,20 +133,23 @@ function buildHeader(): HTMLElement {
     text: 'Files',
   });
 
-  const syncAllBtn = el('button', {
-    type: 'button',
-    class: 'issues-btn',
-    id: 'btnIssuesSyncAll',
-    title: 'Sync all issues with GitHub',
-    text: 'Sync all',
+  const syncAllBtn = createButton({
+    className: 'issues-header__sync',
+    variant: 'secondary',
+    size: 'sm',
+    icon: 'refresh',
+    label: 'Sync all',
   });
+  syncAllBtn.id = 'btnIssuesSyncAll';
+  syncAllBtn.title = 'Sync all issues with GitHub';
+  syncAllBtn.hidden = true;
 
   const controls = el('div', { class: 'issues-header__controls issues-header__controls--issues' }, [
     toggle,
     filters,
-    newBtn,
+    el('div', { class: 'issues-header__actions' }, [newBtn, syncAllBtn]),
     search,
-    el('div', { class: 'issues-extra-filters' }, [scopeLabel, scope, syncAllBtn, groupBy, filesBtn, capture]),
+    el('div', { class: 'issues-extra-filters' }, [scopeLabel, scope, groupBy, filesBtn, capture]),
   ]);
 
   return el('header', { class: 'issues-header' }, [brand, controls]);

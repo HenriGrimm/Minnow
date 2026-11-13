@@ -38,14 +38,14 @@ export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<
   for (const name of promptClasses) {
     column?.classList.remove(name);
   }
-  for (const node of column?.querySelectorAll<HTMLElement>(':scope > #toolApprovalHost, :scope > #questionHost, :scope > #composerRunStatus, :scope > .input-bar, :scope > #btnStats, :scope > #statsStrip') ?? []) {
+  for (const node of column?.querySelectorAll<HTMLElement>(':scope > #toolApprovalHost, :scope > #questionHost, :scope > .input-bar, :scope > #btnStats, :scope > #statsStrip') ?? []) {
     const marker = document.createComment('shared chat return slot');
     node.before(marker); parked.push({ node, marker }); shell.append(node);
   }
-  const jumpDock = column?.querySelector<HTMLElement>(':scope > .chat-viewport > .chat-viewport-dock');
-  if (jumpDock && options.showJumpToLatest !== false) {
-    const marker = document.createComment('shared chat jump return slot');
-    jumpDock.before(marker); parked.push({ node: jumpDock, marker }); viewport.append(jumpDock);
+  for (const node of column?.querySelectorAll<HTMLElement>(':scope > .chat-viewport > .chat-viewport-dock, :scope > .chat-viewport > #composerRunStatus') ?? []) {
+    if (options.showJumpToLatest === false && node.matches('.chat-viewport-dock')) continue;
+    const marker = document.createComment('shared chat return slot');
+    node.before(marker); parked.push({ node, marker }); viewport.append(node);
   }
   setSharedChatHost({ chatId: chat.id, transcript, shell, openPlan: options.openPlan });
   const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;

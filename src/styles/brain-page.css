@@ -359,7 +359,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
 }
 
 .brain-error {
-  color: var(--mn-danger, #ef4444);
+  color: var(--mn-danger-ink);
 }
 
 .brain-section-subtitle {
@@ -501,11 +501,11 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
 }
 
 .brain-status[data-kind='err'] {
-  color: var(--mn-danger, #ef4444);
+  color: var(--mn-danger-ink);
 }
 
 .brain-status[data-kind='ok'] {
-  color: var(--mn-success, #16a34a);
+  color: var(--mn-success-ink);
 }
 
 /* ── Chips ────────────────────────────────────────────────────────────────── */

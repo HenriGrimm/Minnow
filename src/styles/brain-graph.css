@@ -471,6 +471,18 @@
   background: var(--mn-surface-1);
 }
 
+.brain-inspector__graph-actions:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mn-space-2);
+}
+
+@media (pointer: coarse) {
+  .brain-inspector__graph-actions .brain-action-btn {
+    min-height: var(--touch-min);
+  }
+}
+
 .brain-inspector__actions .brain-action-btn {
   min-width: 0;
   min-height: var(--touch-min, 44px);

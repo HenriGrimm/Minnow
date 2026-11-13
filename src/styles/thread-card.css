@@ -212,15 +212,6 @@
   white-space: nowrap;
 }
 
-.graphite-thread-card__environment:not([hidden]) {
-  display: block;
-  margin: 0 6px 4px 34px;
-  padding: 4px;
-  border: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 9px;
-  background: var(--mn-graphite-raised, var(--mn-surface-1));
-}
-
 .graphite-thread-card__divider {
   height: 1px;
   flex: none;
@@ -228,13 +219,21 @@
   background: var(--mn-graphite-line, var(--mn-border));
 }
 
-.graphite-thread-card__counts,
-.graphite-thread-card__footer,
-.graphite-thread-card__permissions,
-.graphite-thread-card__git-actions {
+.graphite-thread-card__counts:not([hidden]),
+.graphite-thread-card__footer {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.graphite-thread-card__counts {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.graphite-thread-card__row--action:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: calc(-1 * var(--mn-focus-ring-width));
 }
 
 .graphite-thread-card__footer {
@@ -242,29 +241,10 @@
 }
 
 .graphite-thread-card__git-actions {
-  padding-inline: 34px 6px;
-}
-
-.graphite-thread-card__git-actions > :first-child {
-  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
-  background: var(--mn-graphite-raised, var(--mn-surface-1));
-}
-
-.graphite-thread-card__permissions {
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--mn-graphite-raised, var(--mn-surface-1));
-}
-
-.graphite-thread-card__permissions .graphite-thread-button {
-  height: 24px;
-  border-radius: 6px;
-}
-
-.graphite-thread-card__permissions [aria-pressed='true'] {
-  background: var(--mn-graphite-active, var(--mn-surface-elevated));
-  color: var(--mn-graphite-text, var(--mn-fg));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mn-space-1);
+  padding: 0 var(--mn-space-1) var(--mn-space-1);
 }
 
 .graphite-thread-card__key {
@@ -323,7 +303,7 @@
 #workspaceSplit:has(#graphiteThreadHeader:not([hidden])) #chatArea.chat-thread {
   --chat-reading-width: min(var(--chat-composer-max), 100%);
   gap: 16px;
-  padding: 20px var(--mn-graphite-thread-gutter, 36px) 8px;
+  padding: 20px var(--chat-todo-transcript-padding-inline, var(--mn-graphite-thread-gutter, 36px)) 8px;
 }
 
 .graphite-thread-summary {

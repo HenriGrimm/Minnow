@@ -1,5 +1,5 @@
 import '../styles/graphite-apps.css';
-import { createIcon, type IconName } from '../ui/icon';
+import { createGitHubMark, createIcon, type IconName } from '../ui/icon';
 import { isNarrowLayout, NARROW_MQ } from '../ui/mobile-layout';
 
 const MODEL_GROUPS = [
@@ -19,39 +19,39 @@ const MODEL_ICONS: Partial<Record<string, IconName>> = {
   usage: 'appStats',
 };
 
-const SETTINGS_ICONS: Partial<Record<string, IconName>> = {
-  general: 'appDevServer',
+const SETTINGS_ICONS: Partial<Record<string, IconName | 'githubMark'>> = {
+  general: 'power',
   appearance: 'palette',
   notifications: 'bell',
-  audio: 'mic',
-  devices: 'deviceMobile',
+  audio: 'speaker',
+  devices: 'devices',
   updates: 'download',
   editor: 'edit',
   terminal: 'terminal',
-  lsp: 'appModels',
-  browser: 'globe',
-  github: 'gitBranch',
+  lsp: 'fileCode',
+  browser: 'browser',
+  github: 'githubMark',
   issues: 'appIssues',
   models: 'appModels',
   'agent-center': 'shieldCheck',
-  injection: 'fileText',
-  rules: 'fileText',
+  injection: 'comment',
+  rules: 'clipboardChecklist',
   tools: 'tools',
-  autopilot: 'settings',
-  watchdog: 'statusPending',
-  plugins: 'link',
+  autopilot: 'workflow',
+  watchdog: 'stopwatch',
+  plugins: 'puzzle',
   skills: 'sparkles',
-  'skills-library': 'book',
-  'agent-packs': 'codeMapInjection',
+  'skills-library': 'books',
+  'agent-packs': 'openPackage',
   search: 'search',
-  mcp: 'codeMapInjection',
+  mcp: 'plug',
   'mcp-hub': 'link',
-  servers: 'terminal',
-  webhooks: 'settings',
+  servers: 'appServers',
+  webhooks: 'webhook',
   backups: 'archive',
   access: 'lock',
-  about: 'help',
-  diagnostics: 'statusPending',
+  about: 'info',
+  diagnostics: 'pulse',
 };
 
 /** Change the placement of existing controls while retaining their handlers and route IDs. */
@@ -87,8 +87,8 @@ export function initGraphiteAppChrome(): () => void {
   for (const button of settingsNav?.querySelectorAll<HTMLButtonElement>('.settings-nav__item') ?? []) {
     const name = SETTINGS_ICONS[button.dataset.settingsNavArea ?? 'models'];
     if (!name) continue;
-    const icon = createIcon(name, { size: 14, className: 'settings-nav__graphite-icon' });
-    button.prepend(icon);
+    const options = { size: 14, className: 'settings-nav__graphite-icon' };
+    button.prepend(name === 'githubMark' ? createGitHubMark(options) : createIcon(name, options));
   }
 
   let active = false;

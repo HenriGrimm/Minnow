@@ -8,6 +8,8 @@ import {
 } from '../lib/appearance-choices.mjs';
 import { scheduleAppearancePersist } from './persist-schedule';
 import { APPEARANCE_STORAGE_KEYS } from './types';
+import { parseCssColorOrDefault } from './color-format';
+import { relativeLuminance } from './theme-derive';
 
 export interface GraphitePreferences {
   colorIntensity: ColorIntensity;
@@ -36,9 +38,20 @@ export function readGraphitePreferences(): GraphitePreferences {
 export function applyGraphitePreferences(prefs = readGraphitePreferences()): void {
   const root = document.documentElement;
   root.dataset.tint = prefs.colorIntensity;
-  root.dataset.graphiteAccent = prefs.graphiteAccent;
   root.dataset.density = prefs.density;
   root.toggleAttribute('data-reduce-motion', prefs.reduceMotion);
+}
+
+export function applyGraphiteAccent(root: HTMLElement, accent: GraphiteAccent): void {
+  root.dataset.graphiteAccent = accent;
+  if (accent.startsWith('#')) {
+    root.style.setProperty('--mn-graphite-picked-accent', accent);
+    const text = relativeLuminance(parseCssColorOrDefault(accent)) > 0.18 ? 'dark' : 'light';
+    root.dataset.accentText = text;
+  } else {
+    root.style.removeProperty('--mn-graphite-picked-accent');
+    root.removeAttribute('data-accent-text');
+  }
 }
 
 export function setGraphitePreference<Key extends keyof GraphitePreferences>(

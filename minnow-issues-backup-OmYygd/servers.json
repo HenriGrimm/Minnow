@@ -1,0 +1,22 @@
+{
+  "mtplx": {
+    "enabled": true,
+    "autoStart": false,
+    "port": 8088
+  },
+  "searxng": {
+    "enabled": true,
+    "autoStart": false,
+    "port": 8899
+  },
+  "llama-cpp": {
+    "enabled": true,
+    "autoStart": false,
+    "port": 8085
+  },
+  "mlx-lm": {
+    "enabled": true,
+    "autoStart": false,
+    "port": 8087
+  }
+}

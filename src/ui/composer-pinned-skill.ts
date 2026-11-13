@@ -9,8 +9,10 @@ let labelEl: HTMLSpanElement | null = null;
 let selectEl: HTMLSelectElement | null = null;
 let dismissBtn: HTMLButtonElement | null = null;
 
-function ensureStrip(): HTMLDivElement {
-  if (stripEl) return stripEl;
+function ensureStrip(): HTMLDivElement | null {
+  const host = document.getElementById('composerControls');
+  if (!host) return null;
+  if (stripEl?.parentNode === host) return stripEl;
 
   stripEl = document.createElement('div');
   stripEl.id = 'pinnedSkillStrip';
@@ -65,15 +67,8 @@ function ensureStrip(): HTMLDivElement {
   stripEl.appendChild(selectEl);
   stripEl.appendChild(dismissBtn);
 
-  const host = document.getElementById('composerControls');
   const anchor = document.getElementById('workAgentDev');
-  if (host) {
-    if (anchor?.parentNode === host) {
-      host.insertBefore(stripEl, anchor);
-    } else {
-      host.appendChild(stripEl);
-    }
-  }
+  host.insertBefore(stripEl, anchor?.parentNode === host ? anchor : null);
 
   return stripEl;
 }
@@ -87,14 +82,16 @@ function currentIntensity(pinned: PinnedSkillState): string {
 
 /** Show or hide the pinned skill chip from the active chat. */
 export function syncComposerPinnedSkillFromActiveChat(): void {
+  if (typeof document === 'undefined') return;
   const strip = ensureStrip();
+  if (!strip) return;
   const chat = getActiveChat();
   const pinned = chat.pinnedSkill;
 
   const isCaveman = pinned?.id === CAVEMAN_SKILL_ID;
   const isPartyMode = pinned?.id === PARTYMODE_SKILL_ID;
 
-  if (!pinned || (!isCaveman && !isPartyMode)) {
+  if (!pinned) {
     strip.classList.add('hidden');
     strip.classList.remove('pinned-skill-control--party');
     return;
@@ -102,24 +99,23 @@ export function syncComposerPinnedSkillFromActiveChat(): void {
 
   strip.classList.remove('hidden');
   strip.classList.toggle('pinned-skill-control--party', isPartyMode);
+  const label = isPartyMode ? '🎉 Party Mode' : isCaveman ? 'Caveman' : `/${pinned.id}`;
 
   if (labelEl) {
-    labelEl.textContent = isPartyMode ? '🎉 Party Mode' : 'Caveman';
+    labelEl.textContent = label;
   }
 
   if (selectEl) {
-    selectEl.classList.toggle('hidden', isPartyMode);
+    selectEl.classList.toggle('hidden', !isCaveman);
     if (isCaveman) {
       selectEl.value = currentIntensity(pinned);
     }
   }
 
   if (dismissBtn) {
-    dismissBtn.setAttribute(
-      'aria-label',
-      isPartyMode ? 'Unpin party mode' : 'Unpin caveman mode',
-    );
-    dismissBtn.title = isPartyMode ? 'Unpin party mode' : 'Unpin caveman mode';
+    const dismissLabel = `Unpin ${isPartyMode ? 'Party Mode' : label}`;
+    dismissBtn.setAttribute('aria-label', dismissLabel);
+    dismissBtn.title = dismissLabel;
   }
 }
 

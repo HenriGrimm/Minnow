@@ -32,6 +32,7 @@ import {
 import { parseFileContentMatches, type FileContentMatch } from './file-tree-content-search';
 import { fetchSharedFileIndex, resolveFileTreeSearch } from './file-tree-index-client';
 import {
+  dirname,
   joinTreePath,
   normalizeTreePath,
 } from './file-tree-path';
@@ -47,6 +48,7 @@ import {
   applyRowClickSelection,
   applyTreeSelectionToRows,
   clearTreeSelection,
+  getTreeSelectionAnchor,
   getSelectedTreePaths,
   isTreePathSelected,
   pruneTreeSelectionToVisibleRows,
@@ -55,6 +57,7 @@ import {
   selectAllVisibleTreeRows,
   selectionForRow,
   setTreeSelectionAnchor,
+  toggleTreeSelection,
   treeSelectionCount,
   visibleTreeRowEntries,
 } from './file-tree-selection';
@@ -247,7 +250,7 @@ function patchGitBadgeOnRow(row: HTMLElement, fullPath: string): void {
   appendGitBadge(row, fullPath);
 }
 
-let crudBound = false;
+let crudBoundHost: HTMLElement | null = null;
 let focusedTreePath: string | null = null;
 let focusedTreeKind: FileTreeEntryKind | null = null;
 
@@ -402,9 +405,11 @@ function patchDirChildren(dir: string, treeRoot: string): void {
   );
   if (!container) return;
 
+  const restoreFocus = container.contains(document.activeElement);
   container.innerHTML = '';
   renderSubtree(container, normalizedDir, treeDepthForDir(normalizedDir, treeRoot));
   syncSelectionAfterRender();
+  restoreFocusedTreeRow(host, restoreFocus);
 }
 
 function captureFileTreeScrollTop(): number {
@@ -428,14 +433,27 @@ function syncSelectionAfterRender(): void {
   applyTreeSelectionToRows();
 }
 
-function restoreFocusedTreeRow(): void {
-  if (!focusedTreePath || !focusedTreeKind) return;
-  const row = document.querySelector<HTMLElement>(
-    `[data-path="${CSS.escape(focusedTreePath)}"]`,
-  );
-  if (row) {
-    row.classList.add('file-tree-row--focused');
+function restoreFocusedTreeRow(host: HTMLElement, restoreFocus: boolean): void {
+  let path = focusedTreePath;
+  let row: HTMLElement | null = null;
+  while (path && path !== '.' && !row) {
+    row = host.querySelector<HTMLElement>(`.file-tree-row[data-path="${CSS.escape(path)}"]`);
+    path = dirname(path);
   }
+  row ??= host.querySelector<HTMLElement>('.file-tree-row');
+  host.removeAttribute('tabindex');
+  if (!row) {
+    // Keep focus inside the tree while asynchronous listings replace its rows.
+    if (restoreFocus) {
+      host.tabIndex = -1;
+      host.focus({ preventScroll: true });
+    }
+    return;
+  }
+  host.querySelector<HTMLElement>('.file-tree-row[tabindex="0"]')?.setAttribute('tabindex', '-1');
+  row.tabIndex = 0;
+  if (restoreFocus) row.focus({ preventScroll: true });
+  else if (row.dataset.path === focusedTreePath) row.classList.add('file-tree-row--focused');
 }
 
 // ── Refresh ──────────────────────────────────────────────────────────────────
@@ -471,7 +489,6 @@ export async function refreshDirectories(dirs: string[]): Promise<void> {
   }
 
   restoreFileTreeScrollTop(scrollTop);
-  restoreFocusedTreeRow();
 }
 
 /** Reload the file tree after the effective listing root changes. */
@@ -547,9 +564,10 @@ export function collapseDir(path: string): void {
 function setFocusedRow(path: string, kind: FileTreeEntryKind, row: HTMLElement): void {
   focusedTreePath = path;
   focusedTreeKind = kind;
-  document.querySelectorAll('.file-tree-row--focused').forEach((el) => {
-    el.classList.remove('file-tree-row--focused');
-  });
+  const host = document.getElementById('fileTreeHost');
+  host?.querySelector('.file-tree-row--focused')?.classList.remove('file-tree-row--focused');
+  host?.querySelector('.file-tree-row[tabindex="0"]')?.setAttribute('tabindex', '-1');
+  row.tabIndex = 0;
   row.classList.add('file-tree-row--focused');
 }
 
@@ -672,24 +690,15 @@ function renderTreeError(host: HTMLElement, message: string): void {
   }
 }
 
-function createExpandHit(path: string, expanded: boolean): HTMLSpanElement {
+function createExpandHit(row: HTMLElement, path: string, expanded: boolean): HTMLSpanElement {
   const hit = document.createElement('span');
   hit.className = 'file-tree-expand' + (expanded ? ' open' : '');
-  hit.setAttribute('role', 'presentation');
-  hit.tabIndex = 0;
-  hit.setAttribute('aria-label', expanded ? `Collapse ${path}` : `Expand ${path}`);
+  hit.setAttribute('aria-hidden', 'true');
   hit.addEventListener('click', (e) => {
     e.stopPropagation();
+    row.focus({ preventScroll: true });
     if (expanded) collapseDir(path);
     else void expandDir(path);
-  });
-  hit.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      e.stopPropagation();
-      if (expanded) collapseDir(path);
-      else void expandDir(path);
-    }
   });
   return hit;
 }
@@ -707,12 +716,14 @@ function appendDirRow(
   const row = document.createElement('div');
   row.className = 'file-tree-row file-tree-row--dir';
   row.setAttribute('role', 'treeitem');
+  row.setAttribute('aria-level', String(depth + 1));
+  row.setAttribute('aria-label', name);
   row.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   row.setAttribute('data-path', fullPath);
   row.style.paddingLeft = `${dirRowPaddingLeftPx(depth)}px`;
-  row.tabIndex = 0;
+  row.tabIndex = -1;
 
-  row.appendChild(createExpandHit(fullPath, expanded));
+  row.appendChild(createExpandHit(row, fullPath, expanded));
   row.appendChild(createFolderTypeIconElement(name, 'tree', { expanded }));
 
   const label = document.createElement('span');
@@ -735,7 +746,7 @@ function appendDirRow(
     if (!expanded) void expandDir(fullPath);
   });
   row.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (e.key === 'Enter') {
       e.preventDefault();
       if (expanded) collapseDir(fullPath);
       else void expandDir(fullPath);
@@ -748,8 +759,10 @@ function appendDirRow(
   if (expanded) {
     const group = document.createElement('div');
     group.className = 'file-tree-children';
+    group.id = `file-tree-children-${encodeURIComponent(fullPath)}`;
     group.setAttribute('role', 'group');
     group.setAttribute('data-tree-dir', fullPath);
+    row.setAttribute('aria-owns', group.id);
     host.appendChild(group);
     renderSubtree(group, fullPath, depth + 1);
   }
@@ -767,9 +780,10 @@ function appendFileRow(
   const row = document.createElement('div');
   row.className = 'file-tree-row file-tree-row--file' + (selected ? ' selected' : '');
   row.setAttribute('role', 'treeitem');
+  row.setAttribute('aria-level', String(depth + 1));
   row.setAttribute('data-path', fullPath);
   row.style.paddingLeft = `${fileRowPaddingLeftPx(depth)}px`;
-  row.tabIndex = 0;
+  row.tabIndex = -1;
 
   row.appendChild(createFileTypeIconElement(name, 'tree'));
 
@@ -788,7 +802,7 @@ function appendFileRow(
     void import('./file-viewer').then((m) => m.openFileInViewer(fullPath));
   });
   row.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (e.key === 'Enter') {
       e.preventDefault();
       void import('./file-viewer').then((m) => m.openFileInViewer(fullPath));
     }
@@ -812,7 +826,7 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string, contentMatch?: F
   row.setAttribute('role', 'option');
   row.setAttribute('data-path', fullPath);
   row.style.paddingLeft = `${FILE_TREE_DIR_BASE_PADDING_PX}px`;
-  row.tabIndex = 0;
+  row.tabIndex = -1;
 
   row.appendChild(createFileTypeIconElement(base, 'tree'));
 
@@ -874,6 +888,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   filterAbort = controller;
   const context = { ...buildFileTreeToolContext(), signal: controller.signal };
   const isCurrent = () => generation === filterRenderGeneration && !controller.signal.aborted && getFilterQuery().trim() === query;
+  const restoreFocus = host.contains(document.activeElement);
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
@@ -883,6 +898,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   wait.className = 'file-tree-loading';
   wait.textContent = 'Searching project…';
   host.appendChild(wait);
+  restoreFocusedTreeRow(host, restoreFocus);
 
   const contentResult = import('../tools/client').then(({ executeWorkspaceFileAction }) => executeWorkspaceFileAction('grep', {
     pattern: query,
@@ -896,6 +912,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
     contentResult,
     isCurrent,
     (paths) => {
+      const restoreFocus = host.contains(document.activeElement);
       host.innerHTML = '';
       const names = sortFilteredPaths(filterPaths(paths, query), query);
       for (const filePath of names.slice(0, 200)) appendFlatFileRow(host, filePath);
@@ -904,10 +921,12 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
       contentWait.textContent = 'Searching file contents…';
       host.appendChild(contentWait);
       syncSelectionAfterRender();
+      restoreFocusedTreeRow(host, restoreFocus);
     },
   );
   if (!result) return;
 
+  const restoreResultsFocus = host.contains(document.activeElement);
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
@@ -916,6 +935,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   if ('error' in result) {
     controller.abort();
     renderTreeError(host, result.error);
+    restoreFocusedTreeRow(host, restoreResultsFocus);
     return;
   }
   const indexResult = result.paths;
@@ -933,6 +953,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
     empty.className = 'file-tree-empty';
     empty.textContent = 'No matching files';
     host.appendChild(empty);
+    restoreFocusedTreeRow(host, restoreResultsFocus);
     return;
   }
 
@@ -943,6 +964,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
     appendFlatFileRow(host, match.path, match);
   }
   syncSelectionAfterRender();
+  restoreFocusedTreeRow(host, restoreResultsFocus);
   if (nameMatches.length + contentOnlyMatches.length > 200) {
     const note = document.createElement('p');
     note.className = 'file-tree-empty';
@@ -978,14 +1000,14 @@ export function renderFileTree(): void {
   if (!host) return;
 
   const scrollTop = captureFileTreeScrollTop();
-  const savedFocusPath = focusedTreePath;
-  const savedFocusKind = focusedTreeKind;
+  const restoreFocus = host.contains(document.activeElement);
 
   if (!isFileTreeServerAvailable()) {
     filterAbort?.abort();
     filterAbort = null;
     filterRenderGeneration += 1;
     renderOfflineEmpty(host);
+    restoreFocusedTreeRow(host, restoreFocus);
     restoreFileTreeScrollTop(scrollTop);
     return;
   }
@@ -995,7 +1017,6 @@ export function renderFileTree(): void {
     const root = getFilePanelState().treeRoot || '.';
     void renderFlatResults(host, root, activeFilter).then(() => {
       restoreFileTreeScrollTop(scrollTop);
-      restoreFocusedTreeRow();
     });
     return;
   }
@@ -1014,6 +1035,7 @@ export function renderFileTree(): void {
     wait.className = 'file-tree-loading';
     wait.textContent = 'Loading project…';
     host.appendChild(wait);
+    restoreFocusedTreeRow(host, restoreFocus);
     restoreFileTreeScrollTop(scrollTop);
     // No refresh is running, so the placeholder would stay up forever. Kick one.
     if (rootRefreshesInFlight === 0 && !loadingDirs.has(root)) {
@@ -1028,13 +1050,9 @@ export function renderFileTree(): void {
   host.setAttribute('aria-multiselectable', 'true');
   renderSubtree(host, root, 0);
   syncSelectionAfterRender();
+  restoreFocusedTreeRow(host, restoreFocus);
 
   restoreFileTreeScrollTop(scrollTop);
-  if (savedFocusPath && savedFocusKind) {
-    focusedTreePath = savedFocusPath;
-    focusedTreeKind = savedFocusKind;
-    restoreFocusedTreeRow();
-  }
 }
 
 export async function refreshFileTree(): Promise<void> {
@@ -1093,7 +1111,6 @@ async function refreshFileTreeInner(): Promise<void> {
 
   renderFileTree();
   restoreFileTreeScrollTop(scrollTop);
-  restoreFocusedTreeRow();
 }
 
 export async function initFileTreeIfNeeded(): Promise<void> {
@@ -1112,9 +1129,9 @@ export async function initFileTreeIfNeeded(): Promise<void> {
 
 /** F2 rename — tree row focus or open file while CodeMirror is focused (BUG-018). */
 function handleRenameShortcut(e: KeyboardEvent): void {
-  if (e.key !== 'F2' || !isFileTreeServerAvailable()) return;
+  if (e.key !== 'F2' || e.defaultPrevented || !isFileTreeServerAvailable()) return;
 
-  if (focusedTreePath && focusedTreeKind) {
+  if (focusedTreePath && focusedTreeKind && document.activeElement?.matches('#fileTreeHost .file-tree-row')) {
     e.preventDefault();
     fileTreeOps.renamePath(focusedTreePath, focusedTreeKind);
     return;
@@ -1131,7 +1148,7 @@ function handleRenameShortcut(e: KeyboardEvent): void {
 
 /** Move keyboard focus to a rendered row and mark it focused. */
 function focusTreeRow(path: string, kind: FileTreeEntryKind): void {
-  const row = document.querySelector<HTMLElement>(
+  const row = document.getElementById('fileTreeHost')?.querySelector<HTMLElement>(
     `.file-tree-row[data-path="${CSS.escape(path)}"]`,
   );
   if (!row) return;
@@ -1146,21 +1163,23 @@ function focusTreeRow(path: string, kind: FileTreeEntryKind): void {
  * building stays visible), Ctrl/Cmd moves focus only so they can reach a row and
  * toggle it without losing what they already picked.
  */
-function handleArrowNavigation(e: KeyboardEvent, direction: -1 | 1): void {
+function handleArrowNavigation(e: KeyboardEvent): void {
   const rows = visibleTreeRowEntries();
   if (rows.length === 0) return;
 
   const focused = focusedTreePath ? normalizeTreePath(focusedTreePath) : null;
   const current = focused ? rows.findIndex((row) => row.path === focused) : -1;
-  const nextIndex =
-    current < 0 ? (direction === 1 ? 0 : rows.length - 1) : current + direction;
+  let nextIndex: number;
+  if (e.key === 'Home') nextIndex = 0;
+  else if (e.key === 'End') nextIndex = rows.length - 1;
+  else if (e.key === 'ArrowDown') nextIndex = current + 1;
+  else nextIndex = current < 0 ? rows.length - 1 : current - 1;
+  e.preventDefault();
   const next = rows[nextIndex];
   if (!next) return;
 
-  e.preventDefault();
-
   if (e.shiftKey) {
-    const anchor = focusedTreePath ?? next.path;
+    const anchor = getTreeSelectionAnchor() ?? focusedTreePath ?? next.path;
     setTreeSelectionAnchor(anchor);
     const range = rangeTreeSelection(anchor, next.path);
     if (range.length > 0) replaceTreeSelection(range);
@@ -1172,8 +1191,25 @@ function handleArrowNavigation(e: KeyboardEvent, direction: -1 | 1): void {
   focusTreeRow(next.path, next.kind);
 }
 
+function handleFolderNavigation(e: KeyboardEvent, row: HTMLElement, path: string): void {
+  const expanded = row.getAttribute('aria-expanded');
+  if (e.key === 'ArrowRight') {
+    if (expanded === 'false') void expandDir(path);
+    else if (expanded === 'true') {
+      const child = row.nextElementSibling?.querySelector<HTMLElement>('.file-tree-row');
+      if (child?.dataset.path) focusTreeRow(child.dataset.path, child.dataset.entryKind === 'dir' ? 'dir' : 'file');
+    }
+  } else if (expanded === 'true') {
+    collapseDir(path);
+  } else {
+    const parent = dirname(path);
+    if (parent !== '.') focusTreeRow(parent, 'dir');
+  }
+  e.preventDefault();
+}
+
 function handleTreeKeydown(e: KeyboardEvent): void {
-  if (!isFileTreeServerAvailable()) return;
+  if (e.defaultPrevented || !isFileTreeServerAvailable()) return;
 
   if (e.key === 'F2') {
     handleRenameShortcut(e);
@@ -1182,12 +1218,19 @@ function handleTreeKeydown(e: KeyboardEvent): void {
 
   if (isFileViewerEditorFocused()) return;
 
+  const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('.file-tree-row');
+  if (!row) return;
   const meta = e.metaKey;
   const ctrl = e.ctrlKey;
   const mod = meta || ctrl;
 
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    handleArrowNavigation(e, e.key === 'ArrowDown' ? 1 : -1);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+    handleArrowNavigation(e);
+    return;
+  }
+  if (!mod && row.getAttribute('role') === 'treeitem' && row.dataset.path &&
+      (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    handleFolderNavigation(e, row, row.dataset.path);
     return;
   }
   if (mod && (e.key === 'a' || e.key === 'A')) {
@@ -1202,6 +1245,12 @@ function handleTreeKeydown(e: KeyboardEvent): void {
   }
 
   if (!focusedTreePath || !focusedTreeKind) return;
+  if (e.key === ' ' && row.getAttribute('role') === 'treeitem') {
+    e.preventDefault();
+    toggleTreeSelection({ path: focusedTreePath, kind: focusedTreeKind });
+    setTreeSelectionAnchor(focusedTreePath);
+    return;
+  }
   const selected = selectionForRow(focusedTreePath, focusedTreeKind);
 
   if (mod && (e.key === 'c' || e.key === 'C')) {
@@ -1230,11 +1279,9 @@ function handleTreeKeydown(e: KeyboardEvent): void {
 
 /** Bind tree host shortcuts and background context menu (once). */
 export function initFileTreeCrud(): void {
-  if (crudBound) return;
-  crudBound = true;
-
   const host = document.getElementById('fileTreeHost');
-  if (!host) return;
+  if (!host || crudBoundHost === host) return;
+  crudBoundHost = host;
 
   host.addEventListener('keydown', handleTreeKeydown);
   document.addEventListener('keydown', handleRenameShortcut);

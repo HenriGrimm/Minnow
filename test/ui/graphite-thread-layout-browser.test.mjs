@@ -12,7 +12,7 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-layout-'));
   const styles = await Promise.all([
     'tokens', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
-    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces',
+    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -24,7 +24,8 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
     </style><main id="workspaceSplit">
       <header id="graphiteThreadHeader"></header>
       <section id="mainColumn" class="main-column">
-        <div id="chatArea" class="chat-thread">
+        <div class="chat-viewport">
+        <div id="chatArea" class="chat-area chat-thread">
           <div class="msg assistant">A saved reply</div>
           <div class="msg user msg--has-actions">
             <div class="msg-bubble msg-bubble--user-parts"><div class="user-msg-text">continue</div></div>
@@ -37,6 +38,8 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
             <div class="msg-bubble msg-bubble--user-parts"><div class="user-msg-text">${'longword'.repeat(150)}</div></div>
             <button class="message-actions__trigger" aria-label="Message actions">⋮</button>
           </div>
+        </div>
+        <div class="composer-run-status" hidden>Working</div>
         </div>
         <div id="toolApprovalHost" class="tool-approval-host" hidden>Allow this tool?</div>
         <div id="questionHost" class="question-host" hidden>Which option should I use?</div>
@@ -165,4 +168,68 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
   })`);
   assert.deepEqual(side, main);
   assert.equal(side.fits, true);
+
+  await session.evaluate(`(() => {
+    document.documentElement.classList.remove('mn-touch');
+    const transcript = document.querySelector('.graphite-chat-panel__transcript');
+    transcript.classList.remove('graphite-chat-panel__transcript');
+    transcript.id = 'chatArea';
+    transcript.style.width = '';
+    const column = document.querySelector('#mainColumn');
+    column.style.height = '650px';
+    column.querySelector('.chat-viewport').insertAdjacentHTML('afterbegin',
+      '<details class="chat-turn-todos chat-todo-panel" open><summary class="chat-turn-todos__header">Todo list</summary>' +
+      '<ul class="chat-turn-todos__list"><li>Review the checklist</li></ul></details>');
+  })()`);
+  const measureChecklist = () => session.evaluate(`(() => {
+    const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+    return { panel: rect('.chat-todo-panel'), composer: rect('#mainColumn > .input-bar'),
+      status: rect('.composer-run-status'), transcript: rect('#chatArea'), column: rect('#mainColumn'),
+      tracks: getComputedStyle(document.querySelector('.chat-viewport')).gridTemplateColumns };
+  })()`);
+  for (const width of [1440, 1100]) {
+    await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
+    for (const running of [false, true]) {
+      await session.evaluate(`document.querySelector('.composer-run-status').hidden = ${!running}`);
+      const { panel, composer, status } = await measureChecklist();
+      assert.ok(Math.abs(panel.bottom - composer.top) <= 1, 'checklist touches the composer');
+      assert.ok(Math.abs(panel.left - composer.left - (composer.right - panel.right)) <= 1, 'checklist is centered');
+      assert.ok(panel.width > 0.8 * composer.width && panel.width < composer.width);
+      if (running) assert.ok(status.bottom <= panel.top);
+    }
+  }
+
+  await session.evaluate("document.querySelector('.chat-todo-panel').open = false");
+  const collapsed = await measureChecklist();
+  assert.ok(Math.abs(collapsed.panel.bottom - collapsed.composer.top) <= 1);
+  await session.evaluate("document.querySelector('.chat-todo-panel').open = true");
+  await session.evaluate("document.getElementById('workspaceSplit').removeAttribute('data-side-open')");
+  await session.client.send('Emulation.setDeviceMetricsOverride', { width: 1579, height: 900, mobile: false, deviceScaleFactor: 1 });
+  const belowBreakpoint = await measureChecklist();
+  assert.ok(Math.abs(belowBreakpoint.panel.bottom - belowBreakpoint.composer.top) <= 1);
+  let previousPanelWidth = 0;
+  for (const width of [1580, 2200, 3840]) {
+    await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
+    const wide = await measureChecklist();
+    const { panel, transcript, composer, column } = wide;
+    assert.ok(panel.width >= 191 && panel.width <= 352, JSON.stringify(wide));
+    assert.ok(transcript.left - panel.right >= 32 && transcript.left - panel.right <= 64);
+    assert.ok(panel.left - column.left >= 32);
+    assert.ok(panel.width >= previousPanelWidth);
+    previousPanelWidth = panel.width;
+    assert.ok(Math.abs(transcript.left - composer.left) <= 1);
+  }
+  const { root } = await session.client.send('DOM.getDocument');
+  const { nodeId } = await session.client.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.chat-todo-panel > summary' });
+  await session.client.send('CSS.enable');
+  await session.client.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
+  const corner = await session.evaluate(`(() => {
+    const card = document.querySelector('.chat-todo-panel');
+    const { left, top } = card.getBoundingClientRect();
+    const header = card.querySelector('summary');
+    return { hovered: header.matches(':hover'), overflow: getComputedStyle(card).overflow,
+      topRadius: parseFloat(getComputedStyle(header).borderTopLeftRadius),
+      hit: card.contains(document.elementFromPoint(left + 1, top + 1)) };
+  })()`);
+  assert.deepEqual(corner, { hovered: true, overflow: 'clip', topRadius: 14, hit: false });
 });

@@ -151,7 +151,7 @@ async function probeForgeStatus(root) {
 
   const remoteUrl = await readRemoteUrl(root);
   if (!remoteUrl) {
-    return { ...base, reason: 'This repository has no remote. Add one to work with pull requests.' };
+    return { ...base, reason: 'This repository has no remote. Add a GitHub remote and try again.' };
   }
 
   const { host, slug, hostname } = parseRemoteHost(remoteUrl);

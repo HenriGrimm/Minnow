@@ -890,50 +890,17 @@
   },
   {
     "key": "appearance.theme",
-    "label": "Theme",
+    "label": "Appearance controls",
     "keywords": [
       "color",
       "dark",
       "light",
-      "graphite",
-      "swamp",
-      "desert",
-      "ocean",
-      "coral",
-      "mono",
-      "matrix",
-      "human",
-      "mint",
       "palette"
     ],
     "category": "appearance",
     "area": "appearance",
     "storage": "section",
     "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "appearance"
-    ]
-  },
-  {
-    "key": "appearance.theme.family",
-    "label": "Theme family",
-    "category": "appearance",
-    "area": "appearance",
-    "storage": "browser",
-    "path": "themeFamily",
-    "type": "enum",
-    "allowedValues": [
-      "swamp",
-      "desert",
-      "ocean",
-      "coral",
-      "mono",
-      "matrix",
-      "human",
-      "mint"
-    ],
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
@@ -966,7 +933,7 @@
   },
   {
     "key": "appearance.theme.color",
-    "label": "Color intensity",
+    "label": "Surface tint",
     "keywords": [
       "tint",
       "surface",
@@ -985,7 +952,13 @@
   },
   {
     "key": "appearance.theme.accent",
-    "label": "Accent",
+    "label": "Accent color",
+    "keywords": [
+      "swatch",
+      "custom color",
+      "hex",
+      "color picker"
+    ],
     "category": "appearance",
     "area": "appearance",
     "storage": "section",
@@ -1046,10 +1019,12 @@
   },
   {
     "key": "appearance.customColors",
-    "label": "Custom colors",
+    "label": "Advanced colors",
     "keywords": [
+      "custom colors",
       "tokens",
-      "override"
+      "override",
+      "palette"
     ],
     "category": "appearance",
     "area": "appearance",

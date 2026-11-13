@@ -177,9 +177,10 @@ function managedSendContext(chat: Chat, text: string, options: SendProgrammaticC
   if (slash.skillId && !isSkillEnabled(slash.skillId)) throw new Error(`Skill "${slash.skillId}" is disabled in Settings`);
   const turn = resolveTurnSkill({ slashSkillId: slash.skillId, userText: slash.userText, pinned: chat.pinnedSkill, isSkillEnabled });
   const userText = normalizeCavemanUserText(turn.skillId, slash.skillId, slash.userText);
+  const intensity = turn.skillId === CAVEMAN_SKILL_ID ? turn.nextPinned?.intensity : undefined;
   const intent: ChatSendIntent = { version: 1,
     skill: turn.skillId ? { id: turn.skillId, source: turn.fromPin ? 'pinned' : 'slash', input: userText,
-      ...(isCavemanIntensity(turn.nextPinned?.intensity) ? { intensity: turn.nextPinned!.intensity as import('../skills/caveman-client').CavemanIntensity } : {}) } : null,
+      ...(isCavemanIntensity(intensity) ? { intensity } : {}) } : null,
     ...(options.ephemeralContext !== undefined ? { context: options.ephemeralContext } : {}),
     ...(options.issue ? { issue: options.issue } : {}), ...(options.codeMap ? { codeMap: options.codeMap } : {}),
     ...(options.goalDriven !== undefined ? { goalDriven: options.goalDriven } : {}),
@@ -211,6 +212,7 @@ export async function sendProgrammaticChatText(
   }
   if (chat.chatCommandVersion === 1) {
     options.signal?.throwIfAborted();
+    const previousPin = chat.pinnedSkill;
     const context = managedSendContext(chat, text, options);
     const { sendManagedChatAction, waitForManagedCommand } = await import('./managed-chat-client');
     const attachments = await resolveWorkspaceReferences(options.validAttachments ?? []);
@@ -226,7 +228,10 @@ export async function sendProgrammaticChatText(
       receipt = await sendManagedChatAction(chat.id, 'send', { text: context.text, intent: context.intent, attachments });
       pendingDraft?.accept();
     } finally { pendingDraft?.restore(); }
-    chat.pinnedSkill = context.nextPinned;
+    if (chat.pinnedSkill === previousPin && context.nextPinned !== (previousPin ?? null)) {
+      chat.pinnedSkill = context.nextPinned;
+      syncComposerPinnedSkillFromActiveChat();
+    }
     if (!pendingDraft && options.clearComposerOnSend !== false && chat.composerDraft === draftBeforeAdmission) {
       if (sessionState?.activeId === chat.id && composerInput && composerInput.value === inputBeforeAdmission) {
         clearComposerAfterSend(chat, composerInput);
@@ -500,6 +505,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     try {
       if (attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error')) throw new Error('Could not read attached files. Fix or remove them before sending.');
       if (isPairedDevice()) await persistPairedChatBeforeSend(chat);
+      const previousPin = chat.pinnedSkill;
       const context = chat.chatCommandVersion === 1 ? managedSendContext(chat, managedText, {
         ephemeralContext: composer?.ephemeralContext, issue: composer?.issue, goalDriven: managedGoal,
         parseSlash: !managedGoal, attachIssueMentions: !composer?.issue,
@@ -512,7 +518,12 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
         ...(context && action === 'send' ? { intent: context.intent } : {}),
         ...(action === 'send' && composer?.followupDelivery === 'queue' ? { mode: 'queue' } : {}),
         attachments: attachments.filter(attachment => attachment.kind !== 'error' && attachment.kind !== 'chatRef') });
-      if (context && action === 'send') { chat.pinnedSkill = context.nextPinned; touchChat(chat); scheduleSaveSessions(); }
+      if (context && action === 'send' && chat.pinnedSkill === previousPin && context.nextPinned !== (previousPin ?? null)) {
+        chat.pinnedSkill = context.nextPinned;
+        touchChat(chat);
+        scheduleSaveSessions();
+        syncComposerPinnedSkillFromActiveChat();
+      }
       // Remove only the sent files; anything added during delivery is a new draft.
       if (pendingDraft && getActiveChat().id === chat.id && getAttachmentEpoch() === remoteAttachmentEpoch) {
         const sentIds = new Set(attachmentsAtSend.map(attachment => attachment.id));

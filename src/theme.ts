@@ -3,6 +3,7 @@
  */
 
 import { scheduleAppearancePersist } from './appearance/persist-schedule';
+import { applyGraphiteAccent, readGraphitePreferences } from './appearance/graphite-preferences';
 import {
   DEFAULT_THEME_FAMILY,
   DEFAULT_THEME_ID,
@@ -34,60 +35,6 @@ const LEGACY_FAMILY_ALIASES: Record<string, ThemeFamily> = {
   retro: 'matrix',
   ember: 'human',
 };
-
-export interface ThemeFamilyMeta {
-  id: ThemeFamily;
-  name: string;
-  blurb: string;
-}
-
-export const THEME_FAMILY_META: ThemeFamilyMeta[] = [
-  {
-    id: 'graphite',
-    name: 'Graphite',
-    blurb: 'Neutral surfaces with an accent you choose.',
-  },
-  {
-    id: 'swamp',
-    name: 'Swamp',
-    blurb: 'Cool neutrals, muted green accent. Calm and editor-like.',
-  },
-  {
-    id: 'desert',
-    name: 'Desert',
-    blurb: 'Warm taupe neutrals with an amber accent. Cozy for long sessions.',
-  },
-  {
-    id: 'ocean',
-    name: 'Ocean',
-    blurb: 'Blue-tinted neutrals with a soft cyan accent. Modern dev-tool feel.',
-  },
-  {
-    id: 'coral',
-    name: 'Coral',
-    blurb: 'Graphite neutrals with a warm coral accent. Distinct and soft-modern.',
-  },
-  {
-    id: 'mono',
-    name: 'Mono',
-    blurb: 'Pure grayscale. Proof on newsprint, bench in charcoal.',
-  },
-  {
-    id: 'matrix',
-    name: 'Matrix',
-    blurb: 'Phosphor green on CRT black. Accent-only green, readable long sessions.',
-  },
-  {
-    id: 'human',
-    name: 'Human',
-    blurb: 'Near-black ground with burnt orange accent and peach cream text. Warm evening sessions.',
-  },
-  {
-    id: 'mint',
-    name: 'Mint',
-    blurb: 'Cool charcoal neutrals with mint phosphor accent and icy cyan highlights.',
-  },
-];
 
 function isThemeFamily(v: string | null): v is ThemeFamily {
   return typeof v === 'string' && (THEME_FAMILIES as readonly string[]).includes(v);
@@ -220,6 +167,12 @@ export function getFamily(id: ThemeId): ThemeFamily {
   return id.split('-')[0] as ThemeFamily;
 }
 
+/** Legacy families now select an accent while sharing the same surfaces. */
+export function getAccentChoice(id = getStoredTheme()) {
+  const family = getFamily(id);
+  return family === DEFAULT_THEME_FAMILY ? readGraphitePreferences().graphiteAccent : family;
+}
+
 export function getMode(id: ThemeId): ThemeMode {
   return id.endsWith('-light') ? 'light' : 'dark';
 }
@@ -250,7 +203,7 @@ function attachSystemListener(): void {
   systemListener = globalThis.matchMedia('(prefers-color-scheme: light)');
   onSystemChange = () => {
     if (!getFollowSystem()) return;
-    applyTheme(getStoredTheme(), { persist: false });
+    applyTheme(getStoredTheme(), { persist: false, keepOverrides: true });
   };
   systemListener.addEventListener('change', onSystemChange);
 }
@@ -263,6 +216,8 @@ export function syncThemeListeners(): void {
 export interface ApplyThemeOptions {
   /** When false, only updates DOM (used when OS mode changes under follow-system). */
   persist?: boolean;
+  /** Live system mode changes keep the user's explicit color overrides. */
+  keepOverrides?: boolean;
 }
 
 const BOOT_INLINE_THEME_VARS = ['--mn-bg', '--mn-fg', '--mn-accent', '--mn-border'] as const;
@@ -280,9 +235,11 @@ function clearBootInlineThemeVars(root: HTMLElement): void {
 export function applyTheme(id: ThemeId, options: ApplyThemeOptions = {}): void {
   const { persist = true } = options;
   const root = document.documentElement;
-  clearBootInlineThemeVars(root);
-  root.setAttribute('data-theme', id);
-  root.style.colorScheme = getMode(id);
+  if (!options.keepOverrides) clearBootInlineThemeVars(root);
+  const mode = getMode(id);
+  root.setAttribute('data-theme', `${DEFAULT_THEME_FAMILY}-${mode}`);
+  root.style.colorScheme = mode;
+  applyGraphiteAccent(root, getAccentChoice(id));
   updateThemeColorMeta(id);
 
   if (persist && !getFollowSystem()) {

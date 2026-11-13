@@ -187,6 +187,70 @@ test('Graphite panels open before the first message and restore each thread', as
   assert.equal(side.querySelector('[aria-selected="true"]')?.textContent, 'Terminal');
   assert.equal(side.getAttribute('aria-modal'), null);
 
+  const { setWorkspaceFromServer, resetWorkspaceStateForTests } = await import('../../src/state/workspace');
+  const { setIssuesStateForTests } = await import('../../src/state/issues-store');
+  const { setLocalServerAvailableForTests, isLocalServerAvailable } = await import('../../src/tools/config');
+  const fetchBefore = globalThis.fetch;
+  const serverBefore = isLocalServerAvailable();
+  try {
+    setWorkspaceFromServer({ path: '/workspace', isDefault: false, label: 'Workspace' });
+    setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
+    setLocalServerAvailableForTests(true);
+    const gitRequests: unknown[] = [];
+    let cleanCheckout = false;
+    globalThis.fetch = async (url, init) => {
+      if (url !== '/api/git') return new Response(null, { status: 404 });
+      gitRequests.push(JSON.parse(String(init?.body)));
+      if (cleanCheckout) return Response.json({ ok: true });
+      return Response.json({
+        ok: true,
+        staged: [{ path: 'index.ts', additions: 3, deletions: 1 }],
+        unstaged: [{ path: 'index.ts', additions: 1, deletions: 2 }],
+        untracked: [{ path: 'new.ts', additions: 2, deletions: 0 }, { path: 'image.png' }],
+      });
+    };
+    diffStats = undefined;
+    first.codeChangeTotals = { additions: 90, deletions: 80 };
+    const branch = document.querySelector<HTMLButtonElement>('.graphite-thread-branch')!;
+    Object.defineProperty(branch, 'getClientRects', { value: () => [{}] });
+    assert.equal(branch.hidden, false);
+    branch.click();
+    const menu = document.querySelector('.graphite-thread-card-popover');
+    assert.ok(menu);
+    const changesLabel = '[aria-label="3 changed files, 6 additions, 3 deletions"]';
+    for (let attempt = 0; attempt < 50 && !menu.querySelector(changesLabel); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const changes = menu.querySelector<HTMLButtonElement>(changesLabel)!;
+    assert.equal(changes.querySelector('.graphite-thread-addition')?.textContent, '+6');
+    assert.equal(changes.querySelector('.graphite-thread-deletion')?.textContent, '−3');
+    const gitActions = '.graphite-thread-card__git-actions > button';
+    const actionLabels = (card: Element) => Array.from(card.querySelectorAll(gitActions), button => button.textContent);
+    assert.deepEqual(actionLabels(menu), ['Commit and push', 'Open PR']);
+    assert.doesNotMatch(menu.textContent ?? '', /Permissions|Phone access|This computer/);
+    assert.deepEqual(gitRequests, [{ op: 'status', cwd: '/workspace', lineStats: true }]);
+    changes.click();
+    assert.equal(menu.isConnected, false);
+    assert.equal(side.contains(diff), true);
+    assert.deepEqual(diffTarget, { kind: 'changes' });
+
+    cleanCheckout = true;
+    branch.click();
+    const cleanMenu = document.querySelector('.graphite-thread-card-popover');
+    assert.ok(cleanMenu);
+    for (let attempt = 0; attempt < 50 && !cleanMenu.textContent?.includes('No changed files'); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.match(cleanMenu.textContent ?? '', /No changed files/);
+    assert.deepEqual(actionLabels(cleanMenu), ['Open PR']);
+    branch.click();
+  } finally {
+    globalThis.fetch = fetchBefore;
+    setLocalServerAvailableForTests(serverBefore);
+    setIssuesStateForTests(null);
+    resetWorkspaceStateForTests();
+  }
+
   setSessionStateForTests(null);
   await win.close();
 });

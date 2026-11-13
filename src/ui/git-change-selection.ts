@@ -25,7 +25,7 @@ export function createGitChangeSelection(options: Options) {
   let selected = new Set<string>();
   let anchor: string | null = null;
   let cwd = options.getCwd();
-  let rows = new Map<string, HTMLElement>();
+  let rows = new Map<string, { row: HTMLElement; trigger: HTMLButtonElement }>();
   let menu: ContextMenuHandle | null = null;
   let alive = true;
   let busy = false;
@@ -34,9 +34,9 @@ export function createGitChangeSelection(options: Options) {
   const selectedEntries = () => entries.filter((entry) => selected.has(key(entry)));
 
   function paint(): void {
-    for (const [id, row] of rows) {
+    for (const [id, { row, trigger }] of rows) {
       row.classList.toggle('is-selected', selected.has(id));
-      row.setAttribute('aria-selected', String(selected.has(id)));
+      trigger.setAttribute('aria-pressed', String(selected.has(id)));
     }
     options.root.setAttribute('aria-label', `Changes, ${selected.size} selected. Shift-click for a range; Command or Control-click to select multiple.`);
   }
@@ -134,11 +134,13 @@ export function createGitChangeSelection(options: Options) {
     if (!row) return;
     const entry = entries.find((item) => key(item) === row.dataset.changeKey);
     if (!entry) return;
+    const trigger = rows.get(key(entry))?.trigger;
+    if (target !== trigger) return;
     const handle = () => { event.preventDefault(); event.stopPropagation(); };
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
       handle(); selected = new Set(entries.map(key)); paint();
     } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
-      handle(); showMenu(entry, row);
+      handle(); showMenu(entry, row, undefined, trigger);
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
       handle();
       const index = entries.findIndex((item) => key(item) === key(entry));
@@ -147,14 +149,15 @@ export function createGitChangeSelection(options: Options) {
       if (nextEntry) {
         if (event.shiftKey && !anchor) anchor = key(entry);
         choose(nextEntry, event);
-        rows.get(key(nextEntry))?.focus();
-        rows.get(key(nextEntry))?.scrollIntoView({ block: 'nearest' });
+        const nextRow = rows.get(key(nextEntry));
+        nextRow?.trigger.focus();
+        nextRow?.row.scrollIntoView({ block: 'nearest' });
       }
     } else if (event.key === 'Escape') {
       handle(); selected.clear(); paint();
-    } else if (event.key === 'Enter' && target === row) {
+    } else if (event.key === 'Enter') {
       handle(); choose(entry);
-    } else if (event.key === ' ' && target === row) {
+    } else if (event.key === ' ') {
       handle();
       if (!selected.has(key(entry))) choose(entry);
       const changes = selectedEntries();
@@ -165,8 +168,7 @@ export function createGitChangeSelection(options: Options) {
     }
   }
 
-  options.root.setAttribute('role', 'listbox');
-  options.root.setAttribute('aria-multiselectable', 'true');
+  options.root.setAttribute('role', 'group');
   options.root.addEventListener('keydown', onKey);
 
   return {
@@ -180,22 +182,20 @@ export function createGitChangeSelection(options: Options) {
       rows = new Map();
       paint();
     },
-    bindRow(row: HTMLElement, entry: GitChangeSelectionEntry, actions?: HTMLElement): void {
+    bindRow(row: HTMLElement, entry: GitChangeSelectionEntry, trigger: HTMLButtonElement, actions?: HTMLElement): void {
       row.dataset.changeKey = key(entry);
       row.dataset.path = entry.path;
       row.dataset.bucket = entry.bucket;
-      row.tabIndex = 0;
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-label', `${entry.path}, ${entry.bucket}`);
-      rows.set(key(entry), row);
+      trigger.setAttribute('aria-label', `${entry.path}, ${entry.bucket}`);
+      rows.set(key(entry), { row, trigger });
       row.addEventListener('click', (event) => {
         if (actions?.contains(event.target as Node)) return;
         choose(entry, event);
-        row.focus();
+        trigger.focus();
       });
-      row.addEventListener('contextmenu', (event) => showMenu(entry, row, event));
+      row.addEventListener('contextmenu', (event) => showMenu(entry, row, event, trigger));
       row.classList.toggle('is-selected', selected.has(key(entry)));
-      row.setAttribute('aria-selected', String(selected.has(key(entry))));
+      trigger.setAttribute('aria-pressed', String(selected.has(key(entry))));
     },
     discard,
     openMenu(entry: GitChangeSelectionEntry, row: HTMLElement, anchor: HTMLElement): void {

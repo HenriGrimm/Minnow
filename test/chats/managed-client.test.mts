@@ -12,6 +12,7 @@ import { sendMessageWithTools } from '../../src/chat/messaging.ts';
 import { attachMessageActions, closeMessageActionsMenu } from '../../src/ui/message-actions.ts';
 import { readAgentConversationsCapability } from '../../src/config/agent-conversations-enabled.ts';
 import { startManagedChatBridge } from '../../src/chat/managed-chat-bridge.ts';
+import { syncComposerPinnedSkillFromActiveChat } from '../../src/ui/composer-pinned-skill.ts';
 
 const fetchBefore = globalThis.fetch;
 Object.assign(globalThis, { sessionStorage: window.sessionStorage });
@@ -331,6 +332,46 @@ test('ordinary composer slash context is queued rather than discarded or sent as
     assert.equal(calls[0].intent.skill.id, 'git-commit'); assert.equal(calls[0].intent.context, 'App snapshot');
     assert.equal(input.value, '');
   } finally { input.remove(); }
+});
+
+test('composer /plan and a plain follow-up send distinct turn intents', async () => {
+  const chat = setup(); const calls: any[] = [];
+  const input = document.createElement('textarea'); document.body.append(input);
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(String(options?.body)));
+    return Response.json({ receipt: { commandId: `plan-turn-${calls.length}`, chatId, revision: calls.length, state: 'queued' } });
+  };
+  try {
+    input.value = '/plan Design the change';
+    await sendMessageWithTools({ inputEl: input });
+    input.value = 'Implement it';
+    await sendMessageWithTools({ inputEl: input });
+    assert.deepEqual(calls.map(call => call.intent.skill), [{ id: 'plan', source: 'slash', input: 'Design the change' }, null]);
+    assert.equal(calls[1].text, 'Implement it');
+    assert.equal(chat.pinnedSkill, undefined);
+  } finally { input.remove(); }
+});
+
+test('a saved plan pin can be dismissed in the composer during an in-flight send', async () => {
+  const chat = setup(); chat.pinnedSkill = { id: 'plan' };
+  const toolbar = document.createElement('div'); toolbar.id = 'composerControls'; document.body.append(toolbar);
+  const calls: any[] = [];
+  try {
+    syncComposerPinnedSkillFromActiveChat();
+    const strip = toolbar.querySelector<HTMLElement>('#pinnedSkillStrip')!;
+    const dismiss = strip.querySelector<HTMLButtonElement>('button[aria-label="Unpin /plan"]')!;
+    assert.equal(strip.classList.contains('hidden'), false);
+    globalThis.fetch = async (_url, options) => {
+      calls.push(JSON.parse(String(options?.body)));
+      if (calls.length === 1) dismiss.click();
+      return Response.json({ receipt: { commandId: `unpin-${calls.length}`, chatId, revision: calls.length, state: 'queued' } });
+    };
+    await sendRemoteChatCommand(chatId, 'send', { text: 'Finish the plan' });
+    assert.equal(chat.pinnedSkill, null);
+    assert.equal(strip.classList.contains('hidden'), true);
+    await sendRemoteChatCommand(chatId, 'send', { text: 'Implement it' });
+    assert.deepEqual(calls.map(call => call.intent.skill), [{ id: 'plan', source: 'pinned', input: 'Finish the plan' }, null]);
+  } finally { toolbar.remove(); }
 });
 
 test('direct remote ordinary entry point captures pinned skills and attachment reference metadata', async () => {

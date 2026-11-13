@@ -139,7 +139,8 @@ describe('theme', () => {
       root.style.setProperty('--mn-fg', '#eeeeee');
       applyTheme('swamp-light', { persist: false });
       assert.equal(root.style.getPropertyValue('--mn-bg'), '');
-      assert.equal(root.getAttribute('data-theme'), 'swamp-light');
+      assert.equal(root.getAttribute('data-theme'), 'graphite-light');
+      assert.equal(root.dataset.graphiteAccent, 'swamp');
     } finally {
       Object.defineProperty(globalThis, 'document', {
         configurable: true,

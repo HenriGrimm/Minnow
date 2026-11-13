@@ -57,6 +57,10 @@ export interface ForceGraphApi {
   focusNode(id: string): void;
   /** Remove the sticky focus highlight; reverts to normal selection highlight. */
   clearFocus(): void;
+  hasNode(id: string): boolean;
+  isNodeFocused(id: string): boolean;
+  isNodePinned(id: string): boolean;
+  setNodePinned(id: string, pinned: boolean): void;
   /** Fade out whole node classes (legend filtering). */
   setMutedKinds(keys: Set<GraphEmphasisKey>): void;
   /** Reserve edge space covered by floating panels so fits land in clear canvas. */
@@ -80,7 +84,7 @@ type SimNode = GraphNode &
     /** Eased 0–1 entrance progress. */
     appear: number;
   };
-type SimEdge = SimulationLinkDatum<SimNode> & { kind: GraphEdge['kind']; id: string; seed: number };
+type SimEdge = SimulationLinkDatum<SimNode> & { kind: GraphEdge['kind']; id: string };
 
 /** Base world-space radius before degree weighting. */
 const KIND_BASE_RADIUS: Record<GraphNodeKind, number> = { page: 5.5, tag: 4 };
@@ -127,16 +131,6 @@ export function readForceGraphTheme(root: HTMLElement = document.documentElement
   };
 }
 
-/** Stable 0–1 value from an edge id, used to stagger flow particles. */
-function hashUnit(text: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 1000) / 1000;
-}
-
 /** Create an interactive force-directed graph on a canvas element. */
 export function createForceGraph(
   canvas: HTMLCanvasElement,
@@ -164,7 +158,7 @@ export function createForceGraph(
   // null fits the catalog, a set fits a neighborhood, false preserves a manually positioned camera.
   let cameraFit: Set<string> | null | false = null;
   let viewportCenter: [number, number] | null = null;
-  let rafId = 0;
+  let rafId: number | null = null;
   let destroyed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
@@ -299,22 +293,24 @@ export function createForceGraph(
   };
 
   /** Ease emphasis and entrance one frame forward. */
-  const advanceAnimation = (): void => {
+  const advanceAnimation = (): boolean => {
     const hovering = Boolean(hoverId);
     const active = hoverId ? computeNeighborSet(hoverId) : highlightIds;
     const dimFloor = hovering || focusId ? DIM_EMPHASIS_HOVER : DIM_EMPHASIS_SELECTED;
     const dims = Boolean(active) && (hovering || Boolean(focusId) || Boolean(selectedId));
+    let animating = false;
 
     for (const node of nodes) {
       let target = 1;
       if (mutedKinds.has(emphasisKey(node))) target = MUTED_EMPHASIS;
       else if (dims && !active!.has(node.id)) target = dimFloor;
 
-      node.emphasis = reducedMotion
-        ? target
-        : node.emphasis + (target - node.emphasis) * 0.16;
+      const delta = target - node.emphasis;
+      node.emphasis = reducedMotion || Math.abs(delta) <= 0.01 ? target : node.emphasis + delta * 0.16;
       node.appear = reducedMotion ? 1 : Math.min(1, node.appear + 0.05);
+      animating ||= node.emphasis !== target || node.appear < 1;
     }
+    return animating;
   };
 
   /** Draw the zoom-dependent lattice above the CSS stage background. */
@@ -337,7 +333,7 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const drawEdges = (now: number): void => {
+  const drawEdges = (): void => {
     const px = 1 / transform.k;
     for (const edge of edges) {
       const s = edge.source as SimNode;
@@ -366,19 +362,6 @@ export function createForceGraph(
         drawArrowhead(t, cx, cy, stroke, emphasis, px, highlighted);
       }
 
-      if (highlighted && !reducedMotion) {
-        const progress = ((now / 2200) + edge.seed) % 1;
-        const inv = 1 - progress;
-        const bx = inv * inv * s.x + 2 * inv * progress * cx + progress * progress * t.x;
-        const by = inv * inv * s.y + 2 * inv * progress * cy + progress * progress * t.y;
-        ctx.save();
-        ctx.globalAlpha = 0.75 * Math.sin(progress * Math.PI);
-        ctx.fillStyle = theme.edgeHighlight;
-        ctx.beginPath();
-        ctx.arc(bx, by, 2.1 * px, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
     }
   };
 
@@ -412,7 +395,7 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const drawNodes = (now: number): void => {
+  const drawNodes = (): void => {
     const px = 1 / transform.k;
     for (const node of nodes) {
       if (node.x == null || node.y == null) continue;
@@ -461,13 +444,12 @@ export function createForceGraph(
       ctx.restore();
 
       if (active) {
-        const phase = reducedMotion ? 0 : (Math.sin(now / 620) + 1) / 2;
         ctx.save();
-        ctx.globalAlpha = 0.75 - phase * 0.35;
+        ctx.globalAlpha = 0.75;
         ctx.strokeStyle = theme.nodeActive;
         ctx.lineWidth = 1.4 * px;
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r + (4 + phase * 5) * px, 0, Math.PI * 2);
+        ctx.arc(node.x, node.y, r + 4 * px, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       } else if (hovered) {
@@ -586,7 +568,7 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const draw = (now: number): void => {
+  const draw = (): void => {
     if (destroyed || !ctx) return;
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
@@ -600,8 +582,8 @@ export function createForceGraph(
     ctx.save();
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
-    drawEdges(now);
-    drawNodes(now);
+    drawEdges();
+    drawNodes();
     ctx.restore();
 
     drawHubLabels(w, h);
@@ -609,12 +591,14 @@ export function createForceGraph(
     ctx.restore();
   };
 
-  const tickLoop = (): void => {
-    if (destroyed) return;
-    const now = performance.now();
-    advanceAnimation();
-    draw(now);
-    rafId = requestAnimationFrame(tickLoop);
+  const requestDraw = (): void => {
+    if (destroyed || rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      const animating = advanceAnimation();
+      draw();
+      if (animating) requestDraw();
+    });
   };
 
   const visibleViewport = () => {
@@ -711,9 +695,11 @@ export function createForceGraph(
     } else {
       simulation.on('tick', () => {
         if (cameraFit !== false) reframeCamera();
+        requestDraw();
       });
     }
     reframeCamera();
+    requestDraw();
   };
 
   const zoomBehavior: ZoomBehavior<HTMLCanvasElement, unknown> = zoom<HTMLCanvasElement, unknown>()
@@ -728,6 +714,7 @@ export function createForceGraph(
     .on('zoom', (event) => {
       if (event.sourceEvent) cameraFit = false;
       transform = event.transform;
+      requestDraw();
     });
 
   select(canvas).call(zoomBehavior);
@@ -756,7 +743,10 @@ export function createForceGraph(
       draggingNode.fy = pt.y;
     })
     .on('end', () => {
-      if (nodeMoved) simulation?.alphaTarget(0);
+      if (nodeMoved) {
+        simulation?.alphaTarget(0);
+        callbacks.onNodeActionsChange?.();
+      }
       draggingNode = null;
     });
 
@@ -780,6 +770,8 @@ export function createForceGraph(
     if (!node) focusId = null;
     selectedId = node?.id ?? null;
     highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
+    requestDraw();
+    callbacks.onNodeActionsChange?.();
     callbacks.onSelect?.(node);
   };
 
@@ -789,12 +781,15 @@ export function createForceGraph(
     if (nextId === hoverId) return;
     hoverId = nextId;
     canvas.style.cursor = node ? 'pointer' : 'grab';
+    requestDraw();
     callbacks.onHover?.(node);
   };
 
   const onCanvasMouseLeave = (): void => {
+    if (hoverId === null) return;
     hoverId = null;
     canvas.style.cursor = 'grab';
+    requestDraw();
     callbacks.onHover?.(null);
   };
 
@@ -804,6 +799,7 @@ export function createForceGraph(
 
   const themeObserver = new MutationObserver(() => {
     theme = readForceGraphTheme();
+    requestDraw();
   });
   themeObserver.observe(document.documentElement, {
     attributes: true,
@@ -814,21 +810,18 @@ export function createForceGraph(
     if (destroyed) return;
     resizeCanvas();
     reframeCamera();
-    draw(performance.now());
+    requestDraw();
   });
   const resizeObserver = new ResizeObserver(scheduleCanvasResize);
   resizeObserver.observe(canvas);
 
   const handleKeydown = (ev: KeyboardEvent): void => {
-    if (ev.key === 'Escape') {
-      focusId = null;
-      highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
-    }
+    if (ev.key === 'Escape' && focusId !== null) api.clearFocus();
   };
   document.addEventListener('keydown', handleKeydown);
 
   resizeCanvas();
-  rafId = requestAnimationFrame(tickLoop);
+  requestDraw();
 
   const api: ForceGraphApi = {
     setData(rawNodes, rawEdges) {
@@ -853,7 +846,7 @@ export function createForceGraph(
         };
       });
       nodeById = new Map(nodes.map((n) => [n.id, n]));
-      edges = rawEdges.map((e) => ({ ...e, seed: hashUnit(e.id) })) as SimEdge[];
+      edges = rawEdges.map((e) => ({ ...e })) as SimEdge[];
       selectedId = null;
       hoverId = null;
       focusId = null;
@@ -865,9 +858,13 @@ export function createForceGraph(
       selectedId = id;
       focusId = null;
       highlightIds = id ? computeNeighborSet(id) : null;
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
     },
     setHoverNode(id) {
+      if (hoverId === id) return;
       hoverId = id;
+      requestDraw();
     },
     fitToView() {
       cameraFit = null;
@@ -881,18 +878,48 @@ export function createForceGraph(
       centerOnNode(id);
     },
     focusNode(id) {
+      if (!nodeById.has(id)) return;
       focusId = id;
       selectedId = id;
       highlightIds = computeNeighborSet(id);
       cameraFit = highlightIds;
       reframeCamera();
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
     },
     clearFocus() {
       focusId = null;
       highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
+    },
+    hasNode(id) {
+      return nodeById.has(id);
+    },
+    isNodeFocused(id) {
+      return focusId === id;
+    },
+    isNodePinned(id) {
+      return nodeById.get(id)?.fx != null;
+    },
+    setNodePinned(id, pinned) {
+      const node = nodeById.get(id);
+      if (!node || node.x == null || node.y == null || (node.fx != null) === pinned) return;
+      node.fx = pinned ? node.x : null;
+      node.fy = pinned ? node.y : null;
+      if (!pinned && simulation) {
+        simulation.alpha(Math.max(simulation.alpha(), 0.25));
+        if (reducedMotion) {
+          simulation.stop().tick(160);
+          reframeCamera();
+        } else simulation.restart();
+      }
+      requestDraw();
+      callbacks.onNodeActionsChange?.();
     },
     setMutedKinds(keys) {
       mutedKinds = new Set(keys);
+      requestDraw();
     },
     setViewportInsets(next) {
       const updated = { ...insets, ...next };
@@ -931,10 +958,11 @@ export function createForceGraph(
     resize() {
       resizeCanvas();
       reframeCamera();
+      requestDraw();
     },
     destroy() {
       destroyed = true;
-      cancelAnimationFrame(rafId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       simulation?.stop();
       themeObserver.disconnect();
       resizeObserver.disconnect();

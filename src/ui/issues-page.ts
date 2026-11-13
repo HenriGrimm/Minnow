@@ -1018,10 +1018,14 @@ function linkCounts(issue: IssueCard): string {
 
 function paintRowState(row: HTMLElement, issue: IssueCard): void {
   const isMultiSelected = selectedIssueIds.has(issue.id);
+  const isOpen = getSelectedIssueId() === issue.id;
   row.classList.toggle('is-checked', isMultiSelected);
-  row.classList.toggle('is-selected', getSelectedIssueId() === issue.id);
+  row.classList.toggle('is-selected', isOpen);
   row.classList.toggle('is-focused', focusedIssueId === issue.id);
-  row.setAttribute('aria-selected', isMultiSelected || focusedIssueId === issue.id ? 'true' : 'false');
+  if (isOpen) row.setAttribute('aria-current', 'true');
+  else row.removeAttribute('aria-current');
+  if (isMultiSelected) row.setAttribute('aria-description', 'Selected for bulk actions');
+  else row.removeAttribute('aria-description');
 }
 
 function buildIssueRow(
@@ -1186,7 +1190,7 @@ function buildIssueRow(
   });
   row.tabIndex = focusedIssueId === issue.id ? 0 : -1;
   row.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
+    if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault();
       navigateToIssueDetail(issue.id);
     }
@@ -1216,7 +1220,6 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
   const ordered = visibleIssueOrder();
   const list = document.createElement('div');
   list.className = 'issues-list';
-  list.setAttribute('role', 'list');
 
   for (const group of grouped) {
     const section = document.createElement('section');
@@ -1251,6 +1254,8 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
     if (!collapsedGroups.has(group.id)) {
       const body = document.createElement('div');
       body.className = 'issues-group__body';
+      body.setAttribute('role', 'list');
+      body.setAttribute('aria-label', group.label);
       for (const nested of group.rows) {
         const index = ordered.findIndex((row) => row.id === nested.issue.id);
         body.appendChild(
@@ -2007,10 +2012,11 @@ function navigateToIssueDetail(issueId: string): void {
   setIssuesRouteHash(`#/app/issues/${issueId}`);
   document.querySelectorAll('.issues-row.is-selected, .issues-card.is-selected').forEach((el) => {
     el.classList.remove('is-selected');
+    el.removeAttribute('aria-current');
   });
-  document
-    .querySelector(`.issues-row[data-issue-id="${CSS.escape(issueId)}"], .issues-card[data-issue-id="${CSS.escape(issueId)}"]`)
-    ?.classList.add('is-selected');
+  const row = document.querySelector(`.issues-row[data-issue-id="${CSS.escape(issueId)}"], .issues-card[data-issue-id="${CSS.escape(issueId)}"]`);
+  row?.classList.add('is-selected');
+  row?.setAttribute('aria-current', 'true');
 }
 
 function syncIssueViewButtons(): void {
@@ -2808,6 +2814,7 @@ function onIssuesKeydown(event: KeyboardEvent): void {
     return;
   }
   if (event.key === 'Enter') {
+    if (target?.closest('button, a[href], [role="button"], [role="tab"], summary')) return;
     event.preventDefault();
     const issue = focusedIssue();
     if (issue) navigateToIssueDetail(issue.id);

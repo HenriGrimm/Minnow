@@ -650,6 +650,13 @@
   background: currentColor;
 }
 
+@media (max-width: 640px), (pointer: coarse) {
+  .input-bar .send-btn {
+    min-width: var(--touch-min);
+    min-height: var(--touch-min);
+  }
+}
+
 @media (pointer: coarse) {
   .input-bar .input-bar-send-stack,
   .input-bar .input-inset-actions { gap: 4px; }

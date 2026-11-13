@@ -25,6 +25,7 @@ import {
   skeletonRows,
   stateDot,
   stateLabel,
+  forgeUnavailableCopy,
   unavailableState,
   type RunState,
   type SccContext,
@@ -174,18 +175,12 @@ export function createChecksView(
     detailCol.hidden = true;
     root.classList.add('scc-split--single');
 
-    const hint = !status.cliInstalled
-      ? 'winget install GitHub.cli'
-      : !status.authenticated
-        ? 'gh auth login'
-        : undefined;
+    const copy = forgeUnavailableCopy(status, 'CI');
 
     listBody.replaceChildren(
       unavailableState({
-        title: status.cliInstalled ? 'CI unavailable' : 'GitHub CLI not found',
-        body: status.reason,
-        hint,
-        action: hint
+        ...copy,
+        action: copy.hint
           ? button({
               label: 'Check again',
               variant: 'primary',

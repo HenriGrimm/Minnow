@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "maxConcurrency": 2,
+  "graderProviderId": "",
+  "graderModelId": "",
+  "graderTimeoutMs": 30000,
+  "saveFullTranscripts": false,
+  "skipApprovalDuringEval": false
+}

@@ -6,12 +6,13 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { discoverBrowser, launchBrowser } from '../../server/browser-driver/index.js';
 
-test('density changes workspace spacing and keeps chat rows steady on hover', { timeout: 30_000 }, async t => {
+test('Graphite density, rendered contrast and the narrow composer target', { timeout: 30_000 }, async t => {
   const browser = await discoverBrowser();
   if (!browser.available) return t.skip(browser.detail);
   const styles = await Promise.all([
     'tokens', 'sidebar', 'chat-thread', 'settings-page', 'settings-graphite', 'graphite-apps',
     'issues', 'models-page', 'models-graphite', 'file-panel', 'mobile-settings', 'dropdowns', 'brain-graph',
+    'graphite-workspace', 'settings-appearance', 'components/segmented', 'input',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-density-layout-'));
   const chatRow = git => `<div class="chat-item-row" tabindex="0"><div class="chat-item-head">
@@ -45,6 +46,16 @@ test('density changes workspace spacing and keeps chat rows steady on hover', { 
     <div class="scheduler-graphite-job"><button class="scheduler-graphite-job__select">A job</button></div>
     <button class="m-phone-settings__row">Phone appearance</button>
     <button class="mn-dropdown__item">A menu action</button>
+    <div class="mn-graphite-workspace-slot" style="background:var(--mn-bg)">
+      <span class="mn-graphite-workspace-parent">Project path</span>
+    </div>
+    <div style="background:var(--mn-surface-1)">
+      <div class="graphite-appearance-segment mn-segmented">
+        <button class="mn-segmented__option"><span class="mn-segmented__label">Dark</span></button>
+      </div>
+      <span class="graphite-appearance-preview__chip">Running</span>
+    </div>
+    <div class="input-bar"><button class="send-btn">Send</button></div>
     </body></html>`);
   });
   let session;
@@ -96,7 +107,13 @@ test('density changes workspace spacing and keeps chat rows steady on hover', { 
     const resting = await rows();
     for (const row of resting.slice(0, 2)) {
       await session.client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: row.x + 25, y: row.y + row.height / 2 });
-      assert.equal(await session.evaluate(`getComputedStyle(document.querySelector('.chat-item-row:hover .chat-item-archive')).visibility`), 'visible');
+      await session.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))',
+        { awaitPromise: true });
+      const hover = await session.evaluate(`({
+        fine: matchMedia('(hover: hover) and (pointer: fine)').matches,
+        visibility: getComputedStyle(document.querySelector('.chat-item-row:hover .chat-item-archive')).visibility,
+      })`);
+      assert.equal(hover.visibility, hover.fine ? 'visible' : 'hidden');
       assert.deepEqual(await rows(), resting);
     }
     await session.client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 450, y: 20 });
@@ -114,4 +131,51 @@ test('density changes workspace spacing and keeps chat rows steady on hover', { 
       document.querySelector(selector).getBoundingClientRect().height);
   })()`);
   assert.ok(touchHeights.every(height => height >= 44), JSON.stringify(touchHeights));
+
+  const contrast = await session.evaluate(`(() => {
+    document.querySelector('.mn-segmented__option').style.transition = 'none';
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    function luminance(colors) {
+      context.clearRect(0, 0, 1, 1);
+      for (const color of colors) {
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+      }
+      const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+      const linear = value => value <= 10 ? value / 3294.6 : ((value / 255 + 0.055) / 1.055) ** 2.4;
+      return linear(red) * 0.2126 + linear(green) * 0.7152 + linear(blue) * 0.0722;
+    }
+    const selectors = ['.mn-graphite-workspace-parent', '.mn-segmented__label', '.graphite-appearance-preview__chip'];
+    const results = [];
+    for (const theme of ['graphite-light', 'graphite-dark']) {
+      for (const accent of ['teal', 'blue', 'amber', 'violet', 'rose']) {
+        for (const tint of ['none', 'subtle', 'rich']) {
+          Object.assign(document.documentElement.dataset, { theme, graphiteAccent: accent, tint });
+          for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            const background = [];
+            for (let parent = element; parent; parent = parent.parentElement) {
+              background.unshift(getComputedStyle(parent).backgroundColor);
+            }
+            const text = luminance([...background, getComputedStyle(element).color]);
+            const ground = luminance(background);
+            results.push({ theme, accent, tint, selector, ratio: (Math.max(text, ground) + .05) / (Math.min(text, ground) + .05) });
+          }
+        }
+      }
+    }
+    return results;
+  })()`);
+  assert.deepEqual(contrast.filter(({ ratio }) => ratio < 4.5), []);
+
+  await session.client.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await session.client.send('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 844, deviceScaleFactor: 1, mobile: false,
+  });
+  assert.deepEqual(await session.evaluate(`(() => {
+    const send = document.querySelector('.send-btn').getBoundingClientRect();
+    return [send.width, send.height];
+  })()`), [44, 44]);
 });

@@ -3,7 +3,6 @@ import { isUnmergedBranchDelete } from './git-branch-delete';
 import {
   gitBranches,
   gitBranchTree,
-  gitCheckout,
   gitDeleteBranch,
   gitDeleteRemoteBranch,
   gitMerge,
@@ -30,7 +29,7 @@ import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { isProtectedBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { panelPathsEqual } from './panel-worktree-cwd';
-import { confirmDirtyCheckout } from './git-checkout-confirm';
+import { checkoutBranchWithChoice } from './git-checkout-confirm';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
 import { gitUiCtx, inferGitUiLabel, runGitUiOp } from './git-ui-op';
 import { createIcon } from './icon';
@@ -357,25 +356,21 @@ export function createBranchesView(ctx: SccContext): SccView {
   }
 
   function openNewBranch(anchor: HTMLElement, from?: string): void {
+    const cwd = ctx.getCwd() ?? getWorkspacePath();
+    const expectedBranch = ctx.getBranch() || undefined;
     openGitRefNamePopover({
       anchor,
       title: from ? `New branch from ${from}` : 'New branch',
       kind: 'branch',
-      cwd: ctx.getCwd(),
-      defaultPath: ctx.getCwd() || getWorkspacePath(),
+      cwd,
+      defaultPath: cwd,
       reserved: [ctx.getBranch(), 'main', 'master'],
       fixedStartPoint: from,
       onSubmit: async (result) => {
-        await run(
-          () =>
-            gitCheckout({
-              branch: result.name,
-              create: true,
-              startPoint: result.startPoint,
-              cwd: ctx.getCwd(),
-            }),
-          ctx,
+        await checkout(
+          result.name,
           `Created and checked out ${result.name}`,
+          { cwd, expectedBranch, create: true, startPoint: result.startPoint },
         );
       },
     });
@@ -664,12 +659,7 @@ export function createBranchesView(ctx: SccContext): SccView {
       actions.push(button({
         label: 'Check out locally',
         variant: 'ghost',
-        onClick: () =>
-          void run(
-            () => gitCheckout({ branch: local, create: true, startPoint: name, cwd: ctx.getCwd() }),
-            ctx,
-            `Checked out ${local}`,
-          ),
+        onClick: () => void checkout(local, `Checked out ${local}`, { create: true, startPoint: name }),
       }));
     }
     const deleteBtn = button({
@@ -688,9 +678,21 @@ export function createBranchesView(ctx: SccContext): SccView {
     return refRow({ name, meta, actions });
   }
 
-  async function checkout(name: string): Promise<void> {
-    if (!(await confirmDirtyCheckout(ctx.getCwd()))) return;
-    await run(() => gitCheckout({ branch: name, cwd: ctx.getCwd() }), ctx, `Switched to ${name}`);
+  async function checkout(
+    name: string,
+    message = `Switched to ${name}`,
+    input: Omit<Parameters<typeof checkoutBranchWithChoice>[0], 'branch'> = {},
+  ): Promise<boolean> {
+    const cwd = input.cwd ?? ctx.getCwd() ?? getWorkspacePath();
+    const expectedBranch = input.expectedBranch ?? (ctx.getBranch() || undefined);
+    return run(
+      () => checkoutBranchWithChoice(
+        { ...input, cwd, expectedBranch, branch: name },
+        () => !destroyed && worktreePathsEqual(cwd, ctx.getCwd() ?? getWorkspacePath()),
+      ),
+      ctx,
+      message,
+    );
   }
 
   async function mergeIn(name: string, current: string): Promise<void> {
@@ -724,7 +726,7 @@ export function createBranchesView(ctx: SccContext): SccView {
         danger: true,
       });
       if (!move) return;
-      const switched = await run(() => gitCheckout({ branch: trunk, cwd: ctx.getCwd() }), ctx);
+      const switched = await checkout(trunk);
       if (!switched) return;
     } else {
       const confirmed = await appConfirm(`Delete branch ${name}?`, {

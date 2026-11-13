@@ -205,7 +205,7 @@ export function initWorkspaceButton(): void {
     onOpenNew: async () => {
       if (isGraphiteWorkspaceTrigger(btn)) {
         const { openWorkspaceGate } = await import('../os/workspace-gate');
-        openWorkspaceGate({ switch: true });
+        openWorkspaceGate({ switch: true, opener: btn });
         return;
       }
       await onOpenNewWorkspace();
@@ -216,7 +216,7 @@ export function initWorkspaceButton(): void {
     if (isOsShellEnabled() && !isGraphiteWorkspaceTrigger(btn)) {
       void import('../os/workspace-gate').then((m) => {
         if (isShellOverlayOpen('workspace')) closeShellOverlay();
-        else m.openWorkspaceGate({ switch: true });
+        else m.openWorkspaceGate({ switch: true, opener: btn });
       });
       return;
     }

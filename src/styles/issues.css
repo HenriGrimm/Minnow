@@ -160,6 +160,20 @@
   min-width: 0;
 }
 
+.issues-header__actions {
+  display: flex;
+  gap: var(--mn-space-2);
+}
+
+.issues-header__actions .issues-header__sync {
+  height: auto;
+}
+
+.issues-header__sync[hidden],
+.issues-shell[data-screen='projects'] .issues-header__sync {
+  display: none;
+}
+
 /* ---------- primary navigation ---------- */
 
 .issues-primary-nav {
@@ -2352,7 +2366,7 @@
 .issues-detail__properties > .issues-detail__property-label { display: block; margin: var(--mn-space-4) 0 var(--mn-space-2); }
 
 @container issue-detail (min-width: 780px) {
-  .issues-detail__scroll:not(.issues-work-content) {
+  .issues-detail__scroll:not(.issues-work-content, [hidden]) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 256px;
     grid-template-rows: auto auto 1fr;
@@ -2389,8 +2403,8 @@
 .issues-detail__rail > .issues-detail__section--rail { border-bottom: 1px solid var(--mn-border); padding-block: var(--mn-space-0-5); }
 .issues-detail__rail .issues-detail__row { grid-template-columns: 16px auto minmax(0, 1fr) 26px 10px; min-height: var(--mn-control-h-md); gap: var(--mn-space-1-5); }
 .issues-detail__rail .issues-detail__row-trailing { grid-column: 4; }
-.issues-detail__rail .issues-detail__row[aria-expanded]::after { content: ''; grid-column: 5; width: 5px; height: 5px; border-top: 1px solid currentColor; border-right: 1px solid currentColor; transform: rotate(45deg); justify-self: center; }
-.issues-detail__rail .issues-detail__row[aria-expanded="true"]::after { transform: rotate(135deg); }
+.issues-detail__rail .issues-detail__row-trigger[aria-expanded]::after { content: ''; grid-column: 5; grid-row: 1; width: 5px; height: 5px; border-top: 1px solid currentColor; border-right: 1px solid currentColor; transform: rotate(45deg); justify-self: center; }
+.issues-detail__rail .issues-detail__row-trigger[aria-expanded="true"]::after { transform: rotate(135deg); }
 .issues-detail__rail .issues-detail__section-title { color: var(--mn-fg); font-size: 12px; font-weight: 500; }
 .issues-detail__rail .issues-detail__section-body { padding-block: 4px 8px; }
 .issues-detail__doc .mn-editor__body { font-size: 14px; line-height: 1.65; }
@@ -2935,6 +2949,17 @@ button.issues-detail__activity-chip {
   min-height: 32px;
   margin: 0 -8px;
   padding: 0 8px;
+}
+
+.issues-detail__row-trigger {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-self: stretch;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -2943,22 +2968,22 @@ button.issues-detail__activity-chip {
   color: var(--mn-fg-muted);
 }
 
-button.issues-detail__row {
+button.issues-detail__row-trigger {
   cursor: pointer;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  button.issues-detail__row:hover {
+  button.issues-detail__row-trigger:hover {
     background: color-mix(in oklch, var(--mn-fg) 5%, transparent);
   }
 
-  button.issues-detail__row:hover .issues-detail__section-title,
-  button.issues-detail__row:hover .issues-detail__row-icon {
+  button.issues-detail__row-trigger:hover .issues-detail__section-title,
+  button.issues-detail__row-trigger:hover .issues-detail__row-icon {
     color: var(--mn-fg);
   }
 }
 
-button.issues-detail__row:focus-visible {
+button.issues-detail__row-trigger:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: -2px;
 }
@@ -2967,6 +2992,8 @@ button.issues-detail__row:focus-visible {
   color: var(--mn-fg-muted);
   opacity: 0.85;
 }
+
+.issues-detail__row-add-icon { grid-column: 3; }
 
 /*
  * Sentence case, not a micro-caps heading: these are field names in a list,
@@ -3024,6 +3051,10 @@ button.issues-detail__row:focus-visible {
 .issues-detail__row-trailing {
   display: inline-flex;
   align-items: center;
+  grid-column: 4;
+  grid-row: 1;
+  position: relative;
+  justify-self: start;
 }
 
 /* No value, so the control takes the value's slot and hugs the name. */
@@ -4516,7 +4547,7 @@ button.issues-detail__row:focus-visible {
 }
 
 @container issue-detail (max-width: 779px) {
-  .issues-detail__scroll:not(.issues-work-content) { display: flex; }
+  .issues-detail__scroll:not(.issues-work-content, [hidden]) { display: flex; }
   .issues-detail__doc { order: 0; }
   .issues-detail__talk { order: 1; }
   .issues-detail__rail { order: 2; margin-top: 24px; }

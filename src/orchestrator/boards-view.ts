@@ -22,6 +22,8 @@ import {
   type BoardSummary,
 } from './client';
 import { appConfirm, isAppDialogOpen } from '../ui/app-dialog';
+import { isDialogOpen } from '../ui/components/dialog';
+import { isolateModalBackground, trapTabKey } from '../ui/components/internal';
 import { resetTargets, rewindCascade } from '../../server/orchestrator/core/rewind.js';
 import { resyncHasWork } from '../../server/orchestrator/core/plan-resync.js';
 import { describeResync } from './plan-resync-summary';
@@ -152,6 +154,7 @@ interface Surface {
 }
 
 let surface: Surface | null = null;
+let taskModal: { overlay: HTMLElement; release: () => void } | null = null;
 let list: BoardListClient | null = null;
 let client: BoardClient | null = null;
 let unsubscribeBoard: (() => void) | null = null;
@@ -307,6 +310,7 @@ export function teardownBoardsView(): void {
   stopWatchingModelSelectForSeed();
   modelSeedAttempted.clear();
   modelSeedInflight.clear();
+  if (surface) closeTaskInspector(surface.root);
   document.getElementById(BOARDS_ROOT_ID)?.remove();
   const area = document.getElementById('chatArea');
   area?.classList.remove(CHAT_AREA_CLASS);
@@ -328,11 +332,18 @@ export function teardownBoardsView(): void {
 }
 
 function onBoardsDocumentKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Escape' || event.defaultPrevented || isContextMenuOpen() || isAppDialogOpen()) return;
+  if ((event.key !== 'Escape' && event.key !== 'Tab') || event.defaultPrevented
+    || isContextMenuOpen() || isAppDialogOpen() || isDialogOpen()) return;
   if (!surface || !selectedTaskId) return;
   const overlay = surface.root.querySelector('.ov2-detail-overlay');
   if (!overlay || (surface.root.classList.contains('is-inspector-inline') && !overlay.contains(event.target as Node))) return;
+  const panel = overlay.querySelector<HTMLElement>('[aria-modal="true"]');
+  if (event.key === 'Tab') {
+    if (panel) trapTabKey(panel, event);
+    return;
+  }
   event.preventDefault();
+  event.stopPropagation();
   selectTaskDetail(null);
 }
 
@@ -1276,16 +1287,32 @@ function syncBoardsLayout(mounted: Surface): boolean {
 }
 
 function closeTaskInspector(root: HTMLElement): void {
+  syncTaskModal(null);
   root.classList.remove('is-detail-open', 'is-inspector-inline');
   root.querySelector('.ov2-detail-overlay')?.remove();
 }
 
+function syncTaskModal(overlay: HTMLElement | null): void {
+  if (taskModal?.overlay === overlay) return;
+  taskModal?.release();
+  taskModal = overlay ? {
+    overlay,
+    release: isolateModalBackground(overlay, overlay.closest<HTMLElement>('#osStage') ?? document.body),
+  } : null;
+}
+
 function syncInspectorPresentation(overlay: HTMLElement | null, inline: boolean): void {
-  const panel = overlay?.querySelector('.ov2-detail');
+  const panel = overlay?.querySelector<HTMLElement>('.ov2-detail');
+  syncTaskModal(inline ? null : overlay);
   if (!overlay || !panel) return;
   panel.setAttribute('role', inline ? 'region' : 'dialog');
   if (inline) panel.removeAttribute('aria-modal');
-  else panel.setAttribute('aria-modal', 'true');
+  else {
+    panel.setAttribute('aria-modal', 'true');
+    if (!panel.contains(document.activeElement) && !isAppDialogOpen() && !isDialogOpen()) {
+      (panel.querySelector<HTMLElement>('[data-focus-key="detail-close"]') ?? panel).focus({ preventScroll: true });
+    }
+  }
   markPreviewOccluder(overlay, inline ? 'panel' : 'dialog');
   const rail = panel.querySelector('.ov2-detail__rail');
   const spec = rail?.querySelector('[data-spec-panel]');

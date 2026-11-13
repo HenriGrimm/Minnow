@@ -42,7 +42,8 @@ test('Settings Providers shows CLI connections with their state and a management
     assert.equal(row.dataset.providerId, 'codex-cli');
     assert.match(row.textContent ?? '', /Codex CLI|codex-cli/);
     assert.match(row.textContent ?? '', /Enabled/);
-    assert.match(row.textContent ?? '', /Manage CLI/);
+    assert.match(row.textContent ?? '', /Subscription/);
+    assert.match(row.textContent ?? '', /Manage connection/);
     assert.equal(row.querySelector('.settings-providers-edit-panel'), null);
     assert.equal(row.querySelector('[data-provider-remove]'), null);
   } finally {

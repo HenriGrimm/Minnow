@@ -130,7 +130,7 @@ export function initCodeGraphiteSurfaces(): void {
     },
     async open({ chat, target }) {
       const { kind } = record(target);
-      await openGitSurfaceTarget(chat, kind === 'checkout' || kind === 'commit' || kind === 'workspace' ? kind : undefined);
+      await openGitSurfaceTarget(chat, kind === 'changes' || kind === 'checkout' || kind === 'commit' || kind === 'workspace' ? kind : undefined);
     },
   });
 

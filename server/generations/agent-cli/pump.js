@@ -50,7 +50,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     markError(state, error.message);
     return { outcome: 'fatal', message: error.message, hostSuspect: false };
   }
-  if (!agentCliRoleAllowed(state, settings)) return { outcome: 'retry', retrySameCandidate: false, hostSuspect: false, message: 'Background use of this CLI is off. Enable it in Models → CLIs or select another model for this role.' };
+  if (!agentCliRoleAllowed(state, settings)) return { outcome: 'retry', retrySameCandidate: false, hostSuspect: false, message: 'Background use of this CLI is off. Enable it in Models → Subscriptions or select another model for this role.' };
   if (settings.kind === 'codex' && process.env.MINNOW_CODEX_LEGACY_EXEC !== '1'
     && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn && !agentCliSessionIsMocked()) {
     return pumpCodexAppServer({ state, runtime, candidate, index, idleMs, maxMs, canFailover });

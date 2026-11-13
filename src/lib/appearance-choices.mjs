@@ -5,12 +5,16 @@ export const DEFAULT_THEME_FAMILY = 'graphite';
 export const DEFAULT_THEME_ID = 'graphite-dark';
 export const DEFAULT_APPEARANCE_FONT_ID = 'bundled-geist';
 
-export const GRAPHITE_ACCENTS = Object.freeze(['teal', 'blue', 'amber', 'violet', 'rose']);
+export const GRAPHITE_ACCENTS = Object.freeze([
+  'teal', 'blue', 'amber', 'violet', 'rose',
+  'swamp', 'ocean', 'desert', 'coral', 'human', 'mint', 'mono', 'matrix',
+]);
 export const COLOR_INTENSITIES = Object.freeze(['none', 'subtle', 'rich']);
 export const APPEARANCE_DENSITIES = Object.freeze(['compact', 'cozy', 'roomy']);
 
 export function normalizeGraphiteAccent(value) {
-  return GRAPHITE_ACCENTS.includes(value) ? value : 'teal';
+  if (GRAPHITE_ACCENTS.includes(value)) return value;
+  return typeof value === 'string' && /^#[\da-f]{6}$/i.test(value) ? value.toLowerCase() : 'teal';
 }
 
 export function normalizeColorIntensity(value) {

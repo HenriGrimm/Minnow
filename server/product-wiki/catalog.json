@@ -34,7 +34,7 @@
         "Next"
       ],
       "section": "Get started",
-      "hash": "3244fe69e330f89c46620e442d7d9885d3c8669a383557f10f05d640be96ec75"
+      "hash": "633f5178ab543473a65b695b0d49ed049ffaa9b401d24a9d955a13e08acd5781"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -46,7 +46,7 @@
         "Ollama",
         "Serve a model inside Minnow",
         "Cloud APIs",
-        "Agent CLIs",
+        "Subscriptions",
         "Choosing the model for a turn",
         "Routing: which model does what",
         "Model routers",
@@ -55,7 +55,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "9e0a4b619f98edb10cd4b9743df439863e9194a84ebee0c3fc962206097e4f98"
+      "hash": "5eefb0848c174b164ed30fd11c1b18e5e347b0a2646ca1b04aac1fefb798af7e"
     },
     {
       "path": "documentation/manual/get-started/costs-and-providers.md",
@@ -85,7 +85,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "392bce26f272067ea3d188eb98c051206ad604441ed38edc4be10412b99c1c38"
+      "hash": "392e04d3afd82c76234359ae375a37b5a13e7df2c0922a5cafd43a8e2ab517ed"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
@@ -142,7 +142,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "7db0c31b25bcad3a49cb7031c3863e622011a370e9571a9f9f29e7ec96a36f8f"
+      "hash": "ed0f7b91587d337711384781bfd1de202318c2fe1c14f552e2643399c2344f6b"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -198,7 +198,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "02abc4b3dfdb130b7d1a34b9114aa793d51eb995ca484b0fe254a5042d3b44c7"
+      "hash": "ff9b4c1bc2e02cb37764be298a99eb0237f5d3ac76e63c71e0d6c6da003f1c74"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -243,7 +243,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "443975396332402e1441a550a957be8af3275b0efe79290923777359a657af81"
+      "hash": "18c84170d79363cdfcc016250c0b5353ed63eaf7b8408de4e85bb4e2bbec69e4"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -274,7 +274,7 @@
         "MLX on Apple Silicon",
         "MTPLX on Apple Silicon",
         "Providers",
-        "CLIs",
+        "Subscriptions",
         "Account usage",
         "Routing",
         "Model pools",
@@ -287,7 +287,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f4d83afea851d764dc7f80af947ffa79c178ec7d648db4fbc66cce522402e055"
+      "hash": "906f7c01ab6bf027c0ec3448546209b0ed8715bf5deac01b41b85f95cc797c73"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -342,7 +342,7 @@
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "ae928f6d8bb4783affbe529a74408a1b27ba6a7d2b33ed8bc1d620ea56ce8dd6"
+      "hash": "4155de09869deb43a1003c9e6a108afff019590170d95e163935f826b2615b21"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",

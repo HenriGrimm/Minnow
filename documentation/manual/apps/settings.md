@@ -23,7 +23,9 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 **Startup & setup** controls desktop tray behavior and launch at startup. It also links to common settings and lets you run setup again.
 
-**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, theme families with dark and light variants, fonts, and custom colors. **Color** controls the tint on workspace surfaces with **Off**, **Subtle**, and **Rich**. In a browser, use the browser's zoom controls.
+**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, fonts, and colors. Choose **Dark**, **Light**, or **System** mode. Select an **Accent color** swatch or choose **Custom…** to use the color picker or enter a hex value. **Surface tint** controls how much of the accent reaches backgrounds and selections. In a browser, use the browser's zoom controls.
+
+Choose **Advanced colors → Edit colors…** to change individual interface colors. Select an element, set its color and opacity, then apply your changes. You can reset individual colors, pause your overrides, or import and export a palette under **Palette options**.
 
 **Density** adjusts spacing in sidebars, menus, chats, and lists. **Compact** fits more on screen, **Cozy** is the default, and **Roomy** adds more space between items. Text size is set separately.
 
@@ -33,7 +35,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 ### Code & workspace
 
-**GitHub** connects your github.com account for pull requests, CI checks, and GitHub issue sync. Select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow verifies the account and displays your username. You can cancel and retry an unfinished sign-in. The same optional step appears during first-run setup.
+**GitHub** connects your github.com account for pull requests, CI checks, and GitHub issue sync. Select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow verifies the account and displays your username. You can cancel and retry an unfinished sign-in.
 
 If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select **Check again**. Existing CLI logins are detected automatically. GitHub CLI manages credentials; Minnow does not store another GitHub token. Accounts supplied through `GH_TOKEN` or `GITHUB_TOKEN` are identified as environment-managed. Repository remotes and Git's existing credential setup remain separate from account sign-in.
 

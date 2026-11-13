@@ -21,7 +21,7 @@ export function openPhoneSettings(): void {
     ['notifications', 'Notifications', 'bell', () => openPhoneApp('settings', { settingsSection: 'notifications' })],
     ['devices', 'This phone', 'deviceMobile', () => openPhoneApp('settings', { settingsSection: 'devices' })],
     ['backups', 'Backups', 'archive', () => openPhoneApp('settings', { settingsSection: 'backups' })],
-    ['about', 'About', 'dashboard', () => openPhoneApp('settings', { settingsSection: 'about' })],
+    ['about', 'About', 'info', () => openPhoneApp('settings', { settingsSection: 'about' })],
   ] as const satisfies readonly (readonly [string, string, IconName, () => void])[];
   const values = new Map<typeof rows[number][0], HTMLElement>();
   for (const [id, label, icon, open] of rows) {

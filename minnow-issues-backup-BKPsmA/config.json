@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-11-12T22:47:23.729Z",
+  "migratedFromLocalStorage": false,
+  "migratedAt": null,
+  "localStorageKeysMigrated": [],
+  "layoutVersion": 1,
+  "activeProviderId": "lm-studio-local",
+  "activeInfoPresetId": "general-assistant",
+  "flaticonIconGuidanceEnabled": true,
+  "localModelGuidance": "auto",
+  "activeSetupProfileId": null,
+  "workspaceProfiles": {},
+  "workspaceProfileAutoApply": false,
+  "titles": {
+    "enabled": true,
+    "modelId": "",
+    "providerId": "",
+    "maxTokens": 24,
+    "temperature": 0.3
+  },
+  "utilityModel": {
+    "modelId": "",
+    "providerId": ""
+  },
+  "sampler": {
+    "temperature": 1,
+    "topP": 0.95,
+    "topK": 20,
+    "minP": 0,
+    "repetitionPenalty": 1,
+    "presencePenalty": 0,
+    "maxTokens": 131072
+  },
+  "thinking": {
+    "defaultMode": "on",
+    "thinkingBudgetTokens": null
+  },
+  "terminal": {
+    "open": false,
+    "heightPx": 240,
+    "autoOpenOnAgentRun": false,
+    "autoFollowAgentTab": false
+  },
+  "browser": {
+    "enabled": true,
+    "allowNavigate": true,
+    "allowedOriginPatterns": [
+      "http://localhost:*",
+      "http://127.0.0.1:*",
+      "https://localhost:*"
+    ]
+  },
+  "uiDesigner": {
+    "providerId": "",
+    "modelId": "",
+    "fallbackToChatModel": true
+  },
+  "toolSecurity": {
+    "permissionLevel": "auto"
+  },
+  "desktopShell": {
+    "closeToTray": true,
+    "windowCloseAction": "ask",
+    "zoomPercent": 100,
+    "hardwareAcceleration": true
+  },
+  "selfHealing": {
+    "enabled": false,
+    "tier1": {
+      "maxRestartsPerParentTurn": 2,
+      "duplicateToolCallThreshold": 5,
+      "sameErrorThreshold": 3,
+      "noProgressTurnThreshold": 4
+    },
+    "tier2": {
+      "enabled": true,
+      "requireScriptApproval": true
+    }
+  },
+  "supervisor": {
+    "enabled": true,
+    "autoResume": true,
+    "repetitionDetection": true,
+    "llmEscalation": true,
+    "askUserOnBudgetExhausted": true,
+    "stallMs": 30000,
+    "maxRetriesPerTask": 3,
+    "orchestratorHeartbeatMs": 90000,
+    "inProgressNoRunMs": 45000,
+    "spawnStuckMs": 30000,
+    "parentSilenceAfterToolMs": 20000,
+    "subAgentToolSilenceMs": 60000,
+    "runRestartCap": 2,
+    "spawnCapPerTask": 3,
+    "llmEscalationsPerSession": 10,
+    "llmEscalationTimeoutMs": 8000,
+    "tickIntervalMs": 5000,
+    "repetition": {
+      "duplicateToolCallThreshold": 5,
+      "sameErrorThreshold": 3,
+      "maxRestartsPerRun": 2
+    },
+    "escalationProviderId": "",
+    "escalationModelId": ""
+  },
+  "memory": {
+    "enabled": true,
+    "maxInjectCharsFull": 8000,
+    "retrieveLimit": 20,
+    "defaultTags": [],
+    "embeddings": {
+      "enabled": true,
+      "backend": "local",
+      "modelId": "Xenova/all-MiniLM-L6-v2",
+      "providerId": "",
+      "blendWeight": 0.5,
+      "queryTimeoutMs": 3000,
+      "reindexNeeded": false
+    }
+  },
+  "brain": {
+    "linking": {
+      "minSharedTitleKeywords": 2,
+      "minCosine": 0.75,
+      "retireMinCosine": 0.85,
+      "maxLinks": 3
+    }
+  },
+  "synthesis": {
+    "enabled": true,
+    "requireConfirmation": false,
+    "confidenceThreshold": 0.6,
+    "autoWriteConfidence": 0.85,
+    "maxProposalsPerTurn": 3,
+    "throttleMessagePairs": 4,
+    "skillMinRounds": 2,
+    "skillMinToolCalls": 2,
+    "skillMinOccurrences": 2,
+    "skillObservationRetentionDays": 45,
+    "utilityProviderId": "",
+    "utilityModelId": "",
+    "maxPendingProposals": 100,
+    "rejectedRetentionDays": 30,
+    "includeBoardChats": false
+  },
+  "planning": {
+    "granularity": "medium",
+    "superPlan": {
+      "reviewRounds": 2,
+      "grillQuestionBudget": 20,
+      "impeccable": "auto",
+      "researchScope": "both",
+      "researchMaxRounds": 0,
+      "researchDepth": "auto",
+      "models": {
+        "research": {
+          "providerId": "",
+          "modelId": ""
+        },
+        "reviewer": {
+          "providerId": "",
+          "modelId": ""
+        },
+        "planner": {
+          "providerId": "",
+          "modelId": ""
+        }
+      }
+    }
+  },
+  "chat": {
+    "generationIdleTimeoutMs": 3600000,
+    "generationMaxDurationMs": 14400000
+  },
+  "fallbackChains": {
+    "enabled": false,
+    "cooldownSeconds": 60,
+    "maxChainLength": 4,
+    "roles": {
+      "_global": [],
+      "default": [],
+      "utility": [],
+      "research": [],
+      "vision": []
+    }
+  },
+  "editorAiCompletion": {
+    "enabled": true,
+    "debounceMs": 450,
+    "maxPrefixLines": 80,
+    "maxSuffixLines": 40,
+    "maxPrefixChars": 6000,
+    "maxSuffixChars": 2000,
+    "temperature": 0.3,
+    "maxTokens": 256,
+    "useChatModel": true,
+    "providerId": "",
+    "modelId": "",
+    "includeImportContext": true,
+    "includeLspHover": true,
+    "includeLspContext": true,
+    "contextBudgetChars": 4000,
+    "useNativeFim": true,
+    "enableCompletionCache": true,
+    "reindentOnAccept": true
+  },
+  "gitCommitMessage": {
+    "useGitmoji": true
+  },
+  "editorIntentMode": {
+    "enabledByDefault": false,
+    "debounceMs": 400,
+    "contextWindow": 5,
+    "autoResolveOnLineLeave": false,
+    "sigil": "",
+    "providerId": "",
+    "modelId": "",
+    "maxTokens": 400
+  },
+  "editorSettings": {
+    "fontSize": 13,
+    "tabSize": 2,
+    "wordWrap": false,
+    "renderWhitespace": false
+  },
+  "voice": {
+    "stt": {
+      "enabled": true,
+      "providerId": "",
+      "model": "whisper-1",
+      "language": "en"
+    },
+    "tts": {
+      "enabled": true,
+      "providerId": "",
+      "model": "tts-1",
+      "voice": "alloy",
+      "speed": 1,
+      "format": "mp3"
+    },
+    "limits": {
+      "maxAudioBytes": 26214400,
+      "maxDurationSeconds": 300,
+      "silenceTimeoutSeconds": 2.5
+    }
+  }
+}

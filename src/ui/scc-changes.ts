@@ -291,11 +291,8 @@ export function createChangesView(ctx: SccContext): SccView {
 
   function buildRow(entry: GitFileEntry, bucket: Bucket, graphite: boolean): HTMLElement {
     const row = el('div', 'scc-filerow');
-    row.tabIndex = 0;
-    row.dataset.path = entry.path;
-    row.dataset.bucket = bucket;
-    row.setAttribute('role', 'group');
-    row.setAttribute('aria-label', `${entry.path}, ${bucket}`);
+    const trigger = el('button', 'scc-filerow__trigger');
+    trigger.type = 'button';
 
     const letter = graphite && bucket === 'untracked' ? 'U' : statusLetter(entry.status);
     const badge = el('span', `scc-filerow__status scc-filerow__status--${letter.toLowerCase()}`, letter);
@@ -307,7 +304,7 @@ export function createChangesView(ctx: SccContext): SccView {
 
     const toggleBtn = button({
       icon: staged ? 'clear' : 'plus',
-      title: staged ? 'Unstage' : 'Stage',
+      title: staged ? `Unstage ${entry.path}` : `Stage ${entry.path}`,
       variant: 'ghost',
       onClick: (event) => {
         event.stopPropagation();
@@ -317,7 +314,7 @@ export function createChangesView(ctx: SccContext): SccView {
 
     const discardBtn = button({
       icon: 'undo',
-      title: bucket === 'untracked' ? 'Delete file' : 'Discard changes',
+      title: bucket === 'untracked' ? `Delete ${entry.path}` : `Discard changes to ${entry.path}`,
       variant: 'ghost',
       className: 'scc-btn--danger-hover',
       onClick: (event) => {
@@ -333,15 +330,15 @@ export function createChangesView(ctx: SccContext): SccView {
       icon.classList.add('scc-filerow__file-icon');
       path.prepend(icon);
     }
-    row.append(badge, path);
+    trigger.append(badge, path);
     if (graphite && ((entry.additions ?? 0) > 0 || (entry.deletions ?? 0) > 0)) {
       const counts = diffStat(entry.additions ?? 0, entry.deletions ?? 0);
       counts.classList.add('scc-filerow__counts');
-      row.append(counts);
+      trigger.append(counts);
     }
-    row.append(actions);
+    row.append(trigger, actions);
 
-    changesSelection.bindRow(row, { path: entry.path, bucket }, actions);
+    changesSelection.bindRow(row, { path: entry.path, bucket }, trigger, actions);
     row.addEventListener('dblclick', (event) => {
       if (!actions.contains(event.target as Node) && !event.shiftKey && !event.ctrlKey && !event.metaKey) void toggleStage(entry.path, bucket);
     });
@@ -361,8 +358,9 @@ export function createChangesView(ctx: SccContext): SccView {
     for (const row of listScroll.querySelectorAll<HTMLElement>('.scc-filerow')) {
       const current = row.dataset.path === selection?.path && row.dataset.bucket === selection?.bucket;
       row.classList.toggle('is-diff-current', current);
-      if (current) row.setAttribute('aria-current', 'true');
-      else row.removeAttribute('aria-current');
+      const trigger = row.querySelector('.scc-filerow__trigger');
+      if (current) trigger?.setAttribute('aria-current', 'true');
+      else trigger?.removeAttribute('aria-current');
     }
     if (!selection) {
       if (diffKey === 'empty') return;
@@ -689,7 +687,7 @@ export function createChangesView(ctx: SccContext): SccView {
   }
 
   const navigate = listNavigator({
-    getRows: () => [...listScroll.querySelectorAll<HTMLElement>('.scc-filerow')],
+    getRows: () => [...listScroll.querySelectorAll<HTMLElement>('.scc-filerow__trigger')],
   });
 
   function onKey(event: KeyboardEvent): boolean {
@@ -723,8 +721,8 @@ export function createChangesView(ctx: SccContext): SccView {
     refresh,
     onKey,
     activate: () => {
-      const first = listScroll.querySelector<HTMLElement>('.scc-filerow');
-      if (!selection && first) { first.click(); first.focus(); }
+      const first = listScroll.querySelector<HTMLButtonElement>('.scc-filerow__trigger');
+      if (!selection) first?.click();
     },
     destroy: () => {
       destroyed = true;

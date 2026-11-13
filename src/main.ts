@@ -365,16 +365,7 @@ export async function initApp(): Promise<void> {
     initComposerCompact();
   }
   await bindExpertsSettingsCheckbox();
-  // First-run setup needs the computer: phones join a Minnow that is already set up.
-  if (hasChatSurface && !isMobileShell()) {
-    const { shouldShowOnboardingOnBoot, mountOnboarding } = await import('./onboarding');
-    const showOnboarding = await shouldShowOnboardingOnBoot();
-    if (showOnboarding) {
-      await mountOnboarding();
-    }
-  }
   startSchedulerNotificationPoll();
-  releaseFirstRunReveal();
   initNotificationProducers();
   initNotificationCards();
   if (hasChatSurface) {
@@ -417,6 +408,16 @@ export async function initApp(): Promise<void> {
   registerWebSearchSettingsHandlers();
   loadToolConfigIntoDrawer();
   void syncWebSearchProviderFromSearchConfig();
+
+  // The workspace picker is ready underneath setup. Phones use the host's setup.
+  try {
+    if (hasChatSurface && !isMobileShell()) {
+      const { mountOnboarding } = await import('./onboarding');
+      await mountOnboarding();
+    }
+  } finally {
+    releaseFirstRunReveal();
+  }
 
   if (workspaceGatePending) {
     await workspaceGatePending;

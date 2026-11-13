@@ -223,7 +223,7 @@ describe('toast', () => {
     showToast('Cannot reach providers (DeepSeek). Check Settings → Providers.', 'error');
     const open = document.querySelector('.mn-toast__open');
     assert.ok(open, 'card is clickable');
-    assert.match(open.getAttribute('aria-label'), /Open Settings → Providers/);
+    assert.equal(open.getAttribute('aria-label'), 'Cannot reach providers (DeepSeek). Open Settings → Providers');
     showToast('Saved', 'success');
     assert.equal(document.querySelectorAll('.mn-toast__open').length, 1);
   });

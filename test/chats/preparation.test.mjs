@@ -202,6 +202,17 @@ test('a captured /plan skill narrows the turn even after its chat is unpinned', 
   const revoked = createChatPolicy({ ...prepared.policy, toolEffects: { ...prepared.policy.toolEffects, [readTool]: 'unknown' } });
   assert.throws(() => assertChatToolAllowed(prepared.policy, readTool, {}, { currentPolicy: revoked }),
     error => error.reason === 'tool_denied');
+
+  f.setTranscript({ messages: [{ role: 'user', content: 'Plan the change\n\n[skill: plan]' },
+    { role: 'assistant', content: 'Here is the plan.' }, { role: 'user', content: 'Implement it', commandId: 'command' }], meta: {} });
+  f.command.message = 'Implement it';
+  f.execution.captured.turnIntent = await captureChatTurnIntent({ version: 1, skill: null },
+    f.chat, 'Implement it', { adapters: f.adapters });
+  const followup = await f.prepare();
+  assert.equal(followup.policy.turnClamp, null);
+  assert.doesNotMatch(followup.systemPrompt, /Workflow skill: plan/);
+  assert.doesNotThrow(() => assertChatToolAllowed(followup.policy, 'save_file', { path: 'src/main.ts', content: 'x' },
+    { currentPolicy: followup.policy }));
 });
 
 test('follow-ups replay exact stored context, including CLI stable/current separation', async () => {

@@ -205,6 +205,21 @@ test('tabs preserve the existing issue editor and show the same linked chat', as
   assert.equal(editor.value, 'Unsubmitted editor contents');
 });
 
+test('only the chosen issue tab panel participates in the detail layout', async () => {
+  const work = document.querySelector<HTMLElement>('.issues-work-content')!;
+  const issue = work.previousElementSibling as HTMLElement;
+  const tabs = [...document.querySelectorAll('.issues-work-tabs [role="tab"]')];
+  assert.deepEqual(tabs.map((tab) => tab.textContent), ['Issue', 'Work', 'Chat', 'Activity']);
+  assert.equal(work.hidden, true);
+  assert.equal(issue.hidden, false);
+  click('Work'); await flush();
+  assert.equal(work.hidden, false);
+  assert.equal(issue.hidden, true);
+  click('Issue');
+  assert.equal(work.hidden, true);
+  assert.equal(issue.hidden, false);
+});
+
 test('merge sends the reviewed snapshot and records delivery without deleting the chat', async () => {
   click('Work'); await flush();
   click('Commit & merge');

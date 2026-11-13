@@ -18,7 +18,7 @@ export async function readCodexModelCatalog(invocation, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   const remaining = () => {
     const timeoutMs = deadline - Date.now();
-    if (timeoutMs <= 0) throw new Error('Codex model discovery timed out. Check the CLI in Models → CLIs.');
+    if (timeoutMs <= 0) throw new Error('Codex model discovery timed out. Check the CLI in Models → Subscriptions.');
     return { timeoutMs };
   };
   try {

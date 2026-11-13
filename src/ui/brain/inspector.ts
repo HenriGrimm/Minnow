@@ -140,6 +140,7 @@ export async function renderBrainInspector(
   onEdit: InspectorEditFn,
   onDeleted?: InspectorDeletedFn,
   onClose?: () => void,
+  graphActions?: HTMLElement,
 ): Promise<void> {
   mount.classList.add('is-open');
   mount.setAttribute('aria-hidden', 'false');
@@ -199,6 +200,7 @@ export async function renderBrainInspector(
 
   const title = document.createElement('h2');
   title.className = 'brain-inspector__title';
+  title.tabIndex = -1;
   title.textContent = page.meta.title;
   title.title = page.path;
   const pathLine = document.createElement('p');
@@ -234,6 +236,7 @@ export async function renderBrainInspector(
     summary.textContent = page.meta.summary;
     head.append(summary);
   }
+  if (graphActions) head.append(graphActions);
 
   const backlinks = computeBrainBacklinks(catalogPages, page.path);
   const outbound = (page.meta.links ?? []).map((raw) => {

@@ -307,7 +307,12 @@ function renderEntry(entry: Entry): void {
   const head: HTMLElement = opts.open ? button('mn-toast__open', '') : document.createElement('div');
   if (!opts.open) head.className = 'mn-toast__head';
   if (opts.open) {
-    head.setAttribute('aria-label', [announcementText(opts), opts.openLabel ?? 'Open'].filter(Boolean).join('. '));
+    const label = opts.openLabel ?? 'Open';
+    const announcement = announcementText(opts).replace(/\.$/, '');
+    const destination = label.startsWith('Open ') ? label.slice(5) : '';
+    const instruction = destination ? [`Check ${destination}`, label].find(text => announcement.endsWith(text)) : undefined;
+    const message = instruction ? announcement.slice(0, -instruction.length).trimEnd().replace(/\.$/, '') : announcement;
+    head.setAttribute('aria-label', [message, label].filter(Boolean).join('. '));
     head.addEventListener('click', () => {
       if (entry.busy) return;
       closeEntry(entry, false);
@@ -496,7 +501,7 @@ export function notify(input: NotifyOptions): NotifyHandle | null {
   if ((!opts.title && !opts.message) || typeof document === 'undefined' || !document.body) return null;
   if (!document.defaultView) return null;
   if (!opts.open) {
-    // "Check Settings → Providers" opens Providers when the card is clicked.
+    // A named Settings or Models destination can open from the card.
     const link = findSettingsLink(`${opts.title ?? ''} ${opts.message ?? ''}`);
     if (link) {
       opts.open = () => { void import('./settings-page').then((m) => m.openSettings(link.section)); };

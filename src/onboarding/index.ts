@@ -7,7 +7,6 @@ import '../styles/onboarding.css';
 export {
   mountOnboarding,
   unmountOnboarding,
-  shouldShowOnboardingOnBoot,
   rerunOnboardingFromSettings,
   isOnboardingMounted,
 } from './controller';

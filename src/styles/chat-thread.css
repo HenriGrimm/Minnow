@@ -501,3 +501,64 @@
 .chat-turn-todos__item--completed > :last-child { text-decoration: line-through; }
 .chat-turn-todos__item--in_progress .chat-turn-todos__glyph { color: var(--mn-accent); }
 .chat-turn-todos__item--in_progress > :last-child { font-weight: 600; }
+
+.chat-todo-panel {
+  box-sizing: border-box;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-lg);
+  background: var(--mn-graphite-sheet);
+  box-shadow: var(--mn-composer-shadow);
+  overflow: clip;
+}
+
+.chat-todo-panel,
+.chat-todo-panel > summary {
+  border-end-start-radius: var(--chat-todo-bottom-radius, var(--mn-radius-lg));
+  border-end-end-radius: var(--chat-todo-bottom-radius, var(--mn-radius-lg));
+}
+
+.chat-todo-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  min-height: var(--mn-control-h-lg);
+  padding: var(--mn-space-2) var(--mn-space-3);
+  border-start-start-radius: var(--mn-radius-lg);
+  border-start-end-radius: var(--mn-radius-lg);
+  font-weight: 600;
+  list-style: none;
+}
+
+.chat-todo-panel > summary::-webkit-details-marker { display: none; }
+.chat-todo-panel > summary:focus-visible { outline-offset: -2px; }
+.chat-todo-panel[open] > summary { border-end-start-radius: 0; border-end-end-radius: 0; }
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-todo-panel > summary:hover { background: var(--mn-surface-elevated); }
+}
+
+@media (pointer: coarse) {
+  .chat-todo-panel > summary { min-height: var(--touch-min); }
+}
+
+.chat-todo-panel__icon,
+.chat-todo-panel__chevron { flex: none; color: var(--mn-fg-muted); }
+.chat-todo-panel[open] .chat-todo-panel__chevron { transform: rotate(90deg); }
+
+.chat-todo-panel .chat-turn-todos__count {
+  margin-inline: auto 0;
+  font-size: var(--mn-type-sm);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.chat-todo-panel .chat-turn-todos__list {
+  max-height: min(15rem, 36cqh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: var(--mn-space-1) var(--mn-space-3) var(--mn-space-2);
+  border-top: 1px solid var(--mn-border);
+}
+
+.chat-todo-panel .chat-turn-todos__item { gap: var(--mn-space-2); }

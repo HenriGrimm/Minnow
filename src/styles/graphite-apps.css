@@ -74,7 +74,7 @@
   color: currentColor;
 }
 
-.mn-graphite-apps :is(.issues-header .issues-btn, .scheduler-header .scheduler-btn, .brain-graph-toolbar__primary .brain-action-btn) {
+.mn-graphite-apps :is(.issues-header .issues-btn, .issues-header .issues-header__sync, .scheduler-header .scheduler-btn, .brain-graph-toolbar__primary .brain-action-btn) {
   min-height: var(--mn-workbench-control-h);
   padding: 0 var(--mn-space-2-5);
   border-radius: var(--mn-workbench-control-radius);
@@ -1359,14 +1359,6 @@
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-detail__sticky > .issues-detail__title {
   width: calc(100% - 40px);
   margin-block-start: 10px;
-}
-
-.mn-graphite-apps .issues-shell.is-detail-inline .issues-detail:has(> .issues-work-content[hidden]) .issues-work-tabs:not(:focus-within) {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
 }
 
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-detail__scroll:not(.issues-work-content) {

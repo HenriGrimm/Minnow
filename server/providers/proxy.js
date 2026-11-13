@@ -6,7 +6,7 @@ import { MTPLX_LOCAL_ID } from '../../src/models/engine-ids.mjs';
 import { FAKE_PROVIDER_ID } from '../orchestrate/board-testing/fake-model-ids.js';
 import { getFakeModelStatus } from '../orchestrate/board-testing/fake-model-host.js';
 import { getProviderRuntime, LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from './store.js';
-import { normalizeModelsResponse, enrichLmStudioModelsWithV1Reasoning } from './paths.js';
+import { getDefaultPaths, normalizeModelsResponse, enrichLmStudioModelsWithV1Reasoning } from './paths.js';
 import {
   enrichModelsFromModelsDev,
   isOpenCodeProviderBaseUrl,
@@ -16,7 +16,8 @@ import {
   mergeOpenCodeIdentityHeaders,
   OPENCODE_SESSION_CATALOG,
 } from './opencode-identity.js';
-import { validateProviderId } from './validate.js';
+import { buildAuthHeaders } from './auth-headers.js';
+import { validateApiKind, validateAuthStyle, validateBaseUrl, validateProviderId, validateProviderPath } from './validate.js';
 import { resolveModelApi } from '../generations/resolve-model-api.js';
 import { NON_AGENT_FALLBACK_ROLES } from '../generations/store.js';
 import { enrichMlxLmModelsWithCachedContext } from '../models/mlx-context-length.js';
@@ -34,6 +35,36 @@ import {
 } from '../models/serve.js';
 
 const MODELS_TIMEOUT_MS = 15_000;
+
+/** Probe an HTTP draft using the same catalog path and auth as a saved provider. */
+export async function testProviderConnection(draft) {
+  const apiKind = validateApiKind(draft?.apiKind);
+  if (apiKind === 'agent-cli-v1') throw new Error('Choose an HTTP provider protocol.');
+  const baseUrl = validateBaseUrl(draft.baseUrl);
+  const authStyle = validateAuthStyle(draft.authStyle);
+  const modelsPath = validateProviderPath(draft.modelsPath, getDefaultPaths(apiKind).modelsPath);
+  const headers = buildAuthHeaders({ apiKind, baseUrl, authStyle }, { apiKey: draft.apiKey });
+  const url = `${baseUrl}${normalizeOpenCodeZenRelativePath(baseUrl, modelsPath)}`;
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: mergeOpenCodeIdentityHeaders({ Accept: 'application/json', ...headers }, { baseUrl, sessionId: OPENCODE_SESSION_CATALOG }),
+      signal: AbortSignal.timeout(MODELS_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error?.name === 'TimeoutError') throw new Error('Connection timed out. Check the server address and try again.');
+    throw new Error('Could not reach the server. Check that it is running and verify the base URL.');
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    if (response.status === 401 || response.status === 403) throw new Error('The server rejected the credentials. Check the API key and auth header.');
+    if (response.status === 404) throw new Error('The model catalog was not found. Check the API style and models path.');
+    throw new Error(`The server returned HTTP ${response.status}. Check its status and try again.`);
+  }
+  const catalog = await response.json().catch(() => null);
+  if (!Array.isArray(catalog?.data)) throw new Error('The server returned an invalid model catalog. Check the API style and models path.');
+  return { modelCount: normalizeModelsResponse(apiKind, catalog).data.length };
+}
 
 const UNREACHABLE_NET_CODES = new Set([
   'ECONNREFUSED',

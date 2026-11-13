@@ -6,7 +6,7 @@ export function admitAgentCli(providerId, limit = 1, signal) {
   if (signal?.aborted) return Promise.reject(abortError());
   let pool = providers.get(providerId);
   if (!pool) { pool = { active: 0, queue: [] }; providers.set(providerId, pool); }
-  if (pool.queue.length >= 64) return Promise.reject(new Error('Agent CLI queue is full. Wait for a running task or increase concurrency in Models → CLIs.'));
+  if (pool.queue.length >= 64) return Promise.reject(new Error('Agent CLI queue is full. Wait for a running task or increase concurrency in Models → Subscriptions.'));
   function drain() {
     while (pool.queue.length && pool.active < pool.queue[0].limit) {
       const entry = pool.queue.shift();

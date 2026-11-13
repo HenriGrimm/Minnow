@@ -9,6 +9,7 @@ import { getChatView, setChatView } from '../appearance/chat-view';
 import { mountDesktopZoomControl } from './desktop-zoom-control';
 
 let cleanupZoom: (() => void) | undefined;
+let cleanupColors: (() => void) | undefined;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -24,16 +25,30 @@ function el<K extends keyof HTMLElementTagNameMap>(
 /** Render full Appearance settings section. */
 export function renderAppearanceSettingsSection(mount: HTMLElement): void {
   cleanupZoom?.();
+  cleanupColors?.();
   mount.replaceChildren();
 
   const shell = el('div', 'settings-general');
   shell.classList.add('graphite-appearance');
   mount.appendChild(shell);
 
-  appendAppearanceThemePresets(shell);
+  const cleanupAccents = appendAppearanceThemePresets(shell);
 
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
+
+  const customColors = appendSettingsGroup(
+    content,
+    'Advanced colors',
+    'Adjust individual interface colors.',
+    'appearance.customColors',
+    { emphasis: true },
+  );
+  const cleanupOverrides = appendAppearanceCustomColors(customColors);
+  cleanupColors = () => {
+    cleanupAccents();
+    cleanupOverrides();
+  };
 
   const zoom = appendSettingsGroup(content, 'Interface size',
     undefined, 'general.desktop.zoom',
@@ -73,12 +88,4 @@ export function renderAppearanceSettingsSection(mount: HTMLElement): void {
   );
   appendAppearanceFonts(fonts);
 
-  const customColors = appendSettingsGroup(
-    content,
-    'Custom colors',
-    'Pick four colors or expand advanced mode to override every palette token.',
-    'appearance.customColors',
-    { emphasis: true },
-  );
-  appendAppearanceCustomColors(customColors);
 }

@@ -20,7 +20,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
       </style>
       <div class="mn-os">
         <header id="osMenubar" class="mn-os-menubar mn-os-menubar--shell-frameless" data-view="app">
-          <div class="mn-os-mb-left"><button>Sidebar</button></div>
+          <div class="mn-os-mb-left"><button class="mn-os-mb-chat-toggle" id="sidebarToggle">Sidebar</button></div>
           <div class="mn-os-mb-right"><button id="settings">Settings</button></div>
           <div class="mn-os-mb-window-controls">
             <button class="mn-os-window-btn">−</button><button class="mn-os-window-btn">□</button><button class="mn-os-window-btn" id="close">×</button>
@@ -72,12 +72,17 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
       const divider = getComputedStyle(document.querySelector('.mn-os-mb-window-controls'), '::before');
       const close = bounds('#close');
       const dragStrip = getComputedStyle(document.getElementById('graphiteThreadHeader'), '::before');
+      const menubar = document.getElementById('osMenubar');
+      const titlebarHit = document.elementFromPoint((rail.getBoundingClientRect().right + controls.left) / 2, top / 2);
       return { left, right, top, railRight: rail.getBoundingClientRect().right,
         coversRail: stage.contains(document.elementFromPoint(left + 16, 120)),
         controls: controls.toJSON(),
         dividerWidth: divider.width,
         minimizeLeft: bounds('.mn-os-mb-window-controls button').left,
         closeClickable: document.elementFromPoint(close.left + close.width / 2, close.top + close.height / 2)?.id === 'close',
+        sidebarToggle: bounds('#sidebarToggle').toJSON(),
+        sidebarToggleRegion: getComputedStyle(document.getElementById('sidebarToggle')).getPropertyValue('app-region'),
+        gapDraggable: titlebarHit === menubar && getComputedStyle(menubar).getPropertyValue('app-region') === 'drag',
         threadActionRight: bounds('#threadAction').right, settingsRight: bounds('#settings').right,
         dragStripRegion: dragStrip.getPropertyValue('app-region'),
         dragStripRight: bounds('#graphiteThreadHeader').right - parseFloat(dragStrip.right),
@@ -114,6 +119,9 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   assert.ok(end.settingsRight < end.controls.left);
   assert.ok(start.threadActionRight < start.controls.left);
   assert.ok(withoutThread.top >= withoutThread.controls.bottom);
+  assert.ok(withoutThread.gapDraggable, 'the titlebar above apps without a thread header should be draggable');
+  assert.deepEqual(withoutThread.sidebarToggle, start.sidebarToggle);
+  assert.equal(withoutThread.sidebarToggleRegion, 'no-drag');
   for (const frame of [start, ...during, end, withoutThread]) {
     assert.deepEqual(frame.controls, end.controls);
     assert.equal(frame.dividerWidth, '1px');

@@ -6,8 +6,9 @@ import serverDOMPurify from 'isomorphic-dompurify';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { setLocalServerAvailable } from '../../src/tools/config.ts';
 import { createPullsView } from '../../src/ui/scc-pulls.ts';
+import { createChecksView } from '../../src/ui/scc-checks.ts';
 import { buildPrDetail, prMergeLabel, renderPrMarkdown } from '../../src/ui/scc-pr-detail.ts';
-import type { PullRequestDetail } from '../../src/state/forge-api.ts';
+import type { ForgeStatus, PullRequestDetail } from '../../src/state/forge-api.ts';
 import type { SccContext, SccView } from '../../src/ui/scc-shared.ts';
 
 const originalFetch = globalThis.fetch;
@@ -47,6 +48,25 @@ function pr(number: number, extra: Partial<PullRequestDetail> = {}): PullRequest
 async function settle(): Promise<void> {
   for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 1));
 }
+
+test('pull requests and Actions name the missing remote and omit GitHub CLI installation instructions', async () => {
+  setup();
+  const ctx: SccContext = { getCwd: () => '/repo', getBranch: () => 'main', refreshAll: async () => {}, refreshSection: async () => {}, goTo() {}, setBadge() {} };
+  const status: ForgeStatus = {
+    ok: true, host: 'none', hostname: '', remoteUrl: '', repo: '', supported: false,
+    cliInstalled: false, cliVersion: '', authenticated: false, reason: 'This repository has no remote.',
+  };
+  for (const [create, feature] of [[createPullsView, 'pull requests'], [createChecksView, 'Actions']] as const) {
+    view = create(ctx, { getForgeStatus: () => status });
+    document.body.append(view.root);
+    await settle();
+    assert.match(view.root.querySelector('.scc-empty--unavailable')?.textContent ?? '', /No remote configured/);
+    assert.match(view.root.querySelector('.scc-empty__body')?.textContent ?? '', new RegExp(`Add a GitHub remote to use ${feature}`));
+    assert.doesNotMatch(view.root.textContent ?? '', /winget install|GitHub CLI not found/);
+    view.destroy();
+    view = undefined;
+  }
+});
 
 function mount(prs: PullRequestDetail[], handler?: (args: Record<string, any>) => Promise<object>): void {
   globalThis.fetch = (async (_url, init) => {

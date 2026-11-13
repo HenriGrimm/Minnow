@@ -1576,11 +1576,6 @@ function buildFileRow(entry: GitFileEntry, staged: boolean): HTMLElement {
       createFileTypeIconElement(entry.path), copy,
     );
     path.setAttribute('aria-expanded', 'false');
-    path.addEventListener('click', event => {
-      if (event.shiftKey || event.ctrlKey || event.metaKey) return;
-      event.stopPropagation();
-      void toggleGraphiteInlineDiff(row, entry, staged);
-    });
   }
 
 
@@ -1660,7 +1655,7 @@ function buildFileRow(entry: GitFileEntry, staged: boolean): HTMLElement {
   } else {
     row.append(badge, path, actions);
   }
-  changesSelection?.bindRow(row, change, actions);
+  changesSelection?.bindRow(row, change, path, actions);
 
   return row;
 
@@ -2380,9 +2375,10 @@ export function setGitSurfaceVisible(visible: boolean, chat?: Chat): void {
   });
 }
 
-export async function openGitSurfaceTarget(chat: Chat, target?: 'checkout' | 'commit' | 'workspace'): Promise<void> {
+export async function openGitSurfaceTarget(chat: Chat, target?: 'changes' | 'checkout' | 'commit' | 'workspace'): Promise<void> {
   if (!panelOpen || graphiteGitChatId !== chat.id) return;
-  if (target === 'workspace' || graphiteWorkspaceDiffChatId === chat.id) {
+  const showChanges = target === 'changes' || target === 'workspace' || target === 'commit';
+  if (showChanges || graphiteWorkspaceDiffChatId === chat.id) {
     const workspace = target === 'workspace';
     graphiteWorkspaceDiffChatId = workspace ? chat.id : null;
     panelCwdUserOverride = false;
@@ -2391,7 +2387,7 @@ export async function openGitSurfaceTarget(chat: Chat, target?: 'checkout' | 'co
     setPanelCwd(cwd || undefined);
     if (cwdGeneration !== before) void refreshGitPanel();
   }
-  if ((target === 'workspace' || target === 'commit') && panelRoot) setGraphiteGitView(panelRoot, 'changes');
+  if (showChanges && panelRoot) setGraphiteGitView(panelRoot, 'changes');
   if (target === 'commit') {
     commitInput?.focus();
     return;
