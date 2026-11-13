@@ -138,7 +138,7 @@ function ensureProductWikiRoot(): HTMLElement {
   root.className = 'product-wiki hidden';
   root.setAttribute('aria-label', 'Minnow wiki — User manual');
   root.innerHTML = `
-    <header class="product-wiki__header">
+    <header class="product-wiki__header" data-app-titlebar>
       <div class="product-wiki__identity">
         <button id="productWikiNavToggle" class="product-wiki__icon-button product-wiki__nav-toggle" type="button" aria-label="Toggle wiki navigation" aria-expanded="false">${iconHtml('menu', { size: 17 })}</button>
         <span class="product-wiki__mark" aria-hidden="true">?</span>
@@ -153,6 +153,7 @@ function ensureProductWikiRoot(): HTMLElement {
         <input id="productWikiSearch" type="search" autocomplete="off" placeholder="Search setup, apps, settings, troubleshooting…" />
         <kbd>Ctrl K</kbd>
       </label>
+      <button id="productWikiClose" class="product-wiki__icon-button" type="button" aria-label="Close wiki" title="Close wiki">${iconHtml('close', { size: 16 })}</button>
     </header>
     <div class="product-wiki__body">
       <nav id="productWikiNav" class="product-wiki__nav" aria-label="Wiki pages">
@@ -330,6 +331,12 @@ function closeMobileNavigation(): void {
 
 /** Bind overlay controls once. */
 function bindProductWiki(root: HTMLElement): void {
+  root.querySelector('#productWikiClose')?.addEventListener('click', () => {
+    closeProductWiki();
+    const trigger = document.querySelector<HTMLElement>('[data-shell-overlay="wiki"]');
+    if (trigger?.getClientRects().length) trigger.focus();
+    else document.querySelector<HTMLElement>('.mn-os-mb-chat-toggle:not([hidden])')?.focus();
+  });
   root.querySelector('#productWikiNavScrim')?.addEventListener('click', closeMobileNavigation);
   root.querySelector('#productWikiNavToggle')?.addEventListener('click', () => {
     const open = root.classList.toggle('is-nav-open');
@@ -389,7 +396,7 @@ export function initProductWiki(): void {
   document.addEventListener('pointerdown', (event) => {
     if (!isShellOverlayOpen('wiki')) return;
     const target = event.target as Element | null;
-    if (target?.closest('#productWikiOverlay, [data-shell-overlay]')) return;
+    if (target?.closest('#productWikiOverlay, [data-shell-overlay], [data-above-shell-overlay]')) return;
     closeProductWiki();
   });
   void syncProductWikiFromHash();

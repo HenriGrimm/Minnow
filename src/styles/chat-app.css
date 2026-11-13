@@ -316,7 +316,8 @@
 .chat-app-scroll {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 24px 20px;
   display: flex;
   flex-direction: column;

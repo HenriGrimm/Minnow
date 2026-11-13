@@ -9,6 +9,10 @@
   overflow-y: auto;
 }
 
+.mn-graphite-workspace .chat-area.chat-area--plan-screen {
+  justify-content: flex-start;
+}
+
 .main-column:has(.chat-area--plan-screen) .stats-strip {
   display: none;
 }

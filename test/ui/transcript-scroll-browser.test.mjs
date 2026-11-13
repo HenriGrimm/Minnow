@@ -90,4 +90,21 @@ test('completed replies remain reachable by native scrolling after history pagin
     const jumped = await settle();
     assert.ok(Math.abs(jumped.top - top) <= 1, 'Jump to latest must have no hidden scroll distance left to recover');
   }
+
+  const overflow = await session.evaluate(`(() => {
+    const { root } = testScroll;
+    const bubble = document.getElementById('latestReplyEnd').parentElement;
+    const codeBlock = bubble.appendChild(document.createElement('pre'));
+    codeBlock.textContent = 'a'.repeat(400);
+    const wideRow = root.appendChild(document.createElement('div'));
+    wideRow.style.width = '200vw';
+    return {
+      transcriptOverflowX: getComputedStyle(root).overflowX,
+      transcriptHasWideContent: root.scrollWidth > root.clientWidth,
+      codeBlockScrolls: codeBlock.scrollWidth > codeBlock.clientWidth && getComputedStyle(codeBlock).overflowX === 'auto',
+    };
+  })()`);
+  assert.equal(overflow.transcriptHasWideContent, true);
+  assert.equal(overflow.transcriptOverflowX, 'hidden');
+  assert.equal(overflow.codeBlockScrolls, true);
 });

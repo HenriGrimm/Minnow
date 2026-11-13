@@ -1,17 +1,18 @@
 /* Graphite workspace ground, rail and inset application sheet. */
-.mn-graphite-workspace .mn-os {
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) .mn-os {
   --mn-graphite-sidebar-width: 291px;
   --mn-graphite-window-inset: 8px;
   --os-menubar-h: 52px;
+  --mn-caption-top: calc(var(--mn-graphite-window-inset) + (var(--mn-workbench-band-h) - var(--os-window-btn-size)) / 2);
   background: var(--mn-graphite-ground, var(--mn-bg));
 }
 
-html.is-electron-shell:not([data-platform='darwin']).mn-graphite-workspace .mn-os {
+html.is-electron-shell:not([data-platform='darwin']):is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) .mn-os {
   --mn-window-controls-width: calc(3 * var(--os-window-btn-size) + 2 * var(--mn-window-controls-gap));
   --mn-titlebar-end-inset: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding));
 }
 
-html.is-electron-shell[data-platform='win32'].mn-graphite-workspace .mn-os {
+html.is-electron-shell[data-platform='win32']:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) .mn-os {
   --mn-window-controls-width: calc(3 * var(--os-window-btn-size) + 3 * var(--mn-window-controls-gap) + 1px);
 }
 
@@ -135,55 +136,158 @@ html.mn-graphite-workspace.is-electron-shell[data-platform='darwin']:not([data-w
 }
 
 /* Caption buttons stay at the window edge while the menubar shrinks to the rail. */
-html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar > .mn-os-mb-window-controls {
+html.is-electron-shell:is(.mn-graphite-workspace:not(.os-workspace-gate-open), .mn-graphite-apps[data-app-window])
+  #osMenubar[data-view='app'] > .mn-os-mb-window-controls {
   position: fixed;
-  top: calc((var(--os-menubar-h) - var(--os-window-btn-size)) / 2);
+  top: var(--mn-caption-top);
   right: calc(var(--mn-graphite-window-inset) + var(--mn-menubar-inline-padding));
 }
 
-/* The sidebar menubar and the foreground app header share the title bar. */
-html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open)
-  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *, .is-graph-canvas-bg .brain-page-header) {
+/* App headers use the same surface as the sheet, including the space behind shell controls. */
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window])
+  #osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar) {
   position: relative;
-  user-select: none;
+  min-height: var(--mn-workbench-band-h);
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  padding-left: var(--mn-titlebar-start-inset, var(--mn-workbench-gutter));
+  padding-right: calc(var(--mn-titlebar-end-inset, var(--mn-workbench-gutter)) + var(--mn-titlebar-actions-width, 0px) + var(--mn-space-2));
 }
 
-html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open)
-  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *, .is-graph-canvas-bg .brain-page-header)::before {
+html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window])
+  #osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar)::before {
   content: '';
   position: absolute;
-  inset: 0 var(--mn-titlebar-end-inset, 0px) 0 0;
+  inset: 0 calc(var(--mn-titlebar-end-inset, 0px) + var(--mn-titlebar-actions-width, 0px)) 0 0;
   pointer-events: none;
   -webkit-app-region: drag;
 }
 
-html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open)
-  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not(.issues-page--embedded *)
-  :is(button, a, label, input, select, textarea, [contenteditable='true']) {
+html.is-electron-shell :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active)
+  [data-app-titlebar] :is(button, a, label, input, select, textarea, summary, [contenteditable='true'], [role='button']) {
   -webkit-app-region: no-drag;
 }
 
-html.is-electron-shell:not([data-platform='darwin']):is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion)
-  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *, .is-graph-canvas-bg .brain-page-header) {
-  padding-right: calc(var(--mn-titlebar-end-inset) + var(--mn-space-2));
+/* Keep the sheet and its chrome on one row, even when the workspace rail is collapsed. */
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]):not(.os-workspace-gate-open)
+  .mn-os:has(> #osMenubar[data-view='app']):has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar)) {
+  > #osWorkspace::before { content: none; }
+  #osStage.is-in-app {
+    margin-block-start: var(--mn-graphite-window-inset);
+    border-radius: 12px;
+  }
+  > #osMenubar[data-view='app'] {
+    border: 0;
+    background: transparent;
+  }
 }
 
-/* Give the graph toolbar the full top row when it carries the caption buttons. */
-html.is-electron-shell:not([data-platform='darwin']):is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion)
-  #osAppsLayer > .brain-page.is-graph-canvas-bg {
+.mn-graphite-apps[data-app-window] .mn-os:has(#osStage [data-app-titlebar]) {
+  #osStage.is-in-app {
+    margin-inline: var(--mn-graphite-window-inset);
+    margin-block-end: var(--mn-graphite-window-inset);
+  }
+  > #osMenubar[data-view='app'] {
+    position: absolute;
+    inset: var(--mn-graphite-window-inset) var(--mn-graphite-window-inset) auto;
+    height: var(--mn-workbench-band-h);
+    pointer-events: none;
+    -webkit-app-region: no-drag;
+    > .mn-os-mb-left { display: none; }
+    > .mn-os-mb-right, > .mn-os-mb-window-controls { pointer-events: auto; }
+    > .mn-os-mb-right {
+      position: fixed;
+      gap: var(--mn-space-1);
+      top: var(--mn-caption-top);
+      right: calc(var(--mn-graphite-window-inset) + var(--mn-titlebar-end-inset, var(--mn-menubar-inline-padding)) + var(--mn-space-2));
+    }
+  }
+  --mn-titlebar-actions-width: calc(6 * var(--os-window-btn-size) + 6 * var(--mn-space-1));
+}
+
+.mn-graphite-workspace:not(.mn-graphite-sidebar-open, .os-workspace-gate-open)
+  .mn-os:has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar)) {
+  --mn-titlebar-navigation-width: calc(var(--os-window-btn-size) + 9rem + var(--mn-space-5));
+  --mn-titlebar-start-inset: calc(var(--mn-titlebar-navigation-width) + var(--mn-menubar-inline-padding));
+  --mn-titlebar-actions-width: calc(7 * var(--os-window-btn-size) + 7 * var(--mn-space-1));
+  > #osMenubar[data-view='app'] {
+    inset-inline-end: auto;
+    width: max-content;
+    padding-bottom: 0;
+    .mn-os-mb-left > :not(.mn-os-mb-chat-toggle, .mn-os-mb-workspace-slot) { display: none; }
+    .mn-os-mb-workspace-slot {
+      max-width: 9rem;
+      margin-inline: 0;
+    }
+    > .mn-os-mb-right {
+      gap: var(--mn-space-1);
+      display: flex;
+      position: fixed;
+      top: var(--mn-caption-top);
+      right: calc(var(--mn-graphite-window-inset) + var(--mn-titlebar-end-inset, var(--mn-menubar-inline-padding)) + var(--mn-space-2));
+    }
+  }
+}
+
+html.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true'], .mn-graphite-sidebar-open)
+  .mn-os:has(#osStage [data-app-titlebar]) {
+  --mn-titlebar-start-inset: calc(var(--mn-mac-traffic-lights-end) / var(--mn-shell-zoom, 1) + var(--mn-mac-traffic-lights-gap) + var(--mn-titlebar-navigation-width, 0px));
+}
+
+/* Give the graph toolbar the full top row so the inspector starts below it. */
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) #osAppsLayer > .brain-page.is-graph-canvas-bg {
   --brain-graphite-inspector-top: var(--brain-graph-below-toolbar);
   --brain-graphite-toolbar-inset: 0px;
 }
 
+:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) #osAppsLayer .brain-section--graph.is-active {
+  animation: none;
+}
+
+/* The Brain rail already clears the left cluster. Keep graph and utility controls in the content column. */
+.mn-graphite-workspace #osAppsLayer > .brain-page {
+  --mn-titlebar-start-inset: var(--mn-workbench-gutter);
+}
+
+/* A planning view can replace the transcript without leaving the chat route. */
+.mn-graphite-workspace #workspaceSplit:has(.sp-stage-header, .orchestrate-plan-stage-header, .ov2__stage-header, .issues-page--embedded) > #graphiteThreadHeader {
+  display: none;
+}
+
+:is(.sp-stage-header, .orchestrate-plan-stage-header) {
+  display: none;
+}
+
+.mn-graphite-workspace :is(.sp-stage-header, .orchestrate-plan-stage-header) {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  font-size: var(--mn-type-md);
+  font-weight: var(--mn-weight-medium);
+  border-bottom: 1px solid var(--mn-border);
+}
+
+@container code-map-stage (width > 760px) {
+  .mn-graphite-workspace #codeBrainMapRoot:has(.code-map-chat) .code-map-chat__header {
+    padding-right: calc(var(--mn-titlebar-end-inset, var(--mn-workbench-gutter)) + var(--mn-titlebar-actions-width, 0px) + var(--mn-space-2));
+    min-height: var(--mn-workbench-band-h);
+    background: var(--mn-graphite-sheet, var(--mn-bg));
+  }
+  .mn-graphite-workspace #codeBrainMapRoot:has(.code-map-chat) .code-map-bar[data-app-titlebar] {
+    --mn-titlebar-end-inset: var(--mn-workbench-gutter);
+    --mn-titlebar-actions-width: 0px;
+  }
+}
+
 /* The menubar supplies a drag region for stages without a titlebar header. */
 html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:not(.os-workspace-gate-open)
-  .mn-os:not(:has(#osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *))) > #osMenubar {
+  .mn-os:not(:has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar))) > #osMenubar {
   width: 100%;
   padding-inline-end: calc(100% - var(--mn-graphite-sidebar-width) + 10px);
 }
 
 html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:not(.os-workspace-gate-open)
-  .mn-os-stage.is-in-app:not(:has(#osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *))) {
+  .mn-os-stage.is-in-app:not(:has(:is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar))) {
   margin-block-start: var(--os-menubar-h);
 }
 

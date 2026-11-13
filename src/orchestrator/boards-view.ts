@@ -246,7 +246,14 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
   const listPane = el('aside', 'ov2__list ob-rail');
   const boardPane = el('section', 'ov2__board ob-main');
   boardPane.tabIndex = -1;
-  root.append(listPane, boardPane);
+  const header = el('header', 'ov2__stage-header');
+  header.dataset.appTitlebar = '';
+  header.append(el('h1', 'ov2__list-title', 'Boards'), button({
+    label: 'New board',
+    title: 'Create a board from a plan file',
+    onClick: () => openAskPane(),
+  }));
+  root.append(header, listPane, boardPane);
 
   area.replaceChildren(root);
   stripMainColumnOverlayClasses();

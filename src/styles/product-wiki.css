@@ -34,6 +34,11 @@
   background: var(--mn-surface-1);
 }
 
+.mn-graphite-workspace #osStage .product-wiki,
+.mn-graphite-apps[data-app-window] #osStage .product-wiki {
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+}
+
 .product-wiki__identity {
   display: flex;
   align-items: center;

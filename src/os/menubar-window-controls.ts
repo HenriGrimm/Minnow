@@ -65,6 +65,7 @@ export function initShellMenubarChrome(menubarRoot: HTMLElement): () => void {
   if (!isDarwinShell() && windowApi) {
     const controls = document.createElement('div');
     controls.className = 'mn-os-mb-window-controls';
+    controls.dataset.aboveShellOverlay = '';
     controls.setAttribute('role', 'toolbar');
     controls.setAttribute('aria-label', 'Window controls');
     controls.style.webkitAppRegion = 'no-drag';

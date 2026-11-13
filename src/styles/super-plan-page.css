@@ -65,6 +65,10 @@ html.mn-super-plan-open:not(.mn-graphite-workspace) :is(#chatSidebar, #chatSideb
   container-name: superplan;
 }
 
+.mn-graphite-workspace .super-plan-page {
+  flex-direction: column;
+}
+
 /*
  * Sizing vars live on .sp-shell, one level below the container element,
  * because @container rules never match the container itself.
