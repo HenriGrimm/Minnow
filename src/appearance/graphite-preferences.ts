@@ -3,7 +3,6 @@ import {
   normalizeColorIntensity,
   normalizeGraphiteAccent,
   type AppearanceDensity,
-  type ColorIntensity,
   type GraphiteAccent,
 } from '../lib/appearance-choices.mjs';
 import { scheduleAppearancePersist } from './persist-schedule';
@@ -12,7 +11,7 @@ import { parseCssColorOrDefault } from './color-format';
 import { relativeLuminance } from './theme-derive';
 
 export interface GraphitePreferences {
-  colorIntensity: ColorIntensity;
+  colorIntensity: number;
   graphiteAccent: GraphiteAccent;
   density: AppearanceDensity;
   reduceMotion: boolean;
@@ -37,7 +36,8 @@ export function readGraphitePreferences(): GraphitePreferences {
 
 export function applyGraphitePreferences(prefs = readGraphitePreferences()): void {
   const root = document.documentElement;
-  root.dataset.tint = prefs.colorIntensity;
+  root.dataset.tint = String(prefs.colorIntensity);
+  root.style.setProperty('--mn-graphite-tint', String(prefs.colorIntensity / 50));
   root.dataset.density = prefs.density;
   root.toggleAttribute('data-reduce-motion', prefs.reduceMotion);
 }
@@ -60,7 +60,7 @@ export function setGraphitePreference<Key extends keyof GraphitePreferences>(
 ): void {
   const prefs = { ...readGraphitePreferences(), [key]: value };
   try {
-    localStorage.setItem(APPEARANCE_STORAGE_KEYS[key], typeof value === 'boolean' ? String(Number(value)) : value);
+    localStorage.setItem(APPEARANCE_STORAGE_KEYS[key], String(typeof value === 'boolean' ? Number(value) : value));
   } catch {}
   applyGraphitePreferences(prefs);
   scheduleAppearancePersist();

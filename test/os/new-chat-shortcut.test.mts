@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from './dom-helpers.mts';
 import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
+import { CHAT_SIDEBAR_CHANGED_EVENT } from '../../src/ui/layout-events.ts';
 
 test('new-chat shortcut activates New thread and follows the workspace lifecycle', async () => {
   const win = new Window();
@@ -73,6 +74,46 @@ test('new-chat shortcut activates New thread and follows the workspace lifecycle
     observeNewThread();
     press();
     assert.equal(activations, 4);
+  } finally {
+    dispose();
+    resetInstancesForTests();
+    await win.happyDOM.abort();
+    win.close();
+  }
+});
+
+test('Graphite moves Updates with the workspace actions and leaves the titlebar alone', async () => {
+  const win = new Window({ width: 1440, height: 900 });
+  installHappyDomGlobals(win);
+  win.document.body.innerHTML = `
+    <div id="appBody"><aside id="chatSidebar" class="collapsed"></aside></div>
+    <div id="osStage"></div>
+    <nav id="osAppRail"><div class="mn-os-app-rail__nav"></div></nav>
+    <div id="osMenubar">
+      <div class="mn-os-mb-left"><span>Minnow</span><button>Hide sidebar</button></div>
+      <div class="mn-os-mb-right"><div class="mn-os-workspace-actions">
+        <div id="osMenubarUpdateSlot"><button>Updates</button></div>
+      </div></div>
+    </div>
+  `;
+  const { initGraphiteWorkspace } = await import('../../src/os/graphite-workspace.ts');
+  const dispose = initGraphiteWorkspace(
+    document.getElementById('osAppRail')!, document.getElementById('osMenubar')!,
+  );
+  const slot = document.getElementById('osMenubarUpdateSlot')!;
+  const sidebar = document.getElementById('chatSidebar')!;
+  const toggle = (open: boolean) => {
+    sidebar.classList.toggle('collapsed', !open);
+    window.dispatchEvent(new window.Event(CHAT_SIDEBAR_CHANGED_EVENT));
+  };
+  try {
+    launchInstance('code');
+    assert.ok(slot.closest('.mn-os-mb-right'));
+    toggle(true);
+    assert.ok(slot.closest('.mn-graphite-sidebar-footer'));
+    assert.equal(document.querySelector('.mn-os-mb-left')?.children.length, 2);
+    toggle(false);
+    assert.ok(slot.closest('.mn-os-mb-right'));
   } finally {
     dispose();
     resetInstancesForTests();

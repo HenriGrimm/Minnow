@@ -40,10 +40,12 @@ export function createServerChatExecutionHost({
   }
   const requests = requestService ?? createChatRequestService({ repository, authorizeResponse, now });
   const active = new Set();
+  const pendingEffects = new Map();
 
   return {
     supportsSteer: true,
     requests,
+    hasPendingEffects: executionId => pendingEffects.has(executionId),
     async execute({ command, execution, fence, signal, takeSteers, onEvent: observe } = {}) {
       let checked = validateChatCommand(command);
       if (!checked.ok) return crash(new ChatContractError(checked.error.code, checked.error.message), checked.error);
@@ -251,39 +253,46 @@ export function createServerChatExecutionHost({
             }
           }
           const invoke = async () => {
-          // Waiting for a checkout baseline must never preserve a stale grant.
-          const { allowed, denial } = await checkToolForDispatch(name, args, ctx.toolCallId);
-          if (denial) return denial;
-          const invocationId = `tool-${digest([executionId, ctx.toolCallId])}`;
-          let intent;
-          try {
-            intent = repository.recordToolIntent({ invocationId, chatId, executionId, toolCallId: ctx.toolCallId, toolName: name, input: args }, { fence });
-          } catch (error) { throw recovery(error); }
-          if (intent.replayed) {
-            if (intent.state === 'settled') return intent.result;
-            throw recovery(new ChatContractError('recovery_required', 'This tool effect has no confirmed result; it cannot be repeated'));
-          }
-          effectsStarted++;
-          try {
-            const result = await dispatchTool(name, args, { ...ctx, approvalGranted: allowed.permission === 'ask' });
-            // Persist the original result before any runner/UI decoration.
-            repository.settleToolInvocation(invocationId, result, { fence });
-            return result;
-          } catch (error) {
-            if (isHostToolNotStartedError(error)) {
-              const result = toolError(error);
-              try {
-                repository.settleToolInvocation(invocationId, result, { fence });
-                effectsStarted--;
-                return result;
-              } catch (receiptError) { throw recovery(receiptError); }
+            // Waiting for a checkout baseline must never preserve a stale grant.
+            const { allowed, denial } = await checkToolForDispatch(name, args, ctx.toolCallId);
+            if (denial) return denial;
+            const invocationId = `tool-${digest([executionId, ctx.toolCallId])}`;
+            let intent;
+            try {
+              intent = repository.recordToolIntent({ invocationId, chatId, executionId, toolCallId: ctx.toolCallId, toolName: name, input: args }, { fence });
+            } catch (error) { throw recovery(error); }
+            if (intent.replayed) {
+              if (intent.state === 'settled') return intent.result;
+              throw recovery(new ChatContractError('recovery_required', 'This tool effect has no confirmed result; it cannot be repeated'));
             }
-            throw recovery(error);
-          }
+            effectsStarted++;
+            try {
+              const result = await dispatchTool(name, args, { ...ctx, approvalGranted: allowed.permission === 'ask' });
+              // Persist the original result before any runner/UI decoration.
+              repository.settleToolInvocation(invocationId, result, { fence });
+              return result;
+            } catch (error) {
+              if (isHostToolNotStartedError(error)) {
+                const result = toolError(error);
+                try {
+                  repository.settleToolInvocation(invocationId, result, { fence });
+                  effectsStarted--;
+                  return result;
+                } catch (receiptError) { throw recovery(receiptError); }
+              }
+              throw recovery(error);
+            }
           };
-          if (!checkpoint || CHECKPOINT_COORDINATION_TOOLS.has(name)) return invoke();
-          try { return await checkpoint.effect(ctx.toolCallId, invoke); }
-          catch (error) { throw error?.checkpointUncertain ? recovery(error) : error; }
+          pendingEffects.set(executionId, (pendingEffects.get(executionId) ?? 0) + 1);
+          try {
+            return await (!checkpoint || CHECKPOINT_COORDINATION_TOOLS.has(name) ? invoke() : checkpoint.effect(ctx.toolCallId, invoke));
+          } catch (error) {
+            throw error?.checkpointUncertain ? recovery(error) : error;
+          } finally {
+            const remaining = pendingEffects.get(executionId) - 1;
+            if (remaining) pendingEffects.set(executionId, remaining);
+            else pendingEffects.delete(executionId);
+          }
         };
         const ask = policy.toolPermissions.ask_question && policy.toolPermissions.ask_question !== 'off' ? {
           async ask(question, ctx) {

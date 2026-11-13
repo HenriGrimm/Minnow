@@ -185,8 +185,8 @@ export function renderMenubar(root: HTMLElement): () => void {
 
   const workspaceActions = document.createElement('div');
   workspaceActions.className = 'mn-os-workspace-actions';
-  workspaceActions.append(activityBtn, modelChipAnchor, wikiBtn, searchBtn, settingsBtn);
-  right.append(pluginMenu, updateSlot, workspaceActions);
+  workspaceActions.append(activityBtn, modelChipAnchor, wikiBtn, searchBtn, updateSlot, settingsBtn);
+  right.append(pluginMenu, workspaceActions);
   root.append(left, right);
 
   const cleanupShellChrome = initShellMenubarChrome(root);

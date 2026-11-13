@@ -264,10 +264,19 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     if (!chat) throw new Error('Chat transcript has not arrived yet.');
     if (chat?.historyLoaded === false) await ensureChatHistoryLoaded(chat.id);
     if (disposed) return;
-    if (frame.history && frame.history.start > chat.history.length) {
-      const { history } = await getChatTranscript(chat.id);
+    const rewrite = frame.fields?.historyRewriteRevision;
+    const needsRewrittenPrefix = typeof rewrite === 'number' && rewrite > (chat.historyRewriteRevision ?? 0);
+    if (frame.history && (frame.history.start > chat.history.length || needsRewrittenPrefix && frame.history.start > 0)) {
+      const { history, detail } = await getChatTranscript(chat.id);
       if (disposed) return;
-      applySharedChatFrame(chat.id, undefined, { start: 0, messages: history, length: history.length });
+      if (needsRewrittenPrefix) {
+        // A fetch can overtake this frame. A newer rewrite must arrive with its own metadata.
+        if (detail?.historyRewriteRevision !== rewrite) throw new Error('Transcript changed during refresh.');
+        frame = { ...frame, fields: { ...frame.fields, historyDigest: detail.historyDigest },
+          history: { start: 0, messages: history, length: history.length } };
+      } else {
+        applySharedChatFrame(chat.id, undefined, { start: 0, messages: history, length: history.length });
+      }
     }
     const next = { ...existing?.frame, ...frame };
     if (frame.liveAppend) {

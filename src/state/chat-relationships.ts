@@ -61,6 +61,10 @@ export function supportsLocalHistoryMutation(chat: Chat): boolean {
   return chat.chatCommandVersion !== 1 && !chat.agentConversation && !isGraphiteSideChat(chat);
 }
 
+export function supportsManagedHistoryMutation(chat: Chat): boolean {
+  return chat.chatCommandVersion === 1 && !chat.agentConversation && !isGraphiteSideChat(chat);
+}
+
 export const CANONICAL_HISTORY_HINT = 'This conversation keeps its saved history. Send a new message to continue.';
 
 const unsettled = new Set(['accepted', 'queued', 'running', 'loading_model', 'waiting', 'waiting_for_host', 'waiting_for_model', 'waiting_for_capacity', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_question', 'waiting_for_approval', 'stopping', 'recovery_required']);

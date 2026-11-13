@@ -12,7 +12,7 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-layout-'));
   const styles = await Promise.all([
     'tokens', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
-    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar',
+    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar', 'sub-agent-drawer', 'mobile-app',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -39,10 +39,13 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
             <button class="message-actions__trigger" aria-label="Message actions">⋮</button>
           </div>
         </div>
-        <div class="composer-run-status" hidden>Working</div>
+        <div class="composer-notices">
+          <div class="composer-run-status" hidden>Working</div>
+          <section class="managed-chat-requests managed-chat-requests--docked" hidden>Waiting for interrupted work to stop…</section>
+          <div id="toolApprovalHost" class="tool-approval-host" hidden>Allow this tool?</div>
+          <div id="questionHost" class="question-host" hidden>Which option should I use?</div>
         </div>
-        <div id="toolApprovalHost" class="tool-approval-host" hidden>Allow this tool?</div>
-        <div id="questionHost" class="question-host" hidden>Which option should I use?</div>
+        </div>
         <div class="input-bar">
           <div class="input-bar-composer"><div class="input-row"><div class="input-wrap input-wrap--inset-actions">
             <textarea id="msgInput" rows="1" placeholder="Message"></textarea>
@@ -203,6 +206,33 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
   const collapsed = await measureChecklist();
   assert.ok(Math.abs(collapsed.panel.bottom - collapsed.composer.top) <= 1);
   await session.evaluate("document.querySelector('.chat-todo-panel').open = true");
+  for (const [width, mobile] of [[1100, false], [1920, false], [390, true]]) {
+    await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
+    await session.evaluate(`(() => {
+      const column = document.getElementById('mainColumn');
+      column.parentElement.removeAttribute('data-side-open');
+      column.classList.toggle('m-thread', ${mobile});
+      column.style.width = ${mobile} ? '100%' : '';
+      column.style.marginInlineStart = ${mobile} ? '0' : '';
+    })()`);
+    for (const selector of ['.managed-chat-requests', '#toolApprovalHost', '#questionHost']) {
+      const ordered = await session.evaluate(`(() => {
+        const notice = document.querySelector(${JSON.stringify(selector)});
+        notice.hidden = false;
+        const panel = document.querySelector('.chat-todo-panel').getBoundingClientRect();
+        const rect = notice.getBoundingClientRect();
+        notice.hidden = true;
+        return rect.height > 0 && panel.height > 0 && rect.bottom <= panel.top;
+      })()`);
+      assert.ok(ordered, `${selector} stays above the checklist at ${width}px`);
+    }
+  }
+  await session.evaluate(`(() => {
+    const column = document.getElementById('mainColumn');
+    column.classList.remove('m-thread');
+    column.style.width = '';
+    column.style.marginInlineStart = '';
+  })()`);
   await session.evaluate("document.getElementById('workspaceSplit').removeAttribute('data-side-open')");
   await session.client.send('Emulation.setDeviceMetricsOverride', { width: 1579, height: 900, mobile: false, deviceScaleFactor: 1 });
   const belowBreakpoint = await measureChecklist();
@@ -213,7 +243,7 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
     const wide = await measureChecklist();
     const { panel, transcript, composer, column } = wide;
     assert.ok(panel.width >= 191 && panel.width <= 352, JSON.stringify(wide));
-    assert.ok(transcript.left - panel.right >= 32 && transcript.left - panel.right <= 64);
+    assert.ok(transcript.left - panel.right >= 32 && transcript.left - panel.right <= 64, JSON.stringify(wide));
     assert.ok(panel.left - column.left >= 32);
     assert.ok(panel.width >= previousPanelWidth);
     previousPanelWidth = panel.width;

@@ -101,6 +101,16 @@ describe('captured and current chat policy', () => {
     assert.ok(compareChatPolicies(captured, target).violations.includes('tool:mcp__storage__delete'));
   });
 
+  it('treats an unknown integration effect as more restrictive than a read-only annotation', () => {
+    const name = 'mcp__docs__read';
+    const annotated = policy({ toolEffects: { [name]: 'read' } });
+    const unannotated = policy({ toolEffects: { [name]: 'unknown' } });
+    const effective = intersectChatPolicies(unannotated, annotated);
+    assert.equal(effective.toolEffects[name], 'unknown');
+    assert.equal(compareChatPolicies(annotated, effective).allowed, true);
+    assert.deepEqual(compareChatPolicies(unannotated, annotated).violations, [`tool_effect:${name}`]);
+  });
+
   it('rejects weaker approval, broader filesystem/checkout and capability ceilings independently', () => {
     const captured = policy({ toolPermissions: { read_file: 'ask' }, workspaceIds: ['main'], capabilities: ['chat.read'], fileWriteScope: 'none' });
     const target = policy({ toolPermissions: { read_file: 'full' }, filesystemAccess: 'full', fileWriteScope: 'full' });

@@ -1,17 +1,59 @@
+@property --mn-graphite-side-reveal {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --mn-graphite-bottom-reveal {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 .workspace-split.graphite-surfaces {
+  --mn-graphite-side-reveal: 0;
+  --mn-graphite-bottom-reveal: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   flex: 1 1 auto;
   isolation: isolate;
+  transition-property: none;
 }
 
-.graphite-surfaces:is([data-surface-side="true"], :has(> .graphite-surface-panel--side.graphite-surface-panel--closing)):not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) {
-  grid-template-columns: minmax(0, 1fr) var(--mn-graphite-side-size, 440px);
+.workspace-split.graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) {
+  /* The dock starts at the moving grid line. Its content stays full size as
+     the chat reflows beside it. Resizing the dock itself remains immediate. */
+  grid-template-columns: minmax(0, 1fr) calc(var(--mn-graphite-side-size, 440px) * var(--mn-graphite-side-reveal));
+  grid-template-rows: auto minmax(0, 1fr) calc(var(--mn-graphite-bottom-size, 320px) * var(--mn-graphite-bottom-reveal));
 }
 
-.graphite-surfaces:is([data-surface-bottom="true"], :has(> .graphite-surface-panel--bottom.graphite-surface-panel--closing)):not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) {
-  grid-template-rows: auto minmax(0, 1fr) var(--mn-graphite-bottom-size, 320px);
+.graphite-surfaces[data-surface-side="true"] {
+  --mn-graphite-side-reveal: 1;
+}
+
+.graphite-surfaces[data-surface-bottom="true"] {
+  --mn-graphite-bottom-reveal: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-reduce-motion]) .graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) {
+    transition:
+      --mn-graphite-side-reveal var(--mn-graphite-side-motion, 0s) var(--ease-out),
+      --mn-graphite-bottom-reveal var(--mn-graphite-bottom-motion, 0s) var(--ease-out);
+  }
+
+  .graphite-surfaces:is([data-surface-side="true"], :has(> .graphite-surface-panel--side.graphite-surface-panel--closing)) {
+    --mn-graphite-side-motion: var(--duration-normal);
+  }
+
+  .graphite-surfaces:is([data-surface-bottom="true"], :has(> .graphite-surface-panel--bottom.graphite-surface-panel--closing)) {
+    --mn-graphite-bottom-motion: var(--duration-normal);
+  }
+
+  .graphite-surfaces:has(> .graphite-surface-panel--sliding) {
+    overflow: clip;
+  }
 }
 
 .graphite-surfaces > .graphite-thread-header {
@@ -67,31 +109,23 @@ html:not(.mn-narrow) .mn-os-code-layer:has(.graphite-surfaces) > #codeStatusBar 
 }
 
 .graphite-surface-panel--side {
-  --mn-graphite-panel-offstage: translateX(100%);
   grid-area: 2 / 2 / -1 / 3;
   border-inline-start: 1px solid var(--mn-border);
 }
 
 .graphite-surface-panel--bottom {
-  --mn-graphite-panel-offstage: translateY(100%);
   grid-area: 3 / 1 / 4 / 2;
   border-block-start: 1px solid var(--mn-border);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  :root:not([data-reduce-motion]) .graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) > :is(.graphite-surface-panel--side, .graphite-surface-panel--bottom) {
-    transition: transform var(--duration-normal) var(--ease-out);
-  }
-
-  @starting-style {
-    .graphite-surfaces:not(.graphite-surfaces--phone) > :is(.graphite-surface-panel--side, .graphite-surface-panel--bottom) {
-      transform: var(--mn-graphite-panel-offstage);
-    }
-  }
+.graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) > .graphite-surface-panel--side {
+  inline-size: var(--mn-graphite-side-size, 440px);
+  justify-self: start;
 }
 
-.graphite-surface-panel--closing {
-  transform: var(--mn-graphite-panel-offstage);
+.graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) > .graphite-surface-panel--bottom {
+  block-size: var(--mn-graphite-bottom-size, 320px);
+  align-self: start;
 }
 
 .graphite-surfaces:is([data-surface-max="side"], [data-surface-max="bottom"]) > .graphite-surface-panel:not([hidden]) {
@@ -739,11 +773,6 @@ html:not(.mn-phone) .graphite-browser-host .preview-go {
 
 #fileSidebar:not(.graphite-files-host > *) :is(.graphite-file-search-icon, .graphite-file-tools) {
   display: none;
-}
-
-.graphite-surfaces.graphite-surfaces--phone {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
 }
 
 :is(.graphite-surfaces--phone, .graphite-mobile-surfaces) .graphite-surface-panel {

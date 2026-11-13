@@ -3,6 +3,7 @@ import type { ChatServiceEvent } from './service.js';
 import type { ChatHostEvent } from './execution-host.js';
 export interface ChatPresentation {
   frame(chatId: string, options?: { history?: boolean; metadata?: boolean }): any;
+  activity(chatId: string): import('./activity').ChatActivityProjection;
   changed(chatId: string, withHistory?: boolean): void;
   externalRequestChanged(input: { chatId: string; projectId: string }): void;
   onEvent(event: ChatHostEvent): void;
@@ -10,4 +11,4 @@ export interface ChatPresentation {
   subscribe(input: { projectId: string; chatId?: string; send: (event: any) => void }): () => void;
   dispose(): void;
 }
-export function createChatPresentation(options: { repository: ChatRepository; now?: () => number; flushMs?: number }): ChatPresentation;
+export function createChatPresentation(options: { repository: ChatRepository; needsManualRecovery?(chatId: string, executionId: string): boolean; now?: () => number; flushMs?: number }): ChatPresentation;

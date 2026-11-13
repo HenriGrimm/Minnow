@@ -9,6 +9,8 @@ import { createAgentCliLoginService } from './agent-cli-login.js';
 import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { getCliCapability, cliSessionIsIdle } from '../generations/agent-cli/lifecycle.js';
 import { agentCliNativeCodingCapability } from './agent-cli-native.js';
+import { createAgentCliUpdates } from './agent-cli-updates.js';
+import { getRequestIngress } from '../network/ingress.js';
 import {
   AGENT_CLI_DEFINITIONS,
   getAgentCliDefinition,
@@ -24,6 +26,7 @@ const login = createAgentCliLoginService({
       && cliSessionIsIdle(session));
   },
 });
+const updates = createAgentCliUpdates();
 
 export function shutdownAgentCliLogins() { return login.shutdown(); }
 
@@ -85,6 +88,7 @@ export async function getAgentCliStatus(kind, options = {}) {
     authStatus: detection.authStatus,
     enabled: profile?.enabled === true,
     ...(detection.version ? { version: detection.version } : {}),
+    ...(detection.accountEmail ? { accountEmail: detection.accountEmail } : {}),
     ...(detection.resolvedBinPath ? { binPath: detection.resolvedBinPath } : {}),
     ...(agentCli.binPath ? { binPathOverride: agentCli.binPath } : {}),
     hasCliToken: Boolean(secrets.cliToken?.trim()),
@@ -121,20 +125,43 @@ export async function listAgentCliStatuses() {
  * @param {string} pathname
  */
 export async function handleAgentCliModelsRequest(req, res, pathname) {
+  const local = getRequestIngress(req) === 'loopback' && (!req.minnowAuth || req.minnowAuth.kind === 'host');
+  function publicStatus(status) {
+    if (!local) delete status.accountEmail;
+    return status;
+  }
+  if (pathname === '/api/models/agent-clis/updates') {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!local) sendJson(res, 403, { error: 'Open Updates on the computer running Minnow.' });
+    else if (req.method !== 'GET') sendJson(res, 405, { error: 'Method not allowed' });
+    else {
+      const query = new URL(req.url ?? pathname, 'http://localhost').searchParams;
+      try { sendJson(res, 200, await updates.check(query.get('refresh') === '1')); }
+      catch { sendJson(res, 500, { error: 'Could not check installed CLI versions.' }); }
+    }
+    return true;
+  }
   if (pathname === '/api/models/agent-clis' && req.method === 'GET') {
     try {
-      sendJson(res, 200, { agentClis: await listAgentCliStatuses() });
+      res.setHeader('Cache-Control', 'no-store');
+      sendJson(res, 200, { agentClis: (await listAgentCliStatuses()).map(publicStatus) });
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
     return true;
   }
 
-  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings|usage|prepare-update|login)$/);
+  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings|usage|prepare-update|update|login)$/);
   if (!match) return false;
   try {
     const kind = getAgentCliDefinition(decodeURIComponent(match[1])).kind;
     const action = match[2];
+    if (action === 'update' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!local) sendJson(res, 403, { error: 'Start updates on the computer running Minnow.' });
+      else sendJson(res, 200, await updates.update(kind));
+      return true;
+    }
     if (action === 'login') {
       res.setHeader('Cache-Control', 'no-store');
       if (req.method === 'GET') {
@@ -170,14 +197,15 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     }
     if (action === 'verify' && req.method === 'POST') {
       clearAgentCliModelCatalogCache(kind);
-      sendJson(res, 200, { agentCli: await getAgentCliStatus(kind, { verify: true }) });
+      res.setHeader('Cache-Control', 'no-store');
+      sendJson(res, 200, { agentCli: publicStatus(await getAgentCliStatus(kind, { verify: true })) });
       return true;
     }
     if (action === 'enable' && req.method === 'POST') {
       const body = await readJsonBody(req);
       const provider = await setAgentCliProviderEnabled(kind, body?.enabled);
       if (body?.enabled === false) await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId);
-      sendJson(res, 200, { provider, agentCli: await getAgentCliStatus(kind) });
+      sendJson(res, 200, { provider, agentCli: publicStatus(await getAgentCliStatus(kind)) });
       return true;
     }
     if (action === 'prepare-update' && req.method === 'POST') {
@@ -185,7 +213,7 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
       // Windows. Running turns keep their process; conversations resume after.
       const { providerId } = getAgentCliDefinition(kind);
       await disposeCodexSessions(session => session.providerId === providerId && cliSessionIsIdle(session));
-      sendJson(res, 200, { agentCli: await getAgentCliStatus(kind) });
+      sendJson(res, 200, { agentCli: publicStatus(await getAgentCliStatus(kind)) });
       return true;
     }
     if (action === 'settings' && req.method === 'PUT') {
@@ -197,7 +225,7 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
       // Keep durable checkpoints: an active session can still be writing one.
       await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId
         && cliSessionIsIdle(session));
-      sendJson(res, 200, { provider, agentCli: await getAgentCliStatus(kind) });
+      sendJson(res, 200, { provider, agentCli: publicStatus(await getAgentCliStatus(kind)) });
       return true;
     }
     sendJson(res, 405, { error: 'Method not allowed' });

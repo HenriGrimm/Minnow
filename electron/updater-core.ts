@@ -180,21 +180,12 @@ export function reduceUpdaterStatus(status: UpdaterStatus, event: UpdaterEvent):
 
     case 'check-error':
       if (status.state === 'ready') return { ...status, lastCheckedAt: event.at };
-      if (!event.manual) {
-        return {
-          ...status,
-          state: 'idle',
-          progressPercent: null,
-          lastCheckedAt: event.at,
-          errorMessage: null,
-        };
-      }
       return {
         ...status,
         state: 'error',
         progressPercent: null,
         lastCheckedAt: event.at,
-        errorMessage: event.message,
+        errorMessage: event.manual ? event.message : null,
       };
 
     case 'channel-changed':

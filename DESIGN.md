@@ -140,7 +140,7 @@ components:
 
 `<html data-theme="{family}-{mode}">` (e.g. `swamp-dark`, `coral-light`) is set from **Settings → Appearance → Theme**, the inline boot script in `index.html`, or `initTheme()` in [`src/theme.ts`](src/theme.ts). The families are **Graphite**, **Swamp**, **Desert**, **Ocean**, **Coral**, **Mono**, **Matrix**, **Human**, and **Mint**. Each has dark and light variants. Hex and rgba literals exist only in [`src/styles/tokens.css`](src/styles/tokens.css); application CSS uses **`--mn-*`** tokens (26 core variables in [`CORE_THEME_TOKEN_KEYS`](src/appearance/types.ts) plus extended semantics via `color-mix`). Extracted inventory: [`documentation/design-system/`](documentation/design-system/README.md).
 
-Storage uses `minnow.theme`, `minnow.theme.followSystem` and `minnow.theme.family`. New profiles start with **Graphite** and **Subtle** color. Saved families, custom colors, font overrides and older aliases migrate on read. Graphite uses bundled Geist and Geist Mono by default.
+Storage uses `minnow.theme`, `minnow.theme.followSystem` and `minnow.theme.family`. New profiles start with **Graphite** and **50%** surface tint. Saved families, custom colors, font overrides and older aliases migrate on read. Graphite uses bundled Geist and Geist Mono by default.
 
 ## Overview
 

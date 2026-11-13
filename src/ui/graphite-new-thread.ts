@@ -9,7 +9,6 @@ import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
 import { isHubMounted, teardownHub } from './hub';
 import { createIcon } from './icon';
-import { getWorkspaceGitSummary } from './sidebar-git-state';
 
 export function mountGraphiteNewThread(): (visible: boolean) => void {
   const main = document.getElementById('mainColumn');
@@ -49,13 +48,7 @@ export function mountGraphiteNewThread(): (visible: boolean) => void {
   function refresh(): void {
     if (!main?.classList.contains('graphite-new-thread')) return;
     const path = getWorkspacePath();
-    const branch = getWorkspaceGitSummary(path)?.branch;
     workspace.textContent = getWorkspaceLabel() || 'Workspace';
-    if (branch) {
-      const name = document.createElement('code');
-      name.append(createIcon('gitBranch', { size: 12 }), branch);
-      workspace.append(' · ', name);
-    }
     const readyHeading = document.createElement('div');
     readyHeading.className = 'graphite-new-thread__section-title';
     const readyTitle = document.createElement('h3');

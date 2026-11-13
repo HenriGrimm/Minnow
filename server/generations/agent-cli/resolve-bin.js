@@ -70,7 +70,7 @@ export function wellKnownAgentCliPaths(kind, options = {}) {
 /**
  * Resolve a configured CLI to a shell-free command and argv prefix.
  * Windows npm shims use their native Codex payload or Node script when possible.
- * @param {{ kind: 'claude'|'codex'|'cursor-agent', binPath?: string, env?: NodeJS.ProcessEnv, homeDir?: string }} input
+ * @param {{ kind: 'claude'|'codex'|'cursor-agent', binPath?: string, env?: NodeJS.ProcessEnv, homeDir?: string, forUpdate?: boolean }} input
  * @returns {Promise<{ command: string, argsPrefix: string[], display: string }>}
  */
 export async function resolveAgentCliBin(input) {
@@ -88,7 +88,7 @@ export async function resolveAgentCliBin(input) {
     return { command: requested, argsPrefix: [], display: requested };
   }
 
-  return resolveWindowsCmdShim(requested);
+  return resolveWindowsCmdShim(requested, input.forUpdate);
 }
 
 /**
@@ -97,7 +97,7 @@ export async function resolveAgentCliBin(input) {
  * `node script.js`. Cursor's installer becomes its
  * bundled node.exe plus that version's index.js. Never spawn cmd.exe.
  */
-export async function resolveWindowsCmdShim(requested) {
+export async function resolveWindowsCmdShim(requested, forUpdate = false) {
   const shim = path.resolve(requested);
   const text = await fs.readFile(shim, 'utf8').catch(() => null);
   if (!text) {
@@ -108,7 +108,9 @@ export async function resolveWindowsCmdShim(requested) {
   if (npmScript) {
     const resolvedScript = resolveShimRelativeScript(shim, npmScript);
     await fs.access(resolvedScript);
-    const nativeCodex = await resolveWindowsCodexExecutable(resolvedScript);
+    // Keep the vendor's launcher for self-update: it identifies the owning
+    // package manager and package root before starting the native executable.
+    const nativeCodex = forUpdate ? null : await resolveWindowsCodexExecutable(resolvedScript);
     if (nativeCodex) return { command: nativeCodex, argsPrefix: [], display: requested };
     return {
       command: process.execPath,

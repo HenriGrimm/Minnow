@@ -163,7 +163,7 @@ function placePanel(panel: SurfaceDock, root: HTMLElement, open: boolean, docked
   const wasHidden = root.hidden;
   const wasClosing = root.classList.contains('graphite-surface-panel--closing');
   const priorSlide = panelSlides.get(panel);
-  // Keep the grid slot and its live tab until the exit finishes.
+  // Keep the live tab mounted and non-interactive while its grid track closes.
   const closing = docked && !open && !wasHidden && (animateClose ||
     (priorSlide?.closing === true && priorSlide.key === activeKey && priorSlide.tab === state[panel].active));
   root.classList.toggle('graphite-surface-panel--closing', closing);
@@ -174,8 +174,8 @@ function placePanel(panel: SurfaceDock, root: HTMLElement, open: boolean, docked
     panelSlides.delete(panel);
     root.classList.remove('graphite-surface-panel--sliding');
   } else if (wasHidden || wasClosing !== closing) {
-    const transition = root.getAnimations?.().find(animation =>
-      'transitionProperty' in animation && animation.transitionProperty === 'transform');
+    const transition = stage?.getAnimations?.().find(animation =>
+      'transitionProperty' in animation && animation.transitionProperty === `--mn-graphite-${panel}-reveal`);
     root.classList.toggle('graphite-surface-panel--sliding', Boolean(transition));
     if (transition) {
       const slide = { key: activeKey, tab: state[panel].active, closing };

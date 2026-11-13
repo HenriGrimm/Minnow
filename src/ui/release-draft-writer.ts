@@ -1,14 +1,14 @@
 import { actionApi } from '../state/actions-api';
 import { button, el } from './scc-shared';
-import { field, labeled, statusLine } from './scc-action-form';
-import { renderReleaseNotesMarkdown } from './release-notes-markdown';
+import { field, statusLine } from './scc-action-form';
 
 interface ReleaseDraftWriterOptions {
   cwd: string | undefined;
   id: number;
   notes: HTMLTextAreaElement;
-  preview: HTMLElement;
-  editor: HTMLElement;
+  onNotesChange: () => void;
+  operations: HTMLButtonElement[];
+  generate: HTMLButtonElement;
 }
 
 /** View-local controls; the model client is loaded only when requested. */
@@ -24,15 +24,13 @@ export function createReleaseDraftWriter(options: ReleaseDraftWriterOptions) {
   let destroyed = false;
   let previousNotes: string | null = null;
   let locked: [HTMLButtonElement, boolean][] = [];
-  const updatePreview = () => renderReleaseNotesMarkdown(options.preview, options.notes.value);
   const setBusy = (busy: boolean) => {
     options.notes.readOnly = busy;
     write.disabled = undo.disabled = busy;
     cancel.hidden = !busy;
     root.setAttribute('aria-busy', String(busy));
     if (busy) {
-      locked = [...options.editor.querySelectorAll<HTMLButtonElement>('button')]
-        .filter(control => !root.contains(control)).map(control => [control, control.disabled]);
+      locked = options.operations.map(control => [control, control.disabled]);
       for (const [control] of locked) control.disabled = true;
     } else {
       for (const [control, disabled] of locked) control.disabled = disabled;
@@ -47,7 +45,7 @@ export function createReleaseDraftWriter(options: ReleaseDraftWriterOptions) {
   };
   const write = button({ label: 'Write draft', onClick: async () => {
     if (active || destroyed) return;
-    if ([...options.editor.querySelectorAll<HTMLButtonElement>('button')].some(control => !root.contains(control) && control.disabled)) {
+    if (options.operations.some(control => control.disabled)) {
       status.textContent = 'Wait for the current release operation to finish.';
       return;
     }
@@ -78,7 +76,7 @@ export function createReleaseDraftWriter(options: ReleaseDraftWriterOptions) {
       previousNotes = original;
       options.notes.value = text;
       undo.hidden = false;
-      updatePreview();
+      options.onNotesChange();
       status.textContent = 'Draft ready. Review the notes, then Save changes.';
     } catch (error) {
       if (!destroyed && active === controller)
@@ -95,7 +93,7 @@ export function createReleaseDraftWriter(options: ReleaseDraftWriterOptions) {
     options.notes.value = previousNotes;
     previousNotes = null;
     undo.hidden = true;
-    updatePreview();
+    options.onNotesChange();
     status.textContent = 'Previous notes restored. Select Save changes to save them.';
   } });
   const cancel = button({ label: 'Cancel', onClick: stop });
@@ -104,12 +102,12 @@ export function createReleaseDraftWriter(options: ReleaseDraftWriterOptions) {
     if (active) stop();
     range.textContent = '';
   });
-  options.notes.addEventListener('input', updatePreview);
-  controls.append(write, undo, cancel);
-  root.append(controls, labeled('Previous tag (optional)', base), range, status);
+  const comparison = el('details', 'scc-release__disclosure');
+  comparison.append(el('summary', undefined, 'Previous tag (optional)'), base);
+  controls.append(write, options.generate, undo, cancel);
+  root.append(controls, comparison, range, status);
   return { root, destroy: () => {
     destroyed = true;
     stop();
-    options.notes.removeEventListener('input', updatePreview);
   } };
 }

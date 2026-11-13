@@ -387,11 +387,15 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
   const generation = beginAsyncSectionRender(area);
   const mount = clearMount({ general: 'settingsGeneralBody', terminal: 'settingsTerminalBody', backups: 'settingsBackupsBody', access: 'settingsAccessBody', updates: 'settingsUpdatesBody' }[area]);
   if (!mount) return;
+  if (area === 'updates') {
+    renderAppUpdatesSettings(mount);
+    return;
+  }
 
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
   if (area === 'general') appendGeneralSectionLead(shell);
-  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', backups: 'Back up your data and restore it on this or another computer.', access: 'Control how agents access files and run commands on this computer.', updates: 'Check for new versions and choose when to restart.' }[area]));
+  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', backups: 'Back up your data and restore it on this or another computer.', access: 'Control how agents access files and run commands on this computer.' }[area]));
   if (area === 'general') {
     const links = el('nav', 'settings-quick-links');
     links.setAttribute('aria-label', 'Common settings');
@@ -411,19 +415,6 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
       shell,
       'Open Minnow to save file-backed settings. Values below use browser storage until then.',
     );
-  }
-
-  if (area === 'updates') {
-    const updates = appendSettingsGroup(
-      shell,
-      'App updates',
-      'Stay on the latest build. Downloads run in the background; restart when you are ready.',
-      'general.updates',
-      { emphasis: true },
-    );
-    updates.id = 'settingsAppUpdates';
-    renderAppUpdatesSettings(updates);
-
   }
 
   if (area === 'general') {

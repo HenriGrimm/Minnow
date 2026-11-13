@@ -344,6 +344,79 @@ test('release overview auto-selects, sanitizes notes, filters stable releases, a
   assert.equal(view.root.querySelector('.scc-action-row__title')?.textContent, 'Stable');
 });
 
+test('release preview and asset upload preserve unsaved notes and publishing settings', async () => {
+  DOMPurify.sanitize = serverDOMPurify.sanitize;
+  const calls: any[] = [];
+  const release = { id: 1, tag: 'v1', title: 'Draft release', body: 'Original', target: 'main', draft: true, prerelease: false, immutable: false, url: '', assets: [] as any[], createdAt: '' };
+  const { ctx } = setup(body => {
+    calls.push(body);
+    if (body.op === 'releaseList') return { ok: true, releases: [release] };
+    if (body.op === 'releaseAssetUpload') {
+      release.assets.push({ id: 2, name: 'build.zip', size: 1024, downloads: 0 });
+      return { ok: true };
+    }
+    return { ok: true, release, canWrite: true };
+  });
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  click('Draft release');
+  await flush();
+  const notes = view.root.querySelector<HTMLTextAreaElement>('textarea')!;
+  const prerelease = view.root.querySelector<HTMLInputElement>('[aria-label="Prerelease"]')!;
+  const latest = view.root.querySelector<HTMLSelectElement>('[aria-label="Latest release"]')!;
+  notes.value = '**Local edits**';
+  prerelease.checked = true;
+  latest.value = 'false';
+  click('Preview');
+  assert.equal(notes.hidden, true);
+  assert.equal(view.root.querySelector('.scc-release__notes strong')?.textContent, 'Local edits');
+  click('All releases');
+  click('Draft release');
+  assert.equal(view.root.querySelector('textarea'), notes);
+  assert.equal(notes.hidden, true);
+  view.root.querySelector<HTMLInputElement>('[aria-label="Asset path"]')!.value = 'dist/build.zip';
+  click('Upload asset');
+  await flush();
+  assert.equal(view.root.querySelector('textarea'), notes);
+  assert.equal(prerelease.checked, true);
+  assert.equal(latest.value, 'false');
+  assert.equal(view.root.querySelector('.scc-release__asset-count')?.textContent, '1');
+  assert.equal(view.root.querySelector('.scc-release__file-name')?.textContent, 'build.zip');
+  assert(!calls.some(call => call.op === 'releaseEdit'));
+  click('Write');
+  assert.equal(notes.hidden, false);
+  assert.equal(notes.value, '**Local edits**');
+});
+
+test('new release requires an explicitly selected commit for a new tag', async () => {
+  const calls: any[] = [];
+  const sha = 'a'.repeat(40);
+  const { ctx } = setup(body => {
+    calls.push(body);
+    if (body.op === 'releaseList') return { ok: true, releases: [] };
+    if (body.op === 'actionRemoteOptions') return { ok: true, options: body.kind === 'branches' ? [{ name: 'main', sha }] : [] };
+    return { ok: true };
+  });
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  click('New release');
+  await flush();
+  assert.equal(view.root.querySelector<HTMLSelectElement>('[aria-label="Tag source"]')!.value, 'new');
+  view.root.querySelector<HTMLInputElement>('[aria-label="New tag"]')!.value = 'v2';
+  const target = view.root.querySelector<HTMLSelectElement>('[aria-label="Target commit"]')!;
+  click('Create draft');
+  assert.equal(win.document.activeElement, target);
+  assert(!calls.some(call => call.op === 'releaseCreate'));
+  target.value = sha;
+  click('Create draft');
+  await flush();
+  const request = calls.find(call => call.op === 'releaseCreate');
+  assert.equal(request.target, sha);
+  assert.equal(request.tag, 'v2');
+});
+
 test('run polling preserves expanded jobs and loaded logs', async () => {
   let revision = 0;
   const run = { id: 42, workflow: 'CI', title: 'Build commit', branch: 'main', sha: 'abc123', event: 'push', status: 'completed', conclusion: 'failure', createdAt: '', updatedAt: '', url: '' };

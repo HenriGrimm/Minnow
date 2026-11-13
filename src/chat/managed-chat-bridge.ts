@@ -57,7 +57,10 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
       if (attentionOnly) applySharedChatAttention(message.chatId, message.fields);
       else {
         const isNewShell = !findChatById(message.chatId);
-        const chat = applySharedChatFrame(message.chatId, fields);
+        // A notice can discover an empty rewritten chat. An already-loaded view
+        // learns its new rewrite version only alongside authoritative history.
+        const { historyRewriteRevision, ...summary } = fields ?? {};
+        const chat = applySharedChatFrame(message.chatId, isNewShell ? { ...summary, historyRewriteRevision } : summary);
         if (chat && isNewShell) chat.historyLoaded = false;
       }
     }

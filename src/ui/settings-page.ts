@@ -5,6 +5,7 @@ import '../styles/settings-graphite.css';
 import { isPairedDevice } from '../api/session-token';
 import { detectLocalServer } from '../tools/client';
 import { refreshSettingsSection } from './settings-sections';
+import { disposeAppUpdatesSettings } from './settings-updates';
 import {
   initSettingsPromptEstimate,
   refreshPromptTokenEstimate,
@@ -202,6 +203,7 @@ export function setActiveArea(
   }
   const resolved = resolveSettingsSectionNavigation(area, options?.searchKey);
   area = resolved.sectionId;
+  if (area !== 'updates') disposeAppUpdatesSettings();
   options = { ...options, searchKey: resolved.searchKey };
   activeArea = area;
   const category = categoryForArea(area);
@@ -270,6 +272,7 @@ function setActiveIntegrationsHub(hubId: SettingsIntegrationsHubId): void {
   const firstArea = hubDef?.areas[0];
   if (!firstArea) return;
 
+  disposeAppUpdatesSettings();
   activeArea = firstArea;
   activeCategory = 'integrations';
 
@@ -501,6 +504,7 @@ export function openSettings(
 
 /** Close settings and return to Code, the window stack, or desktop. */
 export function closeSettings(options?: { skipNavigate?: boolean }): void {
+  disposeAppUpdatesSettings();
   shellOverlayClosed('settings');
   if (!options?.skipNavigate && isOsEmbedded() && closeSettingsAndReturnToCaller()) {
     return;

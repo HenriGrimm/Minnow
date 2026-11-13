@@ -38,6 +38,7 @@ const CHAT_HOT_KEYS = new Set([
   'lastMessagePreview',
   'sortIndex',
   'historyDigest',
+  'historyRewriteRevision',
   'agentConversation',
   'chatCommandVersion',
   'profileReference',

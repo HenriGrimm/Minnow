@@ -139,22 +139,6 @@ textarea.scc-action-input { resize: vertical; min-height: 150px; font-family: va
 .scc-actions .scc-runrow__state { color: var(--mn-fg-muted); font-size: 11px; }
 .scc-actions .scc-runrow__title { flex: none; white-space: normal; font-size: 14px; color: var(--mn-fg); font-weight: 500; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .scc-actions .scc-runrow__meta { padding: 0; gap: 6px 10px; color: var(--mn-fg-muted); }
-.scc-release__head h2 { margin: 10px 0 16px; font-size: 24px; line-height: 1.35; overflow-wrap: anywhere; }
-.scc-release__facts, .scc-release__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.scc-release__facts { font-size: 13px; color: var(--mn-fg-muted); overflow-wrap: anywhere; }
-.scc-release__actions { margin-top: 20px; }
-.scc-release__notes { max-width: 74ch; overflow-wrap: anywhere; }
-.scc-release__editor { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--mn-border); max-width: 760px; }
-.scc-release__danger { margin-top: 12px; color: var(--mn-danger); }
-.scc-release-writer { display: grid; gap: 8px; }
-.scc-release-writer__controls { display: flex; flex-wrap: wrap; gap: 8px; }
-.scc-release-writer .scc-action-context, .scc-release-writer .scc-action-status { margin: 0; overflow-wrap: anywhere; }
-.scc-release-writer .scc-action-field { max-width: 360px; }
-.scc-release__danger summary { cursor: pointer; padding: 8px 0; font-size: 13px; }
-.scc-action-assets { max-width: 960px; }
-.scc-action-asset { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--mn-border); }
-.scc-action-asset > p:first-child { flex: 1 1 240px; margin: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
-.scc-action-asset > .scc-action-status { flex-basis: 100%; margin: 0; }
 @media (hover: hover) and (pointer: fine) {
   .scc-actions .scc-action-row:hover, .scc-actions .scc-job__head:hover { background: var(--mn-surface-elevated); }
 }

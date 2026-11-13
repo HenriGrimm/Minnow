@@ -21,7 +21,7 @@ declare global {
       followSystem?: boolean;
       family?: string;
       themeId?: string;
-      colorIntensity?: string;
+      colorIntensity?: number | string;
       graphiteAccent?: string;
       density?: string;
       reduceMotion?: boolean;

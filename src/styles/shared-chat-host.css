@@ -22,6 +22,6 @@
 .home-conversation:has(> .shared-chat-host) { min-height: 0; }
 
 /* Prompt hosts move with the composer, including a prompt already awaiting input. */
-:is(#mainColumn, .shared-chat-host):has(> #questionHost:not([hidden]), > #toolApprovalHost:not([hidden])) > .input-bar {
+:is(#mainColumn, .shared-chat-host):has(> .chat-viewport > .composer-notices > :is(#questionHost, #toolApprovalHost):not([hidden])) > .input-bar {
   display: none;
 }

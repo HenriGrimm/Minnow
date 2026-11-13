@@ -31,6 +31,7 @@ import { ChatContractError } from './contracts.js';
 import { listGenerationStates } from '../generations/store.js';
 
 const normalStatuses = ['running', 'loading_model'];
+const terminalTools = new Set(['execute_command', 'run_javascript', 'run_python']);
 const digest = value => createHash('sha256').update(value).digest('hex').slice(0, 40);
 let productionFactory, production, productionPromise;
 export function setProductionChatRuntimeFactory(factory) { productionFactory = factory; production = undefined; productionPromise = undefined; }
@@ -69,6 +70,9 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
   const requestNotifications = new Set();
   const executionWaits = new Map();
   const toolHandlers = new Map();
+  const recoveryTimers = new Map();
+  const manualRecovery = new Map();
+  let disposing = false;
   const resolvePolicyInput = (chat, scope, registry) => resolveChatPolicyInput(chat, scope, {
     adapters: preparationAdapters,
     workspaceIds: registry.entries.filter(row => row.projectId === scope.projectId && !row.revoked).map(row => row.workspaceId),
@@ -84,7 +88,8 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     }
     return target;
   }
-  const presentation = createChatPresentation({ repository });
+  const presentation = createChatPresentation({ repository,
+    needsManualRecovery: (chatId, executionId) => manualRecovery.get(chatId) === executionId });
   const requests = createChatRequestService({ repository,
     assertLegacyOwner: caller => isExternalExecutionActive(caller),
     authorizeResponse(request, input) {
@@ -178,7 +183,13 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       return taskAdapter.cancelTree(input);
     },
     onCommand: record => taskAdapter?.onCommand?.(record),
-    onEvent: event => { presentation.onServiceEvent(event); taskDelivery?.onServiceEvent(event); },
+    onEvent: event => {
+      presentation.onServiceEvent(event);
+      taskDelivery?.onServiceEvent(event);
+      if (ready && ['execution', 'execution_error'].includes(event.type) && repository.getLatestExecution(event.chatId)?.status === 'recovery_required') {
+        scheduleInterruptedRecovery(event.chatId);
+      }
+    },
   });
   const checkpoints = createChatCheckpointCoordinator({ repository });
   const host = createServerChatExecutionHost({ repository, requestService: requests,
@@ -237,6 +248,9 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
           allowedToolNames: Object.keys(policy.toolPermissions), runtimeOwner, activityChatId: command.chatId,
           filesystemAccessCeiling: policy.filesystemAccess, shellSandboxMode: policy.shellSandboxMode,
           interactiveApproval: toolContext?.approvalGranted === true });
+        if (terminalTools.has(name)) {
+          return dispatch.execute(name, { ...args, chatId: command.chatId, toolCallId: toolContext.toolCallId }, { ...toolContext, signal });
+        }
         if (name !== 'wait') return dispatch.execute(name, args, { ...toolContext, signal });
         repository.updateExecution(execution.executionId, { status: 'waiting' }, { fence });
         service.notifyExecution({ chatId: command.chatId, executionId: execution.executionId, status: 'waiting' });
@@ -251,7 +265,65 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
   });
   const unregisterHost = service.registerHost({ id: 'minnow-server', kind: 'server', supportsSteer: true,
     canRun: ({ execution }) => ready || questionRecovery?.canResume(execution) === true, execute: input => host.execute(input) });
+  const isRecoveryIdle = execution => !disposing && !service.ownsExecution(execution.executionId)
+    && !host.hasPendingEffects(execution.executionId) && !runtime.hasExternalExecution(execution.chatId);
+
+  async function reconcileInterruptedExecution(chatId) {
+    const execution = repository.getLatestExecution(chatId);
+    if (execution?.status !== 'recovery_required') return;
+    if (!isRecoveryIdle(execution) || await runtime.hasRunningRecoveryCommand(chatId)) return 'waiting';
+    if (disposing) return;
+    const current = repository.getLatestExecution(chatId);
+    if (current?.status !== 'recovery_required') return;
+    if (current.executionId !== execution.executionId) return 'waiting';
+    const review = repository.inspectRecovery(chatId);
+    if (review.executionId !== execution.executionId) return;
+    // Local tool promises and tracked terminal runs have stopped. Native
+    // regions and dispatched renderer tools without receipts need their own
+    // quiescence evidence. Closing a connection cannot establish it.
+    if (execution.captured?.nativeExecution?.requestedMode === 'native' ||
+        review.checkpoints.some(checkpoint => checkpoint.checkpointId.startsWith('native-')) ||
+        review.operations.some(op => !op.receiptId && (op.dispatchedToHost || /^(?:mcp__|plugin__)/.test(op.toolName)))) {
+      if (manualRecovery.get(chatId) !== execution.executionId) {
+        manualRecovery.set(chatId, execution.executionId);
+        presentation.changed(chatId);
+      }
+      return;
+    }
+    if (!isRecoveryIdle(execution)) return 'waiting';
+    const quiescence = { verified: true, source: 'server/idle-execution-and-terminal', checkedAt: Date.now() };
+    repository.retireInterruptedExecution(chatId, { executionId: execution.executionId, revision: review.revision,
+      clientRequestId: 'auto-recovery-' + digest(execution.executionId) }, isRecoveryIdle, { quiescence });
+    presentation.changed(chatId);
+    try {
+      if (execution.runId) await taskDelivery.reconcileRemovedTask(execution);
+    } finally {
+      if (ready) void service.kick(chatId).catch(() => {});
+    }
+  }
+
+  async function tryInterruptedRecovery(chatId) {
+    try { return await reconcileInterruptedExecution(chatId); }
+    catch (error) {
+      console.error('[chats] interrupted work reconciliation failed:', error.message);
+      return 'waiting';
+    }
+  }
+
+  function scheduleInterruptedRecovery(chatId, delay = 0) {
+    if (disposing || recoveryTimers.has(chatId)) return;
+    const timer = setTimeout(async () => {
+      const result = await tryInterruptedRecovery(chatId);
+      recoveryTimers.delete(chatId);
+      if (result === 'waiting') scheduleInterruptedRecovery(chatId, 1000);
+    }, delay);
+    timer.unref?.();
+    recoveryTimers.set(chatId, timer);
+  }
+
   const runtime = { repository, context, service, requests, capabilities, presentation, host, resolvePolicyInput, workspacePreparation,
+    hasPendingRecoveryEffects: host.hasPendingEffects,
+    clearManualRecovery: chatId => manualRecovery.delete(chatId),
     async beginChatWait(input) {
       const release = await causality.beforeWait(input);
       const execution = repository.getExecution(input.caller.executionId);
@@ -291,7 +363,12 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     },
     async hasRunningRecoveryCommand(chatId) {
       const { listKnownActiveRuns } = await import('../terminal-runner.js');
-      return (await listKnownActiveRuns({ chatId, source: 'agent' })).length > 0;
+      const execution = repository.getLatestExecution(chatId);
+      const interruptedCalls = execution?.status === 'recovery_required'
+        ? new Set(repository.listUnsettledToolInvocations(execution.executionId).filter(op => terminalTools.has(op.toolName)).map(op => op.toolCallId))
+        : new Set();
+      return (await listKnownActiveRuns({ source: 'agent' })).some(run => run.chatId === chatId ||
+        (!run.chatId && run.startedAt >= (execution?.createdAt ?? 0) && interruptedCalls.has(run.toolCallId)));
     },
     hasExternalExecution: chatId => Boolean(getExternalOwner(chatId))
       || generations().some(row => row.chatId === chatId && ['pending', 'streaming'].includes(row.status)),
@@ -356,6 +433,9 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       for (const chatId of new Set(repository.listCommands({ states: ['accepted', 'queued', 'waiting_for_host'], limit: 1000 }).map(row => row.chatId))) void service.kick(chatId).catch(() => {});
     },
     async dispose() {
+      disposing = true;
+      for (const timer of recoveryTimers.values()) clearTimeout(timer);
+      recoveryTimers.clear();
       ready = false; removeLegacyDelivery?.(); await runtime.legacyResultDelivery.dispose();
       causality.dispose(); unregisterHost(); await taskDelivery.dispose();
       for (const entry of legacyContexts.values()) requests.expireExecution(entry.executionId, entry.chatId, 'expired');
@@ -393,6 +473,13 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
   runtime.recovery = createChatRecovery({ repository, service, requests, taskDelivery,
     getTaskAdapter: () => taskAdapter,
     beforeExecutionRecovery: input => runtime.questionRecovery?.beforeExecutionRecovery(input),
+    async reconcileInterruptedWork(chatIds) {
+      const executions = chatIds ? chatIds.map(chatId => repository.getLatestExecution(chatId)).filter(execution => execution?.status === 'recovery_required')
+        : repository.listExecutions({ statuses: ['recovery_required'], limit: 1000 });
+      for (const { chatId } of executions) {
+        if (await tryInterruptedRecovery(chatId) === 'waiting') scheduleInterruptedRecovery(chatId, 1000);
+      }
+    },
     // Timeout alone never establishes effect quiescence. Only this process can
     // verify that its execution hosts and model streams do not own the lease.
     verifyQuiescence: execution => !service.ownsExecution(execution.executionId) && !getExternalOwner(execution.chatId) &&

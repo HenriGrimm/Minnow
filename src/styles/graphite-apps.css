@@ -805,7 +805,7 @@
   }
 
   .mn-graphite-apps .brain-page.is-graph-canvas-bg .brain-inspector.is-open {
-    top: 0;
+    top: var(--brain-graphite-inspector-top, 0px);
     left: auto;
     bottom: 0;
     width: var(--brain-graphite-inspector-width);
@@ -820,12 +820,13 @@
     display: block !important;
   }
 
-  .mn-graphite-apps .brain-stage:has(.brain-inspector.is-open) :is(.brain-graph-toolbar, .brain-graph-stage .brain-graph-hint) {
+  .mn-graphite-apps .brain-stage:has(.brain-inspector.is-open) .brain-graph-stage .brain-graph-hint {
     margin-inline-end: var(--brain-graphite-inspector-width);
   }
 
   .mn-graphite-apps .brain-stage:has(.brain-inspector.is-open) .brain-graph-toolbar {
-    width: calc(100% - var(--brain-graphite-inspector-width));
+    width: calc(100% - var(--brain-graphite-toolbar-inset, var(--brain-graphite-inspector-width)));
+    margin-inline-end: var(--brain-graphite-toolbar-inset, var(--brain-graphite-inspector-width));
   }
 }
 
@@ -1325,12 +1326,23 @@
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, min(45%, 400px));
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "selection detail"
+    "list      detail";
+}
+
+.mn-graphite-apps .issues-shell.is-detail-inline .issues-selection-bar {
+  grid-area: selection;
+}
+
+.mn-graphite-apps .issues-shell.is-detail-inline .issues-list-pane {
+  grid-area: list;
 }
 
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-detail-host.is-open {
   position: relative;
-  grid-area: 1 / 2;
+  grid-area: detail;
   inset: auto;
   width: 100%;
   height: 100%;

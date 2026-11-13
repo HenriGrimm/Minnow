@@ -45,7 +45,7 @@ describe('appearance config API', () => {
       themeId: 'ocean-dark',
       family: 'ocean',
       followSystem: false,
-      colorIntensity: 'rich',
+      colorIntensity: 37,
       graphiteAccent: 'rose',
       density: 'compact',
       reduceMotion: true,
@@ -59,7 +59,7 @@ describe('appearance config API', () => {
     assert.equal(get.status, 200);
     assert.equal(get.json.themeId, 'ocean-dark');
     assert.equal(get.json.family, 'ocean');
-    assert.equal(get.json.colorIntensity, 'rich');
+    assert.equal(get.json.colorIntensity, 37);
     assert.equal(get.json.graphiteAccent, 'rose');
     assert.equal(get.json.density, 'compact');
     assert.equal(get.json.reduceMotion, true);

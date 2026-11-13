@@ -121,10 +121,6 @@
   margin-top: 4px;
 }
 
-.settings-general .settings-updates--limited .settings-updates-strip {
-  margin-top: 0;
-}
-
 /* Appearance: flatten nested chrome inside emphasis panels */
 .settings-general .settings-group--emphasis .settings-actions {
   margin-top: 4px;

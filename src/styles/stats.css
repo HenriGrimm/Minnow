@@ -174,7 +174,7 @@
 }
 
 /* Prompt cards replace the composer and its larger bottom margin. */
-:is(#questionHost, #toolApprovalHost):not([hidden]) ~ .graphite-metrics-trigger {
+.chat-viewport:has(> .composer-notices > :is(#questionHost, #toolApprovalHost):not([hidden])) ~ .graphite-metrics-trigger {
   margin-top: 0;
 }
 

@@ -9,13 +9,14 @@ import { discoverBrowser, launchBrowser } from '../../server/browser-driver/inde
 test('the Graphite stage covers the sidebar as it grows and Windows controls stay at the right edge', { timeout: 30_000 }, async t => {
   const browser = await discoverBrowser();
   if (!browser.available) return t.skip(browser.detail);
-  const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'graphite-workspace', 'thread-card', 'graphite-apps'].map(name =>
+  const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'graphite-workspace', 'thread-card',
+    'settings-page', 'source-control-center', 'graphite-apps'].map(name =>
     readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-sidebar-'));
   const server = http.createServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(`<!doctype html><html class="is-electron-shell mn-graphite-workspace mn-graphite-sidebar-open mn-graphite-apps" data-platform="win32">
-      <style>${styles.join('\n').replace("@import './minnowos-tokens.css';", '')}
+      <style>${styles.join('\n').replace(/^@import .*;$/gm, '')}
         * { box-sizing: border-box; } body { margin: 0; }
       </style>
       <div class="mn-os">
@@ -29,10 +30,25 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
         <div id="osWorkspace" class="mn-os-workspace">
           <nav id="osAppRail">Workspace navigation</nav>
           <main id="osStage" class="mn-os-stage is-in-app">
-            <div class="mn-os-app-layer is-active">
-              <header id="graphiteThreadHeader"><h1 class="graphite-thread-title">Workspace content</h1>
-                <div class="graphite-thread-header__actions"><button id="threadAction">Thread action</button></div>
-              </header>
+            <div id="osAppsLayer" class="mn-os-apps-layer">
+              <div class="mn-os-app-layer is-active" id="code">
+                <header id="graphiteThreadHeader" data-app-titlebar><h1 class="graphite-thread-title">Workspace content</h1>
+                  <div class="graphite-thread-header__actions"><button id="threadAction">Thread action</button></div>
+                </header>
+              </div>
+              <div class="mn-os-app-layer settings-page" id="settingsApp">
+                <header class="settings-page-header" data-app-titlebar>
+                  <h1 class="settings-graphite-title">Settings</h1><button>Back</button>
+                </header>
+              </div>
+              <div class="mn-os-app-layer" id="sourceControl">
+                <div class="scc-root">
+                  <header class="scc-head" data-app-titlebar>
+                    <div class="scc-head__identity">Repository</div>
+                    <div class="scc-head__actions"><button>Search</button></div>
+                  </header>
+                </div>
+              </div>
             </div>
           </main>
         </div>
@@ -62,7 +78,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
   });
 
-  const { start, during, end, withoutThread } = await session.evaluate(`(() => {
+  const { start, during, end, withoutThread, appHeaders } = await session.evaluate(`(() => {
     const stage = document.getElementById('osStage');
     const rail = document.getElementById('osAppRail');
     const bounds = selector => document.querySelector(selector).getBoundingClientRect();
@@ -104,7 +120,24 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     const end = measure();
     document.getElementById('graphiteThreadHeader').hidden = true;
     document.documentElement.classList.add('mn-graphite-sidebar-open');
-    return { start, during, end, withoutThread: measure() };
+    const withoutThread = measure();
+    document.getElementById('code').classList.remove('is-active');
+    const appHeaders = ['settingsApp', 'sourceControl'].map(id => {
+      const app = document.getElementById(id);
+      app.classList.add('is-active');
+      const frame = measure();
+      const header = app.querySelector('[data-app-titlebar]');
+      const action = header.querySelector('button');
+      const actionRect = action.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      const hit = document.elementFromPoint(actionRect.x + actionRect.width / 2, actionRect.y + actionRect.height / 2);
+      const snapshot = { ...frame, header: headerRect.toJSON(), action: actionRect.toJSON(), actionClickable: hit === action,
+        dragRegion: getComputedStyle(header, '::before').getPropertyValue('app-region'),
+        actionRegion: getComputedStyle(action).getPropertyValue('app-region') };
+      app.classList.remove('is-active');
+      return snapshot;
+    });
+    return { start, during, end, withoutThread, appHeaders };
   })()`);
 
   assert.equal(start.left, start.railRight);
@@ -122,11 +155,21 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   assert.ok(withoutThread.gapDraggable, 'the titlebar above apps without a thread header should be draggable');
   assert.deepEqual(withoutThread.sidebarToggle, start.sidebarToggle);
   assert.equal(withoutThread.sidebarToggleRegion, 'no-drag');
-  for (const frame of [start, ...during, end, withoutThread]) {
+  for (const frame of [start, ...during, end, withoutThread, ...appHeaders]) {
     assert.deepEqual(frame.controls, end.controls);
     assert.equal(frame.dividerWidth, '1px');
     assert.ok(frame.minimizeLeft > frame.controls.left + 1);
     assert.ok(frame.closeClickable);
+  }
+  for (const frame of appHeaders) {
+    assert.equal(frame.top, start.top);
+    assert.equal(frame.header.top, start.top);
+    assert.ok(frame.controls.top >= frame.header.top && frame.controls.bottom <= frame.header.bottom);
+    assert.ok(frame.action.right < frame.controls.left);
+    assert.ok(frame.actionClickable);
+    assert.equal(frame.dragRegion, 'drag');
+    assert.equal(frame.actionRegion, 'no-drag');
+    assert.deepEqual(frame.sidebarToggle, start.sidebarToggle);
   }
   let previous = start;
   for (const frame of during) {

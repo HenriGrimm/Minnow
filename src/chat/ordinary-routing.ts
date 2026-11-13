@@ -4,7 +4,7 @@ import { ordinaryChatScopeBlocker, ordinaryChatHistoryBlocker } from '../../serv
 import { loadOrdinaryChatExecutionCapability } from '../config/agent-conversations-enabled';
 import { isServerStorageMode } from '../config/storage-mode';
 import { isPairedDevice } from '../api/session-token';
-import { applySharedChatFrame, findChatById, getDurablySavedChatRevision, persistSessionsBeforeDeliveryAck, touchChat } from '../state/sessions';
+import { applySharedChatFrame, findChatById, getDurablySavedChatRevision, persistSessionsBeforeDeliveryAck, touchChat, waitForPendingChatSave } from '../state/sessions';
 import { isChatTurnInProgress } from './chat-turn-guard';
 import { isChatWorktreeSetupPending } from '../state/chat-worktree';
 import { randomUUID } from '../lib/random-id';
@@ -68,23 +68,29 @@ async function route(chat: Chat): Promise<'server' | 'legacy'> {
     const revision = getDurablySavedChatRevision(chat.id);
     if (revision === null) throw new Error('The saved conversation revision is unavailable. Your draft is kept.');
     promotion = { id: randomUUID(), revision };
+  }
+  const clear = () => { uncertain.delete(chat.id); try { sessionStorage.removeItem(keyFor(chat.id)); } catch {} };
+  let body;
+  for (let attempt = 0; ; attempt++) {
     uncertain.set(chat.id, promotion);
     try { sessionStorage.setItem(keyFor(chat.id), JSON.stringify(promotion)); } catch {}
-  }
-  // Once dispatched, transport failure is uncertain admission, never permission to run locally.
-  let response: Response | undefined;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      response = await fetch(`/api/chats/${encodeURIComponent(chat.id)}/ordinary-routing`, { method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Minnow-Chat-Protocol': '1' },
-        body: JSON.stringify({ expectedRevision: promotion.revision, clientRequestId: promotion.id }), signal: AbortSignal.timeout(10_000) });
-      break;
-    } catch (error) { if (attempt) throw error; }
-  }
-  const body = await response!.json();
-  const clear = () => { uncertain.delete(chat.id); try { sessionStorage.removeItem(keyFor(chat.id)); } catch {} };
-  if (!response!.ok) {
-    if (response!.status < 500) clear();
+    const response = await requestPromotion(chat.id, promotion);
+    body = await response.json();
+    if (response.ok) break;
+    if (response.status < 500) clear();
+    if (response.status === 409 && body?.error?.code === 'stale_revision') {
+      // The first request definitively failed. A newer save acknowledged in
+      // this window can be promoted under its own revision and receipt key.
+      if (attempt < 2) {
+        const revision = await waitForPendingChatSave(chat.id);
+        if (findChatById(chat.id) === chat && !isChatTurnInProgress(chat.id) && !isChatWorktreeSetupPending(chat.id) &&
+            revision !== null && revision > promotion.revision) {
+          promotion = { id: randomUUID(), revision };
+          continue;
+        }
+      }
+      throw new Error('This chat changed while preparing to send. Your draft is kept. Try sending again.');
+    }
     throw new Error(body?.error?.message || 'The server could not confirm conversation routing. Your draft is kept.');
   }
   if (body.receipt?.chatId !== chat.id || !['promoted', 'already_canonical'].includes(body.receipt?.disposition) ||
@@ -101,6 +107,14 @@ async function route(chat: Chat): Promise<'server' | 'legacy'> {
   clear();
   window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId: chat.id, ...body } }));
   return 'server';
+}
+
+async function requestPromotion(chatId: string, promotion: Promotion): Promise<Response> {
+  // A lost response retries the same request identity and never starts a local turn.
+  const send = () => fetch(`/api/chats/${encodeURIComponent(chatId)}/ordinary-routing`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Minnow-Chat-Protocol': '1' },
+    body: JSON.stringify({ expectedRevision: promotion.revision, clientRequestId: promotion.id }), signal: AbortSignal.timeout(10_000) });
+  try { return await send(); } catch { return send(); }
 }
 
 export function resetOrdinaryChatRoutingForTests(): void { running.clear(); uncertain.clear(); }

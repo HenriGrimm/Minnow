@@ -392,6 +392,110 @@ export function createChatCommandService({
     if (typeof applyWorkspaceChoice !== 'function') failure('capability_unavailable', 'Workspace recovery is unavailable on this host');
     return applyWorkspaceChoice(caller, input);
   });
+  /** A same-chat replay admits a fresh command in the same transaction as the rewind. */
+  async function rewriteHistory(caller, input) {
+    requireCaller(caller);
+    if (caller.actor !== 'human' || !['renderer', 'device'].includes(caller.ingress)) failure('caller_denied', 'History changes require an authenticated human');
+    fields(input, ['chatId', 'action', 'index', 'expectedHistoryDigest', 'clientRequestId', 'message', 'text']);
+    checked(validateChatId(input.chatId)); checked(validateChatId(input.clientRequestId));
+    const { chatId, action, index, expectedHistoryDigest, clientRequestId } = input;
+    if (!['delete', 'edit', 'replay'].includes(action) || !Number.isSafeInteger(index) || index < 0 ||
+        typeof expectedHistoryDigest !== 'string' || !/^[a-f0-9]{64}$/.test(expectedHistoryDigest)) failure('invalid_request', 'Choose a message from the observed history');
+    if (action === 'edit' ? typeof input.message !== 'string' || !input.message.trim() || input.message.length > 120000 ||
+        typeof input.text !== 'string' || input.text.length > 120000 : 'message' in input || 'text' in input) failure('invalid_request', 'Invalid edited message');
+    const receiptId = hashId('history', [caller.scope.projectId, chatId, caller.ingress, clientRequestId].join(':'));
+    const intentHash = hashChatPayload(input);
+    return serialized(chatId, async () => {
+      await authorize(caller, chatId, 'read');
+      const prior = repository.getOutbox(receiptId);
+      if (prior) {
+        if (prior.kind !== 'conversation.history_rewritten' || prior.payload.intentHash !== intentHash) failure('idempotency_conflict', 'History request identity was reused');
+        return { ...prior.payload.receipt, replayed: true };
+      }
+      if (disposed || !feature()?.recoveryEnabled) failure('capability_unavailable', 'History changes are unavailable on this host');
+      const target = await authorize(caller, chatId, 'send');
+      if (target.chat.historyDigest !== expectedHistoryDigest) failure('stale_revision', 'The conversation changed. Review the messages and try again.');
+      const epoch = repository.getCancellationEpoch(chatId);
+      const assertIdle = () => {
+        if (disposed || externallyOwned(chatId) || active.has(chatId) || repository.getCancellationEpoch(chatId) !== epoch) {
+          failure('ownership_conflict', 'The conversation became active or was stopped while preparing the history change');
+        }
+      };
+      assertIdle();
+      let replacement;
+      if (action !== 'delete') {
+        if (target.chat.worktreeSetupRequired || target.chat.worktreeEnabled && !target.chat.worktreeRoot) {
+          failure('capability_unavailable', 'Finish worktree setup or choose Local before replaying a message');
+        }
+        const anchor = repository.readTranscript(chatId)?.messages[index];
+        if (anchor?.role !== 'user' || anchor.steer || anchor.hiddenFromTranscript || anchor.provenance && anchor.provenance.actor !== 'human') {
+          failure('invalid_request', 'Replay from a visible human message');
+        }
+        const source = anchor.commandId ? repository.getCommand(anchor.commandId) : null;
+        // Fork prefixes can reference another chat’s immutable settled command.
+        if (source && (source.command.kind !== 'send' || !['settled', 'failed', 'cancelled'].includes(source.state))) {
+          failure('ownership_conflict', 'The selected message is still running');
+        }
+        const selection = source?.command.modelSelection ?? await selectionFor(target, caller, input);
+        const native = await captureNativeSelection?.(selection);
+        if (native?.requestedMode === 'native' || source?.captured.nativeExecution?.requestedMode === 'native') {
+          failure('capability_unavailable', 'Switch away from native tool execution before replaying this message');
+        }
+        const original = source?.captured.profile ?? (source?.command.profileReference && repository.getProfile(
+          source.command.profileReference.profileId, source.command.profileReference.profileVersion)) ?? target.profile;
+        const turnSettings = source?.captured.turnSettings ?? original?.snapshot;
+        const policy = turnSettings?.policy
+          ? intersectChatPolicies(createChatPolicy(turnSettings.policy), target.currentPolicy, caller.policy)
+          : intersectChatPolicies(target.policy, caller.policy);
+        if (policy.modeId !== target.policy.modeId) failure('policy_denied', 'The original message’s mode is unavailable for replay');
+        // Promoted legacy rows have no command snapshot. Re-resolve their saved
+        // skill identity so /ask and /plan still apply their turn clamps.
+        const legacySkill = !source && typeof anchor.content === 'string' ? /^\[skill:[ \t]*([a-z0-9][a-z0-9-]*)[ \t]*\]\r?$/im.exec(anchor.content) : null;
+        const intent = source?.effectiveCommand.intent ?? { version: 1,
+          ...(legacySkill ? { skill: { id: legacySkill[1].toLowerCase(), source: 'slash', input: anchor.content.replace(legacySkill[0], '').trim() } } : {}),
+          ...(anchor.issue ? { issue: anchor.issue } : {}), ...(anchor.codeMap ? { codeMap: anchor.codeMap } : {}) };
+        const editedIntent = action === 'edit' && intent.skill ? { ...intent, skill: { ...intent.skill, input: input.text.trim() } } : intent;
+        const message = action === 'edit' ? input.message : source?.effectiveCommand.message ?? anchor.content;
+        const turnIntent = action === 'edit' || !source?.captured.turnIntent
+          ? await captureTurnIntent(editedIntent, target.chat, message) : source.captured.turnIntent;
+        const commandId = hashId('command', receiptId);
+        const command = checked(validateChatCommand({ version: 1, commandId, chatId, requestedAt: now(), kind: 'send', mode: 'auto',
+          clientRequestId, provenance: provenance(caller, commandId, input), message, intent: editedIntent, modelSelection: selection,
+          ...(anchor.images?.length ? { images: anchor.images } : {}), ...(target.chat.profileReference ? { profileReference: target.chat.profileReference } : {}),
+        }));
+        const current = await authorize(caller, chatId, 'send');
+        if (current.scope.projectId !== target.scope.projectId || current.scope.canonicalKey !== target.scope.canonicalKey ||
+            target.checkoutIdentity && current.checkoutIdentity !== target.checkoutIdentity) failure('workspace_denied', 'The checkout changed while preparing the replay');
+        const savedClamp = source?.captured.turnIntent?.turnClamp;
+        const currentPolicy = intersectChatPolicies(policy, current.policy,
+          ...(savedClamp ? [createChatPolicy({ ...policy, turnClamp: savedClamp })] : []));
+        if (!currentPolicy.workspaceIds.includes(current.scope.workspaceId) || !currentPolicy.capabilities.includes('execution.host')) {
+          failure('policy_denied', 'The selected message cannot run in the current checkout with its saved permissions');
+        }
+        if (currentPolicy.modeId !== policy.modeId) failure('policy_denied', 'The original message’s mode is unavailable for replay');
+        replacement = { command, captured: { requestIntentHash: intentHash, policy: currentPolicy, scope: current.scope,
+          projectId: current.scope.projectId, cancellationEpoch: epoch, turnIntent,
+          ...(turnSettings ? { turnSettings: { ...turnSettings, policy: currentPolicy } } : {}),
+          ...(target.profile ? { profile: target.profile } : {}), ...(current.checkoutIdentity ? { checkoutIdentity: current.checkoutIdentity } : {}),
+        } };
+      }
+      const result = repository.atomic(() => {
+        assertIdle();
+        const revision = repository.rewriteHistory({ chatId, index, expectedHistoryDigest });
+        if (replacement) {
+          repository.setAutoResumeBlocked(chatId, false);
+          repository.admitCommand(replacement.command, { producerId: hashId('producer', receiptId), requestKey: clientRequestId, captured: replacement.captured });
+          repository.updateCommand(replacement.command.commandId, { state: 'queued' });
+        }
+        const receipt = { chatId, action, index, clientRequestId, revision, commandId: replacement?.command.commandId ?? null, replayed: false };
+        repository.putOutbox({ outboxId: receiptId, chatId, kind: 'conversation.history_rewritten', payload: { intentHash, receipt } });
+        const claim = repository.claimOutbox(receiptId, 'history-receipt'); repository.finishOutbox(receiptId, claim);
+        return receipt;
+      });
+      if (result.commandId) { announce(repository.getCommand(result.commandId)); schedule(chatId); }
+      return result;
+    });
+  }
   /** Replay into a new canonical branch; the source transcript is immutable. */
   async function fork(caller, input) {
     requireCaller(caller);
@@ -547,7 +651,11 @@ export function createChatCommandService({
         const policy = createChatPolicy(snapshot?.policy ?? current.policy);
         // A human may change an ordinary root's mode. Delegated profiles remain
         // bounded by their captured role; a mode label cannot promote a child.
-        if (current.chat.agentConversation) assertChatPolicyWithinCeiling(policy, current.policy);
+        // A model-only update copies the saved ceiling. Live restrictions are
+        // still intersected at admission and dispatch.
+        if (current.chat.agentConversation && (input.modeId !== undefined || !target.profile?.snapshot?.policy)) {
+          assertChatPolicyWithinCeiling(policy, current.policy);
+        }
         next = { profileId: current.profile?.profileId ?? `profile-${input.chatId}`, profileVersion: profileVersion + 1,
           snapshot: { ...snapshot, policy, modelSelection: selection, exactModel: selection.providerId !== 'minnow-router' } };
       }
@@ -848,6 +956,7 @@ export function createChatCommandService({
       return deferred('owned');
     }
     if (externallyOwned(chatId) || repository.getLease(chatId)?.state === 'active') return deferred('owned');
+    if (repository.getLatestExecution(chatId)?.status === 'recovery_required') return deferred('recovering');
     const previous = record.executionId ? repository.getExecution(record.executionId) : null;
     const host = await chooseHost(record, target, previous);
     if (!host) return deferred('waiting_for_host');
@@ -867,6 +976,7 @@ export function createChatCommandService({
       const fresh = repository.getCommand(record.commandId);
       if (disposed || signal?.aborted) { accepted = deferred('stopping'); return; }
       if (active.has(chatId) || externallyOwned(chatId) || repository.getLease(chatId)?.state === 'active') { accepted = deferred('owned'); return; }
+      if (repository.getLatestExecution(chatId)?.status === 'recovery_required') { accepted = deferred('recovering'); return; }
       if (hosts.get(host.id) !== host) { accepted = deferred('waiting_for_host'); return; }
       if (!fresh || fresh.revision !== record.revision || firstRunnable(chatId)?.commandId !== record.commandId) { accepted = deferred('command_changed'); return; }
       if (disposedDelivery(fresh)) {
@@ -1022,7 +1132,7 @@ export function createChatCommandService({
   }
   const service = {
     ordinaryEligibility, promote,
-    send, configure, fork, chooseWorkspace, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
+    send, configure, fork, rewriteHistory, chooseWorkspace, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
     stopExecution(executionId) {
       checked(validateChatId(executionId));
       const entry = [...active.values()].find(value => value.execution.executionId === executionId);
@@ -1049,8 +1159,9 @@ export function createChatCommandService({
     async status(caller, chatId) {
       await authorize(caller, chatId, 'read');
       const source = repository.getChat(chatId);
-      const execution = active.has(chatId) ? repository.getExecution(active.get(chatId).execution.executionId)
-        : repository.getLatestExecution(chatId);
+      const executionId = active.get(chatId)?.execution.executionId ?? source.agentExecution?.executionId;
+      const execution = executionId ? repository.getExecution(executionId)
+        : source.chatCommandVersion !== 1 ? repository.getLatestExecution(chatId) : null;
       return { chat: { id: source.id, name: source.name, workspacePath: source.workspacePath,
         workspacePreparation: source.workspacePreparation ?? null, worktreeRoot: source.worktreeRoot,
         worktreeEnabled: source.worktreeEnabled, worktreeSetupRequired: source.worktreeSetupRequired,

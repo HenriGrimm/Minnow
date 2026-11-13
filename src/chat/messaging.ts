@@ -69,6 +69,7 @@ import {
   clearComposerAfterSend,
   clearComposerDraftOnChat,
   beginComposerSubmissionDraft,
+  flushComposerDraftSessionSave,
   type ComposerSubmissionDraft,
 } from '../ui/composer-draft';
 import {
@@ -471,6 +472,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
   // Local slash controls do not create server conversations or migrate history.
   if ((rawTextEarly || getPendingAttachments().length) && !isPluginSlashCommand(rawTextEarly) &&
       !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(rawTextEarly)) {
+    if (chat.chatCommandVersion !== 1) flushComposerDraftSessionSave();
     try { await ensureOrdinaryChatRoute(chat); }
     catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); return; }
     if (sessionState?.activeId !== chat.id) return;
@@ -604,7 +606,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
   const { consumePendingMessageEdit, completePendingMessageEdit } = await import(
     '../ui/message-actions'
   );
-  const pendingEdit = consumePendingMessageEdit();
+  const pendingEdit = consumePendingMessageEdit(chat.id);
   if (pendingEdit) {
     const editChat =
       sessionState?.chats.find((c) => c.id === pendingEdit.chatId) ?? getActiveChat();

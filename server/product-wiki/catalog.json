@@ -180,7 +180,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "6a76c92bb22e0fc8ee909d63bf525a465a9dcf04fb6f0f46974916abc33f11cf"
+      "hash": "d5d99ee5115af20d90eafa3b0c99aa823ac7b56620631f38891e9fea6f7a597d"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -243,7 +243,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "18c84170d79363cdfcc016250c0b5353ed63eaf7b8408de4e85bb4e2bbec69e4"
+      "hash": "94462fea66661cf6ad7aa9f3a9b8815f5bd78ebc2f23ebb4542bb24df767863e"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -595,14 +595,14 @@
         "Questions and approvals",
         "Stop work",
         "Messages between chats",
-        "Review interrupted work",
+        "Continue after an interruption",
         "Saved history and older tasks",
         "Checkouts, deletion and backups",
         "Continue from the CLI",
         "Related"
       ],
       "section": "Chat",
-      "hash": "34382d49e5f95805be9fd45e082fd7b3bef43d6b0fc8af40061582356493a000"
+      "hash": "b9fa6faa596465747350a5a4ebc3d36c4f9e9659a442e591ee375c0a5beab54c"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",

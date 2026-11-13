@@ -84,7 +84,7 @@ describe('reduceUpdaterStatus', () => {
     assert.equal(status.errorMessage, null);
   });
 
-  test('background failure is silent: idle, no error message', () => {
+  test('background failure reports a failed check without exposing the raw error', () => {
     let status = supportedStatus();
     status = reduceUpdaterStatus(status, { kind: 'check-started', manual: false, at: NOW });
     status = reduceUpdaterStatus(status, {
@@ -93,7 +93,7 @@ describe('reduceUpdaterStatus', () => {
       manual: false,
       at: NOW,
     });
-    assert.equal(status.state, 'idle');
+    assert.equal(status.state, 'error');
     assert.equal(status.errorMessage, null);
     assert.equal(status.lastCheckedAt, NOW);
   });

@@ -155,6 +155,11 @@
   outline-offset: -1px;
 }
 
+textarea.app-dialog-panel__input {
+  resize: vertical;
+  font: inherit;
+}
+
 .app-dialog-panel__actions {
   display: flex;
   justify-content: flex-end;

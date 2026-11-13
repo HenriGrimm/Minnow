@@ -38,7 +38,7 @@
     }
     if (boot.customAdvanced) localStorage.setItem('minnow.appearance.customAdvanced', '1');
     else localStorage.removeItem('minnow.appearance.customAdvanced');
-    localStorage.setItem('minnow.appearance.colorIntensity', boot.colorIntensity || 'subtle');
+    localStorage.setItem('minnow.appearance.colorIntensity', String(boot.colorIntensity ?? 50));
     localStorage.setItem('minnow.appearance.graphiteAccent', boot.graphiteAccent || 'teal');
     localStorage.setItem('minnow.appearance.density', boot.density || 'cozy');
     localStorage.setItem('minnow.appearance.reduceMotion', boot.reduceMotion ? '1' : '0');
@@ -81,14 +81,19 @@
     var mode = id.indexOf('-light') > 0 ? 'light' : 'dark';
     var root = document.documentElement;
     root.setAttribute('data-theme', 'graphite-' + mode);
-    root.setAttribute('data-tint', 'subtle');
+    root.setAttribute('data-tint', '50');
     root.style.colorScheme = mode;
     root.classList.add('theme-no-transition');
     var meta = document.querySelector('meta[name="theme-color"]');
     var customBg = null;
     try {
       var tint = localStorage.getItem('minnow.appearance.colorIntensity');
-      if (/^(none|subtle|rich)$/.test(tint || '')) root.setAttribute('data-tint', tint);
+      // Match normalizeColorIntensity before the app module loads.
+      var tintPercent = tint === 'none' ? 0 : tint === 'rich' ? 100 : Number(tint);
+      if (tint === 'none' || tint === 'rich' || (/^\d{1,3}$/.test(tint || '') && tintPercent <= 100)) {
+        root.setAttribute('data-tint', String(tintPercent));
+        root.style.setProperty('--mn-graphite-tint', String(tintPercent / 50));
+      }
       var accent = localStorage.getItem('minnow.appearance.graphiteAccent');
       var family = id.slice(0, id.lastIndexOf('-'));
       if (family !== 'graphite') accent = family;
@@ -416,7 +421,7 @@
 <button type="button" class="file-sidebar-backdrop" id="fileSidebarBackdrop" aria-label="Close file tree" aria-hidden="true"></button>
 
 <main id="settingsView" class="settings-page" aria-label="Settings">
-  <header class="settings-page-header">
+  <header class="settings-page-header" data-app-titlebar>
     <button type="button" class="icon-btn" id="btnSettingsPageBack" aria-label="Back to Code">
       <i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>
     </button>
@@ -1171,7 +1176,7 @@
 </main>
 
 <main id="modelsView" class="models-page is-workbench" aria-label="Models">
-  <header class="models-page-header">
+  <header class="models-page-header" data-app-titlebar>
     <h1 class="models-page-header__title">Models</h1>
     <div class="models-header-status" id="modelsHeaderStatus" role="status" aria-live="polite"></div>
     <button
@@ -1255,7 +1260,7 @@
 
 <main id="brainView" class="brain-page is-graph-canvas-bg" aria-label="Brain">
   <div class="brain-page-chrome">
-  <header class="brain-page-header brain-overlay-surface">
+  <header class="brain-page-header brain-overlay-surface" data-app-titlebar>
     <button type="button" class="icon-btn brain-page-header__back" id="btnBrainPageBack" aria-label="Back">
       <i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>
     </button>
@@ -1323,7 +1328,7 @@
         <p id="brainGraphOffline" class="brain-state-banner brain-card hidden">Start npm start to load the brain.</p>
         <p id="brainGraphEmpty" class="brain-state-banner brain-card hidden">No pages yet. Create one or run Ingest.</p>
         <div id="brainGraphStage" class="brain-graph-stage brain-graph-overlays">
-          <div class="brain-graph-toolbar brain-overlay-card" role="toolbar" aria-label="Graph controls">
+          <div class="brain-graph-toolbar brain-overlay-card" data-app-titlebar role="toolbar" aria-label="Graph controls">
             <div class="brain-graph-toolbar__group brain-graph-toolbar__search">
               <label class="brain-graph-search">
                 <span class="visually-hidden">Search nodes</span>
@@ -2033,7 +2038,7 @@
 </main>
 
 <main id="schedulerView" class="scheduler-page" aria-label="Scheduler">
-  <header class="scheduler-header">
+  <header class="scheduler-header" data-app-titlebar>
     <div class="scheduler-header__brand">
       <span id="schedulerPageIcon" class="scheduler-header__icon" aria-hidden="true"></span>
       <div class="scheduler-header__titles">
@@ -2179,7 +2184,7 @@
   </aside>
 
   <div id="workspaceSplit" class="workspace-split">
-  <header id="graphiteThreadHeader" class="graphite-thread-header" hidden></header>
+  <header id="graphiteThreadHeader" class="graphite-thread-header" data-app-titlebar hidden></header>
   <div class="main-column" id="mainColumn">
     <!--
       Code view switcher. View buttons replace what the stage shows; Chats toggles
@@ -2237,20 +2242,17 @@
         <button type="button" id="chatJumpLatest" class="chat-jump-latest hidden" aria-label="Jump to latest messages">Jump to latest</button>
       </div>
 
-      <!-- Run status sits above the checklist when it docks against the composer. -->
-      <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
-        <span class="composer-run-status__dot" aria-hidden="true"></span>
-        <span class="composer-run-status__label">Working</span>
-        <span class="composer-run-status__time"></span>
-        <span class="composer-run-status__count"></span>
+      <div class="composer-notices">
+        <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
+          <span class="composer-run-status__dot" aria-hidden="true"></span>
+          <span class="composer-run-status__label">Working</span>
+          <span class="composer-run-status__time"></span>
+          <span class="composer-run-status__count"></span>
+        </div>
+        <div id="toolApprovalHost" class="tool-approval-host" aria-live="polite" hidden></div>
+        <div id="questionHost" class="question-host" aria-live="polite" hidden></div>
       </div>
     </div>
-
-    <!-- Tool approval: mounted here by showToolApprovalModal (above composer, not a full-screen popup) -->
-    <div id="toolApprovalHost" class="tool-approval-host" aria-live="polite" hidden></div>
-
-    <!-- Ask question: structured Q&A strip (below tool approval, above composer) -->
-    <div id="questionHost" class="question-host" aria-live="polite" hidden></div>
 
     <!-- Input bar -->
     <div class="input-bar">

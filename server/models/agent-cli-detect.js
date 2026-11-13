@@ -9,6 +9,7 @@ import {
   stripAnsiFromCliText,
 } from '../generations/agent-cli/resolve-bin.js';
 import { getAgentCliDefinition, getAgentCliInstallCommand } from './agent-cli-catalog.js';
+import { codexSourceHome } from '../generations/agent-cli/codex-auth.js';
 
 export const AGENT_CLI_DETECTION_TTL_MS = 60_000;
 const DETECTION_TIMEOUT_MS = 5_000;
@@ -16,7 +17,7 @@ const STATUS_CACHE = new Map();
 const STATUS_INFLIGHT = new Map();
 
 const TOKEN_ENV_KEYS = Object.freeze({
-  claude: ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
+  claude: ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
   codex: ['CODEX_API_KEY', 'OPENAI_API_KEY'],
   cursor: ['CURSOR_API_KEY'],
 });
@@ -81,6 +82,7 @@ export function parseAgentCliAuthStatus(text) {
       return 'signed-out';
     }
     if (parsed.loggedIn === true || parsed.authenticated === true) {
+      if (/^(?:api[_ -]?key|token)$/i.test(parsed.authMethod ?? '')) return 'token';
       return 'signed-in';
     }
     if (typeof parsed.status === 'string') {
@@ -91,8 +93,36 @@ export function parseAgentCliAuthStatus(text) {
   if (/not logged in|not authenticated|signed out|login required|unauthenticated/i.test(normalized)) {
     return 'signed-out';
   }
+  if (/(?:logged|signed) in (?:using|with) (?:an? )?(?:api key|token)/i.test(normalized)) return 'token';
   if (/logged in|authenticated|signed in/i.test(normalized)) return 'signed-in';
   return 'unknown';
+}
+
+/** Return only a displayable email from the vendor's signed-in status. */
+export function parseAgentCliAccountEmail(text) {
+  const normalized = stripAnsiFromCliText(text).trim();
+  if (parseAgentCliAuthStatus(normalized) !== 'signed-in') return undefined;
+  for (const row of jsonObjectsFromMixedOutput(normalized)) {
+    const email = safeAccountEmail(row.email ?? row.account?.email);
+    if (email) return email;
+  }
+  return safeAccountEmail(normalized.match(/(?:logged|signed) in as[ \t]+([^\s]+)/i)?.[1]);
+}
+
+function safeAccountEmail(value) {
+  return typeof value === 'string' && value.length <= 254 && /^[\w.!#$%&'*+/=?^\x60{|}~-]+@[\w.-]+\.[a-z]{2,}$/i.test(value)
+    ? value : undefined;
+}
+
+async function codexAccountEmail(options) {
+  try {
+    const filename = path.join(codexSourceHome(options), 'auth.json');
+    if ((await fs.stat(filename)).size > 128 * 1024) return undefined;
+    const record = JSON.parse(await fs.readFile(filename, 'utf8'));
+    if (record.auth_mode === 'apikey' || !record.tokens?.id_token) return undefined;
+    const claims = JSON.parse(Buffer.from(record.tokens.id_token.split('.')[1], 'base64url').toString('utf8'));
+    return safeAccountEmail(claims.email ?? claims['https://api.openai.com/profile']?.email);
+  } catch { return undefined; }
 }
 
 /**
@@ -202,6 +232,7 @@ export async function verifyAgentCliAuth(kind, options = {}) {
   }
   const definition = getAgentCliDefinition(kind);
   let authStatus = 'unknown';
+  let accountEmail;
   try {
     const result = await runProcess(
       passive.resolvedCommand,
@@ -212,10 +243,15 @@ export async function verifyAgentCliAuth(kind, options = {}) {
       },
     );
     authStatus = parseAgentCliAuthStatus(`${result.stdout}\n${result.stderr}`);
+    if (authStatus === 'signed-in') {
+      accountEmail = kind === 'codex'
+        ? await codexAccountEmail(options)
+        : parseAgentCliAccountEmail(`${result.stdout}\n${result.stderr}`);
+    }
   } catch (err) {
     if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') authStatus = 'signed-out';
   }
-  const value = { ...passive, authStatus, verifiedAt };
+  const value = { ...passive, authStatus, verifiedAt, accountEmail };
   for (const [cacheKey, cached] of STATUS_CACHE) {
     if (cached.value === passive) STATUS_CACHE.set(cacheKey, { at: Date.now(), value });
   }

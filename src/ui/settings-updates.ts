@@ -1,239 +1,79 @@
-import {
-  describeUpdaterStrip,
-  formatLastChecked,
-  formatNextCheck,
-  getUpdaterApi,
-  watchUpdaterStatus,
-  type MinnowUpdaterStatus,
-} from '../electron/updater-client';
-import {
-  createSettingsActionsRow,
-  createSettingsKvList,
-  createSettingsRadioRow,
-} from './settings-controls';
-import { renderReleaseNotesMarkdown } from './release-notes-markdown';
+import { formatLastChecked, getUpdaterApi } from '../electron/updater-client';
+import { updateCenter, type UpdateCenter } from '../os/update-center';
+import { launchApp } from '../os/router';
+import { createSettingsRadioRow } from './settings-controls';
+import { createUpdateRows, el, updateButton, updateSummary } from './update-rows';
+import '../styles/settings-updates.css';
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text != null) node.textContent = text;
-  return node;
+let cleanup: (() => void) | undefined;
+
+export function disposeAppUpdatesSettings(): void {
+  cleanup?.();
+  cleanup = undefined;
 }
 
-const DEV_HINT = 'Updates apply to the installed Minnow app, not this dev session.';
-const MACOS_HINT =
-  'macOS auto-update requires code signing. Use manual download until certificates are configured.';
-const BETA_HINT = 'Beta builds may be less stable. You can switch back to Stable anytime.';
-const RESTART_WARNING = 'Active sessions will close and Minnow will reopen.';
-
-function unsupportedMessage(status: MinnowUpdaterStatus): string {
-  return status.unsupportedReason === 'macos-signing' ? MACOS_HINT : DEV_HINT;
-}
-
-function renderUnsupportedUpdates(mount: HTMLElement, message: string, stripLabel: string): void {
-  const section = el('section', 'settings-updates settings-updates--limited');
+export function renderAppUpdatesSettings(mount: HTMLElement, center: UpdateCenter = updateCenter): void {
+  disposeAppUpdatesSettings();
+  const section = el('section', 'updates-settings');
+  section.id = 'settingsAppUpdates';
   section.dataset.settingsSearchKey = 'general.updates';
+  const header = el('header', 'updates-settings__header');
+  const heading = el('div');
+  const title = el('h2', 'updates-settings__title', 'Software updates');
+  const summary = el('p', 'updates-summary');
+  summary.setAttribute('role', 'status');
+  heading.append(title, summary);
+  const check = updateButton('Check for updates', () => { void center.check(); });
+  header.append(heading, check);
+  const rows = createUpdateRows(center, 'settings');
 
-  const head = el('div', 'settings-updates__head');
-  const strip = el('div', 'settings-updates-strip');
-  strip.dataset.tone = 'muted';
-  strip.setAttribute('role', 'status');
-  strip.append(
-    el('span', 'settings-updates-strip__dot'),
-    el('span', 'settings-updates-strip__label', stripLabel),
-  );
-  head.appendChild(strip);
-  section.appendChild(head);
+  const footer = el('div', 'updates-settings__footer');
+  const lastChecked = el('p', 'updates-summary');
+  const subscriptions = updateButton('Manage CLI subscriptions', () => launchApp('models', { modelsSection: 'clis' }));
+  footer.append(lastChecked, subscriptions);
 
-  const callout = el('p', 'settings-updates__callout', message);
-  callout.setAttribute('role', 'note');
-  section.appendChild(callout);
-
-  mount.appendChild(section);
-}
-
-/** Render the App updates group body. Reads/updates via window.minnow.updater. */
-export function renderAppUpdatesSettings(mount: HTMLElement): void {
-  const api = getUpdaterApi();
-  if (!api) {
-    renderUnsupportedUpdates(mount, DEV_HINT, 'Dev session');
-    return;
-  }
-
-  const section = el('section', 'settings-updates');
-  section.dataset.settingsSearchKey = 'general.updates';
-
-  const head = el('div', 'settings-updates__head');
-
-  const strip = el('div', 'settings-updates-strip');
-  strip.setAttribute('role', 'status');
-  strip.setAttribute('aria-live', 'polite');
-  const dot = el('span', 'settings-updates-strip__dot');
-  dot.setAttribute('aria-hidden', 'true');
-  const stripLabel = el('span', 'settings-updates-strip__label');
-  const progress = el('div', 'settings-updates-progress');
-  progress.setAttribute('role', 'progressbar');
-  progress.setAttribute('aria-label', 'Update download progress');
-  progress.setAttribute('aria-valuemin', '0');
-  progress.setAttribute('aria-valuemax', '100');
-  progress.hidden = true;
-  const progressBar = el('div', 'settings-updates-progress__bar');
-  progress.appendChild(progressBar);
-  strip.append(dot, stripLabel, progress);
-  head.appendChild(strip);
-
-  const versionValue = el('code', 'settings-updates-version');
-  const lastCheckedValue = el('span');
-  const nextCheckValue = el('span');
-  head.appendChild(
-    createSettingsKvList(
-      [
-        { term: 'Installed version', value: versionValue },
-        { term: 'Last checked', value: lastCheckedValue },
-        { term: 'Next automatic check', value: nextCheckValue },
-      ],
-      { searchKey: 'general.updates' },
-    ),
-  );
-  section.appendChild(head);
-
-  const callout = el('p', 'settings-updates__callout');
-  callout.setAttribute('role', 'note');
-  callout.hidden = true;
-  section.appendChild(callout);
-
-  const controls = el('div', 'settings-updates__controls');
-  const channelBlock = el('div', 'settings-updates__channel');
-
-  let suppressChannelEvents = false;
-  const channel = createSettingsRadioRow('Update channel', {
+  const preferences = el('section', 'updates-preferences');
+  preferences.append(el('h3', 'updates-group__heading', 'Minnow preferences'));
+  let changingChannel = false;
+  const channel = createSettingsRadioRow('Release channel', {
     name: 'settings-update-channel',
     searchKey: 'general.updates.channel',
-    description: 'Switching channel takes effect on the next check.',
-    options: [
-      { value: 'stable', label: 'Stable' },
-      { value: 'beta', label: 'Beta' },
-    ],
+    description: 'Minnow downloads updates in the background. Beta includes prerelease builds.',
+    options: [{ value: 'stable', label: 'Stable' }, { value: 'beta', label: 'Beta' }],
     value: 'stable',
-    onChange: (value) => {
-      if (suppressChannelEvents) return;
-      void api.setChannel(value === 'beta' ? 'beta' : 'stable');
+    onChange: value => {
+      const api = getUpdaterApi();
+      if (!api || changingChannel || !center.state.app?.supported) return;
+      changingChannel = true;
+      channelError.textContent = '';
+      render();
+      void api.setChannel(value === 'beta' ? 'beta' : 'stable').catch(() => {
+        channelError.textContent = 'Could not change the release channel. Try again.';
+      }).finally(() => {
+        changingChannel = false;
+        render();
+      });
     },
   });
-  channelBlock.appendChild(channel.row);
+  const channelError = el('p', 'updates-summary');
+  channelError.setAttribute('role', 'status');
+  preferences.append(channel.row, channelError);
+  section.append(header, rows.root, footer, preferences);
+  mount.append(section);
 
-  const betaHint = el('p', 'settings-field-hint settings-updates-beta-hint', BETA_HINT);
-  betaHint.hidden = true;
-  channelBlock.appendChild(betaHint);
-  controls.appendChild(channelBlock);
-
-  const actionsBlock = el('div', 'settings-updates__actions');
-  const actions = createSettingsActionsRow(
-    [
-      {
-        label: 'Check for updates',
-        id: 'settingsUpdatesCheckBtn',
-        onClick: () => {
-          void api.checkNow();
-        },
-      },
-      {
-        label: 'Restart to update',
-        id: 'settingsUpdatesRestartBtn',
-        variant: 'primary',
-        title: RESTART_WARNING,
-        onClick: () => {
-          void api.restart();
-        },
-      },
-    ],
-    { searchKey: 'general.updates' },
-  );
-  const checkBtn = actions.querySelector<HTMLButtonElement>('#settingsUpdatesCheckBtn');
-  const restartBtn = actions.querySelector<HTMLButtonElement>('#settingsUpdatesRestartBtn');
-  if (restartBtn) restartBtn.hidden = true;
-  actionsBlock.appendChild(actions);
-
-  const restartWarning = el('p', 'settings-field-hint settings-updates-restart-warning', RESTART_WARNING);
-  restartWarning.hidden = true;
-  actionsBlock.appendChild(restartWarning);
-  controls.appendChild(actionsBlock);
-  section.appendChild(controls);
-
-  const notes = el('details', 'settings-updates-notes') as HTMLDetailsElement;
-  const notesSummary = el('summary', 'settings-updates-notes__summary');
-  const notesBody = el('div', 'settings-updates-notes__body');
-  notes.append(notesSummary, notesBody);
-  notes.hidden = true;
-  section.appendChild(notes);
-  let renderedNotes = '';
-
-  mount.appendChild(section);
-
-  function applyStatus(status: MinnowUpdaterStatus): void {
-    const strip2 = describeUpdaterStrip(status, navigator.onLine);
-    strip.dataset.tone = strip2.tone;
-    stripLabel.textContent = strip2.label;
-
-    const downloading = status.state === 'downloading';
-    progress.hidden = !downloading;
-    if (downloading) {
-      const percent = status.progressPercent ?? 0;
-      progress.setAttribute('aria-valuenow', String(percent));
-      progressBar.style.setProperty('--mn-progress', String(percent / 100));
-    }
-
-    versionValue.textContent = status.installedVersion;
-    lastCheckedValue.textContent = formatLastChecked(status.lastCheckedAt);
-    nextCheckValue.textContent = status.supported
-      ? formatNextCheck(status.nextCheckAt)
-      : '—';
-
-    const limited = !status.supported;
-    section.classList.toggle('settings-updates--limited', limited);
-    controls.hidden = limited;
-    callout.hidden = !limited;
-    if (limited) {
-      callout.textContent = unsupportedMessage(status);
-    }
-
-    suppressChannelEvents = true;
-    channel.setValue(status.channel);
-    suppressChannelEvents = false;
-    for (const input of channel.inputs) {
-      input.disabled = limited;
-    }
-    betaHint.hidden = status.channel !== 'beta';
-
-    if (checkBtn) {
-      checkBtn.disabled =
-        limited || status.state === 'checking' || status.state === 'downloading';
-    }
-    const ready = status.state === 'ready';
-    if (restartBtn) restartBtn.hidden = !ready;
-    restartWarning.hidden = !ready;
-
-    const hasNotes = Boolean(status.pendingVersion && status.releaseNotes);
-    notes.hidden = !hasNotes;
-    if (hasNotes) {
-      notesSummary.textContent = `What's new in ${status.pendingVersion}`;
-      const nextNotes = status.releaseNotes ?? '';
-      if (nextNotes !== renderedNotes) {
-        renderReleaseNotesMarkdown(notesBody, nextNotes);
-        renderedNotes = nextNotes;
-      }
-    }
+  function render() {
+    const { app, cli, cliChecking, cliRestricted, appChecking } = center.state;
+    const busy = cliChecking || appChecking || app?.state === 'checking';
+    summary.textContent = updateSummary(center);
+    check.disabled = busy || (cliRestricted && !app?.supported);
+    check.textContent = busy ? 'Checking…' : 'Check for updates';
+    const latestCheck = Math.max(app?.lastCheckedAt ?? 0, cli?.checkedAt ?? 0);
+    lastChecked.textContent = 'Last checked: ' + formatLastChecked(latestCheck || null);
+    preferences.hidden = !app?.supported;
+    channel.setValue(app?.channel ?? 'stable');
+    for (const input of channel.inputs) input.disabled = changingChannel;
+    rows.render();
   }
-
-  const stop = watchUpdaterStatus((status) => {
-    if (!section.isConnected) {
-      stop();
-      return;
-    }
-    applyStatus(status);
-  });
+  cleanup = center.subscribe(render);
+  void center.checkCli();
 }

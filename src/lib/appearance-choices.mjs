@@ -9,7 +9,7 @@ export const GRAPHITE_ACCENTS = Object.freeze([
   'teal', 'blue', 'amber', 'violet', 'rose',
   'swamp', 'ocean', 'desert', 'coral', 'human', 'mint', 'mono', 'matrix',
 ]);
-export const COLOR_INTENSITIES = Object.freeze(['none', 'subtle', 'rich']);
+export const DEFAULT_COLOR_INTENSITY = 50;
 export const APPEARANCE_DENSITIES = Object.freeze(['compact', 'cozy', 'roomy']);
 
 export function normalizeGraphiteAccent(value) {
@@ -18,7 +18,10 @@ export function normalizeGraphiteAccent(value) {
 }
 
 export function normalizeColorIntensity(value) {
-  return COLOR_INTENSITIES.includes(value) ? value : 'subtle';
+  if (value === 'none') return 0;
+  if (value === 'rich') return 100;
+  if (typeof value === 'string' && /^\d{1,3}$/.test(value)) value = Number(value);
+  return Number.isInteger(value) && value >= 0 && value <= 100 ? value : DEFAULT_COLOR_INTENSITY;
 }
 
 export function normalizeAppearanceDensity(value) {

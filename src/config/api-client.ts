@@ -176,7 +176,7 @@ export async function getChatHistory(
  * without `outputMessages`/`snapshot`), sub-agent runs, terminal history,
  * injected context and runner timings.
  */
-export type ChatDetail = Pick<Chat, 'injectedContext' | 'runnerTiming'> & {
+export type ChatDetail = Pick<Chat, 'injectedContext' | 'runnerTiming' | 'historyDigest' | 'historyRewriteRevision'> & {
   runs: NonNullable<Chat['runs']>;
   subAgentRuns: NonNullable<Chat['subAgentRuns']>;
   terminalHistory: NonNullable<Chat['terminalHistory']>;

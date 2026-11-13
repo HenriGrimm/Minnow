@@ -140,10 +140,10 @@ test('failed post capture retains uncertainty and blocks another chat from mutat
   const first = await f.prepare('first');
   await assert.rejects(first.effect('uncertain-write', async () => { effects++; }), error => error.checkpointUncertain === true);
   assert.equal(f.coordinator.read('first', 'uncertain-write').state, 'uncertain');
-  await assert.rejects(first.finalize(), /explicit recovery/);
+  await assert.rejects(first.finalize(), { code: 'recovery_required' });
   await reader.finalize();
   const next = await f.prepare('next');
-  await assert.rejects(next.effect('another-write', async () => { effects++; }), /explicit recovery/);
+  await assert.rejects(next.effect('another-write', async () => { effects++; }), { code: 'ownership_conflict' });
   assert.equal(effects, 1);
 });
 
@@ -153,7 +153,7 @@ test('restart converts an executing journal to uncertainty without replaying eff
   f.db.prepare("INSERT INTO chat_workspace_checkpoints SELECT execution_id,'interrupted',chat_id,workspace_key,'executing','{}' FROM chat_workspace_checkpoints LIMIT 1").run();
   f.coordinator.recoverInterrupted();
   assert.equal(f.coordinator.read('first', 'interrupted').state, 'uncertain');
-  const next = await f.prepare('next'); await assert.rejects(next.baseline, /explicit recovery/);
+  const next = await f.prepare('next'); await assert.rejects(next.baseline, { code: 'ownership_conflict' });
 });
 
 test('explicit human retirement includes checkpoint evidence and releases the reviewed uncertain boundary', async t => {

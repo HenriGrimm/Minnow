@@ -65,8 +65,12 @@ test('/plan cannot start work in another chat through native coordination', { ti
   assert.equal(f.repository.readTranscript('foreign').messages.length, 0);
   assert.equal(f.repository.listCommands({ chatId: 'peer' }).length, 0);
   const result = f.repository.getCommand(accepted.body.receipt.commandId);
-  assert.match(result.result.error, /planning only/);
-  assert.equal(result.state, 'failed');
+  const transcript = f.repository.readTranscript('coordinator').messages;
+  const refusals = transcript.filter(row => row.role === 'tool');
+  assert.equal(refusals.length, 2);
+  for (const row of refusals) assert.match(row.content, /planning only/);
+  assert.equal(result.state, 'settled');
+  assert.equal(transcript.at(-1).content, 'Dispatch was refused.');
 });
 
 test('legacy agent HTTP bridge derives exact live owner authority, deduplicates peer input and rejects devices or forged fields', { timeout: 20000 }, async t => {

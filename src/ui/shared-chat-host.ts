@@ -38,11 +38,11 @@ export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<
   for (const name of promptClasses) {
     column?.classList.remove(name);
   }
-  for (const node of column?.querySelectorAll<HTMLElement>(':scope > #toolApprovalHost, :scope > #questionHost, :scope > .input-bar, :scope > #btnStats, :scope > #statsStrip') ?? []) {
+  for (const node of column?.querySelectorAll<HTMLElement>(':scope > :is(.input-bar, #btnStats, #statsStrip)') ?? []) {
     const marker = document.createComment('shared chat return slot');
     node.before(marker); parked.push({ node, marker }); shell.append(node);
   }
-  for (const node of column?.querySelectorAll<HTMLElement>(':scope > .chat-viewport > .chat-viewport-dock, :scope > .chat-viewport > #composerRunStatus') ?? []) {
+  for (const node of column?.querySelectorAll<HTMLElement>(':scope > .chat-viewport > :is(.chat-viewport-dock, .composer-notices)') ?? []) {
     if (options.showJumpToLatest === false && node.matches('.chat-viewport-dock')) continue;
     const marker = document.createComment('shared chat return slot');
     node.before(marker); parked.push({ node, marker }); viewport.append(node);

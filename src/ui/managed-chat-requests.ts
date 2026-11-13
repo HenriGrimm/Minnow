@@ -1,5 +1,6 @@
 import type { Chat } from '../types';
 import { randomUUID } from '../lib/random-id';
+import { isPairedDevice } from '../api/session-token';
 import type { ChatRequest } from '../../server/chats/contracts';
 import { readInterruptedExecution, retireInterruptedExecution, readManagedChatRequestPage, respondManagedChatRequest } from '../chat/managed-chat-client';
 import { acknowledgeChatViewed } from '../notifications/acknowledge';
@@ -232,52 +233,51 @@ function descendants(chat: Chat): Chat[] {
   for (let index = 0; index < queue.length; index++) { const child = queue[index]!; result.push(child); queue.push(...(graph.children.get(child.id) ?? [])); }
   return result;
 }
-function recoveryControls(chatId: string, executionId: string): HTMLElement {
-  const panel = document.createElement('div'), info = document.createElement('p');
+function recoveryControls(chatId: string, executionId: string, needsConfirmation: boolean): HTMLElement {
+  const panel = document.createElement('div');
+  panel.className = 'managed-chat-recovery';
+  const info = document.createElement('p');
   info.setAttribute('role', 'status');
-  info.textContent = 'A tool may have run before the interruption. Check its effects before starting more work.';
-  const inspect = button('Review interrupted work', async () => {
-    inspect.disabled = true;
+  panel.append(info);
+  if (!needsConfirmation) {
+    info.textContent = 'Waiting for interrupted work to stop…';
+    return panel;
+  }
+  const paired = isPairedDevice();
+  const guidance = paired
+    ? 'Confirm the interrupted work has stopped on the host computer to continue.'
+    : 'If the interrupted work has stopped, you can keep any changes and continue this chat.';
+  info.textContent = guidance;
+  if (paired) return panel;
+  const requestId = randomUUID();
+  let review: Awaited<ReturnType<typeof readInterruptedExecution>> | undefined;
+  const continueButton = button('Confirm stopped', async () => {
+    continueButton.disabled = true;
+    info.textContent = 'Getting this chat ready…';
     try {
-      const review = await readInterruptedExecution(chatId);
-      if (!panel.isConnected || review.executionId !== executionId) { inspect.disabled = false; return; }
-      const items = document.createElement('ul');
-      for (const op of review.operations) {
-        const item = document.createElement('li');
-        item.textContent = [op.toolName, op.targets.join(', '), op.logPath, op.receiptId ? 'Host result recorded' : 'Outcome unknown', op.invocationId].filter(Boolean).join(' · ');
-        items.append(item);
+      review ??= await readInterruptedExecution(chatId);
+      if (!panel.isConnected || review.executionId !== executionId) {
+        continueButton.disabled = false;
+        info.textContent = guidance;
+        return;
       }
-      for (const checkpoint of review.checkpoints ?? []) {
-        const item = document.createElement('li');
-        item.textContent = ['Unsettled filesystem checkpoint', checkpoint.checkpointId,
-          checkpoint.cwd, checkpoint.pre?.sha ? `Before: ${checkpoint.pre.sha}` : 'Baseline unavailable'].filter(Boolean).join(' · ');
-        items.append(item);
-      }
-      const label = document.createElement('label'), note = document.createElement('textarea');
-      label.textContent = 'Verify that the operation has stopped. Check its diff in Source Control or its log in Terminal, then record what you found.';
-      note.maxLength = 2000; label.append(note);
-      const requestId = randomUUID();
-      const retire = button('Record findings and retire attempt', async () => {
-        retire.disabled = true; note.disabled = true;
-        try {
-          await retireInterruptedExecution(chatId, review, requestId, note.value);
-          panel.replaceChildren(info); info.textContent = 'Attempt retired. Start new work from the state you verified.';
-        } catch (error) {
-          note.disabled = false; retire.disabled = false; info.textContent = error instanceof Error ? error.message : 'Recovery failed.';
-          inspect.disabled = false; inspect.textContent = 'Refresh recovery details'; panel.append(inspect);
-        }
-      });
-      retire.disabled = true; note.addEventListener('input', () => { retire.disabled = !note.value.trim(); });
-      info.textContent = review.checkout ? `Inspect the checkout at ${review.checkout}.` : 'Inspect the original checkout.';
-      panel.replaceChildren(info, items, label, retire); note.focus();
-    } catch (error) { inspect.disabled = false; info.textContent = error instanceof Error ? error.message : 'Recovery details unavailable.'; }
+      await retireInterruptedExecution(chatId, review, requestId);
+      continueButton.remove();
+      info.textContent = 'You can continue this chat.';
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Refresh')) review = undefined;
+      continueButton.disabled = false;
+      info.textContent = error instanceof Error ? error.message : 'Could not continue this chat. Try again.';
+    }
   });
-  panel.append(info, inspect); return panel;
+  panel.append(continueButton);
+  return panel;
 }
 function syncControls(chat: Chat, view: ChatRequestsView): void {
   const attention = descendants(chat).filter(child => child.agentRequestSummary?.length);
   let controls = view.host.querySelector<HTMLElement>(':scope > .managed-chat-scopes');
-  const key = JSON.stringify([chat.agentExecution?.executionId, chat.agentExecution?.status, attention.map(item => [item.id, item.agentRequestSummary])]);
+  const execution = chat.agentExecution;
+  const key = JSON.stringify([execution?.executionId, execution?.status, execution?.needsManualRecovery, attention.map(item => [item.id, item.agentRequestSummary])]);
   if (controls?.dataset.key === key) return;
   if (!controls) { controls = document.createElement('div'); controls.className = 'managed-chat-scopes'; view.host.prepend(controls); }
   controls.dataset.key = key; controls.replaceChildren();
@@ -285,14 +285,14 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
     const first = attention[0]!, requestId = first.agentRequestSummary![0]!.requestId;
     controls.append(button(`${attention.length} agent${attention.length === 1 ? '' : 's'} need${attention.length === 1 ? 's' : ''} your attention`, () => void import('../os/chat-launch').then(async module => { await module.launchCodeWithChat(first.id); await focusManagedChatRequest(first.id, requestId); })));
   }
-  if (chat.agentExecution?.status === 'recovery_required') controls.append(recoveryControls(chat.id, chat.agentExecution.executionId));
+  if (execution?.status === 'recovery_required') controls.append(recoveryControls(chat.id, execution.executionId, execution.needsManualRecovery === true));
   controls.hidden = !controls.children.length;
 }
 
 function composerApprovalSlot(mount: HTMLElement): HTMLElement | null {
   const shared = mount.closest('.shared-chat-host');
-  if (shared) return shared.querySelector(':scope > #toolApprovalHost');
-  if (mount.id === 'chatArea') return mount.closest('#mainColumn')?.querySelector(':scope > #toolApprovalHost') ?? null;
+  if (shared) return shared.querySelector('#toolApprovalHost');
+  if (mount.id === 'chatArea') return mount.closest('#mainColumn')?.querySelector('#toolApprovalHost') ?? null;
   if (mount.id === 'chatAppMessageCol') return mount.closest('#chatView')?.querySelector('#chatAppToolApprovalHost') ?? null;
   return null;
 }

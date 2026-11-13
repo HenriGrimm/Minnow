@@ -6,7 +6,7 @@ import {
   type GenerationEndEvent,
 } from '../api/generations';
 import { StreamingContentAccumulator } from '../api/message-content';
-import { thinkingToCompletionBody } from '../agents/thinking-to-body';
+import { applyUtilityThinkingOff } from '../agents/merge-thinking-body';
 import { modelCache } from '../app-state';
 import { getPendingAttachments } from '../attachments/store';
 import {
@@ -116,22 +116,6 @@ function endErrorMessage(event?: GenerationEndEvent): string {
   return raw ? formatGenerationErrorMessage(raw) : EXPAND_FAILED_MESSAGE;
 }
 
-/** Thinking is dead weight here — the answer is prose in `content`. */
-function thinkingOffPatch(
-  providerApiKind: Parameters<typeof thinkingToCompletionBody>[1],
-  providerId: string,
-  modelId: string,
-): Record<string, unknown> {
-  const modelRow = modelId
-    ? modelCache.get(encodeModelSelectKey(providerId, modelId))
-    : undefined;
-  const capabilities =
-    modelRow?.capabilities ??
-    (modelRow ? catalogCapabilitiesFromRow(modelRow) : undefined);
-  const { body } = thinkingToCompletionBody('off', providerApiKind, capabilities, null, modelId);
-  return body as Record<string, unknown>;
-}
-
 // ── Fetch ────────────────────────────────────────────────────────────────────
 
 /** Stream one expansion of `draft`; resolves with the final sanitized prompt. */
@@ -159,14 +143,17 @@ export async function fetchExpandedPrompt(
   } catch (err) {
     return { text: null, error: errorMessageFrom(err) };
   }
+  const modelRow = modelCache.get(encodeModelSelectKey(provider.id, binding.modelId));
+  const capabilities =
+    modelRow?.capabilities ?? (modelRow ? catalogCapabilitiesFromRow(modelRow) : undefined);
   const body: Record<string, unknown> = {
     model: binding.modelId,
     messages: buildExpandPromptMessages(draft, attachments),
     temperature: EXPAND_TEMPERATURE,
     max_tokens: EXPAND_MAX_TOKENS,
     stream: true,
-    ...thinkingOffPatch(provider.apiKind, provider.id, binding.modelId),
   };
+  applyUtilityThinkingOff(body, provider, capabilities);
 
   let generationId: string;
   try {

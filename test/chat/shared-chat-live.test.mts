@@ -313,6 +313,32 @@ test('tool results, subsequent rounds and metadata retain existing rows and expa
   } finally { observer.dispose(); }
 });
 
+test('a coalesced replay frame refreshes the rewritten prefix before showing new output', async () => {
+  const chat = setup();
+  chat.chatCommandVersion = 1;
+  chat.historyRewriteRevision = 0;
+  chat.history = Array.from({ length: 25 }, (_, index) => ({ role: 'user', content: `Old message ${index}` }));
+  const history = [{ role: 'user' as const, content: 'Edited message' }, ...chat.history.slice(1)];
+  const digest = 'b'.repeat(64);
+  let reads = 0;
+  globalThis.fetch = async url => {
+    assert.equal(String(url), `/api/config/sessions/history/${CHAT}?detail=1`);
+    reads++;
+    return Response.json({ chatId: CHAT, history, detail: { historyDigest: digest, historyRewriteRevision: 32 } });
+  };
+  const observer = createSharedChatObserver(() => {});
+  try {
+    const frame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, running: false,
+      fields: { historyDigest: digest, historyRewriteRevision: 32 },
+      history: { start: 5, length: 25, messages: history.slice(5) } };
+    await observer.receive(frame);
+    assert.deepEqual(chat.history, history);
+    assert.equal(chat.historyDigest, digest);
+    await observer.receive({ ...frame, sequence: 2 });
+    assert.equal(reads, 1);
+  } finally { observer.dispose(); }
+});
+
 test('metadata refreshes retain the current streaming row but real history edits repaint', async () => {
   const chat = setup(); chat.chatCommandVersion = 1;
   globalThis.fetch = async () => Response.json({ runs: [] });

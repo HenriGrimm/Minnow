@@ -138,11 +138,11 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['login', 'sign in', 'authentication', 'gh', 'pull requests', 'CI', 'repository'],
     description: 'Connect the GitHub account shared by pull requests, CI and issue sync.',
   }),
-  field('general.updates', 'App updates', 'general', 'general', {
-    keywords: ['update', 'version', 'upgrade', 'beta', 'release', 'restart', 'auto-update'],
-    description: 'Stay on the latest build. Downloads run in the background; restart when you are ready.',
+  field('general.updates', 'Software updates', 'general', 'general', {
+    keywords: ['update', 'version', 'upgrade', 'beta', 'release', 'restart', 'auto-update', 'cli', 'codex', 'claude', 'cursor'],
+    description: 'Check Minnow and installed CLI providers for new releases.',
   }),
-  field('general.updates.channel', 'Update channel', 'general', 'general', {
+  field('general.updates.channel', 'Release channel', 'general', 'general', {
     keywords: ['beta', 'stable', 'prerelease', 'channel'],
     description: 'Choose Stable releases or Beta pre-releases for auto-update.',
   }),
@@ -294,7 +294,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['dark mode', 'light mode', 'follow system'],
   }),
   field('appearance.theme.color', 'Surface tint', 'appearance', 'appearance', {
-    keywords: ['tint', 'surface', 'subtle', 'rich'],
+    keywords: ['tint', 'surface', 'intensity', 'background color'],
   }),
   field('appearance.theme.accent', 'Accent color', 'appearance', 'appearance', {
     keywords: ['swatch', 'custom color', 'hex', 'color picker'],

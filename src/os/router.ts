@@ -202,6 +202,9 @@ export function hashForCodeSection(section: CodeSectionId): string {
 
 function hashForRoute(route: OsRoute): string {
   if (route.view === 'workspaces') return '#/workspaces';
+  if (route.appId === 'settings' && route.settingsSection) {
+    return `#/app/settings/${route.settingsSection}`;
+  }
   if (route.appId === 'models' && route.modelsSection) {
     return `#/app/models/${route.modelsSection}`;
   }
@@ -387,30 +390,23 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
         ? 'chat'
         : (options?.codeSection ?? 'chat')
       : undefined;
-  const next = appId === 'models' && options?.modelsSection
-      ? `#/app/models/${options.modelsSection}`
-      : appId === 'brain' && options?.brainSection
-        ? `#/app/brain/${options.brainSection}`
-        : appId === 'code'
-          ? options?.chatId?.trim() ? chatLink(options.chatId.trim()) : hashForCodeSection(codeSection ?? 'chat')
-          : `#/app/${appId}`;
+  const route: OsRoute = {
+    view: 'app',
+    appId,
+    settingsSection: options?.settingsSection,
+    modelsSection: options?.modelsSection,
+    brainSection: options?.brainSection,
+    codeSection,
+  };
+  const chatId = options?.chatId?.trim();
+  const next = appId === 'code' && chatId ? chatLink(chatId) : hashForRoute(route);
   if (window.location.hash !== next) {
     pendingLaunchOptions = options;
     window.location.hash = next;
     applyRouteFromHash();
     return;
   }
-  applyRoute(
-    {
-      view: 'app',
-      appId,
-      settingsSection: options?.settingsSection,
-      modelsSection: options?.modelsSection,
-      brainSection: options?.brainSection,
-      codeSection,
-    },
-    options,
-  );
+  applyRoute(route, options);
 }
 
 /** Attach the single hashchange listener and sync the initial route. */

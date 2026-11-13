@@ -43,10 +43,10 @@ export interface OutboxRecord {
 }
 export interface InterruptedExecutionReview {
   executionId: string; ownerReleased: boolean; revision: string; checkout: string | null;
-  operations: { invocationId: string; toolName: string; targets: string[]; logPath?: string; receiptId: string | null }[];
+  operations: { invocationId: string; toolName: string; targets: string[]; logPath?: string; receiptId: string | null; dispatchedToHost?: true }[];
   checkpoints: Array<{ checkpointId: string; version?: number; cwd?: string; pre?: { sha?: string; headSha?: string } }>;
 }
-export interface RecoveryDecision { clientRequestId: string; revision: string; note: string }
+export interface RecoveryDecision { clientRequestId: string; revision: string; note?: string }
 export interface ToolIntentInput {
   invocationId: string; chatId: string; executionId: string; toolCallId: string; toolName: string; input: unknown;
 }
@@ -71,6 +71,7 @@ export interface ChatRepository {
   setAutoResumeBlocked(chatId: string, blocked: boolean): void;
   atomic<T>(work: (repository: ChatRepository) => T): T;
   createChat(input: { id: string; [key: string]: unknown }): ChatShell;
+  rewriteHistory(input: { chatId: string; index: number; expectedHistoryDigest: string }): number;
   forkChat(input: { sourceChatId: string; messageId: string; expectedRevision: number;
     chat: { id: string; [key: string]: unknown }; profile: ProfileInput; projectId: string }): {
     chat: ChatShell; origin: { sourceChatId: string; sourceMessageId: string; sourceRevision: number; sourceCommandId?: string; createdAt: number };
@@ -116,8 +117,9 @@ export interface ChatRepository {
   releaseLease(chatId: string, fence: ExecutionFence): void;
   updateExecution(executionId: string, update: { status?: ChatExecutionState; result?: unknown }, options: { fence: ExecutionFence }): ExecutionRecord;
   inspectRecovery(chatId: string): InterruptedExecutionReview;
-  retireInterruptedExecution(chatId: string, input: RecoveryDecision & { executionId: string }, verifyIdle: (execution: ExecutionRecord) => boolean):
-    { decision: RecoveryDecision; operations: InterruptedExecutionReview['operations']; retiredAt: number };
+  retireInterruptedExecution(chatId: string, input: RecoveryDecision & { executionId: string }, verifyIdle: (execution: ExecutionRecord) => boolean,
+    options?: { quiescence: { verified: true; source: string; checkedAt: number } }):
+    { decision: RecoveryDecision; operations: InterruptedExecutionReview['operations']; checkpoints: InterruptedExecutionReview['checkpoints']; retiredAt: number };
   recoverExecution(executionId: string, options: {
     fence: ExecutionFence;
     quiescence: { verified: true; source: string; checkedAt: number; [key: string]: unknown };

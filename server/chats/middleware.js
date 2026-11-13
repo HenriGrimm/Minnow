@@ -119,7 +119,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         send(200, { receipt: await service.readCommand(caller, record.commandId) }); return;
       }
       const legacy = /^\/api\/chats\/([A-Za-z0-9_-]{1,160})\/legacy\/([A-Za-z0-9_-]{1,160})\/continue$/.exec(url.pathname);
-      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|fork|requests|ack|recovery|workspace|ordinary-routing)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
+      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|fork|history|requests|ack|recovery|workspace|ordinary-routing)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
       if (!match) { send(404, { error: { code: 'chat_not_found', message: 'Conversation operation does not exist', retryable: false } }); return; }
       const [, chatId, operation, requestId] = match;
       if (!operation && req.method === 'DELETE') {
@@ -178,14 +178,13 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
           const body = await readBody(req, 8192); fields(body, ['executionId', 'revision', 'note', 'clientRequestId']);
           if (!ID.test(body.executionId ?? '') || !ID.test(body.clientRequestId ?? '') || typeof body.revision !== 'string') fail('A recovery execution, review revision and request identity are required.');
           const interrupted = repository.getExecution(body.executionId);
-          if (interrupted?.chatId === chatId && interrupted.status === 'recovery_required' &&
-              repository.listUnsettledToolInvocations(interrupted.executionId).some(op => op.toolName === 'execute_command') &&
-              await runtime.hasRunningRecoveryCommand?.(chatId)) {
-            throw new ChatContractError('ownership_conflict', 'A terminal command for this chat is still running. Check its log and wait for it to finish or stop it.');
+          if (interrupted?.chatId === chatId && interrupted.status === 'recovery_required' && await runtime.hasRunningRecoveryCommand?.(chatId)) {
+            throw new ChatContractError('ownership_conflict', 'A terminal command is still running. Wait for it to finish or stop it in Terminal.');
           }
           const receipt = repository.retireInterruptedExecution(chatId, body, execution =>
-            !service.ownsExecution(execution.executionId) && !runtime.hasExternalExecution(chatId));
+            !service.ownsExecution(execution.executionId) && !runtime.hasPendingRecoveryEffects?.(execution.executionId) && !runtime.hasExternalExecution(chatId));
           const retired = repository.getExecution(body.executionId);
+          runtime.clearManualRecovery?.(chatId);
           if (retired.runId) await runtime.taskDelivery.reconcileRemovedTask(retired);
           presentation.changed(chatId); send(200, { receipt }); return;
         }
@@ -201,7 +200,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         send(200, { chatId, available: true }); return;
       }
       if (!operation && req.method === 'GET' && url.searchParams.get('view') === 'activity') {
-        send(200, { chatId, fields: repository.getActivity(chatId) }); return;
+        send(200, { chatId, fields: presentation.activity(chatId) }); return;
       }
       const snapshot = receipt => ({ ...(receipt ? { receipt } : {}), frame: presentation.frame(chatId) });
       if (operation === 'ordinary-routing' && !requestId) {
@@ -222,6 +221,11 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         const body = await readBody(req); fields(body, ['messageId', 'expectedRevision', 'message', 'selection', 'clientRequestId']);
         const receipt = await service.fork(caller, { ...body, chatId });
         presentation.changed(receipt.chatId); send(202, { receipt }); return;
+      }
+      if (operation === 'history' && req.method === 'POST' && !requestId) {
+        const body = await readBody(req); fields(body, ['action', 'index', 'expectedHistoryDigest', 'clientRequestId', 'message', 'text']);
+        const receipt = await service.rewriteHistory(caller, { ...body, chatId });
+        presentation.changed(chatId); send(receipt.commandId ? 202 : 200, snapshot(receipt)); return;
       }
       if (operation === 'ack' && req.method === 'POST' && !requestId) {
         const body = await readBody(req); fields(body, ['messageSeq', 'executionId']);

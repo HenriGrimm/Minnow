@@ -152,7 +152,7 @@ function buildHeader(): HTMLElement {
     el('div', { class: 'issues-extra-filters' }, [scopeLabel, scope, groupBy, filesBtn, capture]),
   ]);
 
-  return el('header', { class: 'issues-header' }, [brand, controls]);
+  return el('header', { class: 'issues-header', 'data-app-titlebar': '' }, [brand, controls]);
 }
 
 function buildViewSelector(): HTMLElement {

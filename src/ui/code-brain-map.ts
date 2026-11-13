@@ -72,7 +72,7 @@ export async function openCodeMapChat(request: CodeMapChatRequest): Promise<void
   setCodeMapChatId(result.chatId);
   const column = document.getElementById('mainColumn');
   for (const element of column?.querySelectorAll<HTMLElement>(
-    ':scope > .tool-approval-host, :scope > .question-host, :scope > .input-bar',
+    ':scope > .chat-viewport > .composer-notices > :is(.tool-approval-host, .question-host), :scope > .input-bar',
   ) ?? []) {
     const parent = element.parentElement!;
     composerHomes.push({ element, parent, next: element.nextSibling });

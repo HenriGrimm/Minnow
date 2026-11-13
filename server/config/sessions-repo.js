@@ -388,7 +388,10 @@ function stitchChat(row, children) {
   if (children.subAgentRuns.length) chat.subAgentRuns = children.subAgentRuns;
   if (children.activeLoops.length) chat.activeLoops = children.activeLoops;
 
-  if (isManagedConversation(getSessionsDb(), row.id)) Object.assign(chat, readChatActivity(getSessionsDb(), row.id));
+  if (chat.chatCommandVersion === 1) {
+    const db = getSessionsDb();
+    Object.assign(chat, readChatActivity(db, row.id), readManagedHistoryVersion(db, row.id, row.history_digest));
+  }
 
   return chat;
 }
@@ -1478,7 +1481,7 @@ export function readChatDetail(chatId) {
   const id = typeof chatId === 'string' ? chatId.trim() : '';
   const db = getSessionsDb();
   const stmts = getReadStmts(db);
-  const row = id ? db.prepare('SELECT meta_json FROM chats WHERE id = ?').get(id) : null;
+  const row = id ? db.prepare('SELECT meta_json,history_digest FROM chats WHERE id = ?').get(id) : null;
   /** @type {Record<string, unknown>} */
   const detail = {
     runs: id ? parsePayloadRows(stmts.runsForChat.all(id)) : [],
@@ -1489,7 +1492,13 @@ export function readChatDetail(chatId) {
   for (const key of CHAT_DETAIL_META_KEYS) {
     if (meta && meta[key] !== undefined) detail[key] = meta[key];
   }
+  if (row) Object.assign(detail, readManagedHistoryVersion(db, id, row.history_digest));
   return detail;
+}
+
+function readManagedHistoryVersion(db, id, historyDigest) {
+  const state = db.prepare("SELECT json_extract(meta_json,'$.historyRewrite.revision') AS revision FROM chat_conversation_state WHERE chat_id=?").get(id);
+  return state ? { historyDigest, historyRewriteRevision: state.revision ?? 0 } : {};
 }
 
 /**

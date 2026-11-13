@@ -40,6 +40,7 @@ async function fixture(t, options = {}) {
     toolEffects: { read_file: 'read', save_file: 'file-write' }, workspaceIds: registry.entries.map(row => row.workspaceId),
     fileWriteScope: 'workspace',
     capabilities: options.capabilities ?? ['chat.read', 'chat.send', 'chat.stop', 'request.respond', 'execution.host'],
+    ...options.policyOverrides?.(),
   });
   const context = createChatContext({ repository, resolvePolicyInput, validateRoot: async () => {}, runGit: async () => ({ code: 1, stdout: '' }) });
   const project = await context.project(workspace);
@@ -749,6 +750,41 @@ test('delegated Plan profiles cannot widen through human mode configuration', as
   assert.equal(f.repository.getLatestProfile('child').profileVersion, 2);
 });
 
+test('a saved chat can send when the MCP catalog gains a read-only annotation', async t => {
+  const name = 'mcp__docs__read';
+  let effect = 'unknown';
+  const f = await fixture(t, { policyOverrides: () => ({
+    toolPermissions: { [name]: 'full' }, toolEffects: { [name]: effect },
+  }) });
+  const original = await f.context.resolveTarget('chat');
+  f.repository.saveProfile('chat', { profileId: 'profile-chat', profileVersion: 1, snapshot: {
+    policy: original.policy, modelSelection: { providerId: 'provider', modelId: 'model' },
+  } });
+  effect = 'read';
+  const accepted = await f.request('/api/chats/chat/commands', { method: 'POST', body: {
+    action: 'send', text: 'Continue the conversation', clientRequestId: 'after-mcp-annotation',
+  } });
+  assert.equal(accepted.status, 202, JSON.stringify(accepted.body));
+  assert.equal(f.repository.getCommand(accepted.body.receipt.commandId).captured.policy.toolEffects[name], 'unknown');
+});
+
+test('a delegated chat can change models while live permissions are narrower than its saved ceiling', async t => {
+  let permissionLevel = 'full';
+  const f = await fixture(t, { policyOverrides: () => ({ permissionLevel }) });
+  await savedChild(f);
+  const prior = f.repository.getLatestProfile('child');
+  permissionLevel = 'manual';
+  const selection = { providerId: 'provider', modelId: 'next' };
+  const changed = await f.request('/api/chats/child/configuration', { method: 'PATCH', body: {
+    selection, expectedProfileVersion: 1, clientRequestId: 'child-model-under-manual',
+  } });
+  assert.equal(changed.status, 200, JSON.stringify(changed.body));
+  const next = f.repository.getLatestProfile('child');
+  assert.deepEqual(next.snapshot.modelSelection, { ...selection, options: {} });
+  assert.deepEqual(next.snapshot.policy, prior.snapshot.policy);
+  assert.equal((await f.context.resolveTarget('child')).policy.permissionLevel, 'manual');
+});
+
 test('ordinary rollout is advertised separately and human admission cannot accidentally promote a legacy root', async t => {
   const f = await fixture(t);
   const caps = await f.request('/api/chats/capabilities');
@@ -810,6 +846,78 @@ test('canonical replay forks one immutable prefix and saved options without exec
   assert.equal(conflict.body.error.code, 'idempotency_conflict');
   const stale = await f.request('/api/chats/chat/fork', { method: 'POST', body: { ...body, expectedRevision: source.revision - 1, clientRequestId: 'stale-fork' } });
   assert.equal(stale.body.error.code, 'stale_revision');
+});
+
+test('same-chat replay, edit and deletion update the transcript atomically and retain effect records', async t => {
+  const f = await fixture(t);
+  const received = [];
+  f.host(async input => {
+    const { command, fence } = input;
+    received.push(command.message);
+    f.repository.appendMessage('chat', { role: 'user', content: command.message, provenance: command.provenance,
+      ...(command.images ? { images: command.images } : {}) }, { fence, commandId: command.commandId, messageId: 'input-' + command.commandId });
+    f.repository.appendMessage('chat', { role: 'assistant', content: 'Answer to ' + command.message }, { fence, messageId: 'reply-' + command.commandId });
+    return { outcome: 'no_report' };
+  });
+  const send = async (text, images) => {
+    const response = await f.request('/api/chats/chat/commands', { method: 'POST', body: { action: 'send', text, images } });
+    assert.equal(response.status, 202, JSON.stringify(response.body));
+    await f.service.idle('chat');
+    return response.body.receipt;
+  };
+  await send('Keep this');
+  const images = [{ name: 'pic.png', dataUrl: 'data:image/png;base64,YWJjZA==' }];
+  const original = await send('Original', images);
+  await send('Remove this');
+  const route = '/api/chats/chat/history';
+  const digest = () => f.repository.getChat('chat').historyDigest;
+  const transcript = () => f.repository.readTranscript('chat');
+  const body = { action: 'replay', index: 2, expectedHistoryDigest: digest(), clientRequestId: 'replay-here' };
+  const before = transcript();
+  const putOutbox = f.repository.putOutbox;
+  f.repository.putOutbox = () => { throw new Error('Injected receipt failure'); };
+  assert.equal((await f.request(route, { method: 'POST', body })).status, 500);
+  assert.deepEqual(transcript(), before);
+  f.repository.putOutbox = putOutbox;
+  const replay = await f.request(route, { method: 'POST', body });
+  assert.equal(replay.status, 202, JSON.stringify(replay.body));
+  assert.equal(replay.body.receipt.chatId, 'chat');
+  await f.service.idle('chat');
+  assert.equal((await f.request(route, { method: 'POST', body })).body.receipt.replayed, true);
+  assert.equal((await f.request(route, { method: 'POST', body: { ...body, clientRequestId: 'stale-history' } })).body.error.code, 'stale_revision');
+  assert.deepEqual(transcript().messages.slice(0, 2), before.messages.slice(0, 2));
+  assert.ok(transcript().rowIds[2] > before.rowIds.at(-1), 'removed activity sequence numbers cannot be reused');
+  assert.equal(f.repository.getCommand(original.commandId).state, 'settled');
+  assert.equal(f.repository.readMessageByIdentity('chat', 'input-' + original.commandId), null);
+  assert.deepEqual(transcript().messages[2].images, images);
+  const edited = await f.request(route, { method: 'POST', body: { action: 'edit', index: 2, expectedHistoryDigest: digest(),
+    clientRequestId: 'edit-here', message: 'Revised', text: 'Revised' } });
+  assert.equal(edited.status, 202, JSON.stringify(edited.body));
+  await f.service.idle('chat');
+  assert.deepEqual(transcript().messages[2].images, images);
+  const deleted = await f.request(route, { method: 'POST', body: { action: 'delete', index: 2, expectedHistoryDigest: digest(), clientRequestId: 'delete-here' } });
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  assert.deepEqual(transcript().messages, before.messages.slice(0, 2));
+  assert.equal(deleted.body.frame.fields.agentExecution, null);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM messages_fts WHERE chat_id='chat'").get().n, 2);
+  assert.deepEqual(received, ['Keep this', 'Original', 'Remove this', 'Original', 'Revised']);
+});
+
+test('same-chat deletion cannot remove an interrupted execution with unresolved effects', async t => {
+  const f = await fixture(t);
+  f.host(async input => { f.append(input); return { outcome: 'no_report' }; });
+  await f.request('/api/chats/chat/commands', { method: 'POST', body: { action: 'send', text: 'Original' } });
+  await f.service.idle('chat');
+  const fence = f.repository.claimExecution({ chatId: 'chat', executionId: 'history-interruption', ownerId: 'test' });
+  f.repository.recordToolIntent({ chatId: 'chat', executionId: fence.executionId, invocationId: 'history-effect',
+    toolCallId: 'write', toolName: 'save_file', input: {} }, { fence });
+  f.repository.recoverExecution(fence.executionId, { fence, quiescence: { verified: true, source: 'fixture', checkedAt: 1 } });
+  const before = f.repository.readTranscript('chat');
+  const response = await f.request('/api/chats/chat/history', { method: 'POST', body: { action: 'delete', index: 0,
+    expectedHistoryDigest: f.repository.getChat('chat').historyDigest, clientRequestId: 'unsafe-delete' } });
+  assert.equal(response.body.error.code, 'recovery_required');
+  assert.deepEqual(f.repository.readTranscript('chat'), before);
+  assert.equal(f.repository.getToolInvocation('history-effect').state, 'intent');
 });
 
 test('canonical fork receipt failure rolls back prefix/profile/input, and malformed atomic tool groups stay blocked', async t => {

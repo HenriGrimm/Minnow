@@ -1,8 +1,6 @@
 import {
   APPEARANCE_DENSITIES,
-  COLOR_INTENSITIES,
   type AppearanceDensity,
-  type ColorIntensity,
 } from '../lib/appearance-choices.mjs';
 import { readGraphitePreferences, setGraphitePreference } from '../appearance/graphite-preferences';
 import { subscribeCustomThemeChanges } from '../appearance/custom-theme';
@@ -18,7 +16,6 @@ import { createSegmentedControl, createSwitch } from './components';
 import { setActivityShimmerText } from './activity-shimmer';
 import { applyResolvedTheme } from './theme';
 
-const TINT_LABELS = { none: 'Off', subtle: 'Subtle', rich: 'Rich' };
 const DENSITY_LABELS = { compact: 'Compact', cozy: 'Cozy', roomy: 'Roomy' };
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -69,18 +66,27 @@ export function appendAppearanceThemePresets(mount: HTMLElement): () => void {
 
   const colorRow = appearanceRow('Surface tint', 'How much accent color reaches backgrounds and selections.');
   colorRow.dataset.settingsSearchKey = 'appearance.theme.color';
-  const color = createSegmentedControl({
-    className: 'graphite-appearance-segment',
-    ariaLabel: 'Surface tint',
-    size: 'sm',
-    options: COLOR_INTENSITIES.map((value) => ({ value, label: TINT_LABELS[value] })),
-    value: readGraphitePreferences().colorIntensity,
-    onChange(value) {
-      setGraphitePreference('colorIntensity', value as ColorIntensity);
-      applyResolvedTheme(getStoredTheme());
-    },
+  const tintControl = el('div', 'graphite-appearance-tint');
+  const tint = el('input', 'graphite-appearance-tint__range');
+  tint.type = 'range';
+  tint.min = '0';
+  tint.max = '100';
+  tint.value = String(readGraphitePreferences().colorIntensity);
+  tint.setAttribute('aria-label', 'Surface tint');
+  const tintValue = el('span', 'graphite-appearance-tint__value');
+  tintValue.setAttribute('aria-hidden', 'true');
+  function showTintValue(): void {
+    tintValue.textContent = `${tint.value}%`;
+    tint.setAttribute('aria-valuetext', tintValue.textContent);
+  }
+  showTintValue();
+  tint.addEventListener('input', () => {
+    showTintValue();
+    setGraphitePreference('colorIntensity', tint.valueAsNumber);
   });
-  colorRow.append(color.root);
+  tint.addEventListener('change', () => applyResolvedTheme(getStoredTheme()));
+  tintControl.append(tint, tintValue);
+  colorRow.append(tintControl);
 
   const accentRow = appearanceRow('Accent color');
   accentRow.classList.add('graphite-appearance-row--accents');

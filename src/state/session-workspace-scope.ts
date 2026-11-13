@@ -43,6 +43,8 @@ export function isChatArchived(chat: Chat): boolean {
  */
 export function chatHasListableContent(chat: Chat): boolean {
   if (chat.agentConversation?.version === 1) return true;
+  // A history rewrite can temporarily or permanently empty a saved chat.
+  if (chat.chatCommandVersion === 1 && (chat.historyRewriteRevision ?? 0) > 0) return true;
   if (isChatArchived(chat)) return true;
   if (hasComposerDraft(chat)) return true;
   // A Super Plan chat is the home of a server-side run and never has a

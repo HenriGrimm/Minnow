@@ -139,12 +139,13 @@ describe('code app settings (MIN-417)', () => {
     document.getElementById('settingsView')?.insertAdjacentHTML('beforeend', `
       <div class="settings-category" data-category="general">
         <section id="settingsSection-general" class="settings-area" data-area="general"></section>
+        <section id="settingsSection-updates" class="settings-area" data-area="updates"></section>
       </div>
       <div class="settings-category" data-category="appearance">
         <section id="settingsSection-appearance" class="settings-area" data-area="appearance"></section>
       </div>
     `);
-    for (const section of ['general', 'appearance', 'general']) {
+    for (const section of ['general', 'appearance', 'updates', 'general']) {
       window.location.hash = `#/app/settings/${section}`;
       syncOsRouteFromHashForTests();
       const active = `#settingsView .settings-category.is-active #settingsSection-${section}.is-active`;

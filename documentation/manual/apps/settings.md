@@ -23,7 +23,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 **Startup & setup** controls desktop tray behavior and launch at startup. It also links to common settings and lets you run setup again.
 
-**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, fonts, and colors. Choose **Dark**, **Light**, or **System** mode. Select an **Accent color** swatch or choose **Custom…** to use the color picker or enter a hex value. **Surface tint** controls how much of the accent reaches backgrounds and selections. In a browser, use the browser's zoom controls.
+**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, fonts, and colors. Choose **Dark**, **Light**, or **System** mode. Select an **Accent color** swatch or choose **Custom…** to use the color picker or enter a hex value. Drag the **Surface tint** slider from 0% to 100% to adjust how much of the accent reaches backgrounds and selections. In a browser, use the browser's zoom controls.
 
 Choose **Advanced colors → Edit colors…** to change individual interface colors. Select an element, set its color and opacity, then apply your changes. You can reset individual colors, pause your overrides, or import and export a palette under **Palette options**.
 
@@ -71,7 +71,7 @@ File and git tools stay inside open workspaces by default. See [Tools and permis
 
 ### About & troubleshooting
 
-**About** shows version, runtime, storage, and startup diagnostics. **Updates** checks for new builds and controls the update channel. **Health & diagnostics** shows subsystem health, captured errors, local logs, and a redacted report you can copy.
+**About** shows version, runtime, storage, and startup diagnostics. **Updates** checks Minnow and installed CLI providers. The **Updates** button beside Settings shows how many updates are available and opens a popover with versions and actions. When the sidebar is open, both buttons are at its bottom. Minnow downloads desktop updates in the background and waits for you to restart. CLI updates start when you select **Update** and show their result in the app. In Settings, choose **Stable** or **Beta** for Minnow releases. **Health & diagnostics** shows subsystem health, captured errors, local logs, and a redacted report you can copy.
 
 ## Where settings are stored
 

@@ -26,7 +26,9 @@ Chats save automatically across windows. If two windows save competing edits, Mi
 
 Supported ordinary General, Build, Plan and Debug chats run on Minnow's local server. On send, an idle saved chat switches ownership only after its history is durable; a live turn is never taken over. Reloading or closing its chat view does not cancel server-capable work while Minnow's server remains running. Browser, clipboard or other connected-host actions can wait for a capable host to reconnect. Quitting Minnow stops its server; interrupted writes require explicit recovery, not automatic replay. Older conversations with unfinished tool/native recovery, compacted legacy context or active controllers retain their compatibility workflow until resolved.
 
-Server-owned history cannot be rewritten locally. A saved human message with a captured turn offers **Replay in new chat**: it starts a new branch without repeating historical tool calls or restoring past filesystem state. Model/mode changes apply to later submitted turns; active and already queued work keeps its accepted configuration.
+Open the **⋮** menu beside a message. In an ordinary server-owned chat, **Edit** changes a prompt and sends it again with its saved attachments. **Replay** sends the original prompt again in the same chat. Both replace the later messages. **Delete message** removes the selected message and everything after it. Finish or stop active work before using these actions. If the chat shows **Needs recovery**, review the interrupted turn first.
+
+A saved human message with a captured turn also offers **Replay in new chat**, which starts a new branch from that point. Replays start a fresh turn, and changes to chat history leave earlier filesystem changes in place. Model and mode changes apply to later submitted turns. Active and already queued work keeps its accepted configuration.
 
 After a completed reply, an empty composer can show a faint suggested follow-up. Press **Tab** to put it in the composer, edit it if needed, then press **Enter** to send. **Escape** dismisses the suggestion; typing your own message dismisses it too. You can also click the **Tab** hint to use it. Suggestions use the chat's model and make a short additional model request. For a model pool, the suggestion uses the model that handled the reply. Suggestions stay out of saved drafts until accepted.
 
@@ -107,7 +109,7 @@ The **undo** control on the latest **Edited files** card in the transcript rewin
 Details worth knowing:
 
 - The file-restoring undo appears **only in a git repository** and **only when that turn actually changed files**. No repository means no snapshot, so there is nothing to restore.
-- The message **⋮** menu always offers **Undo turn** for a conversation-only rewind.
+- In renderer-owned chats, the message **⋮** menu offers **Undo turn** for a conversation-only rewind.
 - Undo does not auto-regenerate. You get your prompt back and decide what to do.
 - The undone reply stays redoable through the branch picker.
 - Orchestrate, board-linked and worktree-isolated chats do not support undo; the control is disabled with the reason. Agent conversations also keep immutable saved history, so undo, regeneration, past-message edits and branch rewinds are unavailable; continue with a new message.

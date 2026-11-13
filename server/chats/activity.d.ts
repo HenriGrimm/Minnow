@@ -6,7 +6,7 @@ export interface ChatActivityProjection {
   agentTitleCandidate: null | { commandId: string; expectedName: string };
   agentExecution: null | { executionId: string; commandId: string | null; runId: string | null; status: ChatExecutionState;
     createdAt: number; updatedAt: number; settledAt: number | null; workDurationMs?: number; modelSelection?: ModelSelection; resolvedModel?: ModelSelection;
-    contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string };
+    contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string; needsManualRecovery?: true };
   agentPendingCommand: null | { commandId: string; runId: string | null; state: ChatCommandState; held: boolean; errorCode?: ChatErrorCode };
   agentRequestSummary: Array<{ requestId: string; kind: 'question' | 'approval' }>;
   agentActivityCursor: ChatActivityCursor;

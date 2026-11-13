@@ -873,7 +873,7 @@ export function stopActiveRunsForChat(chatId) {
  * @param {{ source?: TerminalSource, chatId?: string }} [filter]
  */
 export function listActiveRuns(filter = {}) {
-  /** @type {Array<{ runId: string, command: string, cwd: string, pid: number | null, startedAt: number, chatId?: string, source: TerminalSource }>} */
+  /** @type {Array<{ runId: string, command: string, cwd: string, pid: number | null, startedAt: number, chatId?: string, toolCallId?: string, source: TerminalSource }>} */
   const rows = [];
   for (const state of activeRuns.values()) {
     if (state.finished) continue;
@@ -887,6 +887,7 @@ export function listActiveRuns(filter = {}) {
       startedAt: state.startedAt,
       source: state.source,
       ...(state.chatId ? { chatId: state.chatId } : {}),
+      ...(state.toolCallId ? { toolCallId: state.toolCallId } : {}),
     });
   }
   return rows;
@@ -918,6 +919,7 @@ export async function listKnownActiveRuns(filter = {}) {
       startedAt: entry.startedAt,
       source: entry.source,
       ...(entry.chatId ? { chatId: entry.chatId } : {}),
+      ...(entry.toolCallId ? { toolCallId: entry.toolCallId } : {}),
       orphaned: true,
     });
   }
@@ -1341,6 +1343,7 @@ async function readLogTailAt(logPath, maxBytes) {
  * @param {string} [params.chatId]
  * @param {string} [params.toolCallId]
  * @param {number} [params.timeoutMs]
+ * @param {AbortSignal} [params.signal]
  * @param {Record<string, string>} [params.env]
  * @param {import('./terminal/shell-profiles.js').ShellProfile | null} [params.shellProfile]
  * @param {boolean} [params.allowUnsandboxed]
@@ -1354,6 +1357,7 @@ export async function executeCommandBlocking({
   chatId,
   toolCallId,
   timeoutMs,
+  signal,
   env,
   shellProfile = null,
   allowUnsandboxed,
@@ -1362,6 +1366,7 @@ export async function executeCommandBlocking({
   shellSandboxMode,
   outputSlice,
 }) {
+  signal?.throwIfAborted();
   // Keep the platform guard at the runner boundary too: some agent callers
   // reach this function without going through the tools middleware.
   const runtime = describeShellProfileRuntime(shellProfile).runtime;
@@ -1386,5 +1391,12 @@ export async function executeCommandBlocking({
     shellSandboxMode,
     outputSlice,
   });
-  return waitForRun(runId);
+  const stop = () => {
+    const state = activeRuns.get(runId);
+    if (state && !state.finished) killLiveRun(state);
+  };
+  signal?.addEventListener('abort', stop, { once: true });
+  if (signal?.aborted) stop();
+  try { return await waitForRun(runId); }
+  finally { signal?.removeEventListener('abort', stop); }
 }

@@ -13,5 +13,6 @@ export function createChatRecovery(options: {
   getTaskAdapter?: () => { recover?(): unknown } | undefined;
   verifyQuiescence(execution: ExecutionRecord, lease?: ExecutionLease): unknown;
   beforeExecutionRecovery?(input: ChatRecoveryInput): { heldExecutionIds?: Iterable<string> } | Promise<{ heldExecutionIds?: Iterable<string> } | undefined> | undefined;
+  reconcileInterruptedWork?(chatIds?: string[]): void | Promise<void>;
   now?: () => number;
 }): ChatRecovery;

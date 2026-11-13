@@ -215,6 +215,25 @@
   font-size: 12px;
 }
 
+.graphite-appearance-tint {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4ch;
+  align-items: center;
+  gap: var(--mn-space-2);
+  flex: 0 1 12rem;
+}
+.graphite-appearance-tint__range {
+  width: 100%;
+  margin: 0;
+  min-height: 30px;
+  accent-color: var(--mn-accent);
+}
+.graphite-appearance-tint__value {
+  color: var(--mn-graphite-text-muted);
+  font: 12px var(--font-mono);
+  text-align: end;
+}
+
 .graphite-appearance-segment.mn-segmented {
   flex: none;
   height: 30px;
@@ -361,6 +380,7 @@
 
 @media (pointer: coarse) {
   .graphite-appearance-segment.mn-segmented { height: var(--touch-min); }
+  .graphite-appearance-tint__range { min-height: var(--touch-min); }
   .graphite-appearance-switch.mn-switch {
     min-width: var(--touch-min);
     min-height: var(--touch-min);

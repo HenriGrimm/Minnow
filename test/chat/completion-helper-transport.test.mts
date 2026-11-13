@@ -2,17 +2,26 @@ import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
-import { createEmptyChatObject } from '../../src/state/sessions.ts';
+import { resetPromptExpanderConfigCache, setPromptExpanderConfigForTests } from '../../src/config/prompt-expander-meta.ts';
+import { resetUtilityModelConfigCache, setUtilityModelConfigForTests } from '../../src/config/utility-model-meta.ts';
+import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { generateFollowupSuggestion } from '../../src/chat/followup-suggestion-client.ts';
 import { generateChatTitle } from '../../src/chat/titles/generate.ts';
 import { createTitleProviderPort } from '../../src/chat/titles/provider-port.ts';
+import { fetchExpandedPrompt } from '../../src/ui/composer-expand-client.ts';
 import type { ChatCompletionBody } from '../../src/api/chat.ts';
 
 const originalFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = originalFetch; setStorageModeForTests(null); });
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  setStorageModeForTests(null);
+  resetPromptExpanderConfigCache();
+  resetUtilityModelConfigCache();
+  setSessionStateForTests(null);
+});
 
 /** Exercise the real provider port, generation shim, stream consumer and parser. */
-function installCliTransport(reply: string, role: string) {
+function installCliTransport(reply: string, role: string, stream = false) {
   setStorageModeForTests('server');
   let requests = 0;
   globalThis.fetch = async (url, init) => {
@@ -27,7 +36,7 @@ function installCliTransport(reply: string, role: string) {
       const body: ChatCompletionBody = payload.body;
       assert.equal(body.model, 'gpt-6.1-sol');
       assert.equal(body.tools, undefined);
-      assert.equal(body.stream, false);
+      assert.equal(body.stream, stream);
       // The live CLI rejects off -> none for this reasoning-required model.
       if (body.reasoning_effort === 'off' || body.reasoning_effort === 'none') {
         return Response.json({ error: 'Unsupported value: none' }, { status: 400 });
@@ -35,8 +44,10 @@ function installCliTransport(reply: string, role: string) {
       return Response.json({ generationId: 'helper-generation' }, { status: 201 });
     }
     if (path === '/api/generations/helper-generation/stream') {
-      const completion = JSON.stringify({ choices: [{ message: { role: 'assistant', content: reply }, finish_reason: 'stop' }] });
-      return new Response(`${completion}\n\nevent: end\ndata: {"status":"complete"}\n\n`,
+      const content = { role: 'assistant', content: reply };
+      const choice = stream ? { delta: content } : { message: content };
+      const completion = JSON.stringify({ choices: [{ ...choice, finish_reason: 'stop' }] });
+      return new Response(`${stream ? 'data: ' : ''}${completion}\n\nevent: end\ndata: {"status":"complete"}\n\n`,
         { headers: { 'Content-Type': 'text/event-stream' } });
     }
     throw new Error(`Unexpected request: ${path}`);
@@ -49,6 +60,22 @@ test('titles reach the CLI and parse its non-streaming generation without forcin
   const result = await generateChatTitle('Explain how this app works', { modelId: 'gpt-6.1-sol', providerId: 'codex-cli',
     maxTokens: 24, temperature: 0.3 }, createTitleProviderPort('codex-cli'));
   assert.equal(result.title, 'Application architecture');
+  assert.equal(requests(), 1);
+});
+
+test('prompt expansion streams from the CLI without forcing reasoning off', async () => {
+  const requests = installCliTransport('Explain how the application is structured.', 'utility', true);
+  const chat = createEmptyChatObject('gpt-6.1-sol');
+  chat.providerId = 'codex-cli';
+  setSessionStateForTests({ chats: [chat], activeId: chat.id });
+  setPromptExpanderConfigForTests({ providerId: '', modelId: '' });
+  setUtilityModelConfigForTests({ providerId: '', modelId: '' });
+  const result = await fetchExpandedPrompt({
+    draft: 'explain the app',
+    signal: new AbortController().signal,
+    attachments: [],
+  });
+  assert.deepEqual(result, { text: 'Explain how the application is structured.' });
   assert.equal(requests(), 1);
 });
 

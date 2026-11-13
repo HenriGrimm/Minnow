@@ -147,13 +147,20 @@ export interface PreviewHostOcclusion {
 
 const NOT_OBSCURED: PreviewHostOcclusion = { obscured: false, notification: false };
 
+const MOVING_PREVIEW_HOST = [
+  '.graphite-surface-panel--sliding',
+  // The bottom dock shares the chat's width while the side dock moves.
+  '.graphite-surfaces:has(> .graphite-surface-panel--side.graphite-surface-panel--sliding) > .graphite-surface-panel--bottom',
+  '.mn-graphite-sidebar-motion #osStage',
+].join(', ');
+
 /** Whether a hold or a marked overlay painted over `host` requires its guest to step aside. */
 export function readPreviewHostOcclusion(host: HTMLElement): PreviewHostOcclusion {
   const overlaps = getPreviewOccluders(host);
   return {
     // Keep the cached frame aligned while the renderer moves the preview host.
     obscured: isWorkspaceGateVisible() || isPreviewHideHeld() || overlaps.length > 0 ||
-      Boolean(host.parentElement?.closest('.graphite-surface-panel--sliding, .mn-graphite-sidebar-motion #osStage')),
+      Boolean(host.parentElement?.closest(MOVING_PREVIEW_HOST)),
     notification: overlaps.some((overlap) => overlap.kind === 'notification'),
   };
 }

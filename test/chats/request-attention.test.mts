@@ -61,8 +61,14 @@ function questionPopup(): HTMLElement { return document.querySelector<HTMLElemen
 function clickText(root: HTMLElement, text: string): void { const target = [...root.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === text); assert.ok(target, text); target.click(); }
 afterEach(() => { dispose?.(); dispose = undefined; resetQuestionCardsModalForTests(); globalThis.fetch = originalFetch; records.clear(); posts = []; setDirtyTrackingVerifierForcedForTests(false); resetSessionPersistenceForTests(); setSessionStateForTests(null); setStorageModeForTests(null); document.body.replaceChildren(); });
 
-test('interrupted work requires an inspection and a nonempty observation before retirement', async () => {
+test('interrupted work waits automatically and only asks for confirmation when the host needs it', async () => {
   const owner = chat('recovery-ui'), area = setup([owner]);
+  const viewport = document.createElement('div'); viewport.className = 'chat-viewport';
+  const notices = document.createElement('div'); notices.className = 'composer-notices';
+  const approvalSlot = document.createElement('div'); approvalSlot.id = 'toolApprovalHost'; approvalSlot.hidden = true;
+  const todo = document.createElement('details'); todo.className = 'chat-todo-panel';
+  document.getElementById('mainColumn')!.prepend(viewport);
+  viewport.append(area, notices, todo); notices.append(approvalSlot);
   const normalFetch = globalThis.fetch;
   const review = { executionId: 'stopped-turn', revision: 'review', checkout: 'C:/fixture', ownerReleased: false,
     checkpoints: [{ checkpointId: 'write', cwd: 'C:/fixture', pre: { sha: 'saved-baseline' } }],
@@ -74,13 +80,16 @@ test('interrupted work requires an inspection and a nonempty observation before 
   };
   syncManagedChatRequests(owner, area);
   owner.agentExecution = { executionId: review.executionId, status: 'recovery_required' }; syncManagedChatRequests(owner, area);
-  clickText(area, 'Review interrupted work'); await until(() => area.textContent!.includes('effect.txt'));
-  assert.match(area.textContent!, /Unsettled filesystem checkpoint.*saved-baseline/);
-  const note = area.querySelector('textarea')!, retire = [...area.querySelectorAll('button')].find(b => b.textContent === 'Record findings and retire attempt')!;
-  assert.equal(retire.disabled, true);
-  note.value = 'Checked the file and stopped process.'; note.dispatchEvent(new window.Event('input'));
-  syncManagedChatRequests(owner, area); retire.click(); await until(() => posts.length === 1);
-  assert.deepEqual([posts[0]!.body.executionId, posts[0]!.body.revision, posts[0]!.body.note], ['stopped-turn', 'review', note.value]);
+  assert.match(notices.textContent!, /Waiting for interrupted work to stop/);
+  assert.equal(notices.nextElementSibling, todo);
+  assert.equal(notices.querySelector('.managed-chat-recovery button'), null);
+  owner.agentExecution.needsManualRecovery = true;
+  syncManagedChatRequests(owner, area);
+  assert.equal(notices.querySelector('textarea'), null);
+  assert.doesNotMatch(notices.textContent!, /saved-baseline|effect\.txt/);
+  clickText(notices, 'Confirm stopped'); await until(() => notices.textContent!.includes('You can continue this chat.'));
+  assert.equal(posts.length, 1);
+  assert.deepEqual([posts[0]!.body.executionId, posts[0]!.body.revision, posts[0]!.body.note], ['stopped-turn', 'review', undefined]);
 });
 
 test('two child questions keep independent selections and answers across chat switching', async () => {

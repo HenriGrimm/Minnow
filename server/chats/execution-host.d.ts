@@ -30,6 +30,7 @@ export interface ChatDispatchContext extends Omit<ChatExecutionInput, 'takeSteer
 }
 export interface ServerChatExecutionHost {
   supportsSteer: true; requests: ChatRequestService;
+  hasPendingEffects(executionId: string): boolean;
   execute(input: ChatExecutionInput): Promise<TurnResult>;
 }
 export function chatInputMessageId(commandId: string): string;

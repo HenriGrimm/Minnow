@@ -468,7 +468,7 @@ export function mountGraphiteThreadHeader(): void {
     syncNewThread(isThreadView && !hasThread);
     title.textContent = hasThread ? chat.name : 'New thread';
     if (currentCardChat && (currentCardChat !== chat || !isThreadView)) currentCard?.close();
-    branch.hidden = !hasThread;
+    branch.hidden = !chat;
     goal.hidden = !hasThread || !getActiveGoal(chat!);
     if (goal.hidden || !isThreadView || goalPopoverChat !== chat?.id) goalPopover?.close();
     const totals = chat?.codeChangeTotals;

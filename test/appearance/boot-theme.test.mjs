@@ -64,7 +64,7 @@ test('a custom accent is applied before the first paint', () => {
 test('Graphite defaults and saved visual preferences apply before the loader paints', () => {
   const fresh = boot();
   assert.equal(fresh.theme, 'graphite-dark');
-  assert.equal(fresh.attributes.get('data-tint'), 'subtle');
+  assert.equal(fresh.attributes.get('data-tint'), '50');
   const { attributes } = boot({
     saved: {
       themeId: 'graphite-light', colorIntensity: 'rich', graphiteAccent: 'violet',
@@ -73,10 +73,19 @@ test('Graphite defaults and saved visual preferences apply before the loader pai
     cached: { 'minnow.appearance.colorIntensity': 'none' },
   });
   assert.equal(attributes.get('data-theme'), 'graphite-light');
-  assert.equal(attributes.get('data-tint'), 'rich');
+  assert.equal(attributes.get('data-tint'), '100');
   assert.equal(attributes.get('data-graphite-accent'), 'violet');
   assert.equal(attributes.get('data-density'), 'roomy');
   assert.equal(attributes.has('data-reduce-motion'), true);
+});
+
+test('intermediate and zero surface tints apply before first paint', () => {
+  const intermediate = boot({ cached: { 'minnow.appearance.colorIntensity': '37' } });
+  assert.equal(intermediate.attributes.get('data-tint'), '37');
+  assert.equal(intermediate.tokens.get('--mn-graphite-tint'), '0.74');
+  const off = boot({ saved: { colorIntensity: 0 }, cached: { 'minnow.appearance.colorIntensity': 'rich' } });
+  assert.equal(off.attributes.get('data-tint'), '0');
+  assert.equal(off.tokens.get('--mn-graphite-tint'), '0');
 });
 
 test('custom palette is applied before the loading screen renders', () => {
@@ -91,6 +100,6 @@ test('disabled saved custom colors cannot leak from a stale cache into first pai
     saved: { themeId: 'mono-light', customEnabled: false },
     cached: { 'minnow.appearance.customEnabled': '1', 'minnow.appearance.customTokens': '{"bg":"#112233"}' },
   });
-  assert.equal(tokens.size, 0);
+  assert.equal(tokens.has('--mn-bg'), false);
   assert.equal(storage.has('minnow.appearance.customEnabled'), false);
 });

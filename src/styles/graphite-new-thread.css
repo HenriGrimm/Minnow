@@ -45,13 +45,6 @@
   font-size: 13px;
 }
 
-.graphite-new-thread__intro code {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.graphite-new-thread__intro code,
 .graphite-new-thread__context code {
   color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
   font-family: var(--font-mono);

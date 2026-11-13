@@ -874,10 +874,7 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
 }
 
 .m-thread .chat-viewport {
-  display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .m-thread #statsStrip,

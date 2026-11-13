@@ -10,17 +10,24 @@ const summaryFields = ['name', 'workspacePath', 'worktreeRoot', 'modelId', 'prov
   'agentPendingCommand', 'agentRequestSummary', 'agentActivityCursor', 'agentPresentationRevision', 'agentTitleCandidate', 'unread', 'turnError'];
 
 /** Bounded view state only. SQLite remains the transcript and command authority. */
-export function createChatPresentation({ repository, now = Date.now, flushMs = 40 } = {}) {
+export function createChatPresentation({ repository, needsManualRecovery, now = Date.now, flushMs = 40 } = {}) {
   const live = new Map(), viewers = new Set(), timers = new Map(), externalRequests = new Map();
   let sequence = 0;
   function activity(chatId) {
-    return repository.getActivity(chatId);
+    const projection = repository.getActivity(chatId);
+    const execution = projection.agentExecution;
+    if (execution?.status === 'recovery_required' && needsManualRecovery?.(chatId, execution.executionId)) {
+      return { ...projection, agentExecution: { ...execution, needsManualRecovery: true } };
+    }
+    return projection;
   }
   function notice(chatId) {
     const chat = repository.getChat(chatId), execution = chat.agentExecution, requests = chat.agentRequestSummary;
+    if (execution?.status === 'recovery_required' && needsManualRecovery?.(chatId, execution.executionId)) execution.needsManualRecovery = true;
     return { kind: 'chat-changed', chatId, sequence: ++sequence, at: now(),
       execution: execution ? { executionId: execution.executionId, status: execution.status } : null, requests,
-      fields: { ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId) },
+      fields: { ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId),
+        ...(chat.historyRewrite ? { historyRewriteRevision: chat.historyRewrite.revision } : {}) },
     };
   }
   function frame(chatId, { history = true, metadata = true } = {}) {
@@ -66,6 +73,8 @@ export function createChatPresentation({ repository, now = Date.now, flushMs = 4
     output.agentTaskAttention = repository.getTaskAttention(chatId);
     result.fields = output;
     if (history) {
+      output.historyDigest = chat.historyDigest;
+      output.historyRewriteRevision = chat.historyRewrite?.revision ?? 0;
       const transcript = repository.readTranscript(chatId)?.messages ?? [];
       const start = Math.max(0, transcript.length - 20);
       result.history = { start, length: transcript.length, messages: transcript.slice(start) };
@@ -99,7 +108,7 @@ export function createChatPresentation({ repository, now = Date.now, flushMs = 4
       fields: { agentRequestSummary: requests } };
   }
   return {
-    frame,
+    frame, activity,
     changed,
     externalRequestChanged({ chatId, projectId }) {
       // A live renderer owns its history. An approval must not promote that

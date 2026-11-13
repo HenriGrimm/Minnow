@@ -14,7 +14,7 @@ import {
 } from '../chat/undo-turn';
 import { openForkModelDialog } from './fork-model-dialog';
 import { getActiveRun } from '../state/runs-store';
-import { formatComposerTextFromHistory } from '../skills/history-content';
+import { formatComposerTextFromHistory, parseSkillTagFromHistory } from '../skills/history-content';
 import { stripIssueRefBlocks } from '../chat/issue-mentions';
 import { messageEditDraft } from '../chat/message-edit-draft';
 import { replacePendingAttachments } from '../attachments/store';
@@ -26,7 +26,11 @@ import { renderChatFromHistory, renderStatsForChat } from './messages';
 import { renderSidebar } from './sidebar';
 import { appConfirm } from './app-dialog';
 import { setStatus } from './status';
-import { CANONICAL_HISTORY_HINT, supportsLocalHistoryMutation } from '../state/chat-relationships';
+import { CANONICAL_HISTORY_HINT, hasUnsettledAgentWork, supportsLocalHistoryMutation, supportsManagedHistoryMutation } from '../state/chat-relationships';
+import type { Chat } from '../types';
+import type { ManagedHistoryAction } from '../chat/managed-chat-client';
+import { splitHistoryUserContentForEdit } from '../chat/user-message-parts';
+import { formatHistoryWithSkillTag } from '../skills/parse-slash';
 
 export type MessageTurnKind = 'user' | 'assistant' | 'assistant-tools';
 
@@ -37,13 +41,15 @@ export interface MessageActionTarget {
 }
 
 let openMenu: HTMLElement | null = null;
+let closeMenuListeners: (() => void) | undefined;
 let pendingEdit: { chatId: string; historyIndex: number } | null = null;
 
 /** Pending user-message edit awaiting the next send. */
-export function consumePendingMessageEdit(): {
+export function consumePendingMessageEdit(chatId: string): {
   chatId: string;
   historyIndex: number;
 } | null {
+  if (pendingEdit?.chatId !== chatId) return null;
   const next = pendingEdit;
   pendingEdit = null;
   return next;
@@ -54,6 +60,8 @@ export function closeMessageActionsMenu(): void {
   if (!openMenu) return;
   openMenu.remove();
   openMenu = null;
+  closeMenuListeners?.();
+  closeMenuListeners = undefined;
 }
 
 function guardStreaming(): boolean {
@@ -89,6 +97,11 @@ export function remakeAssistantRow(chatId: string, historyIndex: number): void {
   if (guardStreaming()) return;
   const chat = findChatById(chatId);
   if (!chat) return;
+  if (supportsManagedHistoryMutation(chat)) {
+    const userIndex = managedReplayIndex(chat, historyIndex - 1);
+    if (userIndex >= 0) void runManagedHistoryAction(chat, userIndex, 'replay');
+    return;
+  }
   if (!supportsLocalHistoryMutation(chat)) { showToast(CANONICAL_HISTORY_HINT); return; }
   const userIdx = indexOfUserBeforeBlock(chat.history, historyIndex);
   if (userIdx < 0) {
@@ -96,6 +109,66 @@ export function remakeAssistantRow(chatId: string, historyIndex: number): void {
     return;
   }
   void forkFromUserIndex(chatId, userIdx);
+}
+
+function canReplayManagedMessage(chat: Chat, index: number): boolean {
+  const row = chat.history[index];
+  return row?.role === 'user' && typeof row.content === 'string' && !row.steer && !row.hiddenFromTranscript &&
+    (!row.provenance || row.provenance.actor === 'human');
+}
+
+function managedReplayIndex(chat: Chat, from: number): number {
+  for (let index = from; index >= 0; index--) {
+    if (canReplayManagedMessage(chat, index)) return index;
+  }
+  return -1;
+}
+
+async function runManagedHistoryAction(chat: Chat, index: number, action: ManagedHistoryAction['action']): Promise<void> {
+  if (chat.agentExecution?.status === 'recovery_required') {
+    showToast('Resolve the interrupted execution before changing this chat’s history');
+    return;
+  }
+  if (guardStreaming()) return;
+  if (hasUnsettledAgentWork(chat) || chat.agentTaskAttention?.pendingCount) {
+    showToast('Finish or stop the current work before changing this chat’s history');
+    return;
+  }
+  const digest = chat.historyDigest;
+  if (!digest) { setStatus('err', 'The saved messages are still loading. Try again after the chat refreshes.'); return; }
+  const row = chat.history[index];
+  if (!row) return;
+  let change: ManagedHistoryAction;
+  const hasLaterMessages = index < chat.history.length - 1;
+  if (action === 'edit' && row.role === 'user') {
+    const draft = splitHistoryUserContentForEdit(row.content);
+    const { skillId, displayText } = parseSkillTagFromHistory(stripIssueRefBlocks(draft.text));
+    const input = document.createElement('textarea');
+    input.className = 'app-dialog-panel__input';
+    input.rows = 5;
+    input.setAttribute('aria-label', 'Message text');
+    input.value = displayText;
+    const details = [hasLaterMessages ? 'Saving replaces the messages after this one.' : 'Saving sends this message again.'];
+    if (draft.attachments.length || row.images?.length) details.push('Attachments are kept.');
+    const ok = await appConfirm(details.join(' '), { title: 'Edit message', confirmLabel: 'Save and replay', body: input, initialFocus: input });
+    if (!ok) return;
+    const { attachMentionedIssues } = await import('../chat/issue-mention-context');
+    const userText = input.value.trim();
+    const display = skillId ? formatHistoryWithSkillTag(userText, skillId) : userText;
+    const message = [attachMentionedIssues(display, userText, chat.workspacePath), ...draft.attachments].filter(Boolean).join('\n\n');
+    if (!message.trim()) { setStatus('err', 'Enter a message before replaying'); return; }
+    change = { action, message, text: userText };
+  } else if (action === 'delete') {
+    if (!await appConfirm(hasLaterMessages ? 'Delete this message and all messages after it?' : 'Delete this message?', { confirmLabel: 'Delete', danger: true })) return;
+    change = { action };
+  } else if (action === 'replay') {
+    if (hasLaterMessages && !await appConfirm('Replay this message and replace all messages after it?', { confirmLabel: 'Replay' })) return;
+    change = { action };
+  } else return;
+  try {
+    const { rewriteManagedChatHistory } = await import('../chat/managed-chat-client');
+    await rewriteManagedChatHistory(chat.id, index, digest, change);
+  } catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); }
 }
 
 function shouldConfirmDelete(historyIndex: number): boolean {
@@ -164,23 +237,26 @@ function openMenuAt(trigger: HTMLButtonElement, items: HTMLButtonElement[]): voi
   }
   trigger.after(menu);
   openMenu = menu;
+  trigger.setAttribute('aria-expanded', 'true');
 
   const onDocClick = (ev: MouseEvent): void => {
     const t = ev.target as Node;
     if (menu.contains(t) || trigger.contains(t)) return;
     closeMessageActionsMenu();
-    document.removeEventListener('click', onDocClick, true);
   };
   const onKey = (ev: KeyboardEvent): void => {
     if (ev.key === 'Escape') {
       closeMessageActionsMenu();
-      document.removeEventListener('keydown', onKey);
+      trigger.focus();
     }
   };
-  requestAnimationFrame(() => {
-    document.addEventListener('click', onDocClick, true);
-    document.addEventListener('keydown', onKey);
-  });
+  document.addEventListener('click', onDocClick, true);
+  document.addEventListener('keydown', onKey);
+  closeMenuListeners = () => {
+    trigger.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('keydown', onKey);
+  };
 }
 
 /** Wire ⋮ menu on a rendered message row. */
@@ -195,10 +271,12 @@ export function attachMessageActions(
   trigger.className = 'message-actions__trigger';
   trigger.setAttribute('aria-label', 'Message actions');
   trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'false');
   trigger.textContent = '⋮';
 
   trigger.addEventListener('click', (ev) => {
     ev.stopPropagation();
+    if (trigger.getAttribute('aria-expanded') === 'true') { closeMessageActionsMenu(); return; }
     if (guardStreaming()) return;
 
     const items: HTMLButtonElement[] = [];
@@ -208,7 +286,16 @@ export function attachMessageActions(
 
     const actionChat = findChatById(target.chatId) ?? getActiveChat();
     const canRewrite = supportsLocalHistoryMutation(actionChat);
+    const canRewriteManaged = supportsManagedHistoryMutation(actionChat);
     const savedUser = actionChat.history[target.historyIndex];
+    if (canRewriteManaged) {
+      if (target.turnKind === 'user' && canReplayManagedMessage(actionChat, target.historyIndex)) {
+        items.push(buildMenuButton('Edit', () => { void runManagedHistoryAction(actionChat, target.historyIndex, 'edit'); }));
+        items.push(buildMenuButton('Replay', () => { void runManagedHistoryAction(actionChat, target.historyIndex, 'replay'); }));
+      } else if (target.turnKind !== 'user' && managedReplayIndex(actionChat, target.historyIndex - 1) >= 0) {
+        items.push(buildMenuButton('Remake', () => remakeAssistantRow(target.chatId, target.historyIndex)));
+      }
+    }
     if (actionChat.chatCommandVersion === 1 && !actionChat.agentConversation && target.turnKind === 'user' &&
         savedUser?.role === 'user' && savedUser.messageId && savedUser.commandId) {
       items.push(buildMenuButton('Replay in new chat', () => {
@@ -294,6 +381,7 @@ export function attachMessageActions(
       }
     }
 
+    if (canRewriteManaged) items.push(buildMenuButton('Delete message', () => { void runManagedHistoryAction(actionChat, target.historyIndex, 'delete'); }));
     if (canRewrite) items.push(
       buildMenuButton('Delete message', () => {
         void (async () => {

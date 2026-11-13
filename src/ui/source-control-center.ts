@@ -225,6 +225,7 @@ function buildShell(): HTMLElement {
 
 function buildHeader(): HTMLElement {
   const header = el('header', 'scc-head');
+  header.dataset.appTitlebar = '';
 
   const identity = el('div', 'scc-head__identity');
 

@@ -112,7 +112,10 @@ export function syncComposerReadOnlyState(): boolean {
     }
   }
   const anchor = input.closest('.input-row, .chat-app-input, .mn-os-desktop-input-row') ?? input;
-  if (notice.nextSibling !== anchor) anchor.before(notice);
+  const notices = anchor.closest('.main-column')?.querySelector(':scope > .chat-viewport > .composer-notices');
+  if (notices) {
+    if (notice.parentElement !== notices) notices.prepend(notice);
+  } else if (notice.nextSibling !== anchor) anchor.before(notice);
   const descriptions = new Set(input.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? []);
   descriptions.add(notice.id); input.setAttribute('aria-describedby', [...descriptions].join(' '));
   input.disabled = true;

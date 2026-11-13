@@ -1107,7 +1107,7 @@ async function resolveBoardSpawnEnv(args, cwd, chatId) {
   }
 }
 
-async function toolExecuteCommand(args) {
+async function toolExecuteCommand(args, options) {
   if (args?.stop === true) {
     return toolStopCommand(args);
   }
@@ -1269,6 +1269,7 @@ async function toolExecuteCommand(args) {
       shell: false,
       chatId,
       toolCallId,
+      signal: options?.abortSignal,
       timeoutMs: typeof args?.timeout_ms === 'number' ? args.timeout_ms : undefined,
       shellProfile,
       allowUnsandboxed: args?.allow_unsandboxed === true,
@@ -1344,7 +1345,7 @@ async function toolListRunningCommands(args) {
   return JSON.stringify({ ok: true, runs }, null, 2);
 }
 
-async function toolRunJavascript(args) {
+async function toolRunJavascript(args, options) {
   const code = args?.code;
   if (!code || typeof code !== 'string') {
     return 'Error: code is required';
@@ -1356,6 +1357,7 @@ async function toolRunJavascript(args) {
       args: ['-e', code],
       cwd: getEffectiveWorkspaceRoot(),
       shell: false,
+      signal: options?.abortSignal,
       timeoutMs: COMMAND_TIMEOUT_MS,
       allowUnsandboxed: args?.allow_unsandboxed === true,
       chatId: typeof args?.chatId === 'string' ? args.chatId : undefined,
@@ -1384,7 +1386,7 @@ async function resolvePythonBin(cwd) {
   return { error: lastError };
 }
 
-async function toolRunPython(args) {
+async function toolRunPython(args, options) {
   const code = args?.code;
   if (!code || typeof code !== 'string') {
     return 'Error: code is required';
@@ -1402,6 +1404,7 @@ async function toolRunPython(args) {
       args: ['-c', code],
       cwd,
       shell: false,
+      signal: options?.abortSignal,
       timeoutMs: COMMAND_TIMEOUT_MS,
       allowUnsandboxed: args?.allow_unsandboxed === true,
       chatId: typeof args?.chatId === 'string' ? args.chatId : undefined,

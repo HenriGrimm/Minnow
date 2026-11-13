@@ -188,6 +188,7 @@ test('Graphite panels open before the first message and restore each thread', as
   assert.equal(side.getAttribute('aria-modal'), null);
 
   const { setWorkspaceFromServer, resetWorkspaceStateForTests } = await import('../../src/state/workspace');
+  const { resetSidebarGitStateForTests } = await import('../../src/ui/sidebar-git-state');
   const { setIssuesStateForTests } = await import('../../src/state/issues-store');
   const { setLocalServerAvailableForTests, isLocalServerAvailable } = await import('../../src/tools/config');
   const fetchBefore = globalThis.fetch;
@@ -235,18 +236,27 @@ test('Graphite panels open before the first message and restore each thread', as
     assert.deepEqual(diffTarget, { kind: 'changes' });
 
     cleanCheckout = true;
-    branch.click();
+    resetSidebarGitStateForTests({ cwd: '/workspace', current: 'feature/new-thread' });
+    sessions.activeId = second.id;
+    win.dispatchEvent(new win.Event('hashchange'));
+    assert.ok(mainColumn.classList.contains('graphite-new-thread'));
+    assert.equal(branch.hidden, false);
+    assert.equal(branch.textContent, 'feature/new-thread');
+    document.getElementById('msgInput')!.dispatchEvent(new win.KeyboardEvent('keydown', {
+      key: '.', ctrlKey: !/mac/i.test(navigator.platform), metaKey: /mac/i.test(navigator.platform), bubbles: true,
+    }));
     const cleanMenu = document.querySelector('.graphite-thread-card-popover');
     assert.ok(cleanMenu);
     for (let attempt = 0; attempt < 50 && !cleanMenu.textContent?.includes('No changed files'); attempt++) {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
-    assert.match(cleanMenu.textContent ?? '', /No changed files/);
+    assert.match(cleanMenu.textContent ?? '', /feature\/new-thread.*No changed files/);
     assert.deepEqual(actionLabels(cleanMenu), ['Open PR']);
     branch.click();
   } finally {
     globalThis.fetch = fetchBefore;
     setLocalServerAvailableForTests(serverBefore);
+    resetSidebarGitStateForTests();
     setIssuesStateForTests(null);
     resetWorkspaceStateForTests();
   }

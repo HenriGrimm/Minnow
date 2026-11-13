@@ -2162,7 +2162,9 @@ export async function deleteChat(chatId: string, evt?: Event, isCurrent: () => b
   const descendants = sessionState!.chats.filter(chat => family.ancestors(chat.id).some(parent => parent.id === chatId));
   const interrupted = [victim, ...descendants].find(chat => chat.agentExecution?.status === 'recovery_required');
   if (interrupted) {
-    showToast(`Open "${interrupted.name}" and use Review interrupted work before deleting this conversation.`);
+    showToast(interrupted.agentExecution?.needsManualRecovery
+      ? `Open "${interrupted.name}" to confirm its interrupted work has stopped.`
+      : `Minnow is waiting for interrupted work in "${interrupted.name}" to stop. Try deleting again in a moment.`);
     return;
   }
   if ([victim, ...descendants].some(chat => hasUnsettledAgentWork(chat, id => isChatStreaming(id) || isChatRunningRemotely(id)))) {

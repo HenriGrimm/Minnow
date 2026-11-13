@@ -6,6 +6,11 @@
   background: var(--mn-graphite-ground, var(--mn-bg));
 }
 
+html.is-electron-shell:not([data-platform='darwin']).mn-graphite-workspace .mn-os {
+  --mn-window-controls-width: calc(3 * var(--os-window-btn-size) + 2 * var(--mn-window-controls-gap));
+  --mn-titlebar-end-inset: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding));
+}
+
 html.is-electron-shell[data-platform='win32'].mn-graphite-workspace .mn-os {
   --mn-window-controls-width: calc(3 * var(--os-window-btn-size) + 3 * var(--mn-window-controls-gap) + 1px);
 }
@@ -129,50 +134,56 @@ html.mn-graphite-workspace.is-electron-shell[data-platform='darwin']:not([data-w
   display: none !important;
 }
 
-/* Windows caption buttons stay at the window edge while the menubar shrinks to the rail. */
-html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar > .mn-os-mb-window-controls {
+/* Caption buttons stay at the window edge while the menubar shrinks to the rail. */
+html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar > .mn-os-mb-window-controls {
   position: fixed;
   top: calc((var(--os-menubar-h) - var(--os-window-btn-size)) / 2);
   right: calc(var(--mn-graphite-window-inset) + var(--mn-menubar-inline-padding));
 }
 
-/* The menubar covers only the sidebar in this layout. The thread header fills the rest of the titlebar. */
-html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader:not([hidden]) {
+/* The sidebar menubar and the foreground app header share the title bar. */
+html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open)
+  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *, .is-graph-canvas-bg .brain-page-header) {
   position: relative;
   user-select: none;
 }
 
-html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader:not([hidden])::before {
+html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open)
+  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *, .is-graph-canvas-bg .brain-page-header)::before {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: 0 var(--mn-titlebar-end-inset, 0px) 0 0;
   pointer-events: none;
   -webkit-app-region: drag;
 }
 
-/* The fixed caption buttons are outside the thread header's DOM subtree. */
-html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader:not([hidden])::before {
-  right: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding));
-}
-
-html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader :is(button, a, input, select, textarea, [contenteditable='true']) {
+html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open)
+  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not(.issues-page--embedded *)
+  :is(button, a, label, input, select, textarea, [contenteditable='true']) {
   -webkit-app-region: no-drag;
 }
 
-/* The thread header shares the titlebar row while the sidebar is open or moving. */
-html.is-electron-shell[data-platform='win32']:is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion) #graphiteThreadHeader:not([hidden]) {
-  padding-right: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding) + var(--mn-space-2));
+html.is-electron-shell:not([data-platform='darwin']):is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion)
+  #osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *, .is-graph-canvas-bg .brain-page-header) {
+  padding-right: calc(var(--mn-titlebar-end-inset) + var(--mn-space-2));
 }
 
-/* Without a thread header, the menubar owns the full titlebar row. Keep its
-   left cluster in the sidebar while making the empty space draggable. */
-html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os:not(:has(.mn-os-app-layer.is-active #graphiteThreadHeader:not([hidden]))) > #osMenubar {
+/* Give the graph toolbar the full top row when it carries the caption buttons. */
+html.is-electron-shell:not([data-platform='darwin']):is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion)
+  #osAppsLayer > .brain-page.is-graph-canvas-bg {
+  --brain-graphite-inspector-top: var(--brain-graph-below-toolbar);
+  --brain-graphite-toolbar-inset: 0px;
+}
+
+/* The menubar supplies a drag region for stages without a titlebar header. */
+html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:not(.os-workspace-gate-open)
+  .mn-os:not(:has(#osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *))) > #osMenubar {
   width: 100%;
   padding-inline-end: calc(100% - var(--mn-graphite-sidebar-width) + 10px);
 }
 
-/* Other app surfaces start below the titlebar when there is no thread header. */
-html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-stage.is-in-app:not(:has(.mn-os-app-layer.is-active #graphiteThreadHeader:not([hidden]))) {
+html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:not(.os-workspace-gate-open)
+  .mn-os-stage.is-in-app:not(:has(#osAppsLayer > .mn-os-app-layer.is-active [data-app-titlebar]:not([hidden], .issues-page--embedded *))) {
   margin-block-start: var(--os-menubar-h);
 }
 
@@ -527,6 +538,7 @@ html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-w
 
 .mn-graphite-sidebar-footer .mn-os-workspace-actions {
   margin-inline-start: auto;
+  gap: 2px;
 }
 
 .mn-graphite-sidebar-footer :is(.mn-os-mb-icon, .activity-trigger) {

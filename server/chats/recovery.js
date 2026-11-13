@@ -83,7 +83,7 @@ export async function reconcileChatJournalStorage(repository, { chatIds } = {}) 
 
 /** One ordering for boot, database snapshot recovery, staged restore and explicit import. */
 export function createChatRecovery({ repository, service, requests, taskDelivery, getTaskAdapter, verifyQuiescence,
-  beforeExecutionRecovery, now = Date.now } = {}) {
+  beforeExecutionRecovery, reconcileInterruptedWork, now = Date.now } = {}) {
   if (!repository || !service || !requests || !taskDelivery || typeof verifyQuiescence !== 'function') throw new TypeError('Chat recovery requires its canonical runtime and quiescence verifier');
   let running;
   return {
@@ -125,6 +125,7 @@ export function createChatRecovery({ repository, service, requests, taskDelivery
           }
         }
         await taskDelivery.recover();
+        await reconcileInterruptedWork?.(chatIds);
         await getTaskAdapter?.()?.recover?.();
         return { reason, recoveredExecutionIds: recovered.map(execution => execution.executionId), heldExecutionIds: [...held] };
       })();

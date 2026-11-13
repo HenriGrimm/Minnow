@@ -1439,8 +1439,6 @@ html[data-theme$="-light"],
   --mn-graphite-preset-accent: var(--mn-graphite-picked-accent);
 }
 
-:root[data-tint="none"] { --mn-graphite-tint: 0; }
-:root[data-tint="rich"] { --mn-graphite-tint: 2; }
 :is(:root, .settings-accent-swatch)[data-graphite-accent="blue"] { --mn-graphite-picked-accent: var(--mn-graphite-blue); }
 :is(:root, .settings-accent-swatch)[data-graphite-accent="amber"] { --mn-graphite-picked-accent: var(--mn-graphite-amber); }
 :is(:root, .settings-accent-swatch)[data-graphite-accent="violet"] { --mn-graphite-picked-accent: var(--mn-graphite-violet); }

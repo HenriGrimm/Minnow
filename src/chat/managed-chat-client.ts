@@ -37,15 +37,15 @@ export async function readManagedChatRequestPage(chatId: string, options: { curs
 }
 
 export async function readInterruptedExecution(chatId: string): Promise<InterruptedExecutionReview> {
-  const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/recovery`, { cache: 'no-store' });
+  const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/recovery`, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
   const body = await response.json();
   if (!response.ok) throw new Error(errorMessage(body));
   return body;
 }
 
-export async function retireInterruptedExecution(chatId: string, review: InterruptedExecutionReview, clientRequestId: string, note: string): Promise<void> {
+export async function retireInterruptedExecution(chatId: string, review: InterruptedExecutionReview, clientRequestId: string): Promise<void> {
   const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/recovery`, { method: 'POST', headers: CHAT_WRITE_HEADERS,
-    body: JSON.stringify({ executionId: review.executionId, revision: review.revision, clientRequestId, note }) });
+    body: JSON.stringify({ executionId: review.executionId, revision: review.revision, clientRequestId }), signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(errorMessage(await response.json()));
 }
 
@@ -108,6 +108,39 @@ export async function deleteManagedConversation(chatId: string): Promise<Convers
 export interface ManagedChatReceipt {
   commandId: string; chatId: string; state: string; revision: number; executionId?: string | null;
   held?: boolean; assistantFinal?: string; error?: { message?: string } | null;
+}
+
+export type ManagedHistoryAction = { action: 'delete' | 'replay' } | { action: 'edit'; message: string; text: string };
+
+export async function rewriteManagedChatHistory(chatId: string, index: number, expectedHistoryDigest: string, action: ManagedHistoryAction): Promise<void> {
+  const payload = { index, expectedHistoryDigest, ...action };
+  const storageKey = `minnow.historyRewrite.${chatId}`;
+  const digest = await fingerprint(payload);
+  let saved: { fingerprint: string; id: string } | undefined;
+  try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null') ?? undefined; } catch {}
+  const clientRequestId = saved?.fingerprint === digest && /^[A-Za-z0-9_-]{1,160}$/.test(saved.id) ? saved.id : randomUUID();
+  try { sessionStorage.setItem(storageKey, JSON.stringify({ fingerprint: digest, id: clientRequestId })); } catch {}
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/history`, { method: 'POST', headers: CHAT_WRITE_HEADERS,
+        body: JSON.stringify({ ...payload, clientRequestId }), signal: AbortSignal.timeout(15_000) });
+      break;
+    } catch (error) { if (attempt) throw error; }
+  }
+  const body = await response!.json();
+  const clear = () => {
+    try { if (JSON.parse(sessionStorage.getItem(storageKey) || 'null')?.id === clientRequestId) sessionStorage.removeItem(storageKey); } catch {}
+  };
+  if (!response!.ok) { if (response!.status < 500) clear(); throw new Error(errorMessage(body)); }
+  const { receipt, frame } = body;
+  if (receipt?.chatId !== chatId || receipt.clientRequestId !== clientRequestId || receipt.action !== action.action ||
+      receipt.index !== index || (action.action === 'delete' ? receipt.commandId !== null : !/^[A-Za-z0-9_-]{1,160}$/.test(receipt.commandId ?? '')) ||
+      frame?.chatId !== chatId || frame.hostId !== 'minnow-server' || !frame.history) {
+    throw new Error('The history change did not return its saved receipt. Retry to recover the receipt.');
+  }
+  clear();
+  window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId, frame } }));
 }
 
 /** Revision and receipt identity survive lost acknowledgements, including reload. */

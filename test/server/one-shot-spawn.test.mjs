@@ -10,7 +10,7 @@ import {
   resolveUnixLoginShell,
   tryRewriteInlineInterpreterCommand,
 } from '../../server/terminal/one-shot-spawn.js';
-import { executeCommandBlocking } from '../../server/terminal-runner.js';
+import { executeCommandBlocking, listActiveRuns } from '../../server/terminal-runner.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
 import { initWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import path from 'node:path';
@@ -236,6 +236,31 @@ describe('executeCommandBlocking unix shell strings', () => {
 
     await rmTestHome(homeDir);
     homeDir = undefined;
+  });
+
+  it('stops a foreground agent command when its turn aborts', { timeout: 10_000 }, async () => {
+    homeDir = setTestHome(process.env, 'minnow-test-abort-command');
+    await ensureMinnowLayout();
+    const controller = new AbortController();
+    const chatId = 'stopping-chat';
+    const run = executeCommandBlocking({
+      command: process.execPath, args: ['-e', 'setTimeout(() => {}, 60000)'],
+      cwd: repoRoot, chatId, signal: controller.signal,
+    });
+    try {
+      for (let attempt = 0; attempt < 100 && !listActiveRuns({ chatId }).some(run => run.pid); attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.ok(listActiveRuns({ chatId }).some(run => run.pid));
+      controller.abort();
+      assert.match(await run, /stopped/i);
+      assert.equal(listActiveRuns({ chatId }).length, 0);
+    } finally {
+      controller.abort();
+      await run.catch(() => {});
+      await rmTestHome(homeDir);
+      homeDir = undefined;
+    }
   });
 });
 describe('executeCommandBlocking windows one-shot quoting (MIN-269)', () => {

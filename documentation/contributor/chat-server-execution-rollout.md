@@ -11,8 +11,9 @@ Status: managed admission, deferred setup, canonical replay/configuration and ex
 - Workspace preparation now persists the deferred intent in the same transaction as the command. The server verifies/creates the exact checkout and dependencies before composing the prompt or calling the provider, then binds the final scope and captured policy to that identity. Failure never runs against the wrong source checkout. Stop during asynchronous capture commits no command/allocation.
 - `/api/chats/:id/workspace` Retry and Local are authenticated, serialized human recovery actions. Retry prepares the retained checkout but does not repeat failed inference; Local explicitly detaches without deleting files. Stop can cancel the setup owner. The existing UI panel consumes server progress/error projections across remounts.
 - Human future-turn model/mode configuration revision-checks and atomically persists its profile and receipt. Accepted/active runs retain captured ceilings; narrower child profiles cannot widen silently.
+- Ordinary canonical chats support same-chat edit, replay, and suffix deletion through a human-only command endpoint. Transcript digests fence concurrent edits. Replays queue a fresh input with saved turn settings when available. A rewind keeps the durable effect journals and usage records, and blocks unresolved work, native execution history, and compacted transcripts.
 - Modern canonical roots support edited/replayed forks into a new canonical conversation. Prefix copying keeps completed atomic call/result groups, attachments, actual captured options, saved run/snapshot observations and immutable source lineage. No old effects, execution leases, provider sessions or task subscriptions are executed/copied as runnable work. Forks do not restore past filesystem state. Unsupported compacted/native/delegated/uncertain prefixes stay guarded. Historical promoted rows without captured command snapshots do not advertise an unusable Replay action.
-- Server baseline/request overlap and exclusive per-effect pre/post checkpoint settlement are integrated. Causal waits never hold the checkout lock. Interrupted journal states survive archive restore and require explicit recovery, not replay. Whole-turn automatic undo is not claimed over other chats or external edits.
+- Server baseline/request overlap and exclusive per-effect pre/post checkpoint settlement are integrated. Causal waits release the checkout lock. Interrupted journal states survive archive restore. The runtime resolves interrupted attempts once it can verify that work has stopped, preserving checkout files and effect records.
 
 ## Parity and remaining scope
 
@@ -24,6 +25,7 @@ Status: managed admission, deferred setup, canonical replay/configuration and ex
 | Deferred worktrees, final cwd, failed deps, Retry/Local | Actual production HTTP runtime scratch Git/npm fixtures; next-turn final binding verified |
 | Plan/model configuration | Revision, concurrent receipt, active ceiling and child-policy tests |
 | Fork/replay/edit branch | Modern canonical captured-message roots; compacted/native/delegated/legacy captured-context gaps remain guarded |
+| Same-chat message actions | Ordinary canonical roots, including visible human prompts promoted from renderer history |
 | New-root/idle promotion | Real save → revision-checked promotion → command → server host client test; concurrency/restart/lost-receipt/race tests |
 | Renderer closure/server restart | Existing host/recovery/process-restart fixtures; full packaged per-phase matrix not certified |
 | Legacy/controller/native workflows | Named exclusions before promotion; not complete historical parity |

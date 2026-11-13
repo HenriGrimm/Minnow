@@ -1218,6 +1218,9 @@ export interface SessionSummariesState {
 }
 
 export interface Chat {
+  /** Server-only transcript version paired with the loaded canonical history. */
+  historyDigest?: string;
+  historyRewriteRevision?: number;
   id: string;
   /** Server-owned persistent child identity; generic session writes cannot replace it. */
   agentConversation?: import('../server/chats/contracts').AgentConversationMeta;
@@ -1231,7 +1234,7 @@ export interface Chat {
   /** Lightweight server view; it carries no transcript, prompts or pending answer bodies. */
   agentExecution?: { executionId: string; commandId?: string | null; runId?: string | null; status: string;
     createdAt?: number; updatedAt?: number; settledAt?: number | null; workDurationMs?: number; modelSelection?: import('../server/chats/contracts').ModelSelection;
-    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string };
+    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string; needsManualRecovery?: true };
   agentPendingCommand?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentPendingCommand']>;
   agentActivityCursor?: import('../server/chats/activity').ChatActivityCursor;
   /** Server-projected next-message selection; queued inputs retain their own captured value. */

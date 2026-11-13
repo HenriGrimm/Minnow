@@ -12,7 +12,7 @@ import { streamingChatIds } from '../app-state';
 import { markPreviewOccluder } from './preview-occlusion';
 import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
-import { supportsLocalHistoryMutation } from '../state/chat-relationships';
+import { supportsLocalHistoryMutation, supportsManagedHistoryMutation } from '../state/chat-relationships';
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { groupWorkedToolRows } from './chat-work-tool-groups';
 import { TOOL_START_INDICATOR_CHANGED } from './stream-status';
@@ -177,8 +177,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       const panel = todoPanel;
       panel.querySelector('summary')!.addEventListener('click', () => todoDisclosureByChat.set(chat, !panel.open));
       markPreviewOccluder(panel);
-      // Keep the jump dock adjacent to the transcript for its fade and scroll styles.
-      todoViewport.prepend(panel);
+      todoViewport.append(panel);
     }
     todoPanel.open = todoDisclosureByChat.get(chat) ?? todos.some(item => item.status !== 'completed');
     todoPanelKey = key;
@@ -583,7 +582,7 @@ function syncReplyFoot(
     return;
   }
   let foot = group.foot;
-  const canRewrite = supportsLocalHistoryMutation(chat);
+  const canRewrite = supportsLocalHistoryMutation(chat) || supportsManagedHistoryMutation(chat);
   if (!foot || foot.dataset.index !== String(index) || foot.dataset.canRewrite !== String(canRewrite)) {
     foot?.remove();
     foot = document.createElement('div');

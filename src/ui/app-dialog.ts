@@ -15,6 +15,7 @@ export interface AppConfirmOptions {
   danger?: boolean;
   /** Extra content rendered under the message (e.g. an itemized list). */
   body?: HTMLElement;
+  initialFocus?: HTMLElement;
 }
 
 export interface AppPromptOptions {
@@ -327,7 +328,7 @@ function showConfirmDialog(options: AppConfirmOptions): Promise<boolean> {
           options.danger
             ? actionsEl?.querySelector<HTMLButtonElement>('[data-dialog-action="cancel"]')
             : actionsEl?.querySelector<HTMLButtonElement>('[data-dialog-action="confirm"]');
-        focusTarget?.focus();
+        (options.initialFocus ?? focusTarget)?.focus();
       }),
   );
 }

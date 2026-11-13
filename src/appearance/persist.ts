@@ -13,6 +13,7 @@ import {
 import { setAppearancePersistScheduler } from './persist-schedule';
 import {
   DEFAULT_APPEARANCE_FONT_ID,
+  DEFAULT_COLOR_INTENSITY,
   DEFAULT_THEME_FAMILY,
   DEFAULT_THEME_ID,
   normalizeAppearanceDensity,
@@ -120,7 +121,7 @@ export function localAppearanceHasUserChoice(state: AppearancePersistState): boo
   if (state.followSystem) return true;
   if (state.themeId && state.themeId !== DEFAULT_THEME_ID) return true;
   if (state.family && state.family !== DEFAULT_THEME_FAMILY) return true;
-  if (state.colorIntensity && state.colorIntensity !== 'subtle') return true;
+  if (normalizeColorIntensity(state.colorIntensity) !== DEFAULT_COLOR_INTENSITY) return true;
   if (state.graphiteAccent && state.graphiteAccent !== 'teal') return true;
   if ((state.density && state.density !== 'cozy') || state.reduceMotion) return true;
   if (state.customEnabled) return true;
@@ -136,7 +137,7 @@ export function applyAppearanceToLocalStorage(state: AppearancePersistState): bo
   persistSuppressed = true;
   try {
     writeStorage(APPEARANCE_STORAGE_KEYS.chatView, state.chatView === 'full' ? 'full' : 'compact');
-    writeStorage(APPEARANCE_STORAGE_KEYS.colorIntensity, normalizeColorIntensity(state.colorIntensity));
+    writeStorage(APPEARANCE_STORAGE_KEYS.colorIntensity, String(normalizeColorIntensity(state.colorIntensity)));
     writeStorage(APPEARANCE_STORAGE_KEYS.graphiteAccent, normalizeGraphiteAccent(state.graphiteAccent));
     writeStorage(APPEARANCE_STORAGE_KEYS.density, normalizeAppearanceDensity(state.density));
     writeStorage(APPEARANCE_STORAGE_KEYS.reduceMotion, state.reduceMotion ? '1' : '0');

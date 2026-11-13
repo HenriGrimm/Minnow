@@ -6,6 +6,7 @@
 
 import {
   DEFAULT_APPEARANCE_FONT_ID,
+  DEFAULT_COLOR_INTENSITY,
   DEFAULT_THEME_FAMILY,
   DEFAULT_THEME_ID,
   THEME_FAMILIES,
@@ -64,7 +65,7 @@ export function defaultAppearanceConfig() {
     followSystem: false,
     family: DEFAULT_THEME_FAMILY,
     themeId: DEFAULT_THEME_ID,
-    colorIntensity: 'subtle',
+    colorIntensity: DEFAULT_COLOR_INTENSITY,
     graphiteAccent: 'teal',
     density: 'cozy',
     reduceMotion: false,
@@ -215,7 +216,7 @@ export function appearanceLooksPersisted(state) {
   if (state.followSystem) return true;
   if (state.themeId && state.themeId !== DEFAULT_THEME_ID) return true;
   if (state.family && state.family !== DEFAULT_THEME_FAMILY) return true;
-  if (state.colorIntensity && state.colorIntensity !== 'subtle') return true;
+  if (normalizeColorIntensity(state.colorIntensity) !== DEFAULT_COLOR_INTENSITY) return true;
   if (state.graphiteAccent && state.graphiteAccent !== 'teal') return true;
   if ((state.density && state.density !== 'cozy') || state.reduceMotion) return true;
   if (state.customEnabled) return true;

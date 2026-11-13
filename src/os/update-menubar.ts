@@ -1,231 +1,146 @@
-import { openShellOverlay, shellOverlayClosed, bindShellOverlayTrigger } from '../ui/shell-overlay-state';
-/**
- * Menubar update pill + popover (MIN-384). Hidden when up to date; `↓ N%` while an
- * update downloads; accent "Restart · x.y.z" when ready. Mirrors the notifications
- * popover pattern in notifications-menu.ts.
- */
-
 import '../styles/update-menubar.css';
-import {
-  getUpdaterApi,
-  releaseNotesExcerpt,
-  watchUpdaterStatus,
-  type MinnowUpdaterStatus,
-} from '../electron/updater-client';
+import '../styles/settings-updates.css';
+import { updateCenter, type UpdateCenter } from './update-center';
 import { launchApp } from './router';
-import { markPreviewOccluder } from '../ui/preview-occlusion';
+import { getAppWindowId } from './app-window';
+import { iconHtml } from '../ui/icon';
+import { openPopover, type PopoverHandle } from '../ui/components/popover';
+import { openShellOverlay, shellOverlayClosed, bindShellOverlayTrigger } from '../ui/shell-overlay-state';
+import { createUpdateRows, el, updateButton, updateSummary } from '../ui/update-rows';
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text != null) node.textContent = text;
-  return node;
-}
+const announced = new Set<string>();
 
-/** Wire the menubar update slot. Returns cleanup. No-op outside the Electron shell. */
-export function initUpdateMenubarPill(slot: HTMLElement): () => void {
-  slot.hidden = true;
-  if (!getUpdaterApi()) {
-    return () => {};
+export function initUpdateMenubarPill(slot: HTMLElement, center: UpdateCenter = updateCenter): () => void {
+  slot.hidden = false;
+  const trigger = el('button', 'mn-os-mb-icon mn-os-mb-update-pill');
+  trigger.type = 'button';
+  trigger.setAttribute('aria-haspopup', 'dialog');
+  trigger.innerHTML = iconHtml('download', { size: 16 });
+  const badge = el('span', 'mn-os-mb-update-count');
+  badge.setAttribute('aria-hidden', 'true');
+  trigger.append(badge);
+  const live = el('span', 'updates-sr-only');
+  live.setAttribute('role', 'status');
+  slot.append(trigger, live);
+  const unbind = bindShellOverlayTrigger(trigger, 'update');
+  let panel: PopoverHandle | undefined;
+  let renderPanel: (() => void) | undefined;
+  const boundApp = getAppWindowId();
+  const canOpenSettings = !boundApp || boundApp === 'settings';
+
+  function canAnchor(): boolean {
+    return trigger.isConnected && !trigger.closest('[hidden], [inert]')
+      && trigger.getClientRects().length > 0 && window.getComputedStyle(trigger).visibility === 'visible';
   }
 
-  let latest: MinnowUpdaterStatus | null = null;
-  let panel: HTMLDivElement | null = null;
-  let menuOpen = false;
-  let outsideHandler: ((e: PointerEvent) => void) | null = null;
-  let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
-
-  const pill = el('button', 'mn-os-mb-update-pill');
-  pill.type = 'button';
-  pill.setAttribute('aria-haspopup', 'dialog');
-  pill.setAttribute('aria-expanded', 'false');
-  pill.setAttribute('aria-live', 'polite');
-  slot.appendChild(pill);
-  const unbindTrigger = bindShellOverlayTrigger(pill, 'update');
-
-  function detachGlobalListeners(): void {
-    if (outsideHandler) {
-      document.removeEventListener('pointerdown', outsideHandler, true);
-      outsideHandler = null;
-    }
-    if (escapeHandler) {
-      document.removeEventListener('keydown', escapeHandler, true);
-      escapeHandler = null;
-    }
-  }
-
-  function closeMenu(): void {
-    if (!menuOpen) return;
-    menuOpen = false;
-    shellOverlayClosed('update');
-    detachGlobalListeners();
-    panel?.remove();
-    panel = null;
-    pill.setAttribute('aria-expanded', 'false');
-    pill.classList.remove('is-open');
-  }
-
-  function positionPanel(): void {
-    if (!panel) return;
-    const rect = pill.getBoundingClientRect();
-    const margin = 8;
-    panel.style.top = `${rect.bottom + 4}px`;
-    const panelWidth = panel.offsetWidth || panel.getBoundingClientRect().width;
-    let left = rect.right - panelWidth;
-    left = Math.max(margin, Math.min(left, window.innerWidth - panelWidth - margin));
-    panel.style.left = `${left}px`;
-  }
-
-  function buildPanel(status: MinnowUpdaterStatus): HTMLDivElement {
-    const ready = status.state === 'ready';
-    const menu = el('div', 'mn-os-update-menu');
-    menu.setAttribute('role', 'dialog');
-    menu.setAttribute('aria-label', ready ? 'Update ready' : 'Downloading update');
-
-    menu.appendChild(
-      el('div', 'mn-os-update-menu__title', ready ? 'Update ready' : 'Downloading update'),
-    );
-
-    const version = status.pendingVersion ?? 'new version';
-    menu.appendChild(
-      el(
-        'p',
-        'mn-os-update-menu__lead',
-        ready
-          ? `Minnow ${version} is downloaded.`
-          : `Downloading ${version} · ${status.progressPercent ?? 0}%`,
-      ),
-    );
-
-    const excerpt = releaseNotesExcerpt(status.releaseNotes, 3);
-    if (excerpt.length > 0) {
-      menu.appendChild(el('div', 'mn-os-update-menu__notes-title', 'Highlights'));
-      const list = el('ul', 'mn-os-update-menu__notes');
-      for (const line of excerpt) {
-        list.appendChild(el('li', 'mn-os-update-menu__note', line));
-      }
-      menu.appendChild(list);
-    }
-
-    if (ready) {
-      menu.appendChild(
-        el('p', 'mn-os-update-menu__warning', 'Active sessions will close and Minnow will reopen.'),
-      );
-    }
-
-    const actions = el('div', 'mn-os-update-menu__actions');
-    if (ready) {
-      const restartBtn = el('button', 'mn-os-update-menu__restart', 'Restart now');
-      restartBtn.type = 'button';
-      restartBtn.addEventListener('click', () => {
-        void getUpdaterApi()?.restart();
-        closeMenu();
+  function open(): boolean {
+    if (panel) return true;
+    if (!canAnchor()) return false;
+    const content = el('div', 'updates-popover');
+    const head = el('header', 'updates-popover__header');
+    const heading = el('div');
+    const summary = el('p', 'updates-summary');
+    summary.setAttribute('role', 'status');
+    heading.append(el('h2', 'updates-popover__title', 'Updates'), summary);
+    const check = updateButton('Check', () => { void center.check(); });
+    check.setAttribute('aria-label', 'Check for updates');
+    head.append(heading, check);
+    const rows = createUpdateRows(center, 'popover');
+    content.append(head, rows.root);
+    if (canOpenSettings) {
+      const footer = el('footer', 'updates-popover__footer');
+      const settings = updateButton('Open Updates in Settings', () => {
+        panel?.close();
+        launchApp('settings', { settingsSection: 'updates' });
       });
-      actions.appendChild(restartBtn);
+      settings.append(el('span', '', ' →'));
+      footer.append(settings);
+      content.append(footer);
     }
-    const laterBtn = el('button', 'mn-os-update-menu__later', 'Later');
-    laterBtn.type = 'button';
-    laterBtn.addEventListener('click', () => closeMenu());
-    actions.appendChild(laterBtn);
-    menu.appendChild(actions);
 
-    const settingsLink = el('button', 'mn-os-update-menu__settings', 'Open Settings →');
-    settingsLink.type = 'button';
-    settingsLink.addEventListener('click', () => {
-      closeMenu();
-      launchApp('settings');
+    openShellOverlay('update', () => panel?.close());
+    if (!canAnchor()) {
+      shellOverlayClosed('update');
+      return false;
+    }
+    panel = openPopover({
+      anchor: trigger,
+      placement: 'bottom-end',
+      ariaLabel: 'Updates',
+      className: 'mn-os-update-menu',
+      content,
+      onClose: () => {
+        panel = undefined;
+        renderPanel = undefined;
+        shellOverlayClosed('update');
+      },
     });
-    menu.appendChild(settingsLink);
-
-    return menu;
-  }
-
-  function openMenu(): void {
-    if (!latest || (latest.state !== 'ready' && latest.state !== 'downloading')) return;
-    closeMenu();
-    openShellOverlay('update', closeMenu);
-    panel = buildPanel(latest);
-    document.body.appendChild(panel);
-    menuOpen = true;
-    markPreviewOccluder(panel, 'menu');
-    pill.setAttribute('aria-expanded', 'true');
-    pill.classList.add('is-open');
-    positionPanel();
-
-    outsideHandler = (e: PointerEvent) => {
-      const target = e.target as Node | null;
-      if (panel?.contains(target) || pill.contains(target)) return;
-      closeMenu();
+    renderPanel = () => {
+      summary.textContent = updateSummary(center);
+      check.disabled = center.state.cliChecking || center.state.appChecking || center.state.app?.state === 'checking'
+        || (center.state.cliRestricted && !center.state.app?.supported);
+      check.textContent = center.state.cliChecking || center.state.appChecking ? 'Checking…' : 'Check';
+      rows.render();
+      reposition();
     };
-    document.addEventListener('pointerdown', outsideHandler, true);
-
-    escapeHandler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      closeMenu();
-    };
-    document.addEventListener('keydown', escapeHandler, true);
+    renderPanel();
+    void center.checkCli();
+    return true;
   }
 
-  pill.addEventListener('click', () => {
-    if (menuOpen) closeMenu();
-    else openMenu();
-  });
-
-  function applyStatus(status: MinnowUpdaterStatus): void {
-    latest = status;
-
-    if (status.state === 'downloading') {
-      slot.hidden = false;
-      pill.classList.remove('is-ready');
-      pill.classList.add('is-downloading');
-      pill.textContent = `↓ ${status.progressPercent ?? 0}%`;
-      pill.setAttribute(
-        'aria-label',
-        `Downloading update ${status.pendingVersion ?? ''} · ${status.progressPercent ?? 0}%`.trim(),
-      );
-      if (menuOpen && panel) {
-        const lead = panel.querySelector('.mn-os-update-menu__lead');
-        if (lead) {
-          lead.textContent = `Downloading ${status.pendingVersion ?? 'new version'} · ${status.progressPercent ?? 0}%`;
-        }
-      }
-      return;
-    }
-
-    if (status.state === 'ready') {
-      const wasReady = pill.classList.contains('is-ready');
-      slot.hidden = false;
-      pill.classList.remove('is-downloading');
-      pill.classList.add('is-ready');
-      pill.textContent = `Restart · ${status.pendingVersion ?? ''}`.trim();
-      pill.setAttribute(
-        'aria-label',
-        `Restart to update Minnow to version ${status.pendingVersion ?? 'latest'}`,
-      );
-      if (menuOpen && !wasReady) {
-        closeMenu();
-        openMenu();
-      }
-      return;
-    }
-
-    slot.hidden = true;
-    pill.classList.remove('is-ready', 'is-downloading');
-    closeMenu();
+  trigger.onclick = () => { if (panel) panel.close('anchor'); else open(); };
+  function reposition(): void {
+    if (!panel) return;
+    if (canAnchor()) panel.reposition();
+    else panel.close();
   }
 
-  const stopWatching = watchUpdaterStatus(applyStatus);
+  function sync(): void {
+    const keys = center.pendingUpdates();
+    const count = keys.length;
+    const label = count ? count + ' update' + (count === 1 ? '' : 's') + ' available' : 'Updates';
+    if (trigger.getAttribute('aria-label') !== label) {
+      trigger.setAttribute('aria-label', label);
+      trigger.title = label;
+    }
+    badge.hidden = count === 0;
+    badge.textContent = String(count);
+    trigger.classList.toggle('has-updates', count > 0);
+    renderPanel?.();
+    if (!canAnchor() || document.hidden || !keys.some(key => !announced.has(key))) return;
+    void import('../ui/toast').then(({ notify }) => {
+      if (!canAnchor() || document.hidden) return;
+      const pending = center.pendingUpdates();
+      if (!pending.some(key => !announced.has(key))) return;
+      for (const key of pending) announced.add(key);
+      const title = trigger.getAttribute('aria-label') ?? 'Updates available';
+      live.textContent = title;
+      if (panel) return;
+      notify({ tone: 'info', icon: 'download', source: 'Updates', title,
+        dedupeKey: 'software-updates',
+        actions: [{ label: 'View updates', run: () => {
+          if (open()) return;
+          if (!canOpenSettings) return false;
+          launchApp('settings', { settingsSection: 'updates' });
+        } }] });
+    });
+  }
+  window.addEventListener('minnow:graphite-workspace-changed', sync);
+  window.addEventListener('minnow:workspace-gate-changed', sync);
+  window.addEventListener('resize', sync);
+  document.addEventListener('visibilitychange', sync);
+  const stop = center.subscribe(sync);
 
   return () => {
-    stopWatching();
-    closeMenu();
-    unbindTrigger();
-    pill.remove();
+    window.removeEventListener('minnow:graphite-workspace-changed', sync);
+    window.removeEventListener('minnow:workspace-gate-changed', sync);
+    window.removeEventListener('resize', sync);
+    document.removeEventListener('visibilitychange', sync);
+    stop();
+    panel?.close();
+    unbind();
+    trigger.remove();
+    live.remove();
     slot.hidden = true;
   };
 }
