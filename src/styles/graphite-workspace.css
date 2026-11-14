@@ -380,10 +380,10 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
 }
 
 .mn-graphite-workspace #osAppRail .chat-list-section-head {
-  height: 30px;
+  min-height: 30px;
   margin: 0;
   align-items: flex-end;
-  padding: 0 8px 6px;
+  padding: var(--mn-space-1) 8px 6px;
   color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
   font-size: 12px;
   font-weight: 500;
