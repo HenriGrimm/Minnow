@@ -43,6 +43,7 @@ import {
 import { findFreePort, killPortOwner, listListeningPorts } from '../dev-server/ports.js';
 import { readDevServerSettings, writeDevServerSettings } from '../dev-server/settings.js';
 import { getWorkspaceGitStatus } from './git-status.js';
+import { discoverWorkspaceRepos, invalidateWorkspaceRepos } from './repos.js';
 import { readWorkspaceProjectIcon } from './project-icon.js';
 import { ensureBaselineGitignore } from './baseline-gitignore.js';
 import { initializeWorkspaceGit } from './initialize-git.js';
@@ -136,7 +137,16 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
     if (pathname === '/api/workspace/clone' && req.method === 'POST') {
       const body = await readJsonBody(req);
       const created = await cloneWorkspaceRepository(body?.parentPath, body?.name, body?.remoteUrl);
+      invalidateWorkspaceRepos();
       sendJson(res, 201, { ok: true, ...created });
+      return true;
+    }
+
+    if (pathname === '/api/workspace/repos' && req.method === 'GET') {
+      const repos = await discoverWorkspaceRepos(getEffectiveWorkspaceRoot(), {
+        refresh: searchParams.get('refresh') === '1',
+      });
+      sendJson(res, 200, { ok: true, repos });
       return true;
     }
 
@@ -169,6 +179,7 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
           ? body.workspaceRoot.trim()
           : undefined;
       const result = await initializeWorkspaceGit(workspaceRoot);
+      invalidateWorkspaceRepos(workspaceRoot ?? getEffectiveWorkspaceRoot());
       if (!result.ok) {
         sendJson(res, 400, { ok: false, error: result.error ?? 'failed' });
         return true;
