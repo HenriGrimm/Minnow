@@ -527,12 +527,13 @@ html:not(.mn-narrow) .mn-os-code-layer:has(.graphite-surfaces) > #codeStatusBar 
 }
 
 .graphite-surface-choice-stats {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0 var(--mn-space-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: var(--mn-type-xs);
   font-variant-numeric: tabular-nums;
+  line-height: calc(var(--mn-type-sm) * var(--mn-leading-snug));
 }
 
 .graphite-surface-choice-added {

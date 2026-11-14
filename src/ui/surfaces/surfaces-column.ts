@@ -406,19 +406,22 @@ function renderLauncher(panel: SurfacePanel, view: PanelElements, chat: Chat): v
         const label = element('span', 'graphite-surface-choice-label');
         label.textContent = item.label;
         title.append(label);
+        copy.append(title);
         if (stats) {
           const counts = element('span', 'graphite-surface-choice-stats');
           counts.setAttribute('aria-hidden', 'true');
+          counts.title = `${stats.additions} added, ${stats.deletions} deleted`;
           const added = element('span', 'graphite-surface-choice-added');
           added.textContent = `+${stats.additions}`;
           const deleted = element('span', 'graphite-surface-choice-deleted');
           deleted.textContent = `−${stats.deletions}`;
-          counts.append(added, deleted);
-          title.append(counts);
+          counts.append(added, ' ', deleted);
+          copy.append(counts);
+        } else {
+          const hint = element('span', 'graphite-surface-choice-hint');
+          hint.textContent = description;
+          copy.append(hint);
         }
-        const hint = element('span', 'graphite-surface-choice-hint');
-        hint.textContent = description;
-        copy.append(title, hint);
         button.append(createIcon(item.icon, { size: 14, className: 'graphite-surface-choice-icon' }), copy);
         if (availability.available) {
           const key = element('kbd', 'graphite-surface-key');
