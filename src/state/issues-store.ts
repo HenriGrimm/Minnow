@@ -54,6 +54,7 @@ import {
   LOCAL_ASSIGNEE_ID,
 } from '../issues/saved-views.ts';
 import { isUnreviewedTriageIssue } from '../issues/triage.ts';
+import { normalizeIssueGitLinkRepo, normalizeIssueRepoIds } from '../issues/repo-scope.ts';
 import {
   ISSUE_ACTIVITY_CAP,
   ISSUES_COMPAT_VERSION,
@@ -377,6 +378,7 @@ const NORMALIZED_ISSUE_CARD_KEYS: ReadonlySet<string> = new Set([
   'updatedAt',
   'codeRefs',
   'gitLinks',
+  'repos',
   'issueRefs',
   'chatIds',
   'planPath',
@@ -458,6 +460,7 @@ const NORMALIZED_AGENT_KEYS = new Set([
   'branch',
   'prNumber',
   'prUrl',
+  'prRepo',
   'pendingQuestionId',
   'error',
   'envBlocked',
@@ -519,6 +522,7 @@ function parseIssueAgent(raw: unknown): IssueAgentRun | undefined {
     out.prNumber = Math.floor(row.prNumber);
   }
   if (typeof row.prUrl === 'string' && row.prUrl.trim()) out.prUrl = row.prUrl.trim();
+  if (typeof row.prRepo === 'string' && row.prRepo.trim()) out.prRepo = row.prRepo.trim();
   if (typeof row.pendingQuestionId === 'string' && row.pendingQuestionId.trim()) {
     out.pendingQuestionId = row.pendingQuestionId.trim();
   }
@@ -821,7 +825,9 @@ function ensureIssueCardShape(raw: unknown): IssueCard | null {
   };
 
   if (Array.isArray(r.codeRefs)) card.codeRefs = r.codeRefs as IssueCard['codeRefs'];
-  if (Array.isArray(r.gitLinks)) card.gitLinks = r.gitLinks as IssueCard['gitLinks'];
+  if (Array.isArray(r.gitLinks)) card.gitLinks = r.gitLinks.map(normalizeIssueGitLinkRepo) as IssueCard['gitLinks'];
+  const repos = normalizeIssueRepoIds(r.repos);
+  if (repos.length) card.repos = repos;
   if (Array.isArray(r.issueRefs)) {
     card.issueRefs = r.issueRefs
       .map((item) => normalizeIssueIssueRef(item as IssueIssueRef | string))
