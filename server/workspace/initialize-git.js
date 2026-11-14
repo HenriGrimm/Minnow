@@ -44,6 +44,11 @@ async function initRepo(cwd) {
   return { ok: true };
 }
 
+/** Why a multi-repo folder is not initialized as one repository. */
+export function multiRepoInitError(ids) {
+  return `This folder holds several git repositories (${ids.join(', ')}). Minnow will not turn the parent folder into another repository; work in one of them instead.`;
+}
+
 /** True when the repo has at least one commit. */
 async function hasHead(cwd) {
   const result = await git(['rev-parse', '--verify', 'HEAD'], cwd);
@@ -92,6 +97,14 @@ export async function initializeWorkspaceGit(workspaceRoot) {
   const alreadyRepo = await isGitRepository(root);
   let createdRepo = false;
   if (!alreadyRepo) {
+    // A folder of repos (`frontend/` + `backend/`) must never become one repo:
+    // `git add -A` would commit the children as embedded repositories.
+    const { discoverWorkspaceRepos, invalidateWorkspaceRepos } = await import('./repos.js');
+    invalidateWorkspaceRepos(root);
+    const children = await discoverWorkspaceRepos(root, { refresh: true });
+    if (children.length) {
+      return { ok: false, error: multiRepoInitError(children.map((repo) => repo.id)) };
+    }
     const init = await initRepo(root);
     if (!init.ok) return init;
     createdRepo = true;

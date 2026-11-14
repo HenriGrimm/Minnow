@@ -4,31 +4,62 @@ import { runProcess } from '../process-runner.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { getChatWorktreePath, getRepoWorktreesDir } from './paths.js';
 import { invalidateRegisteredWorktreeCache } from './allowlist.js';
+import { mergeMirroredWorktree, readMirrorManifest } from './multi-repo.js';
 
 const queues = new Map();
 const output = result => `${result.stderr || ''}\n${result.stdout || ''}`.trim();
 const git = (cwd, args) => runProcess('git', args, { cwd, timeout: 120_000 });
 
-/** Serialize approvals per repository, including approvals from other windows. */
-export async function mergeChatWorktree(input) {
-  const root = getEffectiveWorkspaceRoot();
-  const common = await git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+/** Serialize work per repository, including approvals from other windows. */
+async function withRepoQueue(repoRoot, work) {
+  const common = await git(repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
   if (common.code !== 0) return { ok: false, error: output(common) };
   const key = common.stdout.trim();
   const previous = queues.get(key) || Promise.resolve();
-  const pending = previous.catch(() => {}).then(() => merge(root, input));
+  const pending = previous.catch(() => {}).then(work);
   queues.set(key, pending);
   try { return await pending; }
   finally { if (queues.get(key) === pending) queues.delete(key); }
 }
 
-async function merge(root, { chatId, branch, targetBranch = 'main' }) {
+/** Serialize approvals per repository, including approvals from other windows. */
+export async function mergeChatWorktree(input) {
+  const root = getEffectiveWorkspaceRoot();
+  const invalid = validateInput(input);
+  if (invalid) return invalid;
+  // A folder of repos has a mirrored worktree: merge each repo on its own queue.
+  const mirrorPath = typeof input?.chatId === 'string' ? getChatWorktreePath(input.chatId, root) : '';
+  const manifest = mirrorPath ? await readMirrorManifest(mirrorPath) : null;
+  if (manifest) {
+    const result = await mergeMirroredWorktree(mirrorPath, manifest, input, (repoRoot, worktree, branch, targetBranch) =>
+      withRepoQueue(repoRoot, () => mergeWorktreeIntoTarget(repoRoot, worktree, { branch, targetBranch, removeWorktree: false })));
+    invalidateRegisteredWorktreeCache();
+    return result;
+  }
+  return withRepoQueue(root, () => merge(root, input));
+}
+
+function validateInput({ chatId, branch, targetBranch = 'main' } = {}) {
   if (typeof chatId !== 'string' || !chatId.trim() || typeof branch !== 'string' || !branch.trim() || typeof targetBranch !== 'string') return { ok: false, error: 'A chat, branch, and target branch are required.' };
   if (branch === targetBranch) return { ok: false, error: 'The worktree branch must differ from its target.' };
+  return null;
+}
+
+async function merge(root, { chatId, branch, targetBranch = 'main' }) {
+  return mergeWorktreeIntoTarget(root, getChatWorktreePath(chatId, root), { branch, targetBranch, removeWorktree: true });
+}
+
+/**
+ * Merge one repo's worktree branch into `targetBranch` without touching the
+ * user's checkout beyond a fast-forward. Checked in a scratch worktree first.
+ * @param {string} root the repository (main checkout)
+ * @param {string} worktree the agent's worktree for that repository
+ * @param {{ branch: string, targetBranch: string, removeWorktree: boolean }} options
+ */
+export async function mergeWorktreeIntoTarget(root, worktree, { branch, targetBranch, removeWorktree }) {
   for (const ref of [branch, targetBranch]) {
     if ((await git(root, ['check-ref-format', '--branch', ref])).code !== 0 || ref.startsWith('-')) return { ok: false, error: 'Invalid branch name.' };
   }
-  const worktree = getChatWorktreePath(chatId, root);
   const head = await git(worktree, ['symbolic-ref', '--short', 'HEAD']);
   if (head.code !== 0 || head.stdout.trim() !== branch) return { ok: false, error: 'The managed worktree no longer belongs to this branch. It has been kept.' };
   const dirty = await git(worktree, ['status', '--porcelain']);
@@ -61,11 +92,13 @@ async function merge(root, { chatId, branch, targetBranch = 'main' }) {
       ? await git(checkoutPath, ['merge', '--ff-only', '--no-edit', sha])
       : await git(root, ['update-ref', `refs/heads/${targetBranch}`, sha, baseSha]);
     if (landed.code !== 0) return { ok: false, error: `Could not update ${targetBranch}. Your checkout and agent worktree have been kept. ${output(landed)}` };
-    const after = await git(worktree, ['status', '--porcelain']);
-    const tip = await git(worktree, ['rev-parse', 'HEAD']);
     let removed = false;
-    if (after.code === 0 && !after.stdout.trim() && tip.stdout.trim() === sourceSha) {
-      removed = (await git(root, ['worktree', 'remove', worktree])).code === 0;
+    if (removeWorktree) {
+      const after = await git(worktree, ['status', '--porcelain']);
+      const tip = await git(worktree, ['rev-parse', 'HEAD']);
+      if (after.code === 0 && !after.stdout.trim() && tip.stdout.trim() === sourceSha) {
+        removed = (await git(root, ['worktree', 'remove', worktree])).code === 0;
+      }
     }
     invalidateRegisteredWorktreeCache();
     return { ok: true, sha, removed, path: worktree };

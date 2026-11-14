@@ -21,6 +21,13 @@ import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { worktreeAdd } from '../git/git-ops.js';
 import { runGh } from '../git/gh-cli.js';
+import {
+  branchExistsInAny,
+  createMirroredWorktree,
+  multiRepoSources,
+  readMirrorManifest,
+  removeMirroredWorktree,
+} from './multi-repo.js';
 
 const GIT_TIMEOUT_MS = 120_000;
 
@@ -1304,6 +1311,47 @@ export async function listWorktrees() {
 
 const automaticChatSetups = new Map();
 
+/**
+ * Install dependencies in a chat worktree — once per repo for a mirrored
+ * (multi-repo) worktree, where the folder root holds no manifests of its own.
+ * @param {string} wtPath
+ * @param {{ signal?: AbortSignal }} [options]
+ */
+export async function refreshChatWorktreeDependencies(wtPath, options = {}) {
+  const files = ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]);
+  const mirror = await readMirrorManifest(wtPath);
+  if (!mirror) return refreshDependencies(wtPath, files, options);
+  const ran = [];
+  const failed = [];
+  for (const repo of mirror.repos) {
+    const result = await refreshDependencies(repo.worktreePath, files, options);
+    ran.push(...result.ran.map((entry) => `${repo.id}: ${entry}`));
+    failed.push(...result.failed.map((entry) => `${repo.id}: ${entry}`));
+  }
+  return { ran, failed };
+}
+
+/**
+ * Copy local dotenv files into a chat worktree. A mirrored (multi-repo)
+ * worktree copies from each repo into that repo's worktree: the workspace
+ * folder holding them is not a repository, so git cannot list its files.
+ * @param {string} wtPath
+ * @param {{ signal?: AbortSignal }} [options]
+ */
+export async function prepareChatWorktreeEnvironment(wtPath, options = {}) {
+  const mirror = await readMirrorManifest(wtPath);
+  if (!mirror) return prepareWorktreeEnvironment(getEffectiveWorkspaceRoot(), wtPath, options);
+  const copied = [], skipped = [], failed = [];
+  for (const repo of mirror.repos) {
+    const result = await prepareWorktreeEnvironment(repo.source, repo.worktreePath, options);
+    const inRepo = (file) => (file ? `${repo.relPath}/${file}` : file);
+    copied.push(...result.copied.map(inRepo));
+    skipped.push(...result.skipped.map(inRepo));
+    failed.push(...result.failed.map((item) => ({ file: inRepo(item.file), reason: `${repo.id}: ${item.reason}` })));
+  }
+  return { ok: failed.length === 0, copied, skipped, failed };
+}
+
 /** One-click setup. Coalesce repeated clicks and retain failed slots for retry. */
 export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
   signal?.throwIfAborted();
@@ -1314,7 +1362,19 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
   if (automaticChatSetups.has(wtPath)) return automaticChatSetups.get(wtPath);
   const pending = (async () => {
     let branch;
-    if (await pathExists(wtPath)) {
+    const sources = await multiRepoSources(getEffectiveWorkspaceRoot());
+    const mirror = await readMirrorManifest(wtPath);
+    if (mirror) {
+      branch = mirror.branch;
+    } else if (sources && !(await pathExists(wtPath))) {
+      const slug = slugifyGitRefName(typeof title === 'string' ? title : '', 'worktree').slice(0, 48).replace(/[./-]+$/, '') || 'worktree';
+      const suffix = createHash('sha256').update(chatId).digest('hex').slice(0, 10);
+      const stem = `minnow/${slug}-${suffix}`;
+      branch = stem;
+      for (let i = 2; await branchExistsInAny(sources, branch); i++) branch = `${stem}-${i}`;
+      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', signal, prepareDependencies: !onCheckout });
+      if (!created.ok) return { ...created, error: created.error || created.output || 'Could not create worktree' };
+    } else if (await pathExists(wtPath)) {
       const registered = await git(['worktree', 'list', '--porcelain'], undefined, { signal });
       const paths = (registered.stdout ?? '').split('\n').filter(line => line.startsWith('worktree '))
         .map(line => normalizeWorkspacePathKey(line.slice(9).trim()));
@@ -1343,10 +1403,10 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
     // Canonical chats durably bind the allocated checkout before installers run.
     await onCheckout?.({ path: wtPath, branch });
     signal?.throwIfAborted();
-    const environment = await prepareWorktreeEnvironment(getEffectiveWorkspaceRoot(), wtPath, { signal });
+    const environment = await prepareChatWorktreeEnvironment(wtPath, { signal });
     if (!environment.ok) return { ok: false, path: wtPath, branch, environment,
       error: `Worktree kept. Local environment setup failed: ${environment.failed.map(item => item.reason).join(' ')} Retry setup after repair.` };
-    const preparation = await refreshDependencies(wtPath, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]), { signal });
+    const preparation = await refreshChatWorktreeDependencies(wtPath, { signal });
     signal?.throwIfAborted();
     if (preparation.failed.length) {
       return { ok: false, path: wtPath, branch, ...preparation, error: `Worktree kept. Setup failed: ${preparation.failed.join(', ')}. Retry Enable worktree after fixing the dependency error.` };
@@ -1385,6 +1445,16 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
 
   if (exists) {
     if (requireNewBranch) return { ok: false, error: 'The owned worktree slot already exists; verify its allocation before reuse', path: wtPath, branch: branchName };
+    const mirror = await readMirrorManifest(wtPath);
+    if (mirror) {
+      const repos = mirror.repos.map(({ id, worktreePath }) => ({ id, path: worktreePath }));
+      if (prepareDependencies) {
+        const environment = await prepareChatWorktreeEnvironment(wtPath, { signal });
+        if (!environment.ok) return { ok: false, path: wtPath, branch: mirror.branch, repos, environment,
+          error: `Worktree kept. ${environment.failed.map(item => item.reason).join(' ')}` };
+      }
+      return { ok: true, path: wtPath, branch: mirror.branch, created: false, repos };
+    }
     if (!(await isWorktreeCheckout(wtPath))) return { ok: false, error: 'The managed worktree folder is not a valid checkout. Inspect it in Source Control.' };
     const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath);
     if (!ok(head)) return { ok: false, error: 'The existing worktree has a detached HEAD.' };
@@ -1397,6 +1467,20 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
   }
 
   await fs.mkdir(path.dirname(wtPath), { recursive: true });
+
+  // A folder of repos gets one worktree per repo, laid out like the workspace.
+  // Each repo branches from its own HEAD; git never runs in the parent folder.
+  const sources = await multiRepoSources(depSource);
+  if (sources) {
+    return createMirroredWorktree({
+      wtPath,
+      workspaceRoot: depSource,
+      repos: sources,
+      branch: branchName,
+      signal,
+      prepare: prepareDependencies ? (source, worktree) => prepareWorktreeDependencies(source, worktree, { signal }) : undefined,
+    }).finally(() => invalidateRegisteredWorktreeCache());
+  }
 
   if (checkout) {
     const added = await worktreeAdd({
@@ -1467,6 +1551,11 @@ export async function removeChatWorktree({ chatId }) {
     await fs.access(wtPath);
   } catch {
     return { ok: true, path: wtPath, removed: false };
+  }
+  if (await readMirrorManifest(wtPath)) {
+    const removed = await removeMirroredWorktree(wtPath);
+    invalidateRegisteredWorktreeCache();
+    return removed;
   }
   const r = await git(['worktree', 'remove', '--force', wtPath]);
   await git(['worktree', 'prune']);
