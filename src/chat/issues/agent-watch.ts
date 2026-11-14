@@ -120,9 +120,12 @@ async function stampIssuePrFromWatcher(issueId: string): Promise<void> {
     if (!resolved) return;
     const current = findIssueById(issueId);
     if (!current?.agent) return;
+    const { repoIdForRemoteSlug } = await import('../../state/workspace-repos.ts');
+    const prRepo = await repoIdForRemoteSlug(resolved.repo, current.workspacePath);
     updateIssueAgentRun(issueId, {
       prNumber: resolved.number,
       prUrl: resolved.url,
+      ...(prRepo ? { prRepo } : {}),
     });
     scheduleSaveIssues();
   } catch {}

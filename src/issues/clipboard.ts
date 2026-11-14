@@ -20,6 +20,7 @@ import type {
   IssueIssueRef,
 } from '../types.ts';
 import { findPriority, findStatus, findType, type IssuesTaxonomy } from './taxonomy.ts';
+import { repoQualifiedRef } from './repo-scope.ts';
 
 /** Extras the detail panel resolves from the store before formatting. */
 export interface IssueClipboardContext {
@@ -50,7 +51,7 @@ function codeRefLine(ref: IssueCodeRef): string {
 }
 
 function gitLinkLine(link: IssueGitLink): string {
-  const parts = [`${link.kind} ${link.ref}`.trim()];
+  const parts = [`${link.kind} ${repoQualifiedRef(link.ref, link.repo)}`.trim()];
   if (link.title?.trim()) parts.push(link.title.trim());
   if (link.url?.trim()) parts.push(link.url.trim());
   return parts.join(' — ');

@@ -19,6 +19,8 @@ export interface IssuesContextMenuItem {
   separatorBefore?: boolean;
   /** Leading Uicons class for status (and similar) rows. */
   iconClass?: string;
+  /** Checkmark for toggle rows (e.g. repo membership). */
+  checked?: boolean;
   onSelect?: () => void | Promise<void>;
 }
 
@@ -62,6 +64,7 @@ function toMenuItems(items: IssuesContextMenuItem[]): MenuItem[] {
       danger: item.danger,
       disabled: item.disabled,
       iconClass: item.iconClass,
+      ...(item.checked !== undefined ? { checked: item.checked } : {}),
       onSelect: item.onSelect ?? (() => {}),
     });
   }

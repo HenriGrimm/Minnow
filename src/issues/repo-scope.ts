@@ -39,6 +39,14 @@ export function issueRepoIds(issue: Pick<IssueCard, 'repos'>, repos: ReadonlyArr
   return repos.length === 1 ? [repos[0].id] : [];
 }
 
+/** Add or remove one repo id, keeping the workspace's repo order. */
+export function toggleIssueRepo(selected: readonly string[], id: string, order: readonly string[]): string[] {
+  const next = new Set(selected);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return [...order.filter((repo) => next.has(repo)), ...[...next].filter((repo) => !order.includes(repo))];
+}
+
 /** True when two links name the same repo, treating a missing repo as "the only one". */
 export function sameLinkRepo(a: Pick<IssueGitLink, 'repo'>, b: Pick<IssueGitLink, 'repo'>): boolean {
   return (a.repo ?? '') === (b.repo ?? '');

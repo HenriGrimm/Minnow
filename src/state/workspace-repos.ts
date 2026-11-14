@@ -84,6 +84,18 @@ export function repoRemoteSlug(repo: WorkspaceRepo | null | undefined): string {
   return repo?.remote?.owner && repo.remote.name ? `${repo.remote.owner}/${repo.remote.name}` : '';
 }
 
+/**
+ * The repo id whose remote is `owner/name`, in a multi-repo workspace only —
+ * single-repo workspaces leave links unqualified, as before.
+ */
+export async function repoIdForRemoteSlug(slug: string | undefined, workspacePath?: string): Promise<string | undefined> {
+  const wanted = slug?.trim().toLowerCase();
+  if (!wanted) return undefined;
+  const repos = await fetchWorkspaceRepos(workspacePath ? { workspacePath } : {});
+  if (repos.length < 2) return undefined;
+  return repos.find((repo) => repoRemoteSlug(repo).toLowerCase() === wanted)?.id;
+}
+
 /** True when the workspace holds more than one repo. */
 export function isMultiRepo(repos: readonly WorkspaceRepo[]): boolean {
   return repos.length > 1;

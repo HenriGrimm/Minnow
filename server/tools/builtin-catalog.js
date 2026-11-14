@@ -43,6 +43,13 @@ const FULL_RESULT_PROPERTY = {
     'If true, skip automatic result-size caps for this call. Pagination (head_limit, offset, line ranges, read_command_log max_bytes) still applies.',
 };
 
+/** Repos an issue targets when the workspace folder holds several. */
+const ISSUE_REPOS_PARAM = {
+  type: 'array',
+  items: { type: 'string' },
+  description: 'Repo ids this issue targets in a multi-repo workspace (e.g. ["frontend", "backend"]); [] clears.',
+};
+
 /** Which repo a git tool runs in when the workspace folder holds several. */
 const GIT_REPO_PARAM = {
   type: 'string',
@@ -1210,6 +1217,7 @@ export const BUILT_IN_TOOLS = [
         issue_id: { type: 'string', description: 'Optional unused KEY-number id (MIN-12). Omit to allocate automatically; not an upsert key.' },
         parent_id: { type: 'string', description: 'Parent issue id for a sub-issue' },
         project_id: { type: 'string', description: 'Project id' },
+        repos: ISSUE_REPOS_PARAM,
       },
       ['title'],
     ),
@@ -1230,6 +1238,7 @@ export const BUILT_IN_TOOLS = [
         label: { type: 'string', description: 'Label filter' },
         parent_id: { type: 'string', description: 'Parent issue id filter' },
         project_id: { type: 'string', description: 'Project id filter' },
+        repo: { type: 'string', description: 'Repo id filter in a multi-repo workspace (also matches issues with no repo set)' },
         scope: { type: 'string', description: 'current_workspace (default) or all' },
         include_done: {
           type: 'boolean',
@@ -1349,6 +1358,7 @@ export const BUILT_IN_TOOLS = [
         labels: { type: 'array', items: { type: 'string' } },
         notes: { type: 'string' },
         plan_path: { type: 'string', description: 'Workspace-relative plan path' },
+        repos: ISSUE_REPOS_PARAM,
       },
       ['issue_id'],
     ),
@@ -1422,6 +1432,7 @@ export const BUILT_IN_TOOLS = [
               ref: { type: 'string' },
               url: { type: 'string' },
               title: { type: 'string' },
+              repo: { type: 'string', description: 'Repo id the ref lives in (multi-repo workspaces)' },
             },
           },
         },

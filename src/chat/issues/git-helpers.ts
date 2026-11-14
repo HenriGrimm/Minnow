@@ -178,10 +178,11 @@ export function resolveIssueBranchName(issue: IssueCard): string {
 export function draftIssueGitLink(
   kind: IssueGitLink['kind'],
   ref: string,
-  extras?: { url?: string; title?: string },
+  extras?: { url?: string; title?: string; repo?: string },
 ): Omit<IssueGitLink, 'addedAt'> {
   const out: Omit<IssueGitLink, 'addedAt'> = { kind, ref };
   if (extras?.url?.trim()) out.url = extras.url.trim();
   if (extras?.title?.trim()) out.title = extras.title.trim();
+  if (extras?.repo?.trim()) out.repo = extras.repo.trim();
   return out;
 }

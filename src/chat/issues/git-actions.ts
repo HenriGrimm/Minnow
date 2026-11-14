@@ -230,12 +230,15 @@ export async function resolveIssuePrNumber(issue: IssueCard): Promise<ResolvedIs
 
   const repo = repoFromPrUrl(parsed.url) || (await forgeRepo());
   if (!repo) return null;
+  const { repoIdForRemoteSlug } = await import('../../state/workspace-repos.ts');
+  const repoId = await repoIdForRemoteSlug(repo, issue.workspacePath);
 
   appendIssueLinks(issue.id, {
     gitLinks: [
       draftIssueGitLink('pr', String(parsed.number), {
         url: parsed.url,
         title: `PR #${parsed.number}`,
+        ...(repoId ? { repo: repoId } : {}),
       }),
     ],
   });

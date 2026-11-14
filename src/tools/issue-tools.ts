@@ -28,6 +28,8 @@ import {
 } from './issue-fields.ts';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store.ts';
 import { getWorkspacePath } from '../state/workspace.ts';
+import { fetchWorkspaceRepos } from '../state/workspace-repos.ts';
+import { normalizeIssueRepoIds } from '../issues/repo-scope.ts';
 import type {
   IssueCodeRef,
   IssueGitLink,
@@ -46,8 +48,28 @@ export type ValidateIssueAddResult =
       priority: IssuePriority;
       status?: IssueStatus;
       labels: string[];
+      repos: string[];
     }
   | { ok: false; error: string };
+
+/** Repo ids from a tool argument (`repos` array). */
+function parseRepoIdsArg(raw: unknown): string[] | undefined {
+  if (raw === undefined) return undefined;
+  return Array.isArray(raw) ? normalizeIssueRepoIds(raw) : [];
+}
+
+/**
+ * Reject repo ids the workspace does not have. Accepts anything when the repo
+ * list is unavailable (server off), so a slow lookup never blocks filing.
+ */
+async function unknownRepoError(ids: string[] | undefined): Promise<string | null> {
+  if (!ids?.length) return null;
+  const repos = await fetchWorkspaceRepos();
+  if (!repos.length) return null;
+  const unknown = ids.filter((id) => !repos.some((repo) => repo.id === id));
+  if (!unknown.length) return null;
+  return `Error: unknown repo ${unknown.map((id) => `"${id}"`).join(', ')}; this workspace has: ${repos.map((repo) => repo.id).join(', ')}`;
+}
 
 // ── Add ──────────────────────────────────────────────────────────────────────
 
@@ -95,7 +117,7 @@ export function validateIssueAddArgs(args: Record<string, unknown>): ValidateIss
         .filter((l): l is string => typeof l === 'string' && l.trim().length > 0)
         .map((l) => l.trim())
     : [];
-  return { ok: true, title, description, type: typeRaw, priority: priorityRaw, labels, status };
+  return { ok: true, title, description, type: typeRaw, priority: priorityRaw, labels, status, repos: parseRepoIdsArg(args.repos) ?? [] };
 }
 
 export type ValidateIssueUpdateResult =
@@ -156,8 +178,11 @@ export function validateIssueUpdateArgs(args: Record<string, unknown>): Validate
       .filter((l): l is string => typeof l === 'string' && l.trim().length > 0)
       .map((l) => l.trim());
   }
+  const repos = parseRepoIdsArg(args.repos);
+  if (repos !== undefined) patch.repos = repos;
 
   if (
+    patch.repos === undefined &&
     patch.title === undefined &&
     patch.description === undefined &&
     patch.notes === undefined &&
@@ -257,6 +282,7 @@ function parseGitLinkArg(
     ref,
     url: typeof obj.url === 'string' ? obj.url : undefined,
     title: typeof obj.title === 'string' ? obj.title : undefined,
+    repo: typeof obj.repo === 'string' ? obj.repo : undefined,
   });
   return normalized;
 }
@@ -426,6 +452,8 @@ export async function executeIssueTool(
         : undefined;
     const parentId = typeof args.parent_id === 'string' ? args.parent_id.trim() : '';
     const projectId = typeof args.project_id === 'string' ? args.project_id.trim() : '';
+    const repoError = await unknownRepoError(validated.repos);
+    if (repoError) return repoError;
     let card;
     try {
       card = addIssue(
@@ -440,6 +468,7 @@ export async function executeIssueTool(
           source: 'agent',
           ...(parentId ? { parentId } : {}),
           ...(projectId ? { projectId } : {}),
+          ...(validated.repos.length ? { repos: validated.repos } : {}),
         },
         issueId,
       );
@@ -452,6 +481,8 @@ export async function executeIssueTool(
   if (name === 'issue_update') {
     const validated = validateIssueUpdateArgs(args);
     if (validated.ok === false) return validated.error;
+    const repoError = await unknownRepoError(validated.patch.repos);
+    if (repoError) return repoError;
     const updated = updateIssue(validated.issueId, validated.patch);
     if (!updated) return `Error: unknown issue_id "${validated.issueId}"`;
     return JSON.stringify(updated, null, 2);

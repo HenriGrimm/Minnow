@@ -83,6 +83,9 @@ function runSearch(args: Record<string, unknown>): string {
   if (parentId) matches = matches.filter((issue) => issue.parentId === parentId);
   const projectId = str(args, 'project_id');
   if (projectId) matches = matches.filter((issue) => issue.projectId === projectId);
+  // Untargeted issues belong to every repo, so they stay in a repo-filtered page.
+  const repo = str(args, 'repo');
+  if (repo) matches = matches.filter((issue) => !issue.repos?.length || issue.repos.includes(repo));
 
   const page = matches.slice(offset, offset + limit);
   const issues = projectIssuePage(page, fields);

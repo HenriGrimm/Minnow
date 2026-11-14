@@ -136,6 +136,8 @@ import {
   setIssueDetailSheetExpanded,
 } from './issues-detail-layout';
 import { openIssuesContextMenu, type IssuesContextMenuItem } from './issues-context-menu';
+import { fetchWorkspaceRepos } from '../state/workspace-repos';
+import { repoQualifiedRef, toggleIssueRepo } from '../issues/repo-scope';
 import type {
   IssueCard,
   IssueCodeRef,
@@ -928,6 +930,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (planPath) rail.appendChild(buildPlanSection(issue, planPath));
     rail.appendChild(buildCodeLinksSection(issue, planPath));
     rail.appendChild(buildAttachmentsSection(issue));
+    rail.appendChild(buildReposSection(issue));
     rail.appendChild(buildGitSection(issue));
 
     const reviewSection = buildIssueReviewSection(issue);
@@ -1311,6 +1314,51 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       },
     });
     return reviewSection.section;
+  }
+
+  // ── Repositories ─────────────────────────────────────────────────────────────
+
+  /**
+   * Which repos the issue targets — only in a workspace folder that holds
+   * several. The repo list loads async, so this starts as an empty placeholder
+   * and swaps itself for the row once the workspace turns out to be multi-repo.
+   */
+  function buildReposSection(issue: IssueCard): HTMLElement {
+    const placeholder = document.createElement('div');
+    placeholder.hidden = true;
+    void fetchWorkspaceRepos({ workspacePath: issue.workspacePath }).then((repos) => {
+      if (repos.length < 2 || !placeholder.isConnected) return;
+      const selected = issue.repos ?? [];
+      const order = repos.map((repo) => repo.id);
+      const row = createDetailRow({
+        key: 'repos',
+        icon: 'folder',
+        label: 'Repositories',
+        summary: selected.map((id) => ({ text: id, mono: true })),
+        addLabel: 'Choose repositories',
+        addIcon: selected.length ? 'more' : 'plus',
+        onAdd: (anchor) => {
+          openIssuesContextMenu({
+            anchor,
+            restoreFocus: anchor,
+            label: 'Repositories',
+            items: repos.map((repo) => ({
+              id: `repo:${repo.id}`,
+              label: repo.id,
+              hint: repo.remote?.owner && repo.remote.name ? `${repo.remote.owner}/${repo.remote.name}` : undefined,
+              checked: selected.includes(repo.id),
+              onSelect: () => {
+                updateIssue(issue.id, { repos: toggleIssueRepo(selected, repo.id, order) });
+                scheduleSaveIssues();
+                refreshIssueDetailIfOpen();
+              },
+            })),
+          });
+        },
+      });
+      placeholder.replaceWith(row.section);
+    });
+    return placeholder;
   }
 
   // ── Git ──────────────────────────────────────────────────────────────────────
@@ -1822,7 +1870,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     label.className = 'issues-detail__git-chip-label';
     const kindLabel =
       link.kind === 'github-issue' ? 'GH issue' : link.kind === 'pr' ? 'PR' : link.kind;
-    label.textContent = link.title?.trim() || `${kindLabel}: ${link.ref}`;
+    label.textContent = link.title?.trim() || `${kindLabel}: ${repoQualifiedRef(link.ref, link.repo)}`;
+    if (link.repo && link.repo !== '.') label.title = `In repository ${link.repo}`;
     li.appendChild(label);
 
     const openBtn = document.createElement('button');
