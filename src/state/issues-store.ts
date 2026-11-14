@@ -54,7 +54,7 @@ import {
   LOCAL_ASSIGNEE_ID,
 } from '../issues/saved-views.ts';
 import { isUnreviewedTriageIssue } from '../issues/triage.ts';
-import { normalizeIssueGitLinkRepo, normalizeIssueRepoIds } from '../issues/repo-scope.ts';
+import { normalizeIssueGitLinkRepo, normalizeIssueRepoIds, sameLinkRepo } from '../issues/repo-scope.ts';
 import {
   ISSUE_ACTIVITY_CAP,
   ISSUES_COMPAT_VERSION,
@@ -1361,6 +1361,8 @@ export type AddIssueInput = {
   source?: IssueSource;
   parentId?: string;
   projectId?: string;
+  /** Repo ids this issue targets in a multi-repo workspace. */
+  repos?: string[];
 };
 
 export type AddIssueOptions = {
@@ -1404,6 +1406,8 @@ export function addIssue(input: AddIssueInput, issueId?: string, options?: AddIs
   if (input.legacyBugId) card.legacyBugId = input.legacyBugId;
   if (input.parentId) card.parentId = input.parentId;
   if (input.projectId) card.projectId = input.projectId;
+  const repos = normalizeIssueRepoIds(input.repos);
+  if (repos.length) card.repos = repos;
   requireIssuesState().issues.push(card);
   touchIssuesStore();
   if (options?.deferGithubAutoSync && card.source !== 'github') deferGithubSyncedFieldWrites(card.id);
@@ -1445,6 +1449,8 @@ export type UpdateIssuePatch = {
   chatIds?: string[];
   codeRefs?: IssueCodeRef[];
   gitLinks?: IssueGitLink[];
+  /** Repo ids this issue targets; an empty array clears the targeting. */
+  repos?: string[];
   issueRefs?: IssueIssueRef[];
   /** Pass null to unassign. */
   assignee?: IssueAssignee | null;
@@ -1584,6 +1590,7 @@ export function normalizeIssueGitLink(
   };
   if (typeof link.url === 'string' && link.url.trim()) out.url = link.url.trim();
   if (typeof link.title === 'string' && link.title.trim()) out.title = link.title.trim();
+  if (typeof link.repo === 'string' && link.repo.trim()) out.repo = link.repo.trim();
   return out;
 }
 
@@ -1646,7 +1653,8 @@ export function appendIssueLinks(
     for (const raw of links.gitLinks) {
       const link = normalizeIssueGitLink(raw);
       if (!link) continue;
-      if (existing.some((e) => e.kind === link.kind && e.ref === link.ref)) continue;
+      // `#12` in frontend and `#12` in backend are different links.
+      if (existing.some((e) => e.kind === link.kind && e.ref === link.ref && sameLinkRepo(e, link))) continue;
       existing.push(link);
       changed = true;
     }
@@ -1739,6 +1747,11 @@ export function updateIssue(
     issue.issueRefs = patch.issueRefs
       .map((ref) => normalizeIssueIssueRef(ref))
       .filter((ref): ref is IssueIssueRef => ref != null);
+  }
+  if (patch.repos !== undefined) {
+    const repos = normalizeIssueRepoIds(patch.repos);
+    if (repos.length) issue.repos = repos;
+    else delete issue.repos;
   }
   if (patch.assignee !== undefined) {
     if (patch.assignee === null) delete issue.assignee;
