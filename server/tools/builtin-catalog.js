@@ -43,6 +43,13 @@ const FULL_RESULT_PROPERTY = {
     'If true, skip automatic result-size caps for this call. Pagination (head_limit, offset, line ranges, read_command_log max_bytes) still applies.',
 };
 
+/** Which repo a git tool runs in when the workspace folder holds several. */
+const GIT_REPO_PARAM = {
+  type: 'string',
+  description:
+    'Repo id from the workspace repo list (e.g. "backend"). Needed only when the workspace has several repos and no path identifies one.',
+};
+
 /** @param {Record<string, unknown>} properties */
 function withFullResult(properties) {
   return { ...properties, full_result: FULL_RESULT_PROPERTY };
@@ -775,7 +782,7 @@ export const BUILT_IN_TOOLS = [
     definition: toolSchema(
       'git_status',
       'Show git working tree status (porcelain format).',
-      {},
+      { repo: GIT_REPO_PARAM, },
     ),
   },
   {
@@ -789,6 +796,7 @@ export const BUILT_IN_TOOLS = [
       'Show git diff for changes. Large patches are truncated with a --numstat summary, complete per-file hunks that fit, and a footer listing omitted files — use path= to fetch one file at a time, or pass full_result: true to skip the automatic size cap. Prefer path= or staged=true for overview-sized calls instead of a repo-wide diff.',
       withFullResult({
         path: { type: 'string', description: 'Optional file path to limit diff (recommended for large changes)' },
+        repo: GIT_REPO_PARAM,
         staged: {
           type: 'boolean',
           description: 'If true, diff staged (--cached) changes',
@@ -810,6 +818,7 @@ export const BUILT_IN_TOOLS = [
           type: 'integer',
           description: 'Number of commits to show (default 10)',
         },
+        repo: GIT_REPO_PARAM,
       },
     ),
   },
@@ -828,6 +837,7 @@ export const BUILT_IN_TOOLS = [
           items: { type: 'string' },
           description: 'File paths to stage, or ["." ] for all',
         },
+        repo: GIT_REPO_PARAM,
       },
       ['paths'],
     ),
@@ -843,6 +853,7 @@ export const BUILT_IN_TOOLS = [
       'Create a git commit with a message.',
       {
         message: { type: 'string', description: 'Commit message' },
+        repo: GIT_REPO_PARAM,
       },
       ['message'],
     ),
@@ -862,6 +873,7 @@ export const BUILT_IN_TOOLS = [
           type: 'boolean',
           description: 'If true, create branch with -b before checkout',
         },
+        repo: GIT_REPO_PARAM,
       },
       ['branch'],
     ),
@@ -880,6 +892,7 @@ export const BUILT_IN_TOOLS = [
           type: 'boolean',
           description: 'If true, include remote-tracking branches (git branch --all)',
         },
+        repo: GIT_REPO_PARAM,
       },
     ),
   },

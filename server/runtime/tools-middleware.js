@@ -88,6 +88,7 @@ import {
 import { decodeTextBuffer } from '../tools/binary-sniff.js';
 import { isDocumentFilePath } from '../../src/attachments/document-extensions.mjs';
 import { expandGitmojiShortcodes } from '../../src/lib/gitmoji-shortcodes.mjs';
+import { resolveRepoCwd, RepoResolveError } from '../git/repo-resolve.js';
 import {
   toolCreatePdf,
   toolCreateSpreadsheet,
@@ -194,10 +195,10 @@ function toRelativePath(absPath) {
   return rel === '' ? '.' : rel.replace(/\\/g, '/');
 }
 
-async function runGit(args) {
+async function runGit(args, target) {
   try {
-    const result = await runProcess('git', args, { cwd: getEffectiveWorkspaceRoot() });
-    return formatProcessOutput(`git ${args.join(' ')}`, result);
+    const result = await runProcess('git', args, { cwd: target?.cwd ?? getEffectiveWorkspaceRoot() });
+    return formatProcessOutput(`${gitRepoLabel(target)}git ${args.join(' ')}`, result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return `Error running git: ${message}`;
@@ -954,21 +955,46 @@ async function toolGetFileMetadata(args) {
 
 // ── Git tools ────────────────────────────────────────────────────────────────
 
-async function toolGitStatus() {
-  return runGit(['status', '--porcelain', '-b']);
+/** `[backend] ` when a call ran in a child repo of a multi-repo workspace. */
+function gitRepoLabel(target) {
+  return target?.repo && !target.repo.isRoot ? `[${target.repo.id}] ` : '';
+}
+
+/**
+ * The repo a git tool runs in: its `repo` argument, else the repo containing
+ * `pathHint`, else the workspace's only (or root) repo. Ambiguity in a
+ * multi-repo workspace comes back as a tool error, not a throw.
+ * @returns {Promise<{ cwd: string, repo: object | null, relPath?: string } | { error: string }>}
+ */
+async function resolveGitTarget(args, pathHint) {
+  try {
+    return await resolveRepoCwd({ repo: args?.repo, path: pathHint });
+  } catch (err) {
+    if (err instanceof RepoResolveError) return { error: `Error: ${err.message}` };
+    throw err;
+  }
+}
+
+async function toolGitStatus(args) {
+  const target = await resolveGitTarget(args);
+  if ('error' in target) return target.error;
+  return runGit(['status', '--porcelain', '-b'], target);
 }
 
 async function toolGitDiff(args) {
+  const target = await resolveGitTarget(args, typeof args?.path === 'string' ? args.path : undefined);
+  if ('error' in target) return target.error;
+  const scopePath = typeof args?.path === 'string' && args.path ? (target.relPath ?? args.path) : undefined;
   const gitArgs = ['diff'];
   if (args?.staged) {
     gitArgs.push('--cached');
   }
-  if (args?.path) {
-    gitArgs.push('--', args.path);
+  if (scopePath) {
+    gitArgs.push('--', scopePath);
   }
 
-  const label = `git ${gitArgs.join(' ')}`;
-  const cwd = getEffectiveWorkspaceRoot();
+  const label = `${gitRepoLabel(target)}git ${gitArgs.join(' ')}`;
+  const cwd = target.cwd;
   const policy = getOutputCapPolicy();
   const patchBudget = policy.maxOutputChars - 2_000;
 
@@ -981,14 +1007,14 @@ async function toolGitDiff(args) {
       if (args?.staged) {
         numstatArgs.push('--cached');
       }
-      if (args?.path) {
-        numstatArgs.push('--', args.path);
+      if (scopePath) {
+        numstatArgs.push('--', scopePath);
       }
       const numstatResult = await runProcess('git', numstatArgs, { cwd });
       const { text } = truncateGitDiff(patch, numstatResult.stdout ?? '', {
         maxChars: patchBudget,
         staged: Boolean(args?.staged),
-        scopePath: typeof args?.path === 'string' ? args.path : undefined,
+        scopePath,
       });
       return formatProcessOutput(label, { ...result, stdout: text });
     }
@@ -1001,8 +1027,10 @@ async function toolGitDiff(args) {
 }
 
 async function toolGitLog(args) {
+  const target = await resolveGitTarget(args);
+  if ('error' in target) return target.error;
   const count = Number(args?.count) || 10;
-  return runGit(['log', `--oneline`, `-n`, String(Math.max(1, Math.min(count, 100)))]);
+  return runGit(['log', `--oneline`, `-n`, String(Math.max(1, Math.min(count, 100)))], target);
 }
 
 async function toolGitAdd(args) {
@@ -1010,7 +1038,24 @@ async function toolGitAdd(args) {
   if (!Array.isArray(paths) || paths.length === 0) {
     return 'Error: paths array is required';
   }
-  return runGit(['add', '--', ...paths.map(String)]);
+  // Every path must land in one repo; staging across repos is one call per repo.
+  const targets = [];
+  for (const p of paths.map(String)) {
+    const target = await resolveGitTarget(args, p);
+    if ('error' in target) return target.error;
+    targets.push({ ...target, input: p });
+  }
+  const cwds = [...new Set(targets.map((t) => t.cwd))];
+  if (cwds.length > 1) {
+    const byRepo = new Map();
+    for (const t of targets) {
+      const id = t.repo?.id ?? '.';
+      byRepo.set(id, [...(byRepo.get(id) ?? []), t.input]);
+    }
+    const lines = [...byRepo].map(([id, list]) => `- ${id}: ${list.join(', ')}`);
+    return `Error: these paths are in different repos; call git_add once per repo with repo set:\n${lines.join('\n')}`;
+  }
+  return runGit(['add', '--', ...targets.map((t) => t.relPath ?? t.input)], targets[0]);
 }
 
 async function toolGitCommit(args) {
@@ -1018,11 +1063,13 @@ async function toolGitCommit(args) {
   if (!message || typeof message !== 'string') {
     return 'Error: message is required';
   }
-  const result = await runGit(['commit', '-m', expandGitmojiShortcodes(message)]);
+  const target = await resolveGitTarget(args);
+  if ('error' in target) return target.error;
+  const result = await runGit(['commit', '-m', expandGitmojiShortcodes(message)], target);
   if (String(result).trimStart().startsWith('Error')) {
     return result;
   }
-  const codeChange = await codeChangeForGitCommit(getEffectiveWorkspaceRoot());
+  const codeChange = await codeChangeForGitCommit(target.cwd);
   return withCodeChange(String(result), codeChange);
 }
 
@@ -1034,17 +1081,21 @@ async function toolGitCheckout(args) {
   if (branch.startsWith('-')) {
     return `Error: invalid branch name "${branch}" (cannot start with "-")`;
   }
+  const target = await resolveGitTarget(args);
+  if ('error' in target) return target.error;
   const gitArgs = args?.create ? ['checkout', '-b', branch] : ['checkout', branch];
-  return withWorktreeMutation(getEffectiveWorkspaceRoot(), () => runGit(gitArgs));
+  return withWorktreeMutation(target.cwd, () => runGit(gitArgs, target));
 }
 
 async function toolGitBranch(args) {
+  const target = await resolveGitTarget(args);
+  if ('error' in target) return target.error;
   const gitArgs = ['branch', '--no-color'];
   if (args?.all === true) {
     gitArgs.push('--all');
   }
   gitArgs.push('--sort=-committerdate');
-  return runGit(gitArgs);
+  return runGit(gitArgs, target);
 }
 
 // ── Code exec ────────────────────────────────────────────────────────────────
