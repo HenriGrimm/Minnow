@@ -113,7 +113,25 @@ export async function isAllowedWorkspaceRootAsync(rootPath) {
   if (isAllowedWorkspaceRoot(rootPath)) return true;
   const resolved = path.resolve(String(rootPath).trim());
   if (await isRegisteredGitWorktreePath(resolved)) return true;
-  return isRecentWorkspaceRoot(resolved);
+  if (await isRecentWorkspaceRoot(resolved)) return true;
+  return isViewWorkspaceChildRepo(resolved);
+}
+
+/**
+ * A repo root discovered inside the view's workspace folder (a multi-repo
+ * workspace such as `frontend/` + `backend/`). Checked against the *view's*
+ * workspace, never a per-call override, so an override cannot authorise itself.
+ * @param {string} resolved
+ */
+async function isViewWorkspaceChildRepo(resolved) {
+  const viewRoot = getRequestWorkspaceRoot();
+  if (!viewRoot) return false;
+  try {
+    const { isWorkspaceRepoRoot } = await import('../git/repo-resolve.js');
+    return await isWorkspaceRepoRoot(resolved, viewRoot);
+  } catch {
+    return false;
+  }
 }
 
 /**

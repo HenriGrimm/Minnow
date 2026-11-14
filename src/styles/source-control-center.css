@@ -137,12 +137,18 @@
   white-space: nowrap;
 }
 
-.scc-head .scc-head__branch {
+.scc-head .scc-head__branch,
+.scc-head .scc-head__repo-switch {
   border-color: transparent;
   background: transparent;
   padding-inline: var(--mn-space-1-5);
   color: var(--scc-ink);
   font-weight: var(--mn-weight-medium);
+}
+
+/* `.scc-btn` sets display, which beats the UA [hidden] rule. */
+.scc-head__repo-switch[hidden] {
+  display: none;
 }
 
 .scc-head__context-btn.is-secondary-worktree {

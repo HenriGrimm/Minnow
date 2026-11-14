@@ -87,4 +87,17 @@ describe('repo resolution', () => {
     assert.equal(unknown.json.ok, false);
     assert.match(unknown.json.error, /Unknown repo/);
   });
+
+  test('a child repo root is an allowed cwd; other folders are not', async () => {
+    await setWorkspaceRoot(root);
+    const child = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: path.join(root, 'frontend') });
+    assert.equal(child.json.branch, 'web-main');
+    const outsider = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mn-outsider-')));
+    await makeRepo(outsider, 'https://github.com/x/y.git', 'main');
+    const rejected = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: outsider });
+    assert.equal(rejected.json.ok, false);
+    assert.match(rejected.json.error, /allowlist/);
+    const nested = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: path.join(root, 'frontend', '..', 'backend') });
+    assert.equal(nested.json.branch, 'api-main');
+  });
 });

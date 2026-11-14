@@ -12,6 +12,7 @@
 import path from 'node:path';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { discoverWorkspaceRepos, findRepoForPath, repoRemoteSlug } from '../workspace/repos.js';
+import { normalizePathForComparison } from '../workspace/safe-path.js';
 
 /**
  * @typedef {import('../workspace/repos.js').WorkspaceRepo} WorkspaceRepo
@@ -86,6 +87,24 @@ function relativeToRepo(base, repo, filePath) {
   if (!rel) return '.';
   if (rel.startsWith('..') || path.isAbsolute(rel)) return filePath;
   return rel.split(path.sep).join('/');
+}
+
+/**
+ * True when `cwd` is exactly the root of a repo discovered inside the
+ * request's workspace. Used to authorise a multi-repo folder's child repos
+ * without adding them to the workspace allowlist.
+ * @param {string} cwd
+ * @param {string} [workspaceRoot]
+ */
+export async function isWorkspaceRepoRoot(cwd, workspaceRoot = getEffectiveWorkspaceRoot()) {
+  if (typeof cwd !== 'string' || !cwd.trim() || !workspaceRoot) return false;
+  const fold = (p) => {
+    const norm = normalizePathForComparison(path.resolve(p)).replace(/\/+$/, '');
+    return process.platform === 'win32' ? norm.toLowerCase() : norm;
+  };
+  const target = fold(cwd.trim());
+  const repos = await discoverWorkspaceRepos(workspaceRoot);
+  return repos.some((repo) => !repo.isRoot && fold(repo.absPath) === target);
 }
 
 /** The repo list for the active workspace, for error messages and prompts. */

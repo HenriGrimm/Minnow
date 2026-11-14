@@ -45,6 +45,18 @@ import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-n
 import { resolvePanelBrowseCwd, resolvePanelWorktreeCwd } from './panel-worktree-cwd';
 import { displayWorktreeTitle } from './worktree-display';
 import { getActiveChat, sessionState } from '../state/sessions';
+import { fetchWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
+import {
+  buildRepoMenuItems,
+  pickDefaultRepo,
+  readRememberedRepo,
+  rememberRepo,
+  repoForPanelCwd,
+  repoLabel,
+  repoPanelCwd,
+} from './scc-repo-switcher';
+import { openContextMenu } from './context-menu';
+import { getActiveViewerTabPath } from './file-viewer-tab-store';
 import { createChangesView, focusCommitMessage } from './scc-changes';
 import { pushWithPublishPrompt } from './git-publish-push';
 import { createActionsView } from './scc-actions';
@@ -106,6 +118,8 @@ function dropCachedViews(keepActive = true): void {
 const badges = new Map<SccSectionId, SccBadge>();
 
 let panelCwd: string | undefined;
+/** Repos in the workspace folder; the switcher shows when there are two or more. */
+let workspaceRepos: WorkspaceRepo[] = [];
 let currentBranch = '';
 let localBranches: string[] = [];
 let remoteBranches: string[] = [];
@@ -134,6 +148,7 @@ function refreshActiveView(): Promise<void> {
 
 // Header elements, rebuilt only on open.
 let repoNameEl: HTMLElement | null = null;
+let repoBtn: HTMLButtonElement | null = null;
 let branchBtn: HTMLButtonElement | null = null;
 let worktreeBtn: HTMLButtonElement | null = null;
 let followChatBtn: HTMLButtonElement | null = null;
@@ -257,6 +272,16 @@ function buildHeader(): HTMLElement {
     repoContext,
   );
 
+  repoBtn = button({
+    icon: 'folder',
+    label: '—',
+    title: 'Switch repository',
+    className: 'scc-head__context-btn scc-head__repo-switch',
+    onClick: () => openRepoSwitcher(),
+  });
+  repoBtn.appendChild(createIcon('chevronDown', { className: 'scc-btn__icon', size: 12 }));
+  repoBtn.hidden = true;
+
   branchBtn = button({
     icon: 'gitBranch',
     label: '—',
@@ -288,7 +313,7 @@ function buildHeader(): HTMLElement {
     },
   });
   followChatBtn.hidden = true;
-  repoContext.append(repoNameEl, branchBtn, worktreeBtn, followChatBtn, forgeChipEl);
+  repoContext.append(repoNameEl, repoBtn, branchBtn, worktreeBtn, followChatBtn, forgeChipEl);
 
   const sync = el('div', 'scc-head__sync');
   sync.setAttribute('role', 'group');
@@ -536,9 +561,18 @@ function paintHeader(): void {
     branchBtn.title = currentBranch ? `On ${currentBranch} — click to switch` : 'Detached HEAD';
   }
 
+  const currentRepo = repoForPanelCwd(panelCwd, workspaceRepos, workspace);
+  if (repoBtn) {
+    repoBtn.hidden = workspaceRepos.length < 2;
+    const label = repoBtn.querySelector('.scc-btn__label');
+    if (label) label.textContent = currentRepo ? repoLabel(currentRepo).label : 'Choose repository';
+    repoBtn.title = currentRepo ? `Repository ${currentRepo.id} — click to switch` : 'Switch repository';
+  }
+
   if (worktreeBtn) {
     const label = worktreeBtn.querySelector('.scc-btn__label');
-    const cwd = panelCwd;
+    // A repo root inside the workspace is that repo's main checkout, not a worktree.
+    const cwd = currentRepo ? undefined : panelCwd;
     const name = cwd && !worktreePathsEqual(cwd, workspace)
       ? displayWorktreeTitle({ path: cwd, branch: currentBranch || undefined })
       : 'Main worktree';
@@ -550,7 +584,8 @@ function paintHeader(): void {
   if (followChatBtn && worktreeBtn) {
     // Say when Source Control is not looking at the active chat's checkout.
     const chatCwd = activeChatCheckout();
-    const viewing = panelCwd;
+    // A repo root inside the workspace counts as the main checkout here too.
+    const viewing = currentRepo ? undefined : panelCwd;
     const differs = chatCwd !== null && !(chatCwd === undefined
       ? viewing === undefined || worktreePathsEqual(viewing, workspace)
       : viewing !== undefined && worktreePathsEqual(viewing, chatCwd));
@@ -570,6 +605,47 @@ function activeChatCheckout(): string | undefined | null {
   const chat = getActiveChat();
   const cwd = resolvePanelWorktreeCwd(resolvePanelBrowseCwd({ chat, groups: sessionState.groups }));
   return cwd && !worktreePathsEqual(cwd, getWorkspacePath()) ? cwd : undefined;
+}
+
+function openRepoSwitcher(): void {
+  if (!repoBtn || workspaceRepos.length < 2) return;
+  const current = repoForPanelCwd(panelCwd, workspaceRepos, getWorkspacePath());
+  openContextMenu({
+    anchor: repoBtn,
+    restoreFocus: repoBtn,
+    label: 'Switch repository',
+    items: buildRepoMenuItems(workspaceRepos, current?.id ?? null, (repo) => void selectRepo(repo)),
+  });
+}
+
+async function selectRepo(repo: WorkspaceRepo): Promise<void> {
+  rememberRepo(getWorkspacePath(), repo.id);
+  await setCwd(repoPanelCwd(repo));
+}
+
+/**
+ * Load the workspace's repos. When the center opens on the workspace itself
+ * and the folder holds repos below it, point it at the right one first.
+ */
+async function loadWorkspaceRepos(): Promise<void> {
+  const workspace = getWorkspacePath();
+  workspaceRepos = await fetchWorkspaceRepos();
+  if (!workspaceRepos.length) return;
+  const onWorkspace = !panelCwd || worktreePathsEqual(panelCwd, workspace);
+  if (!onWorkspace) return;
+  const root = workspaceRepos.find((repo) => repo.isRoot);
+  if (root && workspaceRepos.length === 1) return;
+  const pick = pickDefaultRepo(workspaceRepos, {
+    workspacePath: workspace,
+    activeFilePath: getActiveViewerTabPath(),
+    remembered: readRememberedRepo(workspace),
+  });
+  if (!pick) return;
+  const next = repoPanelCwd(pick);
+  if (next === panelCwd) return;
+  panelCwd = next;
+  const { setGitPanelCwd } = await import('./git-panel');
+  setGitPanelCwd(next);
 }
 
 function paintSyncCount(action: HTMLButtonElement | null, label: 'Pull' | 'Push', count: number): void {
@@ -767,6 +843,14 @@ function buildCommands(): Command[] {
     jump('pulls', 'Pull requests', modKeyLabel('6')),
     jump('checks', 'Actions', modKeyLabel('7')),
     jump('releases', 'Releases', modKeyLabel('8')),
+
+    ...(workspaceRepos.length > 1 ? workspaceRepos.map((repo): Command => ({
+      id: `repo.${repo.id}`,
+      title: `Switch to repository ${repoLabel(repo).label}`,
+      group: 'Repository',
+      keywords: `repo repository ${repo.id} ${repoLabel(repo).hint ?? ''}`,
+      run: () => void selectRepo(repo),
+    })) : []),
 
     {
       id: 'sync.fetch',
@@ -1091,6 +1175,7 @@ export async function mountSourceControlCenter(): Promise<void> {
   pendingOpenOptions = undefined;
   const { getGitPanelCwd } = await import('./git-panel');
   panelCwd = options?.cwd ?? getGitPanelCwd();
+  await loadWorkspaceRepos();
   if (root) {
     if (options?.section) await showSection(options.section);
     await refreshAll();
@@ -1157,6 +1242,8 @@ export function resetSourceControlCenterForTests(): void {
   noRepoEl = null;
   pendingOpenOptions = undefined;
   panelCwd = undefined;
+  workspaceRepos = [];
+  repoBtn = null;
   currentBranch = '';
   localBranches = [];
   remoteBranches = [];
