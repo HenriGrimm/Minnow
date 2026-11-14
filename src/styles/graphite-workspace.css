@@ -25,24 +25,8 @@ html.is-electron-shell[data-platform='win32']:is(.mn-graphite-workspace, .mn-gra
   transition: none;
 }
 
-.mn-graphite-workspace .mn-os-mb-logo {
-  width: 20px;
-  height: 20px;
-  background: transparent;
-  color: var(--mn-accent);
-  box-shadow: none;
-}
-
-.mn-graphite-workspace .mn-os-mb-logo .minnow-glyph {
-  width: 16px;
-  height: 16px;
-}
-
 .mn-graphite-workspace .mn-os-mb-brand {
   color: var(--mn-graphite-text, var(--mn-fg));
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: -0.035em;
 }
 
 .mn-graphite-workspace .mn-os-menubar[data-view='app'] .mn-os-mb-chat-toggle {

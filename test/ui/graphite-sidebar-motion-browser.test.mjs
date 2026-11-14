@@ -36,7 +36,12 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
         <div id="osWorkspace" class="mn-os-workspace">
           <nav id="osAppRail">
             <div class="mn-os-app-rail__nav" style="height: 190px">Workspace navigation</div>
-            <aside class="chat-sidebar"><div class="chat-sidebar-main">Threads</div></aside>
+            <aside class="chat-sidebar"><div class="chat-sidebar-main"><div class="chat-list">
+              <div class="chat-list-section-head"><span>Today</span>
+                <button type="button" class="chat-list-section-action">Archive 3 finished</button>
+              </div>
+              ${'<div class="chat-item-row">Saved chat</div>'.repeat(30)}
+            </div></div></aside>
             <div id="chatSidebarResizer" class="sidebar-resizer sidebar-resizer--chat" tabindex="0"></div>
             <div class="mn-graphite-auxiliary" style="height: 40px">Sidebar footer</div>
           </nav>
@@ -140,6 +145,24 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   await session.client.send('Emulation.setEmulatedMedia', {
     features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
   });
+
+  const measureArchiveAction = () => session.evaluate(`(() => {
+    const list = document.querySelector('.chat-list');
+    const action = list.querySelector('.chat-list-section-action');
+    action.focus({ preventScroll: true });
+    const { top, height } = action.getBoundingClientRect();
+    const style = getComputedStyle(action);
+    const outline = parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+    action.blur();
+    return { scrolls: list.scrollHeight > list.clientHeight, height,
+      clearsTop: top - outline >= list.getBoundingClientRect().top };
+  })()`);
+  const desktopArchive = await measureArchiveAction();
+  await session.client.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  const touchArchive = await measureArchiveAction();
+  await session.client.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  assert.ok(desktopArchive.scrolls && desktopArchive.clearsTop, JSON.stringify(desktopArchive));
+  assert.ok(touchArchive.height >= 44 && touchArchive.clearsTop, JSON.stringify(touchArchive));
 
   const grip = await session.evaluate(`(() => {
     const rail = document.getElementById('osAppRail').getBoundingClientRect();

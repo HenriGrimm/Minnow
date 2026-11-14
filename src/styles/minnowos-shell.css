@@ -171,27 +171,20 @@ html.minnow-os-enabled {
 
 .mn-os-mb-logo {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: var(--os-accent);
-  color: var(--os-on-accent);
-  box-shadow:
-    0 0 0 1px var(--os-accent-glow),
-    0 4px 14px -4px var(--os-accent-glow);
+  color: var(--mn-brand-mark);
 }
 
 .mn-os-mb-logo .minnow-glyph {
-  width: 16px;
-  height: 16px;
+  --mn-icon-size: 28px;
 }
 
 .mn-os-mb-brand {
+  flex-shrink: 0;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  font-size: 15px;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
 /* `display: grid` / flex on buttons can override the native [hidden] rule — hide via view + attribute */
@@ -871,11 +864,6 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebarBackdrop.o
 
 .mn-os-dim-text {
   color: var(--os-text-dim);
-}
-
-/* Light theme shadow for the legacy boxed menubar logo. */
-:root[data-theme$='-light']:not(.mn-graphite-workspace) .mn-os-mb-logo {
-  box-shadow: 0 4px 14px -4px var(--os-accent-glow);
 }
 
 @media (prefers-reduced-motion: reduce) {

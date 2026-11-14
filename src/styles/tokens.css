@@ -18,6 +18,7 @@ body {
 }
 
 :root {
+  --mn-brand-mark: #9ec5a7;
   --mn-scrollbar-thumb: color-mix(in srgb, var(--mn-fg) 32%, transparent);
   --mn-scrollbar-thumb-hover: color-mix(in srgb, var(--mn-fg) 55%, transparent);
   --mn-scrollbar-thumb-active: var(--mn-accent);
@@ -152,6 +153,10 @@ body {
   --mn-label-fig: oklch(0.72 0.12 312);
   --mn-label-blush: oklch(0.74 0.12 12);
   --mn-label-pebble: oklch(0.72 0.04 80);
+}
+
+:root[data-theme$="-light"] {
+  --mn-brand-mark: #5b8a72;
 }
 
 :root[data-theme="swamp-dark"],

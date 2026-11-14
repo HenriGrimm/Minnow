@@ -6,7 +6,7 @@ import {
   subscribeInstances,
 } from './instances';
 import { iconHtml } from '../ui/icon';
-import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';
+import { MINNOW_GLYPH_VECTOR_HTML } from '../ui/minnow-glyph';
 import { createAppIcon, createOsIcon } from './icons';
 import { chatToggleAriaLabel, isChatToggleVisible } from './menubar-visibility';
 import { initShellMenubarChrome } from './menubar-window-controls';
@@ -28,13 +28,13 @@ export function renderMenubar(root: HTMLElement): () => void {
 
   const logo = document.createElement('div');
   logo.className = 'mn-os-mb-logo';
-  logo.innerHTML = MINNOW_GLYPH_HEADER_HTML;
+  logo.innerHTML = MINNOW_GLYPH_VECTOR_HTML;
 
   left.append(logo);
 
   const brand = document.createElement('span');
   brand.className = 'mn-os-mb-brand';
-  brand.textContent = 'Minnow';
+  brand.textContent = 'minnow';
 
   const workspaceSlot = document.createElement('div');
   workspaceSlot.id = 'osMenubarWorkspaceSlot';

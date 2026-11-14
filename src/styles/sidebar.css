@@ -827,6 +827,7 @@
 
 /* Sections: quiet uppercase label, optional "Archive N finished" on the right. */
 .chat-list-section-head {
+  flex-shrink: 0;
   justify-content: flex-start;
   min-height: 22px;
   margin: 12px 0 2px;

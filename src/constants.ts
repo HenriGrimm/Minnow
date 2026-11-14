@@ -1,5 +1,5 @@
 import { SESSION_SCHEMA_VERSION } from './types';
-import { MINNOW_GLYPH_EMPTY_HTML } from './ui/minnow-glyph';
+import { MINNOW_GLYPH_VECTOR_HTML } from './ui/minnow-glyph';
 import { iconHtml } from './ui/icon';
 
 /** Persisted `SessionState.version` — must match `SESSION_SCHEMA_VERSION` in types. */
@@ -24,7 +24,7 @@ export const icons = {
 
 /** Empty chat area placeholder markup. */
 export const EMPTY_STATE_HTML =
-  `<div class="empty-icon" aria-hidden="true">${MINNOW_GLYPH_EMPTY_HTML}</div>` +
+  `<div class="empty-icon" aria-hidden="true">${MINNOW_GLYPH_VECTOR_HTML}</div>` +
   '<p class="empty-title">No messages yet</p>' +
   '<p class="empty-hint">Pick a model above, then type below. LM Studio must be running at the server URL in Settings.</p>';
 
