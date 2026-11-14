@@ -108,7 +108,7 @@ export function kindLabel(kind: import('./types').NotificationKind): string {
     case 'sub_agent_failed':
       return 'Sub-agent failed';
     case 'scheduler':
-      return 'Scheduler';
+      return 'Automations';
     case 'provider_quota':
       return 'Provider allowance';
     case 'issue_agent_started':

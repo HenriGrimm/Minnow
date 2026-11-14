@@ -20,7 +20,7 @@ interface PhoneAppOptions {
 const APPS = {
   models: { title: 'Models', id: 'modelsView' },
   brain: { title: 'Brain', id: 'brainView' },
-  scheduler: { title: 'Scheduler', id: 'schedulerView' },
+  scheduler: { title: 'Automations', id: 'schedulerView' },
   settings: { title: 'Settings', id: 'settingsView' },
 };
 

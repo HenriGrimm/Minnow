@@ -1,17 +1,15 @@
 import '../styles/scheduler-page.css';
-import '../styles/scheduler-editor-window.css';
+import '../styles/automations.css';
 import '../styles/settings-controls.css';
 
 import { createAppIcon } from '../os/icons';
 import { isOsAppHash, isOsShellEnabled } from '../os/page-bridge';
 import { navigateToDesktop } from '../os/router';
-import { renderSchedulerPanel } from './scheduler/scheduler-panel';
-import { closeJobEditorWindow, openJobEditorWindow } from './scheduler/job-editor-overlay';
-import type { ScheduledJob } from '../scheduler/client';
+import { mountAutomationsApp, type AutomationsApp } from './automations/app';
 
 let initialized = false;
 let statusTimer: number | undefined;
-let headerAddBound = false;
+let app: AutomationsApp | null = null;
 
 function getRoot(): HTMLElement | null {
   return document.getElementById('schedulerView');
@@ -30,89 +28,27 @@ function setPanelStatus(state: 'ok' | 'err', message: string): void {
   if (!el) return;
   el.textContent = message;
   el.classList.toggle('is-err', state === 'err');
+  el.classList.add('is-visible');
   if (statusTimer) clearTimeout(statusTimer);
   statusTimer = window.setTimeout(() => {
+    el.classList.remove('is-visible');
     el.textContent = '';
     el.classList.remove('is-err');
   }, 4000);
 }
 
-function formatHeaderSummary(total: number, enabled: number): string {
-  if (total < 0) return '—';
-  if (getRoot()?.classList.contains('m-native-app-page')) {
-    return total ? `${enabled} of ${total} jobs on` : 'No scheduled jobs';
-  }
-  if (total === 0) {
-    return 'Recurring agent jobs while Minnow is open';
-  }
-  if (document.documentElement.classList.contains('mn-graphite-workspace')) {
-    return `${enabled} of ${total} jobs on · Jobs run while Minnow is open`;
-  }
-  const enabledPart =
-    enabled === total ? `${enabled} enabled` : `${enabled} of ${total} enabled`;
-  return `${total} job${total === 1 ? '' : 's'} · ${enabledPart}`;
-}
-
-function openAddTaskEditor(): void {
-  openJobEditorWindow({
-    onSaved: () => {
-      void refreshPanel();
-    },
-    onStatus: setPanelStatus,
-  });
-}
-
-function bindHeaderAddButton(): void {
-  if (headerAddBound) return;
-  const btn = document.getElementById('btnSchedulerAdd');
-  if (!btn) return;
-  headerAddBound = true;
-  btn.addEventListener('click', () => {
-    openAddTaskEditor();
-  });
-}
-
-function panelEditorCallbacks() {
-  return {
-    onStatus: setPanelStatus,
-    externalAddControl: true,
-    onCountsChange: ({ total, enabled }: { total: number; enabled: number }) => {
-      const summary = document.getElementById('schedulerSummary');
-      if (summary) {
-        summary.textContent = formatHeaderSummary(total, enabled);
-      }
-    },
-    onAddTask: openAddTaskEditor,
-    onEditJob: (job: ScheduledJob) => {
-      openJobEditorWindow({
-        jobId: job.id,
-        initialJob: {
-          label: job.label,
-          enabled: job.enabled,
-          schedule: { ...job.schedule },
-          prompt: job.prompt,
-          modeId: job.modeId,
-          providerId: job.providerId,
-          modelId: job.modelId,
-          workspacePath: job.workspacePath,
-          githubWatch: job.githubWatch,
-          channels: [...job.channels],
-        },
-        onSaved: () => {
-          void refreshPanel();
-        },
-        onStatus: setPanelStatus,
-      });
-    },
-  };
-}
-
-async function refreshPanel(): Promise<void> {
+function ensureApp(): AutomationsApp | null {
   const body = getBody();
-  if (!body) return;
-  const add = document.getElementById('btnSchedulerAdd');
-  if (add) add.textContent = document.documentElement.classList.contains('mn-graphite-workspace') ? 'New job' : 'Add task';
-  await renderSchedulerPanel(body, panelEditorCallbacks());
+  if (!body) return null;
+  if (app && body.classList.contains('auto-root')) return app;
+  app?.dispose();
+  app = mountAutomationsApp(body, {
+    summary: document.getElementById('schedulerSummary'),
+    controls: document.querySelector<HTMLElement>('#schedulerView .scheduler-header__controls'),
+    addButton: document.getElementById('btnSchedulerAdd') as HTMLButtonElement | null,
+    notify: setPanelStatus,
+  });
+  return app;
 }
 
 function mountHeaderIcon(): void {
@@ -125,7 +61,6 @@ export function initSchedulerPage(): void {
   if (initialized) return;
   initialized = true;
   mountHeaderIcon();
-  bindHeaderAddButton();
   if (!isOsShellEnabled()) {
     window.addEventListener('hashchange', onHashChange);
     if (
@@ -143,11 +78,10 @@ export async function openScheduler(): Promise<void> {
 
   root.classList.add('is-open');
   mountHeaderIcon();
-  await refreshPanel();
+  await ensureApp()?.refresh();
 }
 
 export function closeScheduler(options?: { skipNavigate?: boolean }): void {
-  closeJobEditorWindow();
   const root = getRoot();
   if (!root) return;
   root.classList.remove('is-open');
@@ -162,6 +96,13 @@ export function closeScheduler(options?: { skipNavigate?: boolean }): void {
 
 export function isSchedulerPageOpen(): boolean {
   return getRoot()?.classList.contains('is-open') ?? false;
+}
+
+/** Test hook: tear the app down between DOM setups. */
+export function resetSchedulerPageForTests(): void {
+  app?.dispose();
+  app = null;
+  initialized = false;
 }
 
 function onHashChange(): void {

@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "7c16da0ab873e38370c7ab18bcc505c13618f083c5e817d567ecd38b9f338d1e"
+      "hash": "c2545a3e20585353e3f08a2147589086b9f38a3fc665354e7cbe7b098c97caf5"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "2e6107ca677069898b3aa592f7508cd5a8653957c7d25827077e14a1ed96db4a"
+      "hash": "4c02a7ca7fa6805ed8efa158ca52c6fc37db6cf90da2fc6958a401606749de96"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -198,7 +198,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "ff9b4c1bc2e02cb37764be298a99eb0237f5d3ac76e63c71e0d6c6da003f1c74"
+      "hash": "f736ddb390709008c8d59a2346a5c5ddf4fc7d41bb3d23822abc6be3e20223d7"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -211,13 +211,13 @@
         "Models",
         "Issues",
         "Brain",
-        "Scheduler",
+        "Automations",
         "Settings",
         "Not on the rail",
         "Related"
       ],
       "section": "Apps",
-      "hash": "ee58e31469c3c6c73bc6f2723f1de04612cfe08a4f3f823ab14e3e1d58891e3d"
+      "hash": "0372d5a56a55dc2590b3eecd362898e94e748eec1509589e82caea28b7270b4a"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -309,21 +309,24 @@
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
-      "title": "Scheduler",
-      "summary": "Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain. Open it from the app rail or the menubar. Sc",
+      "title": "Automations",
+      "summary": "Automations are agents that run on their own: a PR reviewer that checks every new pull request, an issue watcher that fixes labeled issues, a nightly dependency check, or anything you describe. Each one wakes up on its schedule, does its job without a conversation, and reports ba",
       "headings": [
         "The one rule",
-        "Creating a job",
-        "Schedules",
-        "Watching GitHub issues",
-        "Writing a prompt that works unattended",
+        "The hub",
+        "Watching a run",
+        "Presets",
+        "PR Reviewer",
+        "Issue Watcher",
+        "Custom automations",
+        "Writing instructions that work unattended",
         "Run history",
-        "Scheduler or `/loop`?",
+        "Automations or `/loop`?",
         "Troubleshooting",
         "Related"
       ],
       "section": "Apps",
-      "hash": "68a30a1e57ff2281fa2c10ac627c93479aae466392906cc2c5488d8aac404a8c"
+      "hash": "6a25dfad5cdd8d3c418dbef37d6ef529ac44fd04734271a1685f3dc1410a0650"
     },
     {
       "path": "documentation/manual/apps/settings.md",
@@ -491,7 +494,7 @@
         "Tools and files",
         "The model forgets things",
         "Agents and boards",
-        "Scheduler",
+        "Automations",
         "Voice",
         "Updates and install",
         "Data and secrets",
@@ -499,7 +502,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "c5f9f007a3b13bb421e47b7ddaad05092e059d83f144d9d53a262f4b4b0f18cb"
+      "hash": "ae0dd21d96c1a78a1b1a4fd2592e59af48c432c99e9ea77835403aef2645320f"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -509,7 +512,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "204de316808c1d5e5f8dadc462d05dcba63175105a5f4c451d8738e725e8ff80"
+      "hash": "98cf6c41859fe004a524f1ae5a352baf228abdffb5e1b97f10c6a6926fc7aa56"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",

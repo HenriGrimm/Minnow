@@ -53,7 +53,7 @@ export function validateCronExpression(expression) {
 }
 
 /**
- * @param {{ kind: 'interval' | 'cron'; value: string }} schedule
+ * @param {{ kind: 'interval' | 'cron' | 'manual'; value: string }} schedule
  */
 export function validateSchedule(schedule) {
   if (!schedule || typeof schedule !== 'object') {
@@ -61,8 +61,12 @@ export function validateSchedule(schedule) {
   }
   const kind = String(schedule.kind ?? '').trim();
   const value = String(schedule.value ?? '').trim();
+  if (kind === 'manual') {
+    // Manual automations never run on their own; Run now starts them.
+    return { kind, value: 'manual' };
+  }
   if (kind !== 'interval' && kind !== 'cron') {
-    throw new Error('schedule.kind must be interval or cron');
+    throw new Error('schedule.kind must be interval, cron or manual');
   }
   if (!value) {
     throw new Error('schedule.value is required');
@@ -79,10 +83,13 @@ export function validateSchedule(schedule) {
  * Compute the next ISO run timestamp from now (no backfill of missed runs).
  * @param {{ schedule: { kind: 'interval' | 'cron'; value: string }; lastRunAt?: string }} job
  * @param {Date} [now]
- * @returns {string}
+ * @returns {string | undefined} undefined for manual schedules
  */
 export function computeNextRun(job, now = new Date()) {
   const schedule = validateSchedule(job.schedule);
+  if (schedule.kind === 'manual') {
+    return undefined;
+  }
   if (schedule.kind === 'interval') {
     const ms = parseInterval(schedule.value);
     return new Date(now.getTime() + ms).toISOString();

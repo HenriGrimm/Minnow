@@ -117,7 +117,7 @@ A global ticker wakes at each loop's stored due time, so a reload or a laptop sl
 
 `/goal`, `/loop` and `/followup` are mutually exclusive on one chat, and `/clear` clears all three.
 
-**`/loop` is not the Scheduler.** A loop lives in one chat, keeps its context, and needs that chat idle. A [Scheduler](../apps/scheduler.md) job is a headless run in a chosen workspace with a chosen model, independent of any conversation. Iterating on something belongs in a loop; a nightly report belongs in the Scheduler.
+**`/loop` is not an automation.** A loop lives in one chat, keeps its context, and needs that chat idle. An [automation](../apps/scheduler.md) is a headless run in a chosen workspace with a chosen model, independent of any conversation. Iterating on something belongs in a loop; a nightly report belongs in Automations.
 
 ## `/followup`
 
@@ -146,5 +146,5 @@ The agent-chosen tasks use the model bound in **Models → Routing → Utility t
 
 - [Working in chat](chatting.md)
 - [Tools and permissions](../concepts/tools-and-permissions.md)
-- [Scheduler app](../apps/scheduler.md)
+- [Automations](../apps/scheduler.md)
 - [Settings app](../apps/settings.md)

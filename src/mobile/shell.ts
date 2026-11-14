@@ -130,7 +130,7 @@ function openDrawer(): void {
     navRow('Boards', 'fi-rr-layers', () => selectTab('boards'), { tab: 'boards', selected: current === 'boards' }),
     navRow('Files', 'fi-rr-folder', () => selectTab('files'), { tab: 'files', selected: current === 'files' }),
     navRow('Brain', 'fi-rr-book-alt', () => openPhoneApp('brain')),
-    navRow('Scheduler', 'fi-rr-clock', () => openPhoneApp('scheduler')),
+    navRow('Automations', 'fi-rr-bolt', () => openPhoneApp('scheduler')),
     navRow('Models', 'fi-rr-microchip', () => openPhoneApp('models')),
     navRow('Settings', 'fi-rr-settings-sliders', () => openPhoneApp('settings')),
   );

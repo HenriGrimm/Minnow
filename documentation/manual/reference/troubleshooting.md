@@ -55,14 +55,15 @@ If the ring shows no cap, the model did not report a context length. See [Contex
 | Sub-agent seems stuck | Expand its parent in the menubar **Activity** dropdown to see its live phase and current tool. Timeouts are per type in **Settings → Agents → Sub-agents**. |
 | Undo control is missing | It only appears in a git repository, and only when that turn changed files. The message **⋮ → Undo turn** still does a chat-only rewind. |
 
-## Scheduler
+## Automations
 
 | Symptom | Fix |
 |---------|-----|
-| Job never ran | Minnow must be running — tray counts, quit does not. Is the job enabled? Is the interval at least 60 s? |
-| Job ran but did nothing | Tools on **Ask** stall with nobody to approve them |
-| Job failed | Read the run history message. Does the model still exist? Does the workspace path still exist? |
-| Wrong files touched | The workspace set on the job |
+| Automation never ran | Minnow must be running — tray counts, quit does not. Is it switched on? Is it set to **Only when I run it**? |
+| Run did nothing | Open the run. It may have replied `NOTHING_TO_DO`, or an action was blocked by your permission mode |
+| PR Reviewer skips every PR | The PRs already have comments, or another agent claimed them first; the PR list shows why |
+| Run failed | Read the run. Does the model still exist? Does the workspace path still exist? |
+| Wrong files touched | The workspace set on the automation |
 
 ## Voice
 

@@ -104,10 +104,10 @@ export const APPS: readonly AppDefinition[] = [
   },
   {
     id: 'scheduler',
-    name: 'Scheduler',
+    name: 'Automations',
     icon: 'scheduler',
-    tag: 'Recurring agent jobs & reminders',
-    description: 'Interval and cron schedules while Minnow is running',
+    tag: 'Recurring agents, presets & live runs',
+    description: 'PR review, issue fixing and your own agents on a schedule while Minnow is running',
     availability: 'core',
     releaseState: 'released',
   },

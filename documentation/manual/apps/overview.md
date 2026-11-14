@@ -2,7 +2,7 @@
 
 Minnow is one shell built around **Code**. Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon.
 
-The left rail opens Source Control, Brain, Issues, Scheduler, and Boards. The footer opens **Models** and **Settings**. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Brain does not start a different assistant — it gives the same assistant a different layout and workflow.
+The left rail opens Source Control, Brain, Issues, Automations, and Boards. The footer opens **Models** and **Settings**. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Brain does not start a different assistant — it gives the same assistant a different layout and workflow.
 
 That sharing is the whole design, not a packaging detail. The assistant that reads your files is the one that files the issue, makes the branch, writes the Brain page, and runs on the model you downloaded — all pointed at the same folder. Nothing has to be told about your project twice.
 
@@ -29,10 +29,10 @@ Two things live inside Code rather than beside it:
 | **Models** | What the agents run on: downloads, local serving, providers, routing, sampler, voice, usage | Fullscreen |
 | **Issues** | Issue list and board with agent triage | Fullscreen |
 | **Brain** | Your knowledge wiki, memories, ingest, lint, code index | Fullscreen |
-| **Scheduler** | Recurring jobs on an interval or cron | Side panel |
+| **Automations** | Agents that run on their own: PR review, issue fixing, presets and your own | Fullscreen |
 | **Settings** | Everything configurable | Menubar gear (not on the app rail) |
 
-**Scheduler** opens as a side panel over what you were doing, so you can add a job without leaving Code. The others take the main stage; **Settings** is always one click away in the menubar.
+Apps take the main stage; **Settings** is always one click away in the menubar.
 
 ### Source Control history
 
@@ -64,13 +64,13 @@ The assistant reads and writes it with tools. This is where `save_memory` puts t
 
 → [Brain app](brain.md)
 
-### Scheduler
+### Automations
 
-Interval or cron jobs that run a prompt in a chosen workspace with a chosen model through a headless runner. Run history, output and notifications are kept.
+Agents that run on their own on a schedule: presets such as PR Reviewer, Issue Watcher and CI Fixer, or your own instructions. The hub shows what is running right now, what needs you, every automation's recent runs, and live transcripts.
 
-Jobs run **only while Minnow is running**. Hidden in the tray still counts; fully quit does not.
+Automations run **only while Minnow is running**. Hidden in the tray still counts; fully quit does not.
 
-→ [Scheduler app](scheduler.md)
+→ [Automations](scheduler.md)
 
 ### Settings
 

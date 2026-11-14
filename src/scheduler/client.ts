@@ -2,7 +2,7 @@
  * Browser client for scheduled jobs API (/api/scheduler/*).
  */
 
-export type SchedulerScheduleKind = 'interval' | 'cron';
+export type SchedulerScheduleKind = 'interval' | 'cron' | 'manual';
 
 export interface SchedulerSchedule {
   kind: SchedulerScheduleKind;
@@ -23,6 +23,8 @@ export interface ScheduledJob {
   modelId?: string;
   workspacePath?: string;
   githubWatch?: { repository: string; label?: string } | null;
+  /** Automation preset this job was created from. */
+  preset?: { id: string; config: Record<string, any>; customInstructions?: boolean } | null;
   channels: SchedulerChannel[];
   lastRunAt?: string;
   nextRunAt?: string;
@@ -73,6 +75,12 @@ export interface SchedulerRun {
   error?: string;
   /** Session chat id when the run was persisted via --persist-chat. */
   chatId?: string;
+  trigger?: 'schedule' | 'manual';
+  /** The run found nothing to do. */
+  quiet?: boolean;
+  headline?: string;
+  stats?: AutomationRunStats;
+  reviewers?: { runId: string; role: string; label: string; status: string }[];
 }
 
 export interface SchedulerNotification {
@@ -217,4 +225,216 @@ export async function ackSchedulerNotification(id: string): Promise<void> {
   await fetch(`/api/scheduler/notifications/${encodeURIComponent(id)}/ack`, {
     method: 'POST',
   });
+}
+
+// ---------- Automations hub ----------
+
+export interface AutomationRunStats {
+  rounds: number;
+  toolCalls: number;
+  filesRead: number;
+  filesEdited: number;
+  commands: number;
+}
+
+export interface AutomationLiveState {
+  lastDelta?: string;
+  lastThinking?: string;
+  reasoningFormat?: 'summary';
+  currentTool?: string | null;
+  phase?: string | null;
+}
+
+export interface AutomationFocus {
+  kind: 'pr' | 'issue';
+  number: number;
+  title: string;
+  url?: string;
+  author?: string;
+  phase?: string;
+}
+
+export interface AutomationLiveRun {
+  runId: string;
+  jobId: string;
+  label: string;
+  parentRunId?: string;
+  role?: string;
+  roleLabel?: string;
+  chatId?: string;
+  startedAt: string;
+  finishedAt?: string;
+  status: SchedulerRunStatus;
+  step: string;
+  headline?: string;
+  /** First sentence of a prompt run's instructions. */
+  brief?: string;
+  focus?: AutomationFocus;
+  stats: AutomationRunStats;
+  result?: { assistantFinal?: string; error?: string | null; quiet?: boolean };
+  live: AutomationLiveState | null;
+  children: AutomationLiveRun[];
+  messages?: import('../types').Message[];
+}
+
+export interface AutomationAttention {
+  kind: 'run' | 'pr' | 'issue';
+  text: string;
+  runId?: string;
+  number?: number;
+  title?: string;
+  url?: string;
+}
+
+export interface AutomationRunSummary {
+  id: string;
+  status: SchedulerRunStatus;
+  quiet: boolean;
+  startedAt: string;
+  completedAt?: string;
+  headline?: string;
+  trigger?: 'schedule' | 'manual';
+}
+
+export interface AutomationJob extends Omit<ScheduledJob, 'prompt'> {
+  recentRuns: AutomationRunSummary[];
+  live: AutomationLiveRun | null;
+  attention: AutomationAttention | null;
+}
+
+export interface AutomationActivity {
+  id: string;
+  at: string;
+  jobId: string;
+  label: string;
+  text: string;
+  tone: 'run' | 'ok' | 'fail' | 'warn' | 'skip';
+  runId?: string;
+  ref?: { kind: string; id: string; url?: string };
+}
+
+export interface AutomationsOverview {
+  jobs: AutomationJob[];
+  activity: AutomationActivity[];
+  now: string;
+}
+
+export interface AutomationTranscriptChild {
+  runId: string;
+  role: string;
+  roleLabel: string;
+  status: SchedulerRunStatus;
+  startedAt: string;
+  finishedAt?: string;
+  result?: { assistantFinal?: string; error?: string | null };
+  stats: AutomationRunStats;
+  messages: import('../types').Message[];
+}
+
+export interface AutomationTranscript {
+  runId: string;
+  jobId: string;
+  label: string;
+  startedAt: string;
+  finishedAt: string;
+  status: SchedulerRunStatus;
+  headline?: string;
+  focus?: AutomationFocus;
+  stats: AutomationRunStats;
+  messages: import('../types').Message[];
+  children: AutomationTranscriptChild[];
+}
+
+export interface AutomationRunDetail {
+  run: SchedulerRun | null;
+  live: AutomationLiveRun | null;
+  transcript: AutomationTranscript | null;
+}
+
+export interface PrReviewRow {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  headSha: string;
+  phase: string;
+  reason?: string;
+  error?: string;
+  runId?: string;
+  verdict?: 'pass' | 'fail';
+  findings?: { severity: string; file?: string; line?: number; note: string; reviewer?: string }[];
+  reviewers?: { role: string; label: string; runId: string; status: string; verdict?: string }[];
+  updatedAt?: string;
+}
+
+export interface PrReviewQueue {
+  pulls: PrReviewRow[];
+  queue: { number: number; title: string; author: string; url: string; createdAt: string; headSha: string }[];
+  checkedAt: string | null;
+}
+
+export interface GithubRepositoryCheck {
+  repository: string | null;
+  pushMatches: boolean;
+  ghReady: boolean;
+  error: string | null;
+}
+
+async function readJson<T>(res: Response, fallback: string): Promise<T> {
+  const body = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
+  if (!res.ok) throw new Error(body.error ?? body.reason ?? fallback);
+  return body as T;
+}
+
+/** Everything the hub shows in one request. */
+export async function fetchAutomationsOverview(): Promise<AutomationsOverview> {
+  const res = await fetch('/api/scheduler/overview', { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+  return readJson(res, `Could not load automations (${res.status})`);
+}
+
+/** A run with its live state or saved transcript. */
+export async function fetchAutomationRun(jobId: string, runId: string): Promise<AutomationRunDetail> {
+  const res = await fetch(`/api/scheduler/runs/${encodeURIComponent(jobId)}/${encodeURIComponent(runId)}`, {
+    cache: 'no-store', signal: AbortSignal.timeout(10_000),
+  });
+  return readJson(res, 'Could not load this run');
+}
+
+/** Start a run now without waiting for it to finish. */
+export async function startAutomation(jobId: string): Promise<{ started: boolean; runId?: string | null; reason?: string }> {
+  const res = await fetch(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/start`, { method: 'POST' });
+  const body = (await res.json().catch(() => ({}))) as { started?: boolean; runId?: string | null; reason?: string; error?: string };
+  if (res.status === 409) return { started: false, reason: body.reason };
+  if (!res.ok) throw new Error(body.error ?? 'Could not start this automation');
+  return { started: Boolean(body.started), runId: body.runId ?? null };
+}
+
+export async function stopAutomationRun(runId: string): Promise<void> {
+  const res = await fetch(`/api/scheduler/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' });
+  if (!res.ok && res.status !== 409) throw new Error('Could not stop this run');
+}
+
+/** Server-validated schedule and its next run time. */
+export async function previewAutomationSchedule(schedule: SchedulerSchedule): Promise<{ schedule: SchedulerSchedule; nextRunAt: string | null }> {
+  const res = await fetch('/api/scheduler/schedule/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule }),
+  });
+  return readJson(res, 'Invalid schedule');
+}
+
+export async function fetchPrReviewQueue(jobId: string): Promise<PrReviewQueue> {
+  const res = await fetch(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/pulls`, { cache: 'no-store' });
+  return readJson(res, 'Could not load the review queue');
+}
+
+export async function retryPrReviewPull(jobId: string, number: number): Promise<void> {
+  const res = await fetch(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/pulls/${number}/retry`, { method: 'POST' });
+  await readJson(res, 'Could not retry this PR');
+}
+
+export async function detectGithubRepository(workspacePath: string): Promise<GithubRepositoryCheck> {
+  const res = await fetch('/api/scheduler/github/detect', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspacePath }),
+  });
+  return readJson(res, 'Could not check this checkout');
 }

@@ -17,6 +17,11 @@ import { schedulerJobsPath } from './paths.js';
 import { renameSchedulerFile } from './atomic-file.js';
 import { normalizeGithubWatch } from './github-watch-config.js';
 import { readWatchLedger } from './github-watch-store.js';
+import {
+  buildPresetPrompt,
+  getAutomationPreset,
+  normalizePresetConfig,
+} from '../../src/lib/automation-presets.mjs';
 
 /** Maximum user-defined scheduled jobs. */
 export const MAX_SCHEDULER_JOBS = 50;
@@ -83,12 +88,31 @@ async function toPublicJob(stored) {
     modelId: stored.modelId ?? undefined,
     workspacePath: stored.workspacePath ?? undefined,
     githubWatch: stored.githubWatch ?? undefined,
+    preset: stored.preset ?? undefined,
     channels: Array.isArray(stored.channels) ? [...stored.channels] : ['in_app'],
     lastRunAt: stored.lastRunAt ?? undefined,
     nextRunAt: stored.nextRunAt ?? undefined,
     running: Boolean(stored.running),
     createdAt: stored.createdAt,
     updatedAt: stored.updatedAt,
+  };
+}
+
+/**
+ * Validate an automation preset reference. The config is rebuilt from the
+ * catalog so runtime state or unknown keys never reach the store.
+ * @param {unknown} value
+ */
+function normalizePresetInput(value) {
+  if (value == null) return undefined;
+  if (!isObject(value)) throw new Error('preset must be an object');
+  const id = String(/** @type {any} */ (value).id ?? '').trim();
+  const preset = getAutomationPreset(id);
+  if (!preset) throw new Error(`Unknown automation preset: ${id}`);
+  return {
+    id,
+    config: normalizePresetConfig(id, /** @type {any} */ (value).config),
+    customInstructions: /** @type {any} */ (value).customInstructions === true && preset.engine === 'prompt',
   };
 }
 
@@ -109,8 +133,19 @@ async function normalizeJobInput(input, existingId) {
     throw new Error('label must be 120 characters or fewer');
   }
 
+  const preset = normalizePresetInput(input.preset);
+  const engine = preset ? getAutomationPreset(preset.id)?.engine : undefined;
+  if (engine === 'github-watch') {
+    input = { ...input, githubWatch: { repository: preset.config.repository } };
+  }
+  if (engine === 'pr-review') {
+    if (!String(input.workspacePath ?? '').trim()) throw new Error('Choose the local checkout of the repository to review');
+    input = { ...input, schedule: { kind: 'interval', value: preset.config.interval } };
+  }
   const githubWatch = normalizeGithubWatch(input.githubWatch, input.workspacePath);
-  const prompt = String(input.prompt ?? '').trim() || (githubWatch ? 'Triage and fix GitHub issues labeled minnow.' : '');
+  // Preset instructions are written from the config unless the person took them over.
+  const written = preset && !preset.customInstructions ? buildPresetPrompt(preset.id, preset.config) : '';
+  const prompt = written || String(input.prompt ?? '').trim() || (githubWatch ? 'Triage and fix GitHub issues labeled minnow.' : '');
   if (!prompt) {
     throw new Error('prompt is required');
   }
@@ -119,7 +154,7 @@ async function normalizeJobInput(input, existingId) {
   }
 
   const schedule = validateSchedule(input.schedule);
-  const modeId = String(input.modeId ?? 'build').trim().toLowerCase();
+  const modeId = String(input.modeId ?? (preset ? getAutomationPreset(preset.id)?.modeId : undefined) ?? 'build').trim().toLowerCase();
   if (!VALID_MODES.has(modeId)) {
     throw new Error(`modeId must be one of: ${[...VALID_MODES].join(', ')}`);
   }
@@ -148,6 +183,7 @@ async function normalizeJobInput(input, existingId) {
     schedule,
     promptEnc,
     githubWatch,
+    preset,
     modeId,
     workAgentId: input.workAgentId ? String(input.workAgentId).trim() : undefined,
     providerId: input.providerId ? String(input.providerId).trim() : undefined,

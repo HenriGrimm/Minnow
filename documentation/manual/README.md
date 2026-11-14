@@ -2,7 +2,7 @@
 
 Minnow is a full agentic development workspace that runs on your own computer: editor, agents, terminal, git, issues, planning, knowledge, and local model hosting in one app. It talks to models you host yourself — LM Studio, Ollama, `llama-server`, or any OpenAI-compatible endpoint — and it can also talk to cloud APIs if you give it a key. Either way, your chats, notes, files, and credentials stay in a folder on your disk. Nothing is uploaded to Minnow's authors, and there is no telemetry — an arrangement that was once unremarkable and is now, apparently, a feature.
 
-You open a project folder and land in **Code**, with your files and editor beside chat. Existing project conversations stay selected; New threads open with the composer and ready issues. Five surfaces support that work from the app rail — **Source Control**, **Models**, **Brain**, **Issues**, and **Scheduler** — plus **Settings** from the menubar. The same assistant and tool set back all of them, which is the part that matters: an issue the agent files, a branch it makes, and a note it writes all refer to the same project, without you carrying anything between windows.
+You open a project folder and land in **Code**, with your files and editor beside chat. Existing project conversations stay selected; New threads open with the composer and ready issues. Five surfaces support that work from the app rail — **Source Control**, **Models**, **Brain**, **Issues**, and **Automations** — plus **Settings** from the menubar. The same assistant and tool set back all of them, which is the part that matters: an issue the agent files, a branch it makes, and a note it writes all refer to the same project, without you carrying anything between windows.
 
 This manual covers the packaged app you install from GitHub Releases. If you build from source, everything here still applies, plus the developer setup notes in the [GitHub Wiki](https://github.com/HenriGrimm/Minnow/wiki).
 
@@ -55,7 +55,7 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 - [Models](apps/models.md) — downloads, local serving, providers, routing, sampler, usage
 - [Issues](apps/issues.md) — list, board, agent triage
 - [Brain](apps/brain.md) — your wiki, memories, ingest, and code index
-- [Scheduler](apps/scheduler.md) — interval and cron jobs
+- [Automations](apps/scheduler.md) — agents that run on their own: PR review, issue fixing, presets
 - [Settings](apps/settings.md) — the full map of every settings section
 
 ### Orchestrate

@@ -24,7 +24,7 @@ Terms Minnow uses, in the sense Minnow means them.
 
 **Isolation** — Giving board tasks their own git worktrees so parallel agents do not collide. Off, per-task, or per-wave.
 
-**Loop** — A prompt re-run on a schedule in one chat, set with `/loop`. Different from a Scheduler job.
+**Loop** — A prompt re-run on a schedule in one chat, set with `/loop`. Different from an automation.
 
 **MCP** — Model Context Protocol. A standard for exposing tools; MCP tools appear as `mcp__<server>__<tool>`.
 

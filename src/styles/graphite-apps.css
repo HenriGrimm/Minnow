@@ -64,7 +64,7 @@
 }
 
 .mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item, .ov2__board-btn):is([aria-current='page'], .is-active, .is-selected),
-.mn-graphite-apps :is(.models-library .models-row.is-selected, .scheduler-graphite-job:has([aria-pressed='true'])) {
+.mn-graphite-apps .models-library .models-row.is-selected {
   background: var(--mn-sel, var(--mn-surface-2));
   color: var(--mn-graphite-text, var(--mn-fg));
 }
@@ -100,7 +100,7 @@
 }
 
 /* View switches share one quiet track and the same selection fill as the rail. */
-.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .scheduler-graphite-modes, .brain-graph-toolbar .brain-graph-seg) {
+.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) {
   gap: var(--mn-space-0-5);
   padding: var(--mn-space-0-5);
   border: 1px solid var(--mn-graphite-line, var(--mn-border));
@@ -108,7 +108,7 @@
   background: var(--mn-graphite-raised, var(--mn-surface-1));
 }
 
-.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .scheduler-graphite-modes, .brain-graph-toolbar .brain-graph-seg) > button {
+.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) > button {
   min-height: var(--mn-workbench-segment-h);
   padding: 0 var(--mn-space-2);
   border: 0;
@@ -119,13 +119,13 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .scheduler-graphite-modes, .brain-graph-toolbar .brain-graph-seg) > button:hover {
+  .mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) > button:hover {
     background: var(--mn-graphite-hover, var(--mn-surface-elevated));
     color: var(--mn-graphite-text, var(--mn-fg));
   }
 }
 
-.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .scheduler-graphite-modes, .brain-graph-toolbar .brain-graph-seg) > button:is([aria-pressed='true'], .is-active) {
+.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) > button:is([aria-pressed='true'], .is-active) {
   background: var(--mn-sel, var(--mn-surface-2));
   color: var(--mn-graphite-text, var(--mn-fg));
 }
@@ -1693,325 +1693,3 @@
 }
 
 /* Scheduler */
-.mn-graphite-apps .scheduler-header {
-  box-sizing: border-box;
-  padding-block: var(--mn-space-1);
-}
-
-.mn-graphite-apps .scheduler-header__icon {
-  display: none;
-}
-
-.mn-graphite-apps .scheduler-header__titles {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-
-.mn-graphite-apps .scheduler-summary {
-  margin: 0;
-  font-family: var(--font-ui);
-}
-
-.mn-graphite-apps .scheduler-body {
-  padding: 0;
-}
-
-.mn-graphite-apps .scheduler-panel-mount:has(.scheduler-panel--graphite) {
-  max-width: none;
-}
-
-.mn-graphite-apps .scheduler-status:empty {
-  display: none;
-}
-
-.scheduler-graphite-modes {
-  display: flex;
-}
-
-.scheduler-graphite-modes > button {
-  cursor: pointer;
-}
-
-.scheduler-panel--graphite .scheduler-empty {
-  border: 0;
-  background: transparent;
-}
-
-.scheduler-panel--graphite {
-  min-height: 100%;
-  gap: 0;
-  container: graphite-scheduler / inline-size;
-}
-
-.scheduler-panel--graphite > .scheduler-notice {
-  display: none;
-}
-
-.scheduler-panel--graphite .scheduler-panel-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(276px, min(38%, 380px));
-  min-height: 100%;
-  gap: 0;
-}
-
-.scheduler-panel--graphite .scheduler-panel-main:has(.scheduler-jobs--empty) {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.scheduler-panel--graphite .scheduler-panel-main:has(.scheduler-jobs--empty) .scheduler-graphite-details:not(.scheduler-graphite-details--all) {
-  display: none;
-}
-
-.scheduler-panel--graphite .scheduler-jobs-head,
-.scheduler-panel--graphite .scheduler-jobs[hidden],
-.scheduler-graphite-details__content[hidden],
-.scheduler-graphite-details:empty {
-  display: none;
-}
-
-.scheduler-graphite-job {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: calc(64px + 2 * var(--mn-density-step));
-  padding-inline: var(--mn-workbench-gutter);
-  border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
-}
-
-.scheduler-graphite-job:focus-within {
-  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .scheduler-graphite-job:hover {
-    background: var(--mn-graphite-hover, var(--mn-surface-elevated));
-  }
-}
-
-.scheduler-graphite-job__select {
-  display: grid;
-  grid-template-columns: minmax(0, 2.22fr) minmax(104px, 1.54fr) minmax(67px, 1fr) minmax(67px, 1.03fr);
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-  min-height: calc(60px + 2 * var(--mn-density-step));
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--mn-graphite-text, var(--mn-fg));
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-
-.scheduler-graphite-job__identity,
-.scheduler-graphite-job__cadence {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.scheduler-graphite-job__identity {
-  position: relative;
-  padding-inline-start: 18px;
-}
-
-.scheduler-graphite-job__identity::before {
-  content: '';
-  position: absolute;
-  inset: 14px auto auto 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--mn-fg-subtle);
-}
-
-.scheduler-graphite-job.is-enabled .scheduler-graphite-job__identity::before {
-  background: var(--mn-success);
-}
-
-.scheduler-graphite-job__identity > span,
-.scheduler-graphite-job__secondary {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scheduler-graphite-job__secondary {
-  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
-  font-size: 12px;
-}
-
-.scheduler-graphite-job .scheduler-job__toggle .settings-toggle-row__label {
-  position: absolute;
-  clip-path: inset(50%);
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-}
-
-.scheduler-graphite-job .scheduler-job__toggle .settings-switch__track {
-  width: 30px;
-  height: 18px;
-}
-
-.scheduler-graphite-job .scheduler-job__toggle .settings-switch__thumb {
-  width: 12px;
-  height: 12px;
-  border: 0;
-  background: var(--mn-graphite-switch-knob-active, var(--mn-fg));
-}
-
-.scheduler-graphite-job .scheduler-job__toggle .settings-switch__input:checked + .settings-switch__track .settings-switch__thumb {
-  transform: translateX(12px);
-}
-
-.scheduler-graphite-details {
-  min-width: 0;
-  border-inline-start: 1px solid var(--mn-graphite-line, var(--mn-border));
-}
-
-.scheduler-graphite-details--all {
-  grid-column: 1 / -1;
-  border-inline-start: 0;
-}
-
-.scheduler-graphite-details .scheduler-job {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  padding: calc(var(--mn-space-4) + var(--mn-density-step)) var(--mn-workbench-gutter);
-  border: 0;
-  border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 0;
-  background: transparent;
-}
-
-.scheduler-graphite-details .scheduler-job__actions {
-  align-items: flex-start;
-}
-
-.scheduler-graphite-details .scheduler-job__title {
-  font-size: 15px;
-  font-weight: 500;
-}
-
-.scheduler-graphite-details .scheduler-job.is-disabled {
-  opacity: 1;
-}
-
-.scheduler-graphite-details .scheduler-job__prompt {
-  display: block;
-  max-height: 8rem;
-  overflow: auto;
-  white-space: pre-wrap;
-}
-
-.scheduler-graphite-job-meta {
-  display: grid;
-  grid-template-columns: minmax(64px, .45fr) minmax(0, 1fr);
-  gap: 4px 10px;
-  margin: 8px 0 0;
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  font-size: 12px;
-}
-
-.scheduler-graphite-job-meta dd {
-  margin: 0;
-  color: var(--mn-graphite-text, var(--mn-fg));
-  overflow-wrap: anywhere;
-}
-
-.scheduler-graphite-details .scheduler-job__btn-row {
-  width: 100%;
-}
-
-.scheduler-graphite-details .scheduler-job__delete {
-  margin-inline-start: auto;
-}
-
-.scheduler-graphite-details :is(.scheduler-job__btn-row .settings-inline-btn, .scheduler-job__head .settings-inline-btn) {
-  min-height: 28px;
-  padding: 4px 10px;
-}
-
-.scheduler-graphite-details .scheduler-job__head .settings-inline-btn,
-.scheduler-graphite-details .scheduler-job__btn-row .settings-inline-btn:not(.scheduler-graphite-run-now) {
-  border-color: transparent;
-  background: transparent;
-  color: var(--mn-fg-muted);
-}
-
-.scheduler-graphite-details .scheduler-graphite-run-now {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: var(--mn-graphite-button, var(--mn-accent));
-  color: var(--mn-graphite-button-text, var(--mn-fg-on-accent));
-}
-
-.scheduler-graphite-details .scheduler-history {
-  margin: 0;
-  padding: 16px 20px;
-  border: 0;
-  border-radius: 0;
-}
-
-.scheduler-graphite-history {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.scheduler-graphite-run {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 0;
-  border: 0;
-  border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
-  background: transparent;
-  color: var(--mn-graphite-text, var(--mn-fg));
-  font: inherit;
-  text-align: start;
-}
-
-button.scheduler-graphite-run:hover {
-  background: var(--mn-graphite-hover, var(--mn-surface-2));
-  cursor: pointer;
-}
-
-.scheduler-graphite-run[data-status='completed'] > .icon-svg:first-child {
-  color: var(--mn-success);
-}
-
-.scheduler-graphite-run:is([data-status='failed'], [data-status='timeout']) > .icon-svg:first-child {
-  color: var(--mn-danger);
-}
-
-.scheduler-graphite-run__caption {
-  display: grid;
-  flex: 1;
-  gap: 2px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.scheduler-graphite-run__caption small {
-  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
-}
-
-@container graphite-scheduler (width < 960px) {
-  .scheduler-graphite-job {
-    padding-inline: 12px;
-  }
-
-  .scheduler-graphite-job__select {
-    grid-template-columns: minmax(0, 1fr) minmax(76px, .6fr);
-  }
-}
