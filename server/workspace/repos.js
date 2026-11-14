@@ -181,3 +181,23 @@ export function findRepoForPath(absPath, repos) {
 export function repoRemoteSlug(repo) {
   return repo?.remote?.owner && repo.remote.name ? `${repo.remote.owner}/${repo.remote.name}` : '';
 }
+
+/**
+ * The system-prompt repo map. Empty unless the workspace holds two or more
+ * repos, so single-repo prompts are byte-for-byte unchanged. Branches are left
+ * out on purpose: the block stays stable across turns (prompt-cache friendly).
+ * @param {WorkspaceRepo[]} repos
+ */
+export function renderWorkspaceReposBlock(repos) {
+  if (!Array.isArray(repos) || repos.length < 2) return '';
+  const lines = repos.map((repo) => {
+    const remote = repo.remote ? `${repo.remote.hostname || repo.remote.host}/${repo.remote.slug}` : 'no remote';
+    return `- \`${repo.id}\` — ${remote}`;
+  });
+  return [
+    '## Workspace repositories',
+    'This workspace folder holds several independent git repositories. Each has its own branches, history and remote.',
+    ...lines,
+    'Pass `repo` (the id above) to git tools when no file path identifies the repo. Commit, push and open PRs once per repo. Run `gh` and other repo-scoped commands from inside the repo directory, e.g. `cd backend && gh pr create`.',
+  ].join('\n');
+}

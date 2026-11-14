@@ -9,6 +9,7 @@ export type PromptPartId =
   | 'code-map'
   | 'context-documents'
   | 'work-agent'
+  | 'workspace-repos'
   | 'skill';
 
 /** Parsed prompt template kind from front matter. */
@@ -74,6 +75,8 @@ export interface ComposeContext {
   contextDocumentsInjectionEnabled?: boolean;
   /** Standing file/URL chips pinned on this chat (MIN-630). */
   chatLinksBlock?: string | null;
+  /** Repo map when the workspace folder holds several git repos; absent for one. */
+  workspaceReposBlock?: string | null;
   /** Per-turn feedback for unavailable optional preparation; never a stable CLI prefix. */
   enrichmentNotice?: string | null;
   injectionsReplayed?: boolean;

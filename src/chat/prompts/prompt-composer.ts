@@ -20,6 +20,7 @@ export const PART_ORDER: PromptPartId[] = [
   'work-agent',
   'tool-usage',
   'info',
+  'workspace-repos',
   'skill',
   'memory',
   'code-map',
@@ -86,7 +87,15 @@ export function isLocalModelGuidanceEnabled(ctx: ComposeContext): boolean {
   return ctx.providerIsLocal === true;
 }
 
+/** Repo map part: only when the workspace folder holds several repos. */
+export function isWorkspaceReposPartEnabled(ctx: ComposeContext): boolean {
+  return Boolean(ctx.workspaceReposBlock?.trim());
+}
+
 function isPartEnabled(ctx: ComposeContext, partId: PromptPartId): boolean {
+  if (partId === 'workspace-repos') {
+    return isWorkspaceReposPartEnabled(ctx);
+  }
   if (partId === 'skill') {
     return Boolean(ctx.skillBody?.trim());
   }
@@ -146,6 +155,9 @@ function resolvePartId(
 // ── Resolvers ────────────────────────────────────────────────────────────────
 
 function resolvePartBody(partId: PromptPartId, ctx: ComposeContext): string {
+  if (partId === 'workspace-repos') {
+    return ctx.workspaceReposBlock?.trim() ?? '';
+  }
   if (partId === 'skill' && ctx.skillBody?.trim()) {
     return ctx.skillBody.trim();
   }

@@ -63,6 +63,7 @@ describe('prompt-composer', () => {
       'work-agent',
       'tool-usage',
       'info',
+      'workspace-repos',
       'skill',
       'memory',
       'code-map',
