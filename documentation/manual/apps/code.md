@@ -1,233 +1,47 @@
-# Code
+# Edit, run, and review in Code
 
-Code is the development environment: a file tree, an editor with AI completion and language-server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are.
+Start in an open workspace and choose a thread or **New thread**. The thread header opens the side and bottom panels. Use **+** in an open panel to add another surface. See [Graphite navigation](overview.md) for the launcher and thread card.
 
-Code opens after you choose a project. You can also open it from the **app rail**. It takes the full screen.
+## Find and edit a file
 
-Worktree chats show a branch icon in the chat list. It changes to a merge icon when the checkout is clean and its commits are included in the locally known `main` branch (`master` is used when `main` is absent). Hover over the icon for the branch and merge status. Local chats have no icon. Status refreshes while Minnow is visible; squash merges are not detected from Git ancestry.
+1. Open **Side panel → Files**. Expand a folder and select a file to open an editor tab.
+2. Edit the file and save with **Ctrl+S** / **Cmd+S**. Use the file's tab to return to it while keeping the conversation visible.
+3. To ask about a specific file, drag its tab into the composer or attach the file from the composer. Include the function, error, or expected behavior in the prompt. For a small replacement in the editor, select the text and use **Ctrl+K** / **Cmd+K** for Quick Edit.
+4. To view two files, open both and use the panel's split control or **Ctrl+\** / **Cmd+\**. Use a tab's context menu to move it between groups.
 
-Each **Edited files** summary shows the branch where the changes were made. If you open a changed file after switching branches, Minnow shows its recorded diff and identifies both branches. **Switch to…** returns that checkout to the recorded branch. Minnow warns if chats are still running in the shared checkout; chats in isolated worktrees are excluded. Uncommitted files get an explicit choice to bring them or leave them saved on their current branch. Older changes without branch information display **Branch not recorded**.
-
-## Pin a chat
-
-Right-click a chat in the sidebar and choose **Pin to top** to keep it in a **Pinned** section above every other chat and group, however long ago it was last used. The most recently pinned chat is listed first. A pinned chat that belongs to a group is listed under Pinned instead of in the group, and returns to the group when you choose **Unpin**.
-
-## Share a chat
-
-Right-click a chat in the sidebar and choose **Copy chat transcript** to paste its conversation and tool activity into another chat. **Export chat as HTML** downloads a standalone transcript with rendered Markdown, code, embedded image attachments, and expandable tool calls and results. Open the HTML file in a browser to read, share, or print it. Exports include the saved conversation; hidden prompts and private reasoning are omitted.
-
-**Copy chat link** copies a direct link to the conversation. Paste it into the composer to show an inline chip with the conversation title, at the cursor between your words. You can type around the chip or delete it with the keyboard. The reference stays with your draft when you switch chats and appears as a title chip in sent messages. Select a chip in a sent message to open that chat in Minnow. The link references the conversation; it does not include a copy of its transcript. Drag a chat from the sidebar onto the open conversation or its composer to add a link to your draft. You can also drop it onto another chat in the sidebar to add the link to that chat’s draft. Existing draft text is preserved; send the message when it is ready.
-
-Long conversations open at the newest messages. As you scroll up, earlier messages load automatically before you reach them, keeping your reading position. Switching to another app and back preserves an unchanged conversation’s scroll position and expanded sections.
-
-
-## Open a project
-
-The workspace picker offers **Open project**, **Create project**, and your recent workspaces. Choosing a project opens Code.
-
-New projects default to your home folder's **Projects** directory. Change this in **Settings → General → New projects → Default project folder**, or use **Change default folder** beside the current location on the Choose workspace page. **Browse…** applies your folder choice immediately. Typed paths save when you leave the field or press Enter; Escape discards your edit. Clearing the field restores the original default. Existing projects are not moved. **Change location** in the creation form overrides the location for that project only.
-
-The folder you pick becomes the **workspace root**, and that is the boundary for file, git and search tools. An agent asking for a path outside it gets refused. That is the point — see [Tools and permissions](../concepts/tools-and-permissions.md).
-
-## The layout
-
-The sidebar holds the workspace switcher, apps, threads, and Archive. Open **Activity** in its footer to see work that needs your input, running agents, and recent outcomes.
-
-To organize threads, run **New chat group** from the command palette and name the group in the sidebar. Drag threads into the group to add them.
-
-The chat fills the workspace. The composer stays at the bottom, with inference metrics underneath. The branch chip in the header shows the current checkout even before you send your first message. Select it or press **Mod+.** to open the thread card for its checkout, changes, dev servers, model, and linked work. Select the changed-files row to review that checkout in Diff.
-
-When the agent creates a checklist, **Todo list** shows its latest tasks and completion count. It stays to the left of the conversation in wide chats and docks against the top of the composer in narrow chats. Select its header to collapse or expand it.
-
-Open the **side panel** with **Mod+J** or the **bottom panel** from the thread header. Use **+** in either panel to pick a surface. Terminal starts in the bottom panel. **Files** opens the file tree, and selecting a file adds a tab beside it. Choose **Browser** to add a browser tab in that panel. Files, browser pages, Terminal, and other surfaces share the same tab strip. Both panels can stay open, and each thread remembers its tabs and their placement. Use the panel header to move a tab, maximize, restore, or hide a panel. Drag its inner edge to resize it.
-
-On desktop, choose **Split right** in a panel header or press **Mod+Backslash** while focused in the panel. The right group has its own tabs and **+** menu. Drag the divider to resize the groups. Use **Close split** to bring the tabs back together. One panel can be split at a time. Across both panels, you can view up to two files and up to two browser tabs at once.
-
-The command palette also opens Dev servers, Code map, and Orchestrate boards. **Ctrl+`** toggles Terminal in whichever panel holds it.
-
-The **Issues** ticket button in the files toolbar replaces the file tree with this workspace's issues. The list starts with open issues, newest first; choose **All** or **Closed**, or search by title or ID. Use **Filter** to narrow by type, status, priority, or project (including **No project**). Filters combine with search and Open/All/Closed; select a filter chip to remove it. Selections are kept separately for each workspace while the app is open. Browsing a worktree keeps the issue list on the Code workspace.
-
-Type in **New issue** and select **Create** (or **Ctrl/Cmd+Enter**). The first line becomes the title and additional lines become the description. **Expand** creates the issue and expands it in the background, then clears and focuses the input so you can type the next issue. Drafts survive switching panes and reloading.
-
-Select an issue to view its description inside the pane, then **Back** to return to the list. Right-click, **Shift+F10**, or the row's **⋯** button opens issue actions: **View**, **Edit in Issues**, **Send to chat**, properties, expansion, sub-issues, copying, and deletion. **Edit in Issues** opens that issue in the full Issues app; **View all issues** opens the full Issues app.
-
-## The editor
-
-CodeMirror with syntax highlighting, plus two AI editing modes and real language-server support.
-
-| Keys | Action |
-|------|--------|
-| **Ctrl/Cmd+K** | Quick Edit on the selection — describe a change, get a diff |
-| **Ctrl/Cmd+I** | Toggle Intent mode |
-| **Ctrl/Cmd+Enter** | Force an intent proposal for the current line |
-| **Tab** | Accept an intent proposal, AI ghost text, or an open completion; otherwise indent |
-| **Ctrl/Cmd+→** | Accept the next word of ghost text |
-| **Ctrl+Space** | Trigger a completion |
-| **F12** or **Ctrl/Cmd+click** | Go to definition |
-| **Ctrl/Cmd+S** | Save |
-| **Ctrl/Cmd+W** | Close the tab |
-| **Ctrl/Cmd+Tab** | Cycle tabs |
-| **Ctrl/Cmd+F** | Find and replace |
-| **Escape** | Dismiss a proposal or ghost text, or blur the editor so Tab navigates the app again |
-
-**Quick Edit** is a surgical change to a selection. **Intent mode** is different: you write what a line should do (English, pseudocode, or even broken code) and pause — a proposal appears below the line. **Tab** accepts it and the text becomes ordinary code; **Esc** dismisses it; **Ctrl+Z** undoes an accepted proposal like any other edit. Nothing is written to your file until you press Tab.
-
-Intent auto-triggers on lines that read as plain English (and on comment lines holding plain English) in files Minnow recognises as source code. If the detection gets in your way, set a **trigger prefix** in Settings — then only lines starting with it are treated as intent. **Ctrl/Cmd+Enter** always forces a proposal, whatever the line looks like.
-
-Intent shares the editor AI model with inline completion and Quick Edit by default, and can be pinned to its own provider and model. Configure it in **Settings → Integrations → Editor**, which also controls ghost-text behaviour, how much import and language-server context goes into completions, and caching.
-
-Language-server diagnostics, hover and signature help work where a server is installed — TypeScript and JavaScript are bundled. See [Integrations](../extend/integrations.md).
-
-Files get the same colourful icons as VS Code, in the tree and on tabs.
-
-### Markdown files
-
-Markdown files open as a rendered preview, and you can edit them right there. Click any paragraph, heading, list, table or code block and it turns into its Markdown source. Edit it, then click elsewhere (or press **Ctrl/Cmd+Enter**) to see it rendered again. **Esc** throws away the changes to that block, and **Ctrl/Cmd+S** saves the file. Only the block you touched changes; the rest of the file stays exactly as it was. Links stay clickable, and selecting text to copy it does not open a block. To work on the whole file as source, right-click and choose **Open as code** (**Open as preview** switches back). Unsaved edits carry over when you switch.
-
-### Godot projects
-
-Open a folder containing `project.godot` and Minnow recognises it automatically. If Godot 4 is already on `PATH`, in a standard installation location, or in your Downloads or Desktop folder, no setup is required. Portable Windows builds may remain in their extracted folder.
-
-If Godot is not installed, use **Settings → Integrations → Language servers → Install Godot**, or ask the assistant to **install Godot**. The installer downloads the latest stable official Godot 4 build, verifies its published SHA-512 checksum, and keeps it under `~/.minnow/runtimes/godot/`. The `godot_control` tool uses **Ask** permission by default, so an agent-initiated download still requires your approval. `MINNOW_GODOT_PATH` remains available as an advanced override.
-
-GDScript files use Godot's language server for completion, diagnostics, hover, navigation, symbols, and formatting. The assistant can also open the editor, run or stop scenes, validate scripts, import assets, run a GDScript test runner, export builds, and use Godot's debugger.
-
-## The file tree
-
-Full file operations, keyboard-driven when the tree has focus:
-
-| Keys | Action |
-|------|--------|
-| **Enter** / **Space** | Open a file, or expand a folder |
-| **F2** | Rename |
-| **Ctrl/Cmd+C / X / V** | Copy, cut, paste within the workspace |
-| **Delete** | Delete |
-
-Right-click for the context menu, including **Open in System Explorer** and **Copy path** (workspace-relative path on the system clipboard).
-
-Drag a file or folder from Explorer or Finder into the tree to copy it into the project — onto a folder to import there, or onto empty space for the workspace root. Drag a file into the composer to attach it as a workspace reference the model can read with tools. Drag a file or folder into the terminal to insert its path at the shell prompt.
-
-When an agent writes files, the tree patches only the affected folders instead of rebuilding. Your scroll position, keyboard focus and expanded folders survive.
+If completions, formatting, or **Go to definition** are missing, open **Settings**, search for **Language servers**, and check the language for that file. Mixed projects may need a server for each language.
 
 ## Terminal
 
-**Ctrl+`** toggles the panel. Tabs are the **Agent** tab, which shows the output of commands the model ran, plus any interactive PTY sessions you open.
-
-- **↑ / ↓** recalls that tab's command history, kept per tab across reloads.
-- **Ctrl/Cmd+C** copies the selection, or sends SIGINT when nothing is selected.
-- **Ctrl+V** (Windows/Linux) and **Cmd+V** (macOS) paste clipboard text at the prompt.
-- **Expand** fills the chat column with the terminal; press it again to dock.
-- Sessions survive a reload — Minnow reconnects and replays scrollback rather than killing your shell.
-
-On Windows, **Git Bash** appears when Git for Windows is installed, and installed WSL distributions appear as their own shell options. Pick one under **Settings → Code & workspace → Terminal → Default shell** (or override per workspace) and both terminal sessions and agent commands run inside it. WSL maps Windows paths to `/mnt/...`. Git Bash keeps a Windows working directory and does not use the WSL Landlock sandbox.
-
-## Git
-
-In Code’s surface launcher, click **Diff** to inspect the thread’s checkout. The small **Open workspace diff** button on the Diff card opens all uncommitted changes in the main workspace checkout, including when the thread has a separate worktree or the card says **No changes yet**.
-
-In **Changes**, click a filename to expand its patch or use **Open file diff** on the row for a side-by-side view. The commit controls stay below the scrolling file list. Select **History** to browse recent commits for the selected checkout.
-
-The source-control panel does status, stage, diff, commit, branch, pull and push. If the folder is not a git repository yet, **Set up git** starts a background chat that initializes it (init, `.gitignore`, first commit) without leaving the panel.
-
-In the sidebar and **Source Control → Changes**, click a row to highlight it, **Shift-click** to select a range, or **Cmd-click** (macOS) / **Ctrl-click** (Windows and Linux) to select separate rows. **Cmd/Ctrl+A** selects all changes while a change row has focus. The existing file rows and action buttons stay in place. Right-click a highlighted row to act on the selection: stage, unstage, discard, ignore paths or file extensions, copy absolute or relative paths, or reveal files in the system explorer.
-
-Discard asks for confirmation. Working-tree changes restore the staged version; selecting a staged change also restores its committed version and removes that change from staging. New files are deleted. New folders list their individual files, and discarding a folder preserves ignored files. Ignore adds rules to the repository’s `.gitignore`; files already tracked by Git stay tracked.
-
-
-Click the branch and worktree name at the top of the sidebar panel to open the **checkout picker**. Search **Branches** or **Worktrees**; remote branches appear automatically with a small **remote** badge. Selecting a remote branch creates its local tracking branch if needed. Selecting a branch already open in another worktree opens that checkout. Creation and removal actions appear below the list.
-
-On GitHub repositories, open **Pull requests** in the checkout picker and search by PR number, title, or branch. Select an open PR to check it out in the current worktree, including PRs from forks. This uses your signed-in GitHub CLI (`gh`).
-
-When you switch branches with uncommitted files, choose **Bring my changes** to carry them to the destination, or **Leave changes** to save them in Git stash. Saved changes include staged, unstaged, and new files; ignored files are excluded. Returning to the saved branch in the same worktree offers **Restore changes**, including the original staging. Commit or stash any current changes before restoring. If restoration conflicts, the saved stash remains available under **Source Control → Stashes**. Browsing a different worktree keeps each checkout’s files in place.
-
-Commit, push, pull, merge, and other git or GitHub actions show a small bouncing progress bar while they run. Success is a short confirmation. Failures open a popover with a plain-language title, a short summary, the raw details, and **Send to chat** so an agent can fix the problem.
-
-In Code’s Source Control side panel, a failure also leaves a recovery notice beside the commit controls. **Resolve** reopens the conflict popover; **Details** reopens other errors. **Technical details** expands the original Git output. Conflicted files appear once under **Merge conflicts**, and selecting one opens it in the editor. Commit stays disabled until the unresolved paths are resolved. The notice survives refreshes and follows the selected checkout’s Git status.
-
-**Send to chat** includes the failed action, checkout, branch, conflicted files, and error. Choose the current Build chat when it is idle and using the same checkout, or start a new Build chat bound to that checkout. Your commit message and existing chat draft are preserved. The recovery request leaves the final merge commit or GitHub PR merge for your review. After sending, **Open chat** returns to the recovery conversation. GitHub pull requests with known conflicts offer **Resolve conflicts** in their merge controls.
-
-- **Commit messages** can be generated from the staged diff: conventional commits with optional gitmoji, an imperative subject, and a body explaining why. The `/git-commit` skill uses the same conventions. History shows gitmoji as emoji even when a commit stored a colon code such as `:sparkles:`.
-- **File diffs:** click a staged or unstaged file in the source-control panel to open the full file in the code editor. Added lines are highlighted; removed lines appear inline with their old line numbers. Unstaged files stay editable, with highlights updating as you type. Staged files open as read-only snapshots of the index, compared with HEAD. Deleted files open as read-only reviews. Commit diffs use the separate side-by-side review, with **Wrap** in the review header.
-- **Merge to main** appears when you are on a feature branch: it checks out the trunk in the main workspace, merges your branch, and switches you back — warning you first if the tree is dirty and surfacing merge failures in a popover with an option to send them to chat.
-- Names you type when creating a **branch** or **worktree** (composer, Source Control, or the git panel) are turned into a git-safe slug: `Test Worktree` becomes `test-worktree`. Empty or illegal characters are stripped; the dialog shows the name that will be used. The same dialog lets you pick which existing branch to start from (local or remote-tracking). For a worktree you can **Check out** an existing branch instead of creating a new one.
-- Agents use the same git operations through tools, so you and the model are never looking at different states.
-
-## Source Control Center
-
-The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, **Actions**, and **Releases** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**8** jump between sections; **Ctrl+K** opens the command palette. GitHub operations use your local `gh` CLI authentication. Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub.
-
-Use **Pull** and **Push** at the top right of Source Control to sync the selected checkout, even when the working tree is clean. Each button shows how many commits are waiting for that action. Use **Fetch** to update the counts from the remotes.
-
-### Actions and releases
-
-**Actions → Workflows** lists GitHub workflows or the selected worktree's local workflow files. On GitHub, choose a remote branch or tag and complete the workflow inputs. Only workflows with `workflow_dispatch` can be started manually. Dispatch acceptance means GitHub received the request; open **Runs** to follow execution, jobs, logs, reruns, and cancellation.
-
-For **Local workflow (act)**, install [act](https://nektosact.com/installation/) and start Docker. Choose an event, compatible Ubuntu job, and runner image. Local runs use the selected worktree, including uncommitted edits. Dynamic, Windows, and macOS runners are not treated as Linux. Local execution does not guarantee the same result as GitHub. Use the Source Control branch/worktree controls to choose the checkout; stop its active local run before switching branches or removing it.
-
-**Commands** discovers root package scripts and supports named commands in `.minnow/actions.json`. Saved commands can specify a relative directory, shell profile, environment values, and references to encrypted local secrets. The command file is versioned; secret values stay in Minnow's local profile. The **Run saved command** button executes the saved definition. Package scripts use the declared package manager or detected lockfile, with npm as fallback.
-
-**Runs → Local runs** shows status and logs. Runs continue when you close Source Control or reload its view. Logs are capped at 4 MiB per run and completed records are retained for seven days. Server shutdown stops local runs; interrupted runs are not automatically restarted. Local action secrets are passed only when selected and known values are masked in captured output.
-
-**Releases** lists GitHub drafts, prereleases, and published releases. Search loaded releases by title or tag and filter by status. In narrow windows, select **All releases** to return to the list. Create a draft from an existing tag or an explicitly selected remote commit for a new tag. Drafts open ready to edit. Select **Write draft** to create user-facing release notes from commit subjects and bodies since the last published release, including prereleases. Override the previous tag when needed; an initial release uses the full target history. The writer uses your utility model, or the last selected chat model when no utility override is set. Switch between **Write** and **Preview** to review the Markdown. Use **Undo** to restore your preceding edits and **Save changes** to save. **Cancel** keeps your notes intact. **Generate with GitHub** remains available. Select **Edit release** to update a published release. Use **Publishing** to set prerelease and latest options or publish a draft. Upload assets using paths relative to the worktree; downloads use a selected relative directory. Replacing or deleting an asset requires confirmation. Deleting a release preserves its Git tag. Immutable releases and accounts without write access show read-only controls. **Run release workflow** opens a popover for the mapped GitHub workflow. In **Actions → Workflows → GitHub**, select a manually runnable workflow and choose **Use for releases** to map it to this button. The mapping is saved locally per GitHub host and repository and applies across its worktrees. From Releases, choose a remote branch or tag, complete the workflow inputs, and select **Run on GitHub**. Inputs reload when the ref changes. Dispatch acceptance means GitHub received the request; **View runs** opens Actions to follow execution. Use **Change workflow** to pick another workflow, or **Remove release mapping** in its workflow inspector to clear the mapping. Running a workflow and creating a release are separate operations.
-
-Agents use the same services through `action_inspect`, `action_run`, `action_cancel`, `action_command`, `release_inspect`, `release_manage`, and `release_asset`. Inspection defaults to Full permission; mutations default to Ask. Plan mode allows inspection only for these tools.
-
-In **Branches** and **Worktrees**, click a row to select it, Ctrl/Cmd-click to toggle individual rows, or Shift-click to select a range. Ctrl/Cmd+A selects all visible rows; Escape clears the selection. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Bulk deletion skips current and protected local branches and the main/workspace worktree. While deleting, progress shows the current item and its position in the batch.
-
-In **Pull requests**, filter by **Open**, **Merged**, **Closed**, or **All**, and search the loaded list by title, number, branch, author, or label. The current branch's PR opens automatically when present. **Overview** shows the rendered description, check and review summaries, merge status, and reviews; **Checks**, **Files**, and **Commits** have their own tabs. Check **Details** links open the CI result on GitHub. Choose a merge method beside **Merge**; drafts must be marked **Ready for review** before merging. **More → Close pull request** closes without merging. Refreshes preserve the selected tab and an unfinished new-PR form.
-
-Remote branches appear automatically in **Branches**, marked with a small **remote** badge. Use a row's delete action or include remote branches in a selection to delete them on their remote server. Local branches are kept. Remote `main`, `master`, and symbolic HEAD references are protected. Removing a worktree keeps its branch.
-
-## Code map
-
-**Code map** in the sidebar draws the repository from its code index. Pick a view at the top left:
-
-- **Architecture** — each top-level folder is a layer and each folder inside it is a card. Lines show calls between them, thicker for more calls; a layer that calls another sits above it, and a dashed line marks a call running back up. Third-party packages sit in their own layer at the bottom. Test folders are hidden until you choose **Show tests**.
-- **Files** — the files in one folder, callers on the left and the files they call on the right. Each subfolder is one card; files with no calls inside the folder are listed underneath.
-- **Call graph** — one function with its callers on the left and what it calls on the right. **Depth** adds a second ring.
-
-Click a card to see what it is, what it depends on, and what uses it; double-click to go one level deeper. Cards most of the map relies on show **used by N** instead of drawing every line to them, and small modules fold into one **N more modules** card. **Strong links** shows the heavier connections; switch to **All links** or **Cross-layer only** from the same menu. Selecting a card always shows all of its lines.
-
-**Ctrl+K** searches files, folders, and symbols. Type a question instead and choose **Ask** to open a fresh chat beside the map and send it immediately; the same works from the **Ask about…** box in the panel. A context card shows the selected code and your question. The agent receives its indexed details, including location, summary, and relationships. Continue using the reply field and Send/Stop. Closing the chat keeps the map open, and leaving the map shows the new conversation in the main chat view. Right-click a folder card to change its icon. The **⋯** menu copies the current view as a Mermaid diagram, saves it as a PNG, or resets the index; **Reindex** refreshes it.
-
-Drag the divider beside the chat to make it wider or narrower. Minnow remembers the width. You can also focus the divider and use the arrow keys; double-click it to reset the width. On narrow screens, the chat sits below the map.
+Open **Terminal** from the panel launcher or use **Ctrl+`**. Before running a command that writes files, check the working directory with `pwd` in a Unix shell or `Get-Location` in PowerShell. A thread on a worktree uses a different checkout from the main folder. To change shells, search **Default shell** in Settings. Interrupt a running command with **Ctrl+C**.
 
 ## Dev servers
 
-A first-class screen rather than a terminal tab you have to remember. Register the servers a project needs — command, working directory, port, auto-start, and which git worktree to run in — then start, stop and restart them from one place, with logs and a listening-ports view.
+1. Start your project's ordinary dev command in **Terminal**, for example `npm run dev` if it is defined in `package.json`. Leave the process running.
+2. Copy the local URL printed by that command. Open **Browser** from the surface launcher and enter it.
+3. To manage a project server from Minnow, open **Dev servers** from the command palette. Select the server to view its logs or start and stop it from the server controls. The **Browser** surface can also show the selected dev server and its log.
 
-Choose **Add server** to open a popover. Enter the command you normally run in a terminal, give the server a name, and set its port. **Advanced** contains the working folder, worktree, network access, optional health check URL, and automatic startup. New servers default to the workspace root and this computer only. If the port is busy, choose **Use a free port**. Adding a server saves its configuration; choose Start when you are ready to run it. **Detect in chat** asks the assistant to find and configure the project's servers.
-
-Minnow wires the **Port** field by stack: Vite gets `--port`, Next gets `-p`, and stacks that reject those flags (including electron-vite) get `PORT` / `VITE_PORT` in the environment instead. Configs that ignore env keep their own port. Split stacks (API + client via `concurrently`) inject the port into the client, set `PORT` for the API, and health-check the UI.
-
-The `manage_dev_servers` tool gives the model the same controls, so "start the dev server and check the console" is one instruction.
+If the page is blank, open the same URL in the system browser and check the port and terminal output. If the system browser works and the embed does not, see [Preview troubleshooting](../reference/troubleshooting.md#the-preview-is-blank).
 
 ## Browser preview
 
-A real Chromium view for workspace HTML and localhost URLs. Navigate, reload, and toggle **DevTools** with **F12** or **Ctrl/Cmd+Shift+I** — console, network and element inspection for the previewed page.
+Open **Browser** to keep a page alongside the thread. Use the preview width selector to check responsive layouts and the reload button after a change. The desktop app provides the native browser and agent browser tools. See [Integrations](../extend/integrations.md#browser-automation) for the browser's requirements.
 
-The toolbar keeps navigation and the address field visible. Use the tab strip to switch pages or close the current page. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, and DevTools. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app.
+## Review the thread's work
 
-The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
+1. Read the **Edited** summary below the reply for the files changed in that turn. Open **Diff** from the side panel launcher and select a file to inspect the patch in the thread's Git checkout.
+2. Use **Open workspace diff** beside **Diff** in the launcher to inspect the main workspace, including edits outside a thread's separate worktree.
+3. Run the relevant checks in **Terminal**. If a failure needs investigation, give the agent the exact command and the first error.
+4. To commit, inspect staged and unstaged changes in **Source Control**.
 
-For isolated work, the agent can use **Agent Browser**. It reserves a private browser tab, then passes the returned `tab_id` to every later browser call. Open the Agent Browser viewer from the browser sidebar button to watch a tab, select **Guide** to send a page-element note to its owner, or choose **Take control** for deliberate user input. Closing the viewer leaves browser work running, and screenshots still work while it is closed.
+## Source Control Center
 
-## Working with the assistant here
+Open **Source control** from the workspace sidebar. In a Git workspace, **Changes** shows the current checkout's staged and unstaged files. Open a diff, stage the intended files, enter a message, and confirm the staged list before selecting **Commit**. With an empty staged list, the commit control can include all working tree changes. Check the branch before pushing.
 
-The normal shape of a Code session:
+Use **History** to find the commit that introduced a change. Use **Branches** or **Worktrees** to inspect or switch checkouts. A worktree has its own files and branch, so look for uncommitted changes there before removing it.
 
-1. Open the project. Set the composer to **Build**.
-2. Ask for the change. The model reads files, proposes edits, runs tests.
-3. Approve tools as they come up, or move the ones you trust to Full.
-4. Check the diff in the git panel before committing.
+For pull requests and GitHub Actions, connect GitHub in **Settings → Code and workspace → External Connections**, and make sure the checkout has a GitHub remote. The Source Control app shows repository-level PRs and runs. The thread's **Pull request** surface opens a PR linked to that conversation.
 
-Two habits that pay off: **commit before a long agent run**, and start with **/plan** when the change is big enough that you want to agree on the approach before any file is touched.
+## Code map
 
-If a turn goes wrong, the undo control beside the changes strip rewinds the turn and restores the working tree from a git snapshot. See [Working in chat](../chat/chatting.md).
-
-## Related
-
-- [Tools and permissions](../concepts/tools-and-permissions.md)
-- [Orchestrate boards](../orchestrate/boards.md) — parallel delivery from a plan
-- [Keyboard shortcuts](../reference/keyboard-shortcuts.md)
-- [Troubleshooting](../reference/troubleshooting.md)
+Search **Open Code map** in the command palette. Use the map to inspect indexed files and connections. If a recent file is missing, check the active workspace and refresh the code index in [Brain](brain.md).

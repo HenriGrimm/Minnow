@@ -763,7 +763,6 @@ test('changed files are buttons and more files is reversible', async () => {
   mount.querySelector('.chat-turn-changes__more').click();
   assert.equal(rows.filter((row) => !row.hidden).length, 4);
   assert.equal(mount.querySelectorAll('button.chat-turn-changes__path').length, 4);
-  assert.equal(mount.querySelector('.chat-turn-changes__review').title, 'Open changes in the diff viewer');
   mount.querySelector('.chat-turn-changes__more').click();
   assert.equal(rows.filter((row) => !row.hidden).length, 3);
 });
@@ -891,7 +890,7 @@ test('managed checklist updates and clears while the tool receipt is pending', a
   assert.equal(viewport.querySelector(selector), null);
 });
 
-test('Review opens recorded changes in the shared side-by-side viewer', async () => {
+test('Recorded changes can open in the shared side-by-side viewer', async () => {
   const pane = document.createElement('div');
   pane.id = 'fileViewerPane';
   const host = document.createElement('div');

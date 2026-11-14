@@ -1,156 +1,31 @@
 # Keyboard shortcuts
 
-**Mod** means **Ctrl** on Windows and Linux, **Cmd** on macOS.
+**Mod** is **Ctrl** on Windows and Linux and **Cmd** on macOS. Press **?** outside a text field for Minnow's shortcut sheet.
 
-Press **?** anywhere outside a text field for the built-in shortcut sheet.
+| Key | Where to use it | Action |
+| --- | --- | --- |
+| **Mod+Shift+P** | Workspace | Open the command palette. |
+| **Mod+K** | Outside the editor | Open the command palette, or focus search when Settings or the manual is open. |
+| **Mod+K** | Editor selection | Open Quick Edit. |
+| **Mod+F** | Code outside the editor | Search threads, messages, and issues. |
+| **Mod+F** | Editor | Find and replace in the file. |
+| **Mod+N** | Workspace | Start a thread. |
+| **Mod+.** | Code thread | Open **This thread**, the thread card. |
+| **Mod+J** | Code thread | Toggle the side panel. |
+| **Ctrl+`** | Code thread | Toggle Terminal. Use Ctrl on every platform. |
+| **D T F B A P I S** | Focused surface launcher | Open Diff, Terminal, Files, Browser, Agents, Pull request, Issue, or Side chat. Entries depend on the thread. |
+| **Mod+M** | Code thread | Open the model picker. |
+| **Enter** | Composer | Send or steer the current run at its next step. |
+| **Mod+Enter** | Composer during a run | Queue a separate follow-up. |
+| **Shift+Enter** | Composer | Insert a newline. |
+| **/** | Start of the composer | Open the skill picker. |
+| **1 / 2 / 3** | Pending tool approval | Choose the action shown on the card. |
+| **Mod+S** | Editor | Save. |
+| **Mod+W** | Editor | Close the active file tab. |
+| **F12** | Editor | Go to definition. |
+| **C** | Issues, outside a text field | Create an issue. |
+| **Mod+I** | Code, outside the editor | Capture an issue from the current thread. |
+| **Enter** | Focused issue row | Open the issue. |
+| **Esc** | Overlay or menu | Close the active overlay or menu. |
 
-Single-key shortcuts — **?**, the tool-approval digits — are suppressed while you are typing in a field. Chords with a modifier generally still work.
-
-## Shell
-
-| Keys | Action |
-|------|--------|
-| **?** | Open the keyboard shortcuts sheet |
-| **Mod+Shift+P** | Open the command palette |
-| **Mod+K** | Open the command palette outside the editor |
-| **Escape** | Close the top overlay, popover, modal or side panel |
-| **Ctrl+Tab** / **Ctrl+Shift+Tab** | Cycle the workspaces picker and recent apps (Ctrl even on macOS, since Cmd+Tab belongs to the OS) |
-| **Tab** / **Shift+Tab** | Move focus through the app rail, menubar and app chrome |
-| **Ctrl+Scroll wheel** | Zoom the interface in / out (desktop app; Ctrl+ / Ctrl− also adjust zoom) |
-
-In Code, **Ctrl+Tab** cycles editor tabs when the editor has focus.
-
-Open **Search** from the magnifying glass in the header or with the command palette shortcuts. Recent chats from the current project appear first. Filter with **All**, **Chats**, **Code**, **Workspace**, **Models**, **Settings**, or **Actions**. The palette includes app and project navigation, boards, dev servers, the code map, model controls, and current settings. In Code it also offers new General, Build, Plan, and Debug chats, chat search, file saving, and pane toggles. Issues and Source Control add commands while their surfaces are open. Search words can match command names, groups, and aliases in any order. Use **↑ ↓** to select, **Enter** to run, and **Escape** to close. **Tab** moves between the search field, close button, and category strip; **← →** switches categories while the strip has focus.
-
-## Chat
-
-| Keys | Action |
-|------|--------|
-| **Mod+N** | Start a new chat in the current project |
-| **Enter** | Send a message, or steer the current run at its next step; empty input does nothing |
-| **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) | Queue a follow-up until the current reply finishes |
-| **Shift+Enter** | New line |
-| **Tab** | Fill an empty composer with its suggested follow-up, when one is visible |
-| **Escape** | Dismiss the suggested follow-up |
-| **/** | Open the skill picker (at the start of an empty composer) |
-| **Mod+M** | Per-chat model picker, with search focused |
-| **Ctrl+↑** / **Ctrl+↓** | Open the previous or next chat in the sidebar while a listed chat is open |
-| **↑** / **↓** | Previous / next prompt at the start / end of a single-line composer; Down returns to your saved draft |
-| **Alt+↑** / **Alt+↓** | Browse prompt history from anywhere, including long or multiline text |
-| **1** / **2** / **3** | Tool approval: allow once, always allow, cancel |
-
-While the skill picker is open: **↑ ↓** to move, **Enter** or **Tab** to choose, **Escape** to close.
-
-In Code, press **Mod+F** outside the editor to search threads, messages, and issues. Use **↑ ↓** to move, **Enter** to open, and **Escape** to close.
-
-## Thread surfaces
-
-| Keys | Action |
-|------|--------|
-| **Mod+.** | Open or close the thread card |
-| **Mod+J** | Toggle the side panel |
-| **Ctrl+`** | Toggle Terminal in its current panel |
-| **D T F B A P I S** | Open Diff, Terminal, Files, Browser, Agents, Pull request, Issue, or Side chat from the focused launcher |
-| **←** / **→** | Cycle tabs in the focused panel |
-| **Delete** | Close the active tab when the tab strip has focus |
-
-## Code editor
-
-| Keys | Action |
-|------|--------|
-| **Mod+K** | Quick Edit on the selection |
-| **Mod+I** | Toggle Intent mode |
-| **Mod+S** | Save |
-| **Mod+W** | Close the editor tab |
-| **Mod+Tab** / **Mod+Shift+Tab** | Cycle editor tabs |
-| **Tab** | Accept AI ghost text or an open completion; otherwise indent |
-| **Shift+Tab** | Outdent |
-| **Mod+→** | Accept the next word of ghost text |
-| **Ctrl+Space** | Trigger a completion |
-| **F12** or **Mod+click** | Go to definition |
-| **Mod+F** | Find and replace |
-| **Escape** | Dismiss ghost text, or blur the editor |
-
-## File tree
-
-With the tree focused and the editor not:
-
-| Keys | Action |
-|------|--------|
-| **Enter** / **Space** | Open a file, or expand a folder |
-| **F2** | Rename |
-| **Mod+C** / **Mod+X** / **Mod+V** | Copy, cut, paste within the workspace |
-| **Delete** | Delete |
-| **Shift+F10** | Context menu |
-
-## Terminal
-
-| Keys | Action |
-|------|--------|
-| **Ctrl+`** | Toggle the terminal panel (Ctrl on every platform for this one) |
-| **↑** / **↓** | Command history for that tab |
-| **Mod+C** | Copy the selection, or send SIGINT when nothing is selected |
-| **Ctrl+V** / **Cmd+V** | Paste clipboard text at the prompt |
-
-## Browser preview
-
-| Keys | Action |
-|------|--------|
-| **F12** | Toggle DevTools |
-| **Mod+Shift+I** | Toggle DevTools |
-
-## Orchestrate board
-
-| Keys | Action |
-|------|--------|
-| **Tab** | Move between task cards and header controls |
-| **Arrow keys** | Move around the kanban grid |
-| **Enter** / **Space** | Open a task chat or the plan panel |
-
-## Issues
-
-Shortcuts apply when Issues is open and you are not typing in a field.
-
-| Keys | Action |
-|------|--------|
-| **j** / **k** / **Arrow keys** | Move the focused issue |
-| **Enter** | Open the floating issue panel |
-| **↑** / **↓** | Browse the current issue list while the floating panel is open (except while editing or using menus) |
-| **Escape** | Close the issue panel, or clear the multi-select |
-| **s** | Change status |
-| **p** | Change priority |
-| **u** | Change assignee |
-| **l** | Change labels |
-| **g** | Change project |
-| **A** | Queue an agent on the focused issue |
-| **Y** | Accept a triage issue |
-| **N** / **Backspace** | Decline a triage issue |
-| **C** | New issue |
-| **Ctrl/Cmd + I** | Quick capture a new issue outside text inputs |
-| **E** | Expand the focused issue (title and description) |
-| **Alt+↑** / **Alt+↓** | Move rank within the group or column |
-| **Shift+←** / **Shift+→** | Move the card to the neighbouring board column |
-| **Mod+click** | Toggle row selection |
-| **Shift+click** | Select a range |
-| **Shift+F10** | Context menu |
-| **Mod+Enter** | Save a description edit |
-
-## Settings
-
-| Keys | Action |
-|------|--------|
-| **Mod+K** | Focus settings search |
-| **↑** / **↓** / **Enter** | Move through results and open one |
-| **Escape** | Close overlays, or blur search |
-
-## This manual
-
-| Keys | Action |
-|------|--------|
-| **Ctrl+K** / **Cmd+K** | Focus wiki search while the manual is open |
-| **Escape** | Close the manual |
-
-## Related
-
-- [Working in chat](../chat/chatting.md)
-- [Code app](../apps/code.md)
+For a menu or picker, use the arrow keys to move and **Enter** to select. Use **Tab** to move between controls.

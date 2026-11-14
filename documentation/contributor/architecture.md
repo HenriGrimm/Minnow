@@ -14,8 +14,8 @@ A high-level map of how Minnow fits together. For the exhaustive, file-by-file r
                 │ loads
 ┌───────────────▼─────────────────────────────────────────────┐
 │ SPA  (src/, index.html — Vite + TypeScript, no framework)    │
-│  • Minnow Shell (src/os/): workspace gate, app rail, menubar, app host   │
-│  • Chat + modes + prompts (src/chat/)                        │
+│  • Minnow Shell (src/os/): workspace gate, sidebar, app host   │
+│  • Chat + workflow skills + prompts (src/chat/)                        │
 │  • Agent layer: tools, sub-agents, work agents (src/agents,  │
 │    src/tools)                                                 │
 │  • Per-app modules: models, compare, research,               │
@@ -39,8 +39,8 @@ A high-level map of how Minnow fits together. For the exhaustive, file-by-file r
 
 No UI framework — direct TypeScript + DOM with CSS tokens. Boot order in [`src/main.ts`](../../src/main.ts): page bridge → OS shell → router. Key areas:
 
-- **`src/os/`** — workspace-first shell: stage, app rail, menubar, router, workspace gate, app registry; released apps mount as full-stage layers in `#osAppsLayer`. Scheduler mounts in the same foreground stage; its job editor opens as an overlay within that app.
-- **`src/chat/`** — chat orchestration, composer **modes** (`modes/registry.ts`; four in the composer strip), prompt composition (`prompts/`).
+- **`src/os/`** — workspace gate, routes, app registry, and the Graphite sidebar and stage. Code side and bottom panels live in `src/ui/surfaces/`.
+- **`src/chat/`** — chat orchestration, workflow skill clamps, and prompt composition (`prompts/`).
 - **`src/tools/`** — the tool catalog ([`definitions.ts`](../../src/tools/definitions.ts); counts and release states in the [generated inventory](architecture-inventory.md)), executors, and permission gating. Product chat send is [`runChatTurn`](../../src/chat/run-turn-chat.ts) around [`runTurn()`](../../server/runner/run-turn.js) — not a client copy of the stream/tool loop.
 - **`src/agents/`** — sub-agent runner/controller, work agents, sampler resolution, UI Designer.
 - **`src/api/`** — provider/model fetching, SSE parsing (`sse-parse.ts`), generations client.
@@ -57,12 +57,12 @@ Chat completions are **backend-owned**: the client POSTs to `/api/generations`, 
 
 ### Tools
 
-Tools are either **browser-native** (run in the page — utilities, sub-agent/board, mode handoff, `browser_*`) or **server-required** (proxied to `POST /api/tools`). Permissions are per-tool (`full` / `ask` / `off`) with an in-chat approval modal. File/git tools are sandboxed to the workspace root unless `TOOLS_ALLOW_ALL_PATHS=1`. **Plan mode** additionally denies destructive tools.
+The shared permission classifier applies Manual, Auto, or Full access to tools across the renderer, server, and headless runner. File and Git tools resolve under the workspace root unless `TOOLS_ALLOW_ALL_PATHS=1`. The /ask and /plan skills apply additional turn clamps.
 
 ## Agent layer
 
 - **Sub-agents** — `spawn_sub_agent` runs nested agent loops with concurrency caps, per-type model/sampler bindings, budgets + structured summaries, and persisted runs surfaced as live cards.
-- **Work agents** — composer-selectable agents with their own provider/model.
+- **Work agents** — specialized instructions used by the workflow that invokes them.
 - **Skills** — `SKILL.md` packs (built-in + user) invoked via `/` slash commands.
 - **Prompts** — shared system prompt with editable prompt files and diffs against shipped defaults. Portable setup bundles live under `~/.minnow/profiles/`.
 
@@ -71,7 +71,7 @@ Tools are either **browser-native** (run in the page — utilities, sub-agent/bo
 - **Encrypted secrets** — AES-256-GCM envelopes (`server/security/secret-box.js`) with a file key at `~/.minnow/.key`; provider/account secrets migrate from plaintext on first read.
 - **Prompt-injection defense** — untrusted text (memory, web/RAG, research extraction, documents, email) is fenced with `<<<UNTRUSTED_SOURCE_DATA …>>>` markers (`src/lib/untrusted.mjs` / `server/security/untrusted.js`).
 - **SSRF guards** — webhook and CalDAV targets resolve DNS and block private/link-local addresses.
-- **Browser allowlist** — `browser_*` navigation is restricted by origin patterns.
+- **Browser permissions** apply the same agent policy to navigation and browser actions.
 
 ## Persistence
 

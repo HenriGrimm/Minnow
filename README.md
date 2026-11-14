@@ -1,204 +1,44 @@
 # Minnow
 
-**A full agentic development workspace. Open source, and completely yours.**
+Minnow is an open-source desktop workspace for coding with local or hosted models. Open a project, work with an agent beside your files, and review the diff before you commit.
 
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/HenriGrimm/Minnow?include_prereleases)](https://github.com/HenriGrimm/Minnow/releases)
-[![Discord](https://img.shields.io/badge/discord-join-5865F2)](https://discord.gg/U4FPzv9K4X)
-[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2)](https://github.com/sponsors/HenriGrimm)
+[Download Minnow](https://github.com/HenriGrimm/Minnow/releases) · [User manual](documentation/manual/README.md) · [Build from source](documentation/contributor/setup-from-source.md) · [Discord](https://discord.gg/U4FPzv9K4X)
 
-Editor, agents, git, issues, planning, knowledge, and local model hosting — one app, designed from the ground up to work with each other.
+![Graphite Code workspace showing the Fieldnotes demo thread and the forecast source file in the side panel](documentation/images/hero.png)
 
-Minnow exists because the tools are good but the seams between them were not.
+## Get started
 
-So: one workspace, one tool set. Plan a feature, let it build in a worktree, watch the tests, review the diff, file what broke, commit, ship — without switching apps or re-explaining your project to anything.
+1. Download the installer for Windows, macOS, or Linux from [Releases](https://github.com/HenriGrimm/Minnow/releases).
+2. In setup, [connect a model](documentation/manual/get-started/connect-a-model.md). Use an existing LM Studio or Ollama server, download a model in Minnow, add a hosted API, or connect a supported agent CLI.
+3. Open a project folder and select **New thread**. Pick your model in the composer and try `/ask How do I run this project and its tests? Cite the files you used.`
+4. Give the agent one small change with a way to check it. In a Git project, open **Side panel → Diff** to review the edits. Open **Terminal** to run the check and **Source control** to stage and commit.
 
-**It runs on whatever you point it at.** A 27B model on your own GPU, a frontier model through an API key, or both at once with different models bound to different jobs. No accounts, no subscriptions, no usage limits, no telemetry.
+Follow the [first-change walkthrough](documentation/manual/get-started/first-chat.md) for a complete example, including tool approvals.
 
-![Minnow Code workspace](documentation/images/hero.png)
+## Work in Graphite
 
----
+| Task | Where to start |
+| --- | --- |
+| Read or edit a file while keeping the thread visible | Open **Files** in the side panel. Put **Terminal** below it or open **Browser** for a local preview. [Work in Code](documentation/manual/apps/code.md) |
+| See what an agent did | Read the **Edited** summary for changed files, open **Diff** for the checkout, or use **Agents** for delegated work. [Find your way around Graphite](documentation/manual/apps/overview.md) |
+| Take a bug from report to review | Capture an issue from the thread. Start a linked conversation, optionally in a new Git worktree, and inspect the result under **Work**. [Work with issues](documentation/manual/apps/issues.md) |
+| Run a multi-step plan | Open **Boards** to assign tasks to builders and testers, inspect checkouts, and verify the integration result. [Run a plan with Orchestrate](documentation/manual/orchestrate/boards.md) |
+| Keep a decision or repeat a check | Save a project decision in **Brain**, or create an **Automation** with a schedule and run history. [Brain](documentation/manual/apps/brain.md) · [Automations](documentation/manual/apps/scheduler.md) |
 
-## What it replaces
+![Graphite Source Control showing the forecast diff in the demo repository](documentation/images/app-source-control.png)
 
-Minnow is aimed squarely at the solo developer and the hobbyist. The tinkerer up at 2am building. That person does not need six subscriptions and an org chart. They need one thing, on their own machine, that does the whole loop.
+## Models and permissions
 
-| Instead of | You get |
-|---|---|
-| **Cursor, or VS Code plus a chat extension** | **Code** — CodeMirror with language-server intelligence, terminal tabs, inline completion, Ctrl+K quick edits, intent-based coding, a real Chromium preview, and chat beside the repo it edits |
-| **Linear, Jira, Etc** | **Issues** — list, board, triage, and `issue_*` tools the agent files to itself | a fully intergrated issue |
-| **GitHub Desktop or Tower** | **Source Control Center** — changes, history, branches, stashes, worktrees, pull requests, issues, and CI |
-| **LM Studio, Ollama** | **Models** — Built in Llama.cpp & MLX LM. Multi GPU support, Model Router, and Hugging Face downloads |
-| **Notion or Obsidian for project notes** | **Brain** — a markdown wiki with semantic recall and a code indexing | 
-| **A drawer of shell scripts and cron** | **Scheduler**, plus `/loop` and `/goal` — Schedule agents to run tasks, check issues and more|
-| **Multiple chats across a large project** | **Orchestrator boards** — a plan run as waves of Builder and Tester agents in isolated worktrees |
+Pick a model per thread. Use **Models** to download and serve local models, configure providers, route supporting tasks, and inspect recorded usage. A cloud model or cloud-connected agent CLI receives the prompt and the context sent with it.
 
-They share one chat engine, one tool set, one session store, and one workspace root. What the agent learns in one is available in all of them.
+Use **Manual**, **Auto**, or **Full access** in the composer to set tool permissions. Start a turn with **/ask** for read-only investigation or **/plan** to write a plan under `documentation/plans/`. [Tools and permissions](documentation/manual/concepts/tools-and-permissions.md) · [Data and privacy](documentation/manual/reference/privacy-and-security.md)
 
----
+![Graphite Models showing the Discover catalog and estimated hardware fit](documentation/images/app-models.png)
 
-## Quick start
+## Help and contributing
 
-Download a packaged build from **[Releases](https://github.com/HenriGrimm/Minnow/releases)**.
+- In Minnow, open the command palette with **Ctrl+K** / **Cmd+K** and choose **Open Minnow wiki**. Start with [Troubleshooting](documentation/manual/reference/troubleshooting.md) if a model, thread, or preview is stuck.
+- To develop Minnow, use Node.js 24, then run `npm ci` and `npm start` from the clone. See [setup from source](documentation/contributor/setup-from-source.md) and the [contributor documentation](documentation/contributor/README.md).
+- For bugs and feature requests, use [GitHub Issues](https://github.com/HenriGrimm/Minnow/issues). See [GitHub Sponsors](https://github.com/sponsors/HenriGrimm) to support the project.
 
-| Platform | What you download |
-|----------|-------------------|
-| Windows | NSIS installer (`.exe`) |
-| macOS | `.dmg` (or `.zip` into Applications) |
-| Linux | AppImage — `chmod +x` and run it |
-
-**[Install and first launch](documentation/manual/get-started/install.md)**. Then [point it at a model](documentation/manual/get-started/connect-a-model.md) and [send your first chat](documentation/manual/get-started/first-chat.md).
-
-### Build from source
-
-Clone and `npm start`.
-
-```bash
-git clone https://github.com/HenriGrimm/Minnow.git
-cd Minnow
-npm install && npm start
-```
-
-Full steps: [Setup from source](documentation/contributor/setup-from-source.md).
-
----
-
-## Local models, cloud models, or both
-
-Minnow ships no weights and has no built-in provider. It streams to any OpenAI, Anthropic or LMStudio API endpoint.
-
-- **Local** — Minnow can host models itself, connect to LMStudio, Ollama or any other compatible endpoint.
-- **Cloud** — any compatible API with your own key.
-- **Both** — Model routing allows you to set models to specific roles. Model pools let you automatically route to an availible provider.
-
-![Models app](documentation/images/app-models.png)
-
----
-
-## The build loop
-
-**Code is the workspace.** Everything else is a surface that serves it.
-
-```
-idea  →  /plan              →  a spec in documentation/plans/
-      →  Orchestrator board →  Builder and Tester agents in isolated worktrees
-      →  Source Control     →  review the diff, open the PR, watch CI
-      →  Issues             →  what broke, filed by the agent that found it
-      →  Brain              →  what you learned, still there next month
-```
-
-You can also just open a repo and start typing.
-
-### Code
-
-File tree, We use CodeMirror for our editor combinded with our language-server intelligence and inline completion, terminal tabs, source control, dev servers, and a full user and agent browser. **Intent mode** turns a line of plain English into code you accept with Tab. Chat sits beside the project rather than in another window, driving the same files, git, and terminals you are. You can also never look at code and just chat if you so desire. 
-
-The dev-server screen registers the servers a project needs, and the model drives the same controls.
-
-**Code map** indexes symbols and call relationships across the repo, for you and for the agent.
-
-![Minnow Code app](documentation/images/app-code.png)
-
-### Source Control Center
-
-A full Git and GH interface. Designed from the ground up to work with your agents. 
-
-Push, PRs, Issues, and CI run through your own `gh` CLI. Minnow stores no GitHub token: if `gh` isn't installed or authed. Additional git providers are on the road map.
-
-![Source Control Center](documentation/images/app-source-control.png)
-
-### Orchestrator boards
-
-Turn a plan into waves of tasks, hand them to Builder and Tester agents in isolated git worktrees, and merge at the end. Drive it task by task, or let it run and discover what you actually specified.
-
-![Orchestrator board](documentation/images/app-orchestrator.png)
-
-### Brain
-
-A markdown wiki in your Minnow home: graph view, page editing, an append-only log, AI proposals awaiting review, memories, ingest, lint, and a code-symbol index of your repositories. The assistant reads and writes it with tools, which is how a project's context survives the chat that produced it.
-
-![Brain knowledge graph](documentation/images/app-brain.png)
-
-Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
-
----
-
-## Everything else in the box
-
-| | |
-|---|---|
-| **Chat beside the repo** | Sessions in the Code rail: one agent, one permission level, attachments, voice, notifications. Same files, git, and terminals you're using. |
-| **Planning** | `/plan` takes an idea to a buildable spec in `documentation/plans/` without touching your code. |
-| **Intent-based coding** | Type what a line should do in plain English; Tab turns it into code. |
-| **Autocomplete** | Inline ghost text, with language-server context behind it. |
-| **Quick Edit** | Ctrl+K turns a description into a diff on your selection. |
-| **Sub-agents** | Delegate research or review into saved child chats, each with its own model, requests and follow-up messages. [Agent conversations](documentation/manual/chat/persistent-agent-chats.md). |
-| **Loops and goals** | `/loop` re-runs a prompt on a schedule; `/goal` keeps working until an evaluator agent says the condition is met. |
-| **Voice** | Dictate into the composer and get spoken replies, on local speech models. |
-| **Phone access** | Scan a QR and use your workspace from a phone, on your Wi-Fi or anywhere, with nothing to install. |
-
-Behind it, **110 built-in tools**: files, git, LSP, Godot control, terminal, web, browser automation, sub-agents, and plan checking. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
-
-Three processes make it work: the Electron shell, the SPA it loads, and a Node server that runs the tools and owns everything persisted under `~/.minnow`. Details in [Architecture](documentation/contributor/architecture.md).
-
----
-
-## Make it yours
-
-The point of open source is not that you *could* read the source. It's that the seams are open where you actually want to reach in.
-
-- **Skills**: drop a `SKILL.md` into `~/.minnow/skills/` and call it with `/` in the composer. Nineteen ship built in; install more from the Skills Library, or write your own.
-- **Plugins**: ask `/build-plugin` to create tools, connections, panels and skills, then install and reload them live in Settings → Plugins ([plugin authoring](documentation/manual/plugins.md)). Legacy local tools and MCP servers are also supported.
-- **Agents**: one agent everywhere; edit its system prompt, tool guidance and local-model guidance in Settings → Agents, and give board roles their own models and samplers.
-- **Prompts and skills**: every system prompt in the app is a markdown file in the repo, and `/ask`, `/plan` and `/debug` are ordinary skills. Edit them.
-- **Themes**: sixteen built in, which is fifteen more than strictly necessary; the whole UI is `--mn-*` tokens in one file.
-
-![Minnow themes](documentation/images/themes.png)
-
-- **The source**: it's AGPL. Fork it, strip it, rebuild it, ship it; derivatives stay AGPL.
-
----
-
-## Yours, on your disk
-
-- Chats, config, Brain, models, and secrets live under `~/.minnow` on your disk.
-- Provider keys and passwords are encrypted at rest (AES-256-GCM).
-- Network access is loopback-only until you connect a phone.
-- File and git tools resolve under the folder you opened, not your whole drive.
-- Web search uses the provider you pick. There is no telemetry and no phone-home. Nobody here knows you installed it.
-
-No feature is ever withheld to make a paid tier. The reference point is Blender, not a SaaS product: one complete suite covering the whole loop, given away under copyleft, funded by the people who use it, and built to be taken apart by them.
-
----
-
-## Status
-
-One maintainer and a small community. It is a work in progress, meaning parts of it are unfinished and you will find the edges before I do. Bug reports are genuinely useful. If something is broken, confusing, or missing, say so.
-
-- 💬 [Discord](https://discord.gg/U4FPzv9K4X)
-- 🐛 [Issues](https://github.com/HenriGrimm/Minnow/issues)
-- ❤️ [Sponsor](https://github.com/sponsors/HenriGrimm): development is funded by the people who use it.
-
-Pull requests, docs fixes, skills, and themes are all welcome. Working in the codebase? Start with [AGENTS.md](AGENTS.md) and [documentation/context.md](documentation/context.md).
-
----
-
-## Documentation
-
-| Doc | What's in it |
-|-----|--------------|
-| [Install](documentation/manual/get-started/install.md) | Packaged desktop app from Releases |
-| [Connect a model](documentation/manual/get-started/connect-a-model.md) | Local serving, LM Studio, Ollama, cloud keys, routing |
-| [Setup from source](documentation/contributor/setup-from-source.md) | Clone and `npm start` for development |
-| [Apps](documentation/manual/apps/overview.md) | Code and the surfaces around it |
-| [Skills and commands](documentation/manual/chat/skills-and-commands.md) | `/` skills, the Skills Library, `/goal`, `/loop` |
-| [Commands](documentation/contributor/commands.md) | Every script, flag, and environment variable |
-| [Configuration](documentation/manual/reference/configuration.md) | `~/.minnow`, providers, secrets |
-| [Architecture](documentation/contributor/architecture.md) | How the three processes fit together |
-| [Troubleshooting](documentation/manual/reference/troubleshooting.md) | When something won't start |
-
-Full index: [documentation/](documentation/README.md).
-
----
-
-**License:** [GNU AGPL-3.0-or-later](LICENSE). Third-party notices: [THIRD_PARTY_NOTICES.md](documentation/THIRD_PARTY_NOTICES.md).
+[AGPL-3.0-or-later](LICENSE) · [Third-party notices](documentation/THIRD_PARTY_NOTICES.md)

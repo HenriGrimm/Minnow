@@ -1,164 +1,27 @@
-# Working in chat
+# Work in a thread
 
-The basics of chat take one minute. The controls on this page are the ones that make a long agent session survivable: correcting a run without killing it, queueing your next instruction, undoing a turn that touched files, and going back to an answer you liked better.
+## Give the agent enough to start
 
-## The composer
+Choose a model in the composer. Send the outcome, relevant path or error, and how to check the result. Use the attachment control or drop a file or screenshot onto the composer. For editor files, drag the file tab into the composer. For a second question about the same work without steering the main run, open **Side chat** in the surface launcher.
 
-The composer is a card at the bottom of the chat column: the message field on top, one row of controls underneath.
+Start with **/ask** for read-only investigation, **/plan** for a saved plan, or **/debug** for a troubleshooting workflow. Send an ordinary prompt when you want the agent to implement a change. The [permission control](../concepts/tools-and-permissions.md) governs its actions.
 
-| Control | What it does |
-|---------|--------------|
-| **Permissions** | The pill on the left: Manual / Auto / Full access, one level for every chat — see [Tools and permissions](../concepts/tools-and-permissions.md) |
-| **Worktree** | Click the branch icon to enable an isolated checkout on send; click its name to change branch, switch worktrees, or go back to Local |
-| **Settings** (cog) | Context documents, code map, brain notes, and other turn settings. |
-| **Context ring** | Window usage; click for capacity, context breakdown, request/session totals, and compaction |
-| **Model · reasoning** | Per-chat model and reasoning level. Open the menu to change either. **Ctrl+M** / **Cmd+M** opens it with search focused. |
-| **Microphone** | Dictation — see [Voice](../extend/voice.md) |
-| **Send / Stop** | Enter sends or steers a running turn; the Stop button ends the reply |
+## Intervene while a run is active
 
-**Enter** sends, **Shift+Enter** adds a line. While a turn is running, **Enter** steers it and **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) queues a follow-up for later. Empty Enter does nothing. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
+| You want to… | Do this |
+| --- | --- |
+| Change direction now | Enter a correction and press **Enter**. The agent receives it at its next step. |
+| Run a separate follow-up after the reply | Use **Ctrl+Enter** / **Cmd+Enter** to queue it. Edit or delete it from the queued row. |
+| Answer a question or approve an action | Open the card above the composer. **Activity → Needs you** can take you to the owning thread or agent. |
+| Check a sub-agent | Open **Agents** in the surface launcher and pick the assignment. Use its conversation for a direct follow-up when supported. |
+| Stop execution | Select **Stop** in the composer. Check **Diff** or the terminal before continuing. Work that already ran can leave files or other effects. |
 
-In an idle server-owned chat, your accepted message appears in the conversation with **Sending…** while its reply starts. Follow-ups waiting behind an active reply appear above the composer.
+## Recover after a failed turn
 
-Drafts survive switching chats.
+Read the error and the last tool step. For a model or provider failure, check the connection under **Models** and retry after it is available. If a command failed, copy the command and its first useful error into your follow-up. If Minnow asks you to **Confirm stopped**, verify the command has stopped on the host first.
 
-Chats save automatically across windows. If two windows save competing edits, Minnow keeps saving and preserves the displaced transcript and draft as an archived chat with **(recovered)** in its title. Recovery copies do not start agents or scheduled work.
+When the message menu offers retry, edit, undo, or fork actions, inspect what the action affects before using it. Review the checkout separately in **Diff** or **Source Control**, especially after a command with side effects.
 
-Supported ordinary General, Build, Plan and Debug chats run on Minnow's local server. On send, an idle saved chat switches ownership only after its history is durable; a live turn is never taken over. Reloading or closing its chat view does not cancel server-capable work while Minnow's server remains running. Browser, clipboard or other connected-host actions can wait for a capable host to reconnect. Quitting Minnow stops its server; interrupted writes require explicit recovery, not automatic replay. Older conversations with unfinished tool/native recovery, compacted legacy context or active controllers retain their compatibility workflow until resolved.
+## Return to earlier work
 
-Open the **⋮** menu beside a message. In an ordinary server-owned chat, **Edit** changes a prompt and sends it again with its saved attachments. **Replay** sends the original prompt again in the same chat. Both replace the later messages. **Delete message** removes the selected message and everything after it. Finish or stop active work before using these actions. If the chat shows **Needs recovery**, review the interrupted turn first.
-
-A saved human message with a captured turn also offers **Replay in new chat**, which starts a new branch from that point. Replays start a fresh turn, and changes to chat history leave earlier filesystem changes in place. Model and mode changes apply to later submitted turns. Active and already queued work keeps its accepted configuration.
-
-After a completed reply, an empty composer can show a faint suggested follow-up. Press **Tab** to put it in the composer, edit it if needed, then press **Enter** to send. **Escape** dismisses the suggestion; typing your own message dismisses it too. You can also click the **Tab** hint to use it. Suggestions use the chat's model and make a short additional model request. For a model pool, the suggestion uses the model that handled the reply. Suggestions stay out of saved drafts until accepted.
-
-Right-click a chat message for **Copy** and **Select All**, alongside **Create issue…** and **Add to issue**. Copy uses your selected text, or the whole message when nothing is selected. Select All stays inside the chat pane. Cut and Paste are disabled on saved messages. In the desktop app, right-click the composer or a message edit field for **Undo**, **Redo**, **Cut**, **Copy**, **Paste**, and **Select All**; unavailable actions are disabled.
-
-The chat list shows one line per chat: the model's provider logo, the title, and the chat's Git state on the right. A ring around the logo means the chat is working; a corner dot means it needs you (amber), has an unread reply (accent) or failed (red). The Git state shows uncommitted line counts, a commit mark (with unpushed commits as `2↑`), a draft, open, merged or closed pull request, and passing or failing checks. A folder mark means the chat runs in its own worktree. Pull request and check state comes from the GitHub CLI and refreshes in the background. Agent chats sit indented under their parent, with their running time and a check once done. Chats are grouped under **Pinned**, **Today** and **Older**.
-
-**Needs you**, at the top of the list, collects every agent question and approval in the project. Answer a single-choice question with one click or type a reply; approve or deny a tool call in place; anything richer opens its chat. Questions from archived chats still appear here, tagged **Archived**.
-
-Use **Archive** and **Working** in the sidebar footer to switch the chat list while keeping the current chat visible. To archive a chat, hover over it and click the archive button, or right-click and choose **Archive chat**. Sections with merged or closed pull requests offer **Archive N finished**. The archive button and **Archive N finished** offer **Undo**.
-
-In Archive, chats are grouped by when they were archived. Search by title or branch, hover over a chat and click **Restore**, or select several to restore together. Archiving keeps the conversation, worktree, pin and group, and does not stop a running reply. You can still open and continue archived chats. **New chat** returns to Working.
-
-Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. In a server-owned ordinary chat, model changes apply to newly submitted turns; active and already queued work keeps its captured model. A compatibility chat stops its current generation when you change the model. [Agent conversations](persistent-agent-chats.md) use **Stop and switch** and keep each queued message's captured model. A child model change does not change the remembered model for new ordinary chats.
-
-Clicking the **branch icon** enables Worktree for this chat without creating a
-checkout. Send your message to create a named branch from the current commit and
-prepare project dependencies. A **Setting up your worktree** panel appears in chat;
-your message runs in that checkout when setup finishes. Uncommitted edits stay in
-the original checkout. The selection survives a reload.
-
-If setup fails, the checkout is kept. A server-owned chat retains its accepted message and attachment references; **Retry setup** prepares that same checkout but does not automatically repeat inference. Send a new message after setup succeeds. The setup panel also offers **Back to Local**, an explicit choice that keeps the worktree's files. Compatibility chats retain their draft and attachments for retry. Minnow never silently runs the message in Local when worktree setup fails.
-
-Click the **worktree name** to open its menu. Choose **Switch branch** for a different branch in that checkout, **Change worktree…** for an existing checkout, or **New worktree** for a custom name and start branch. **Back to Local** preserves the worktree and its files; enabling it again reuses that chat's managed checkout. Use Source Control or issue delivery controls for cleanup.
-
-Drag files onto the composer to attach them for the next message, up to 10 MB each. Pasting images also adds an attachment.
-
-Use the provider tabs to browse models or search across providers. Star a model to keep it in the **Favorites** tab.
-
-The picker shows **Standard** and **Fast** for supported Codex and Claude Code models. Fast applies to new messages in this chat and may use more credits. The composer label shows **Fast** while it is selected.
-
-The model label includes the current reasoning level, such as **GPT · Medium**. Its menu offers only the levels the model supports, including **Off** where available. Changes apply to this chat; **Default** restores the model's saved or inherited setting. Auto model pools continue to select reasoning through their task evaluator.
-
-**Link a tab to this chat.** Drag a Code editor tab or an in-app browser tab onto the transcript or composer. Minnow pins a link chip on that chat — the file or URL, not a one-turn attachment. The chip stays after reload; click it to open the file or page. Dragging from the file tree still attaches for the next message only.
-
-## While the model is working
-
-In the desktop app, Minnow automatically prevents idle system sleep while a chat turn is running, including model loading and tool calls. Protection stays active across chats and workspace windows, even when Minnow is minimized or kept in the tray, and ends when the last turn finishes, fails, or stops. Your screen can still turn off. This does not override closing a laptop lid or putting the computer to sleep yourself. Browser and headless CLI runs do not provide this protection.
-
-**Compact view** draws a running turn as a timeline under your prompt. A round of reads and searches is one step — **Explored 5 files, 1 search** — with the files it touched as chips; open it for the individual calls. Thinking time rides on the step it led to. While the run is live, a line above the composer shows **Working**, the elapsed time, and how many actions the turn has taken.
-
-When the turn finishes it folds into one line — **Worked 6m 55s · 20 reads · 16 searches** — with the final answer below it. Expand the line to see the timeline again. Adjacent tool calls appear in expandable groups, including when you reopen a saved chat; open a group for individual inputs and results. Narration, reasoning summaries, and agent assignments keep their own places in the timeline. Recorded file changes appear in an **Edited files** card with per-file counts, **Review**, and — on the latest turn — **Commit** and **Create PR**. Copy, remake, and the reply's speed sit under the latest answer. Failed and stopped replies remain visible, with a notice that carries the recovery actions.
-
-Choose **Settings → Appearance → Chat view → Full** to keep every step visible in the transcript. Tool calls and thoughts stay collapsed until you expand them. Switch back to **Compact** for the quieter view. The preference applies immediately and is saved across restarts; it changes only the display, not the conversation sent to the model.
-
-Claude and Codex reasoning summaries appear under **Reasoning summary**. A separate **Working…** indicator shows elapsed time and stays visible when you expand the summary. Summaries can arrive intermittently while the model continues working; a pause between updates does not mean the turn has stopped.
-
-You do not have to sit still and wait.
-
-**Type a correction or more context and press Enter.** Your message appears in the conversation immediately, like any other message. You can include images or send an image on its own. Minnow applies the feedback at the next model step, keeping the current run intact. Messages stay separate and keep their send order. Feedback received during a text-only response is picked up before the run finishes.
-
-Press **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) for a separate task that should wait until the current reply finishes. Queued messages stay in the composer strip until sent, with controls to edit, steer the current run, or delete. Editing happens in place and keeps your current draft. `/compact` also waits for the reply to finish.
-
-On a local llama.cpp or MLX model the status line beside the assistant row shows a load percent while weights come up, a prefill percent while the prompt is ingested, then a live token count while it generates (including while it is calling a tool).
-
-**Stop** stays available while you type. It stops the chat and all its sub-agents, including nested agents, and keeps the partial reply. Unapplied corrections return to the follow-up queue, where you can review, send, edit, or delete them. Repeated Enter never stops the run or sends queued work.
-
-## When a turn fails
-
-If a reply errors mid-stream, the partial stays on screen. In ordinary chats, **Continue** retries with the full conversation still in context and **Clear** removes the failed assistant output while keeping your prompt. Agent conversations retain their saved history: send a new message to continue, and resolve any request or recovery notice in that chat.
-
-Very large replies can stop with a replay memory limit error. Minnow budgets about 32 MiB of retained stream data and chunk overhead per generation, and 128 MiB across generation requests and replay. The retained prefix ends with an explicit error; it is not treated as a completed reply. Ask for a smaller output or wait for other replies to finish before retrying.
-
-A connection that accumulates more than 4 MiB of pending stream data or stalls for 30 seconds is disconnected so other replies can continue. Reconnecting replays the retained bytes in order with their completion or error status. A saved reply too large for the available replay budget reports an error instead of loading a partial replay.
-
-## Watching what agents do
-
-- **Inference metrics** — tokens, tok/s and totals for the turn. In Code, the strip at the bottom of the chat column.
-- **Activity** — the menubar dropdown shows what needs your input, what is running, and recent outcomes across the current workspace. Expand a running item to inspect its sub-agents, model, and context usage.
-- **Agent cards and chats** — delegated assignments are grouped in the parent transcript. Open a saved child chat for its own conversation, composer, model controls and requests. The original assignment result remains on its card. Older tasks retain their inspector and can offer **Continue as chat** from partial saved context. See [Agent conversations](persistent-agent-chats.md).
-
-The initial assignment returns its result to the parent with a source-chat link. Follow-up messages sent directly to the child stay in that child and do not automatically wake the old parent. Use **Stop** in the composer to stop the current reply and all its sub-agents, including agents still working after the parent's reply finishes.
-
-## Undoing a turn
-
-The **undo** control on the latest **Edited files** card in the transcript rewinds the last settled agent turn back to your message. Where Minnow captured a git snapshot around that turn, it restores the working tree too — not just the conversation.
-
-Details worth knowing:
-
-- The file-restoring undo appears **only in a git repository** and **only when that turn actually changed files**. No repository means no snapshot, so there is nothing to restore.
-- In renderer-owned chats, the message **⋮** menu offers **Undo turn** for a conversation-only rewind.
-- Undo does not auto-regenerate. You get your prompt back and decide what to do.
-- The undone reply stays redoable through the branch picker.
-- Orchestrate, board-linked and worktree-isolated chats do not support undo; the control is disabled with the reason. Agent conversations also keep immutable saved history, so undo, regeneration, past-message edits and branch rewinds are unavailable; continue with a new message.
-
-Snapshots are made with dangling commits, so your index, HEAD and branch are never moved. If two chats share one repository, the last restore wins.
-
-## Files from the assistant
-
-An assistant can present saved project files and generated deliverables as compact cards beneath its response. Each card shows the title, path, file type and size, with **Open** and **Download** actions. Cards stay visible when the work transcript is collapsed and remain after reopening the chat.
-
-**Open** uses Code's editor or document preview. **Download** saves the file's original bytes. These are links to saved files, so both actions use the current file on disk rather than a copy frozen in the conversation. The source workspace stays attached to the card, including files produced in a worktree or sandbox. If a file has been moved or deleted, it must be restored or presented again at its new path.
-
-## Branches
-
-In ordinary chats that support history changes, regenerating or forking a turn creates a **branch** — a separate continuation from the same point. The branch picker appears on that message and lets you move between them; the branch you leave keeps its follow-up messages, so switching back and forth does not destroy either side.
-
-This is how you try "do it with X" and "do it with Y" without two chats and manual copy-paste.
-
-## Managing conversations
-
-- **New chat** from the rail, or the tray menu.
-- **Search** from the rail — full-text over your message history, with **↑ ↓** to move and **Enter** to open.
-- **Groups** organise related chats; orchestrate boards appear as folders with their member chats nested.
-- Chats belong to a workspace folder, so the rail shows what is relevant to where you are.
-
-There is no fixed limit on how many chats you can keep. Chat deletion is confirmed in-app. Agent conversations cannot be deleted while they or their descendants have active work, queued input or pending requests. Deleting a settled parent retains its child conversations and checkout files.
-
-Chats with an active `/loop` show a rotating icon in the rail — spinning while a loop is live, still when every loop on that chat is paused.
-
-## Notifications
-
-The menubar **Activity** icon appears before Models and opens live work and notifications for the current workspace. While agents are running, a spinning wheel shows their count, including nested sub-agents. Paused agents and background title jobs are excluded from that count. When no agents are running, only the icon is shown. Inside the dropdown, running work counts each parent once and nests its sub-agents.
-
-**Needs you** holds unanswered questions, tool approvals, failures, and review requests. Opening the dropdown or choosing **Mark seen** does not resolve them. **Reply / review** opens the owning chat. Failures can be inspected and dismissed into **Recent**; failed scheduled jobs also offer **Retry run**. **Running** shows current work, including timer waits and queued work. Background title tasks are collapsed. **Recent** retains completed, failed, and stopped outcomes for the session, including replies you watched finish.
-
-**Mute alerts** silences sounds and desktop notifications while Activity keeps updating. **Settings → General → Notifications** controls delivery categories and sounds, including whether cues play while you are already watching the active chat. **Stop all…** cancels chats, their sub-agents, and title jobs in the current workspace after confirmation.
-
-Notices also appear briefly as cards in the bottom-right corner: an agent finishing or failing, a question, a git error, a saved memory, a phone asking to connect. The top line says which app sent the card and for which chat, branch or issue. Click a card to open what sent it. Buttons on the card depend on what it shows, such as **Send to chat** and **Copy** for git errors, **Reject** for a saved memory, **Answer** for a question, or **Approve** and **Deny** for a device. Errors with raw output have a **Details** button. Most cards close on their own after a few seconds. Hovering or focusing a card pauses it. Cards that need your answer stay until you act and show **Needs you**. Press **Escape** or click **×** to close a card; it stays in Activity. At most three cards show at once, and **+N more** shows the rest.
-
-Desktop notifications appear when an agent asks a question or finishes its turn while Minnow is in the background. Use **Test desktop notification** in notification settings to check delivery without starting a chat. In a browser, the test requests notification permission if needed. If the test reports that it was sent but no banner appears, check your system's notification settings and Do not disturb. On Windows, development builds appear separately as **Minnow Dev**.
-
-## Asking you questions
-
-The model can ask *you* something mid-run with a question card rather than guessing and being wrong. Answer it and the run continues. Skills like `/ask-user` use this deliberately.
-
-## Related
-
-- [Agent conversations](persistent-agent-chats.md)
-- [Skills and slash commands](skills-and-commands.md)
-- [Tools and permissions](../concepts/tools-and-permissions.md)
-- [Context, memory, and rules](../concepts/context-and-memory.md)
-- [Keyboard shortcuts](../reference/keyboard-shortcuts.md)
+Use the thread list to reopen a conversation. Use **Ctrl+F** / **Cmd+F** outside the editor to search threads, messages, and issues, or open **Archive** for an archived thread. Open the thread card to confirm the branch, model, and permission level before continuing.

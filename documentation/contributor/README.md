@@ -1,12 +1,12 @@
 # Contributing to Minnow
 
-Documentation for cloning the repo, running from source, testing, and understanding the architecture. End-user help lives in [`../manual/`](../manual/) (in-app **?** wiki).
+Documentation for cloning the repo, running from source, testing, and understanding the architecture. End-user help lives in [`../manual/`](../manual/) (in-app Minnow wiki).
 
 ## Start here
 
 | Doc | What it covers |
 |-----|----------------|
-| [setup-from-source.md](setup-from-source.md) | Clone, `npm install`, providers, `npm start`, dev variants, health checks |
+| [setup-from-source.md](setup-from-source.md) | Clone, `npm ci`, providers, `npm start`, dev variants, health checks |
 | [commands.md](commands.md) | npm scripts, headless CLI, test suites, environment variables |
 | [architecture.md](architecture.md) | SPA, tool server, Electron shell, agent layer — orientation before `context.md` |
 | [apps-and-routes.md](apps-and-routes.md) | App registry, hash routes, release gate, per-app internals |

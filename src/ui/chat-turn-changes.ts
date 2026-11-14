@@ -3,7 +3,7 @@ import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
 import { readPlanType } from '../../server/orchestrator/core/plan-format.js';
 import type { Chat } from '../types';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
-import { createIcon } from './icon';
+import { createIcon, type IconName } from './icon';
 import { getSharedChatHost } from './shared-chat-host-state';
 import { changeCheckoutRoot } from './change-branch-notice';
 
@@ -33,6 +33,8 @@ export function createTurnChanges(
   title.textContent = `Edited ${fileCount} file${fileCount === 1 ? '' : 's'}`;
   const heading = document.createElement('div');
   heading.className = 'chat-turn-changes__heading';
+  const summary = document.createElement('div');
+  summary.className = 'chat-turn-changes__summary';
   const totals = document.createElement('div');
   totals.className = 'chat-turn-changes__counts';
   let additions = 0;
@@ -50,7 +52,8 @@ export function createTurnChanges(
   removed.className = 'chat-turn-changes__del';
   removed.textContent = `−${deletions}`;
   totals.append(added, removed);
-  heading.append(title, totals);
+  summary.append(title, totals);
+  heading.append(summary);
   const branches = [...new Set(files.map(file => file.gitBranch || ''))];
   for (const branch of branches) {
     const label = document.createElement('span');
@@ -62,7 +65,7 @@ export function createTurnChanges(
   }
   header.append(heading);
 
-  // Ghost actions first; Commit is the one filled button and sits last.
+  // Keep Commit after Create PR.
   let actions: HTMLElement | null = null;
   let undo: HTMLButtonElement | null = null;
   if (options?.primary) {
@@ -75,7 +78,7 @@ export function createTurnChanges(
     commit.type = 'button';
     commit.id = 'btnCodeChangeCommit';
     commit.className = 'chat-turn-changes__action chat-turn-changes__action--primary';
-    commit.textContent = 'Commit';
+    commit.append(createIcon('gitCommit', { size: 13 }), 'Commit');
     commit.title = 'Stage and commit files changed in this chat';
     commit.hidden = true;
 
@@ -83,7 +86,7 @@ export function createTurnChanges(
     pr.type = 'button';
     pr.id = 'btnCodeChangeCreatePr';
     pr.className = 'chat-turn-changes__action';
-    pr.textContent = 'Create PR';
+    pr.append(createIcon('gitPullRequest', { size: 13 }), 'Create PR');
     pr.title = 'Push and open a pull request for this branch';
     pr.hidden = true;
 
@@ -103,15 +106,12 @@ export function createTurnChanges(
 
   const planPath = findTurnPlanPath(files.map((file) => file.path));
 
-  const review = document.createElement('button');
-  review.type = 'button';
-  review.className = 'chat-turn-changes__review';
-  review.textContent = 'Review';
-  review.title = 'Open changes in the diff viewer';
-  if (undo) header.append(undo);
-  if (planPath) header.append(createPlanActions(chat, planPath));
-  header.append(review);
-  if (actions) header.append(actions);
+  const controls = document.createElement('div');
+  controls.className = 'chat-turn-changes__controls';
+  if (undo) controls.append(undo);
+  if (planPath) controls.append(createPlanActions(chat, planPath));
+  if (actions) controls.append(actions);
+  header.append(controls);
   card.append(header);
 
   const rows: HTMLElement[] = [];
@@ -194,19 +194,6 @@ export function createTurnChanges(
     more.addEventListener('click', () => { showAll = !showAll; syncMore(); });
     card.append(more);
   }
-  review.addEventListener('click', async () => {
-    review.disabled = true;
-    try {
-      const { reviewTurnChanges } = await import('./chat-turn-review');
-      const result = await reviewTurnChanges(chat, start, end);
-      if (!result.ok && !result.cancelled) throw new Error(result.error || 'Could not open review');
-    } catch (error) {
-      const { setStatus } = await import('./status');
-      setStatus('err', error instanceof Error ? error.message : 'Could not open review');
-    } finally {
-      review.disabled = false;
-    }
-  });
   return card;
 }
 
@@ -222,22 +209,22 @@ export function findTurnPlanPath(paths: string[]): string | undefined {
 function createPlanActions(chat: Chat, planPath: string): HTMLElement {
   const actions = document.createElement('div');
   actions.className = 'chat-turn-changes__actions chat-turn-changes__plan-actions';
-  const button = (label: string, title: string, onClick: () => void) => {
+  const button = (label: string, icon: IconName, title: string, onClick: () => void) => {
     const el = document.createElement('button');
     el.type = 'button';
     el.className = 'chat-turn-changes__action';
-    el.textContent = label;
+    el.append(createIcon(icon, { size: 13 }), label);
     el.title = title;
     el.addEventListener('click', onClick);
     actions.append(el);
     return el;
   };
-  button('Open plan', planPath, () => {
+  button('Open plan', 'fileText', planPath, () => {
     const host = getSharedChatHost(chat.id);
     if (host?.openPlan && host.transcript.contains(actions)) { host.openPlan(planPath); return; }
     void import('./file-viewer').then((m) => m.openFileInViewer(planPath));
   });
-  const build = button('Build here', 'Implement the saved plan in this chat', async () => {
+  const build = button('Build here', 'fileCode', 'Implement the saved plan in this chat', async () => {
     const [{ sendProgrammaticChatText }, { scheduleSaveSessions, touchChat }, { setStatus }] = await Promise.all([
       import('../chat/messaging'), import('../state/sessions'), import('./status'),
     ]);
@@ -252,7 +239,7 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
       setStatus('err', error instanceof Error ? error.message : 'Could not start building the plan');
     }
   });
-  const orchestrate = button('Orchestrate', 'Create a board from this plan', () => {
+  const orchestrate = button('Orchestrate', 'boardView', 'Create a board from this plan', () => {
     void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(planPath));
   });
   orchestrate.hidden = true;

@@ -1,28 +1,17 @@
-# Plugins
-
-Plugins extend Minnow with apps, menus, custom UI, agent tools, service connections and slash skills. Manage them in **Settings → Plugins**. Build their source in any user workspace; Minnow's core source is not required. Installed packages and connections are shared across your local Minnow profile. Tools receive the invoking workspace, and UI usage APIs follow the workspace of their window.
+# Install or build a Minnow plugin
 
 ## Install and manage
 
-Paste a public GitHub URL into **GitHub URL or plugin folder** in Settings → Plugins, or select **Choose folder** to browse for a local plugin. You can also enter a folder path. Local folders can be outside your workspace; choosing one does not switch projects. A plugin folder contains `plugin.json` and its bundled files. Repository URLs use the root plugin, or find a single plugin in a subfolder automatically. If the repository contains multiple plugins, paste the desired GitHub folder link, such as `https://github.com/owner/repository/tree/main/plugins/my-plugin`.
+1. Open **Settings → Extensions → Plugins**. Paste a public GitHub URL or choose a local folder that contains `plugin.json`. For a repository with several plugins, use the URL of the intended plugin folder.
+2. Select **Review plugin**. Read the manifest and inspect the tools, panels, connections, and code before selecting **Trust and install**. Native handlers run with your local user privileges. UI modules can access the Minnow document and authenticated APIs. Settings panels run in isolated iframes.
+3. Expand **Tools, panels and connections** to enter connection values or open a panel. Test one tool or command from the intended workspace.
+4. Use **Reload from source** after editing a local plugin, or after reviewing an update. A failed validation keeps the current release active. **Disable** withdraws its contributions. **Remove** also deletes its saved connections. Plugin-owned data remains on disk.
 
-Select **Review plugin**. Minnow downloads a GitHub source archive and validates the manifest, JavaScript syntax and declared files without executing handlers or install scripts. Review its source and capabilities, then select **Trust and install** (or **Trust and update** for an installed plugin). GitHub installations use the commit recorded in the reviewed archive; a content digest prevents installation if the reviewed files change. Public imports need no account token and do not use GitHub's REST API allowance. Repository archives are limited to 16 MiB compressed and 64 MiB unpacked; use a local folder for larger repositories. Plugin limits are 256 files and 8 MiB; links and special files are rejected. GitHub archives omit submodule contents, so bundle required files into the plugin. Local Git metadata (`.git`) is excluded.
-
-Native handlers run with your local user privileges. Worker isolation contains ordinary crashes and synchronous hangs; it is **not a security sandbox**. Install only code you trust. A plugin can import Node modules, read files, launch processes and contact services with those privileges. Agent tools retain their filesystem policy for local package paths; Settings accepts the folder you explicitly choose.
-
-Optional **UI modules are also trusted code**. They run in Minnow's document and can change the DOM, access browser storage and call authenticated APIs. Review their source along with native handlers. Settings panels remain isolated iframes; installing a UI module grants broader access than opening a panel.
-
-Each installed plugin has **Enable / Disable**, **Reload from source**, and **Remove** controls. Reload validates and copies the source into a fresh release; GitHub sources download the current commit for the original repository or branch link. Invalid packages or failed downloads leave the current release active. Disable removes its tools, panels and skills from discovery and terminates active workers. Remove also deletes saved connections. Plugin-owned persistent data remains on disk.
-
-UI contributions load at startup and refresh live on install, reload, disable and remove. Other open Minnow windows check the catalog every three seconds. Managed mounts, apps, menus, commands and subscriptions are disposed on unload. A UI initialization error removes that module's managed contributions and appears in Settings; fix the source and reload. Reload requires the source folder or GitHub repository to remain available.
-
-Expand **Tools, panels and connections** to inspect tools, configure connections, or open a panel. Plugin tools follow the global permission mode in chats, CLI runs, sub-agents, and Boards. Unattended calls that need approval return an approval-required error. Disable or remove a plugin package to disconnect it. A plugin installed during a chat becomes discoverable on the next model round.
+Tool calls follow the global [permission level](concepts/tools-and-permissions.md). An unattended job cannot approve a plugin tool call.
 
 ## Ask Minnow to build a plugin
 
-Use `/build-plugin` and describe the behavior you want. The built-in `plugin_inspect` tool lists packages, validates source, and supplies the API reference with `docs: true`. `plugin_manage` scaffolds, installs, updates, reloads, enables, disables and removes packages. Management mutations are blocked in Plan mode.
-
-For example: “/build-plugin Create a project notes app with tools to add and search notes, storing them locally.” Or: “/build-plugin Show cumulative chat tokens next to tokens per second.” Minnow creates editable source in your workspace, validates it, and installs a copy. Editing source does not silently change executable code; reload or update applies it live. Use Build mode for authoring; Plan mode can document the design. CLI-backed models use Minnow's supplied editing and plugin tools even when their native filesystem sandbox is read-only.
+Start a thread with **/build-plugin** and give it a testable task, for example “Create a plugin that adds and searches local project notes. Store notes in the plugin's data directory and include a sample query.” Review the generated source in your workspace and test the installed copy. Use **Reload from source** to apply edits. To inspect the API from a thread, ask the agent to use `plugin_inspect` with `docs: true`.
 
 ## Package contract: API v1
 
@@ -101,7 +90,7 @@ Declare fields in the manifest:
 
 Users enter values in **Configure connections**. All values are encrypted with Minnow's existing local key. Secret fields return only a configured flag to the UI. A blank field preserves its saved value; **Disconnect all** clears the values. Missing required fields fail the tool with a configuration message.
 
-Handlers read `ctx.connections.service.token` and can use it in server-side requests. Do not return secrets, put them in panels, or log them. Network access and authentication logic belong to native handlers. API v1 provides encrypted fields; it does not automatically provision OAuth clients or MCP servers. Existing MCP connections remain managed under Settings → MCP servers.
+Handlers read `ctx.connections.service.token` and can use it in server-side requests. Do not return secrets, put them in panels, or log them. Network access and authentication logic belong to native handlers. API v1 provides encrypted fields; it does not automatically provision OAuth clients or MCP servers. Existing MCP connections remain managed under Settings → Extensions → MCP servers.
 
 ## Panels
 
@@ -151,7 +140,7 @@ export default function activate(ctx) {
 }
 ```
 
-App ids are namespaced as `plugin-<package>--<app>`. Apps appear in the app rail and the app command palette and open at `#/app/<namespaced-id>`. Mount callbacks run lazily on first launch and may return cleanup functions. Plugin apps share the main window; the built-in native "Open in new window" action is not offered for them.
+App ids are namespaced as `plugin-<package>--<app>`. Open a registered plugin app by name from the command palette. Its route is `#/app/<namespaced-id>`. Mount callbacks run on first launch and may return cleanup functions. Plugin apps share the main window.
 
 | UI context API | Behavior |
 | --- | --- |
@@ -172,7 +161,7 @@ App ids are namespaced as `plugin-<package>--<app>`. Apps appear in the app rail
 
 Stable slots are `menubar`, `chat.throughput` (the Code status bar and metrics strip's TPS values), `chat.message-throughput` (a message's TPS chip), and `chat.message-metrics` (the message metrics row). Arbitrary CSS selectors and direct DOM changes are supported; core classes and ids outside these named slots can change between releases.
 
-The top **Plugin commands** menu uses `menubar.plugins`; app rail context menus use `app.rail` with `appId`. Existing registered targets include `chat-message` and `terminal-selection` with text context. Menu contributors receive the target and return Minnow menu items: actions, submenus, separators or headings. Actions have `id`, `label` and `onSelect`; use `hint`, `disabled`, `checked` or `shortcut` where appropriate. `ctx.openMenu` accepts `target`, `items`, `label`, and an anchor or pointer coordinates for custom surfaces.
+Search the command palette for **Plugin commands** to open the `menubar.plugins` menu when contributions are available. Other registered targets include `chat-message` and `terminal-selection` with text context, plus the `app.rail` target with `appId` for app context menus where rendered. Menu contributors receive the target and return actions, submenus, separators, or headings. An action has `id`, `label`, and `onSelect`. Use `ctx.openMenu` with a target, items, label, and anchor or pointer coordinates to open your own menu.
 
 ## Chat usage and token counters
 
@@ -195,7 +184,7 @@ export default function activate(ctx) {
 }
 ```
 
-The [chat token counter example](../../examples/plugins/chat-token-counter/README.md) adds this counter, a token usage app, menu actions and a command palette entry. Copy its folder into your workspace, review and install it through Settings → Plugins. UI-only packages need no native tools or connection fields.
+The [chat token counter example](https://github.com/HenriGrimm/Minnow/tree/main/examples/plugins/chat-token-counter) adds this counter, a token usage app, menu actions and a command palette entry. Copy its folder into your workspace, review and install it through Settings → Extensions → Plugins. UI-only packages need no native tools or connection fields.
 
 ## Bundled skills
 

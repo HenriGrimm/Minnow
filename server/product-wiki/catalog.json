@@ -4,541 +4,367 @@
     {
       "path": "documentation/manual/README.md",
       "title": "Minnow manual",
-      "summary": "Minnow is a full agentic development workspace that runs on your own computer: editor, agents, terminal, git, issues, planning, knowledge, and local model hosting in one app. It talks to models you host yourself — LM Studio, Ollama, llama server , or any OpenAI compatible endpoin",
+      "summary": "Get to your first result 1. Install Minnow and open a workspace. Use Sandbox to try it with an empty folder. 2. Connect a model and select it in the composer. 3. Ask about the project, make a change, and review it. Find the steps for what you want to do I want to… Start here Find",
       "headings": [
-        "Start here",
-        "Finding help while you work",
-        "Everything in this manual",
-        "Get started",
-        "Core concepts",
-        "Chat",
-        "Apps",
-        "Orchestrate",
-        "Extend Minnow",
-        "Reference"
+        "Get to your first result",
+        "Find the steps for what you want to do"
       ],
       "section": "Overview",
-      "hash": "c2545a3e20585353e3f08a2147589086b9f38a3fc665354e7cbe7b098c97caf5"
+      "hash": "1108b2d4589ec61428478516938fdca375e88ae2e118f978982cfdda0ff410fa"
     },
     {
       "path": "documentation/manual/get-started/install.md",
-      "title": "Install and first launch",
-      "summary": "Minnow ships as a normal desktop application. This page covers getting it onto your machine, what happens the first time it opens, and how updates work afterwards. Once it is running, go straight to Connect a model — the interface works without one, but nothing can answer you unt",
+      "title": "Install and open a workspace",
+      "summary": "1. Download Minnow from GitHub Releases. On Windows, run the Setup .exe . On macOS, choose the DMG for your Mac's architecture and drag Minnow into Applications. On Linux, download the AppImage for your architecture, make it executable, and launch it. 2. On the setup screen, choo",
       "headings": [
-        "Download",
-        "If Windows blocks the installer",
-        "What happens on first launch",
-        "Closing, quitting, and the tray",
-        "Updates",
-        "Quick health check",
-        "Next"
+        "Keep work running or quit"
       ],
       "section": "Get started",
-      "hash": "f61ba6634726b7e88076a82f4cea557a97666b379204e32ba964693d213cccb2"
+      "hash": "06630a607b90d0e787aa624dd4efef3b95813f51f353bfcfc34319827f567402"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
       "title": "Connect a model",
-      "summary": "Minnow does not ship model weights. Connect a local runtime, download and serve a model inside Minnow, add a cloud API, or use an installed agent CLI. You need at least one connection, and you can have several at once. Everything on this page lives in the Models app. Open it from",
+      "summary": "Open the command palette with Ctrl+K / Cmd+K and select Go to Models . Use one of these paths, then choose the model in a Code thread's composer. Start with a chat model that supports tool calls if you want it to read files, edit, or run tests. LM Studio 1. In LM Studio, download",
       "headings": [
-        "Pick your route",
         "LM Studio",
         "Ollama",
         "Serve a model inside Minnow",
         "Cloud APIs",
         "Subscriptions",
-        "Choosing the model for a turn",
-        "Routing: which model does what",
-        "Model routers",
-        "When the picker stays empty",
-        "Next",
-        "Related"
+        "When the picker stays empty"
       ],
       "section": "Get started",
-      "hash": "5eefb0848c174b164ed30fd11c1b18e5e347b0a2646ca1b04aac1fefb798af7e"
-    },
-    {
-      "path": "documentation/manual/get-started/costs-and-providers.md",
-      "title": "Costs and providers",
-      "summary": "Minnow itself is free. The models are where the money goes, and there are four ways to pay for them: per token, by subscription, by a capped monthly gateway plan, or upfront for hardware. This page compares them so you can pick a starting point, and it covers a setup that costs n",
-      "headings": [
-        "The short version",
-        "What has worked for us",
-        "How the billing models differ",
-        "What an hour of agent work costs",
-        "Pay-per-token APIs",
-        "DeepSeek",
-        "Gateways: one key, many models",
-        "Subscriptions through agent CLIs",
-        "Capped monthly plans",
-        "OpenCode Go",
-        "GitHub Copilot",
-        "Ollama Cloud",
-        "Lab coding plans",
-        "Free cloud options",
-        "A free setup that holds up",
-        "Local hardware",
-        "What hardware costs in October 2026",
-        "Does local save money?",
-        "Spend less, whatever you choose",
-        "Privacy",
-        "Related"
-      ],
-      "section": "Get started",
-      "hash": "392e04d3afd82c76234359ae375a37b5a13e7df2c0922a5cafd43a8e2ab517ed"
+      "hash": "079b80d4f4f99a984737387bf87dfce949c454ec2e4058f885e8a3d055350561"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
-      "title": "Your first chat",
-      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Code with the chat rail beside your repo. Your existing project conversation stays selected. An empty chat shows the hub, where you can describe what to build, browse files, or open a terminal. To start from",
+      "title": "Make and review your first change",
+      "summary": "Start with an open project folder and a connected model. Use a Git checkout if you want to follow the diff and commit steps. Pick a small, reversible task, such as correcting an instruction in the README. If you only want to look around, stop after the first prompt. 1. In Code, s",
+      "headings": [],
+      "section": "Get started",
+      "hash": "ac080006be421b5764334607eb0af8782952fb1f6d7019d6c4bbec68cd9105de"
+    },
+    {
+      "path": "documentation/manual/get-started/costs-and-providers.md",
+      "title": "Choose how to run and pay for models",
+      "summary": "Start here if… Cost to check You have enough memory for a local model and want inference on your machine Model storage, available RAM or VRAM, and the time each turn takes. You have access to an agent CLI Minnow supports Your account's eligible models and usage limits. Verify the",
       "headings": [
-        "Code with chat open",
-        "Send something",
-        "Approving an action",
-        "Asking, planning and debugging",
-        "The context ring",
-        "Attachments",
-        "Slash skills",
-        "Opening another app",
-        "Where your conversations go",
-        "Next steps"
+        "Measure one real task"
       ],
       "section": "Get started",
-      "hash": "4c02a7ca7fa6805ed8efa158ca52c6fc37db6cf90da2fc6958a401606749de96"
+      "hash": "3938dae5373c8eccaafbed182cca233a0a008f9000ef27aae99815e85b807b25"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
-      "title": "How Minnow works",
-      "summary": "Read this page once and most of the product stops needing explanation. Minnow is three things stacked together: 1. A workspace first shell — a workspaces picker ( /workspaces ), a left app rail, and a menubar. You choose a folder, then work in Code with chat beside your project. ",
-      "headings": [
-        "The loop",
-        "Local by default",
-        "The workspace boundary",
-        "One agent, one permission level",
-        "Apps are surfaces, not silos",
-        "Agents all the way down",
-        "When the server is not there",
-        "Related"
-      ],
+      "title": "Choose where to work",
+      "summary": "When an instruction mentions a relative path like src/app.ts , the active workspace or thread checkout tells Minnow where to look. Check that location before the first edit. Situation What to open You want to try a prompt without giving it a real project Select Sandbox in the wor",
+      "headings": [],
       "section": "Core concepts",
-      "hash": "073e73470304cbb41a790cf5be217f4b8cd48174171808c6157e0d21db967b0a"
+      "hash": "38e91a48e075bd60502f63eca4bcef54b0a184baa78657752a280808994f9790"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
       "title": "Tools and permissions",
-      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. One permission level Minnow has one permi",
+      "summary": "Choose how independently the agent can work using the permission control in the composer. This setting applies across chats, boards, and agent tools, including shell commands, browser actions, MCP servers, and plugins. Choose Use it for Manual Review edits, commands, and actions ",
       "headings": [
-        "One permission level",
-        "Approving an action",
-        "Tool availability",
-        "Loading tools on demand",
-        "The categories",
-        "The project boundary",
-        "Content the model reads is data, not instructions",
-        "Caching",
-        "How much of a result the model sees",
-        "Tools that are not built in",
-        "Practical setups",
-        "Related"
+        "Decide on an approval"
       ],
       "section": "Core concepts",
-      "hash": "ed0f7b91587d337711384781bfd1de202318c2fe1c14f552e2643399c2344f6b"
+      "hash": "22974ad55bc4cafbb28caecd99b74a82021f888385c8118336cc05913b8f957c"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
-      "title": "Context, memory, and rules",
-      "summary": "A model has no memory. Every turn, Minnow rebuilds everything it knows from scratch and sends it. Understanding what goes into that rebuild is the difference between an assistant that seems sharp and one that seems to have early onset amnesia. Three separate mechanisms feed it, a",
+      "title": "Give Minnow the context it needs",
+      "summary": "Point to the evidence Put the goal, expected outcome, and relevant file or error in the same prompt. Attach an image for a visual bug and include the route or steps that reproduce it. Open the thread card if you are unsure which checkout the prompt will use. In src/search.ts , fi",
       "headings": [
-        "The context window",
-        "Context policy for agents",
-        "Memory",
-        "Saving a memory",
-        "What belongs in memory",
-        "Rules",
-        "System prompt",
-        "Recall",
-        "Related"
+        "Point to the evidence",
+        "Keep decisions across threads"
       ],
       "section": "Core concepts",
-      "hash": "5880588b5d86d66a4751a9e79ec8699ba4f1bdde53842172ff6f702845cb6210"
+      "hash": "ba4e0833dd4c6a85cbb63e4e614c1da641077dedd2fc904ee5ea17c4e72a91a8"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
-      "title": "Working in chat",
-      "summary": "The basics of chat take one minute. The controls on this page are the ones that make a long agent session survivable: correcting a run without killing it, queueing your next instruction, undoing a turn that touched files, and going back to an answer you liked better. The composer",
+      "title": "Work in a thread",
+      "summary": "Give the agent enough to start Choose a model in the composer. Send the outcome, relevant path or error, and how to check the result. Use the attachment control or drop a file or screenshot onto the composer. For editor files, drag the file tab into the composer. For a second que",
       "headings": [
-        "The composer",
-        "While the model is working",
-        "When a turn fails",
-        "Watching what agents do",
-        "Undoing a turn",
-        "Files from the assistant",
-        "Branches",
-        "Managing conversations",
-        "Notifications",
-        "Asking you questions",
-        "Related"
+        "Give the agent enough to start",
+        "Intervene while a run is active",
+        "Recover after a failed turn",
+        "Return to earlier work"
       ],
       "section": "Chat",
-      "hash": "d5d99ee5115af20d90eafa3b0c99aa823ac7b56620631f38891e9fea6f7a597d"
+      "hash": "2bb66ccb2fc76f16aee6dfbb778545d6b15858f22dc7dd61ac879c8558bb77bb"
+    },
+    {
+      "path": "documentation/manual/chat/persistent-agent-chats.md",
+      "title": "Follow delegated work in agent conversations",
+      "summary": "Ask the parent thread to delegate a well defined task, such as “Have a reviewer read the new CSV tests and report coverage gaps with file references.” The assignment returns a result to the parent. The child conversation keeps the transcript, tool results, and follow up messages.",
+      "headings": [
+        "Find and continue a child",
+        "Change models or answer requests",
+        "Recover and clean up"
+      ],
+      "section": "Chat",
+      "hash": "d3ada9be72eae36c28be95b6883dc4ae36d78cef6e4f65b669788922f03f297f"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
-      "title": "Skills and slash commands",
-      "summary": "Type / at the start of an empty composer and the menu opens. Keep typing to filter it; the best match on a command's name comes first. Recent — the last few things you picked, when you have not typed anything yet. Commands — the workflow skills /ask , /plan and /debug , then app ",
+      "title": "Use skills and slash commands",
+      "summary": "Type / at the start of an empty composer, then choose a skill or command from the menu. Continue with the exact task and relevant file or issue. Use the picker to see what is installed. Workflow skills Skill Use it to Example /ask Investigate with a read only turn /ask What invok",
       "headings": [
-        "Workflow skills: `/ask`, `/plan`, `/debug`",
-        "Skills",
-        "Installing more",
-        "Writing your own",
-        "`/goal`",
-        "`/loop`",
-        "`/followup`",
-        "`/compact`",
-        "Related"
+        "Workflow skills",
+        "Run a follow-up or compact a thread",
+        "Install or write a skill"
       ],
       "section": "Chat",
-      "hash": "f736ddb390709008c8d59a2346a5c5ddf4fc7d41bb3d23822abc6be3e20223d7"
+      "hash": "1cc4263524a3755585bbee5fcc58a03042007fa8f9f6a2004eaea278dfe35908"
     },
     {
       "path": "documentation/manual/apps/overview.md",
-      "title": "Apps overview",
-      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. The left rail opens Source Control,",
+      "title": "Find your way around Graphite",
+      "summary": "Open a workspace from the picker. Code opens the project's threads. If there is no existing thread to resume, New thread shows the composer and any issues ready to pick up. Find a command or a conversation Press Ctrl+K / Cmd+K outside the editor to open the command palette. Searc",
       "headings": [
-        "Code",
-        "The supporting surfaces",
-        "Source Control history",
-        "Models",
-        "Issues",
-        "Brain",
-        "Automations",
-        "Settings",
-        "Not on the rail",
-        "Related"
+        "Find a command or a conversation",
+        "Put tools beside or below a thread",
+        "Open a full app"
       ],
       "section": "Apps",
-      "hash": "0372d5a56a55dc2590b3eecd362898e94e748eec1509589e82caea28b7270b4a"
+      "hash": "b85f255abc7d54448ad0e1cd0abf259518aa66df714c9ef370c5a356b4daf46a"
     },
     {
       "path": "documentation/manual/apps/code.md",
-      "title": "Code",
-      "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Code opens after you choose a project. You",
+      "title": "Edit, run, and review in Code",
+      "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Graphite navigation for the launcher and thread card. Find and edit a file 1. Open Side panel → Files . Expand a f",
       "headings": [
-        "Pin a chat",
-        "Share a chat",
-        "Open a project",
-        "The layout",
-        "The editor",
-        "Markdown files",
-        "Godot projects",
-        "The file tree",
+        "Find and edit a file",
         "Terminal",
-        "Git",
-        "Source Control Center",
-        "Actions and releases",
-        "Code map",
         "Dev servers",
         "Browser preview",
-        "Working with the assistant here",
-        "Related"
+        "Review the thread's work",
+        "Source Control Center",
+        "Code map"
       ],
       "section": "Apps",
-      "hash": "94462fea66661cf6ad7aa9f3a9b8815f5bd78ebc2f23ebb4542bb24df767863e"
-    },
-    {
-      "path": "documentation/manual/apps/brain.md",
-      "title": "Brain",
-      "summary": "Brain is Minnow's memory, and it is not a black box. It is a wiki of markdown pages in a folder on your disk that you can read, edit, delete and back up. The assistant searches and writes it with tools; you curate it. Open it from the app rail to see the graph with no page select",
-      "headings": [
-        "The sections",
-        "Reading the graph",
-        "How things get in",
-        "How things come out",
-        "The code index",
-        "Keeping it healthy",
-        "What belongs here",
-        "Your data",
-        "Related"
-      ],
-      "section": "Apps",
-      "hash": "130d29ebd8c96d414c28ab29cf3651edc536fc8e55a1890faf65839318a20996"
+      "hash": "219f78428857ab272de1a09eb31c21230cbcaceef8957094bb311676e3096c98"
     },
     {
       "path": "documentation/manual/apps/models.md",
-      "title": "Models",
-      "summary": "This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs. You come here to configure, then go back to Code and work. Open Models in ",
+      "title": "Manage models, routing, and usage",
+      "summary": "Open Models from the command palette. To connect a provider for the first time, follow Connect a model. Download, load, and unload a local model 1. In Discover , use the recommended list or search Hugging Face for a model. Inspect its available files and estimated memory fit at y",
       "headings": [
-        "Local Server",
-        "Discover",
-        "My models and Storage",
-        "MLX on Apple Silicon",
-        "MTPLX on Apple Silicon",
-        "Providers",
-        "Subscriptions",
-        "Account usage",
+        "Download, load, and unload a local model",
+        "Providers and subscriptions",
         "Routing",
         "Model pools",
-        "Sampler",
-        "Thinking",
-        "Usage & cost",
-        "Voice",
-        "Choosing the model for a turn",
-        "When the picker is empty",
-        "Related"
+        "Usage and cost"
       ],
       "section": "Apps",
-      "hash": "44603966ab1363e6f4cada809ae95e6c4428a18f8ec4e9b90f794257017e44d7"
+      "hash": "7fcaa57db5d15567e631d44e5cc96e956e09d14566e987cd9e03fbcb336ca2c5"
     },
     {
       "path": "documentation/manual/apps/issues.md",
-      "title": "Issues",
-      "summary": "A tracker that agents can use. Issues is a Linear style list and board for work in your workspace, with the difference that the assistant can file, triage, expand and close items through tools — so \"I found three problems while reading this\" becomes three real cards instead of a ",
+      "title": "Capture, assign, and review issues",
+      "summary": "Open Issues from the command palette. Select the workspace you want to work in. To keep issues beside a Code thread, open the surface launcher and use Open issues beside Issue . Capture a bug in context 1. Use New issue in Issues, or Capture issue in a Code thread. The thread cap",
       "headings": [
-        "Views",
-        "Working with issues",
-        "Handing an issue to an agent",
-        "Reviewing and delivering agent work",
-        "Git conventions",
-        "Taxonomy",
-        "Automatic bug filing",
-        "Related",
-        "Models for issue chats"
+        "Capture a bug in context",
+        "Hand it to an agent",
+        "Sync with GitHub"
       ],
       "section": "Apps",
-      "hash": "16fe7d1d8fa7d9a68b2ea2440e297140afe77d633ae59ecb8b5dfda53370b2d4"
+      "hash": "deb0943c929ab8bc020fb9f726089cbb424da2661f435a048b86f228ebc3c4d3"
+    },
+    {
+      "path": "documentation/manual/apps/brain.md",
+      "title": "Save and find project knowledge in Brain",
+      "summary": "Open Brain from the command palette. Use it for decisions or context you want to retrieve in a later thread. Save a decision and check it 1. Open Edit to create a page, or ask the agent to save a named page in Brain. 2. Include the decision, a reason, the scope (workspace or shar",
+      "headings": [
+        "Save a decision and check it",
+        "Review suggestions and index code"
+      ],
+      "section": "Apps",
+      "hash": "2c681c3008067193fb33500406320a98aa41e5ea36f31b33b1f0a3f9682ceaaf"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
-      "title": "Automations",
-      "summary": "Automations are agents that run on their own: a PR reviewer that checks every new pull request, an issue watcher that fixes labeled issues, a nightly dependency check, or anything you describe. Each one wakes up on its schedule, does its job without a conversation, and reports ba",
+      "title": "Run jobs with Automations",
+      "summary": "Open Automations from the command palette. Jobs run while Minnow is running, including in the tray. Scheduled runs missed while fully quit are skipped. Test a job before scheduling it 1. Select New automation , then Custom . Pick the project folder and the model the job should us",
       "headings": [
-        "The one rule",
-        "The hub",
-        "Watching a run",
-        "Presets",
-        "PR Reviewer",
-        "Issue Watcher",
-        "Custom automations",
-        "Writing instructions that work unattended",
-        "Run history",
-        "Automations or `/loop`?",
-        "Troubleshooting",
-        "Related"
+        "Test a job before scheduling it",
+        "Use a GitHub preset",
+        "Diagnose a job"
       ],
       "section": "Apps",
-      "hash": "6a25dfad5cdd8d3c418dbef37d6ef529ac44fd04734271a1685f3dc1410a0650"
+      "hash": "7a295ea3f98a10ec1a2fb4f3887b1587702f3f5686fd1bb2d17aa055eef9c4c9"
     },
     {
       "path": "documentation/manual/apps/settings.md",
-      "title": "Settings",
-      "summary": "Open Settings from the menubar gear. Pages are grouped by what you want to change. Model configuration lives in the Models app. Find a setting Press Ctrl+K / Cmd+K with Settings open. Search for a setting or an everyday phrase such as \"stop sounds\", \"backups\", or \"let agents edit",
-      "headings": [
-        "Find a setting",
-        "The map",
-        "General",
-        "Code & workspace",
-        "AI & agents",
-        "Extensions",
-        "Data & privacy",
-        "Devices",
-        "About & troubleshooting",
-        "Where settings are stored"
-      ],
+      "title": "Find and change a setting",
+      "summary": "Open Settings from the command palette. Search by the control name or what you want to change. Select a result to open its page and highlight the control. You want to… Search for or open Change the theme, tint, text, density, or window zoom General → Appearance Change the tray be",
+      "headings": [],
       "section": "Apps",
-      "hash": "8b3e53a4f0c2dfe1cdb6bfc8f3150e5e54ac5a47c0a6c5ae77dc7c914cf37c12"
+      "hash": "ca950248bf78b61a63f7cf75d11d9dc59c20c3e8e4b983540da1cd77f67ce669"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
-      "title": "Orchestrate boards",
-      "summary": "A board runs a plan through builders, independent testers, isolated Git worktrees, merging, and final integration checks. Start a board Open Orchestrate from Code, choose a plan under documentation/plans/ , and open the board. Select a starting branch and a model, then press Star",
+      "title": "Run a plan with Orchestrate",
+      "summary": "Use a board when a change can be split into tasks with their own checks and checkout boundaries. Open a Git workspace before starting. Prepare and start the board 1. Make a plan under documentation/plans/ . Describe what each task must Build , how to Test it, what to Accept , whi",
       "headings": [
-        "Start a board",
-        "Execution controls",
-        "Automatic recovery",
-        "Action needed",
-        "Verification and completion",
-        "Inspect work",
-        "Limits and models"
+        "Prepare and start the board",
+        "Wave Breakdown",
+        "Wave 1 — Labels",
+        "Watch work and resolve a hold",
+        "Decide whether the result is ready"
       ],
       "section": "Orchestrate",
-      "hash": "dc92c1f4409c8bcbb8066d64c699703bbed6c2af9bc9cb107f8615d5d543bdd0"
+      "hash": "ac6028bf35d7312495ddc92e44e10939093e1802e8b33325673857a87d0fe98c"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
-      "title": "Board work agents",
-      "summary": "Boards use the shared chat runner and tool system for two worker roles. For research, review or other work delegated from a conversation, see Agent conversations. Those assignments have saved child chats with their own model selection, requests and follow up messages. Board worke",
-      "headings": [
-        "Reports",
-        "Repair and continuation",
-        "Configuration"
-      ],
+      "title": "Inspect board worker results",
+      "summary": "Open the task and choose Activity to read attempts. Compare the builder's work with the tester's evidence and the requirements under Spec . What you see What to do Pass Read the evidence and check that it covers the required behavior. If the tested changes move during a rebase, w",
+      "headings": [],
       "section": "Orchestrate",
-      "hash": "8800584ba9b10961bb2dcc1a5d5044399204ba3656a920d629c9397acc7841de"
+      "hash": "2f33b2d16036fd52de655d9d30085bb6990286cf8ffc9ac85a7324df24e8ccd9"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
-      "title": "Integrations",
-      "summary": "Ways to give Minnow capabilities it does not ship with, and to connect it to things outside itself. All of these live under Settings → Integrations . MCP servers The Model Context Protocol is a standard for exposing tools to an AI client. Any MCP server you add contributes its to",
+      "title": "Connect tools to a workspace",
+      "summary": "MCP servers 1. Open Settings → Extensions → MCP servers . 2. Paste your service's mcpServers configuration and choose Add servers . A remote server can use a URL and headers. A local server uses a command and arguments, with optional environment variables and working directory. 3",
       "headings": [
         "MCP servers",
-        "Minnow as an MCP hub",
         "Language servers",
         "Browser automation",
-        "Web search",
-        "Dev servers",
-        "Webhooks",
-        "Native plugins",
-        "Document handling",
-        "Related"
+        "Web search and outbound webhooks"
       ],
       "section": "Extend Minnow",
-      "hash": "e91209dc99a7a07dc873d571a9b6eabe6eec25a075984ce9fe58eac5cb7df449"
+      "hash": "5cbb0ea27a160208baee3b848ceb7922a5a43fdae6566393e78282e2b5108f26"
+    },
+    {
+      "path": "documentation/manual/extend/mcp-hub.md",
+      "title": "Connect other agents to Minnow",
+      "summary": "Keep Minnow running on the computer that holds the project. Open the project once so the hub can recognize its folder. The hub lets another agent work with Minnow issues, Brain pages, and the shipped manual. Connect over HTTP 1. Open Settings → Extensions → Connect other apps . C",
+      "headings": [
+        "Connect over HTTP",
+        "Connect over stdio",
+        "What the connection exposes"
+      ],
+      "section": "Extend Minnow",
+      "hash": "5cfbb6e61b46e445d19970fa583bcb030b4b0be94f9f1e156e7019f1a6a2540b"
+    },
+    {
+      "path": "documentation/manual/plugins.md",
+      "title": "Install or build a Minnow plugin",
+      "summary": "Install and manage 1. Open Settings → Extensions → Plugins . Paste a public GitHub URL or choose a local folder that contains plugin.json . For a repository with several plugins, use the URL of the intended plugin folder. 2. Select Review plugin . Read the manifest and inspect th",
+      "headings": [
+        "Install and manage",
+        "Ask Minnow to build a plugin",
+        "Package contract: API v1",
+        "Tools and storage",
+        "Connections",
+        "Panels",
+        "Apps, menus and DOM extensions",
+        "Chat usage and token counters",
+        "Bundled skills",
+        "API and lifecycle"
+      ],
+      "section": "Extend Minnow",
+      "hash": "18dc84ad53d7ed4bbe9226275eca29a7597b643fd7d44a8e6ec08e79817ab53e"
     },
     {
       "path": "documentation/manual/extend/voice.md",
-      "title": "Voice",
-      "summary": "Minnow supports dictation and read aloud without installing Python or configuring an API key. Built in dictation runs on your device; read aloud uses your system's speech voices. Press the composer microphone to dictate, or Read aloud on an assistant reply. Choose other voices an",
-      "headings": [
-        "Dictation",
-        "Speech-to-text models",
-        "Text-to-speech",
-        "The Python worker",
-        "Audio devices",
-        "Where the models live",
-        "Related"
-      ],
+      "title": "Dictate prompts and read replies aloud",
+      "summary": "1. Select the microphone in the composer, allow microphone access when prompted, and speak. Stop recording and review the transcribed text before sending. 2. A first built in transcription can take longer while Minnow downloads its Whisper model. Check Settings → General → Audio ",
+      "headings": [],
       "section": "Extend Minnow",
-      "hash": "cfcc4f311f20bd8fb8c0db285d6423a19d3d6f241fcea0167288a6065cbe6fd1"
+      "hash": "08c5df1d0205205e3e99d6bd4a64826da01c2fa29c190b32482f4f738f396872"
     },
     {
       "path": "documentation/manual/extend/companion.md",
-      "title": "Use Minnow on your phone",
-      "summary": "Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, steer an agent, follow a board, file an issue, or read a file. Nothing needs to be installed on the phone. There are two ways for a phone to reach your computer. You can use eithe",
+      "title": "Continue a thread on your phone",
+      "summary": "Keep Minnow running on an awake computer. Start with home Wi Fi if you only need access nearby. Choose Anywhere to connect away from home through Minnow's Tailscale setup. Pair the phone 1. On the computer, open Settings → General → Devices → Connect a phone . 2. Choose On my Wi ",
       "headings": [
-        "Connect a phone",
-        "Share a live chat",
-        "Make it work anywhere",
-        "Add Minnow to your Home Screen",
-        "Request access",
-        "Manage devices",
-        "What you get on a phone",
-        "Security",
-        "When it does not work",
-        "Related"
+        "Pair the phone",
+        "Reconnect or remove a device"
       ],
       "section": "Extend Minnow",
-      "hash": "ffd1d25c412f98ac62e8ea278bf3dfcc765c7fa2527b8c2822f67a73a9744303"
+      "hash": "dfe27c8269a425f83c4bcd28538ff80c66f28ab5edeebd4786f8eed179524cdf"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
       "title": "Keyboard shortcuts",
-      "summary": "Mod means Ctrl on Windows and Linux, Cmd on macOS. Press ? anywhere outside a text field for the built in shortcut sheet. Single key shortcuts — ? , the tool approval digits — are suppressed while you are typing in a field. Chords with a modifier generally still work. Shell Keys ",
-      "headings": [
-        "Shell",
-        "Chat",
-        "Thread surfaces",
-        "Code editor",
-        "File tree",
-        "Terminal",
-        "Browser preview",
-        "Orchestrate board",
-        "Issues",
-        "Settings",
-        "This manual",
-        "Related"
-      ],
+      "summary": "Mod is Ctrl on Windows and Linux and Cmd on macOS. Press ? outside a text field for Minnow's shortcut sheet. Key Where to use it Action Mod+Shift+P Workspace Open the command palette. Mod+K Outside the editor Open the command palette, or focus search when Settings or the manual i",
+      "headings": [],
       "section": "Reference",
-      "hash": "59c2a274fb53f763bc5d7c80f982c7dadf858479ff1765aaa03b762790fec32a"
+      "hash": "a72564d094ae260652903e4131c4ca375d1e17933daf606c823154759b339fc3"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
-      "title": "Where your data lives",
-      "summary": "Everything Minnow keeps lives in one folder, called Minnow home . Chats, settings, your Brain wiki, encrypted credentials, downloaded models, logs — all of it, in files you can inspect, back up, or delete. Platform Path Windows %USERPROFILE%\\.minnow macOS and Linux /.minnow Set t",
+      "title": "Find your profile and project files",
+      "summary": "Minnow home is %USERPROFILE%\\.minnow on Windows and /.minnow on macOS and Linux. If you launch with MINNOW HOME , Minnow uses that directory. Use a new directory for a clean test profile. You need Look in Minnow home Chat history and database snapshots sessions/ Brain pages and i",
+      "headings": [],
+      "section": "Reference",
+      "hash": "5fe6e4e56859c8dd8941399b6a8907f0096144998a11427e343722c3c94c7f56"
+    },
+    {
+      "path": "documentation/manual/reference/backup-and-restore.md",
+      "title": "Back up and restore a Minnow profile",
+      "summary": "Open Settings → Data and privacy → Backups . Back up your project directories and Git worktrees separately. Board recovery can carry source checkpoints in a protected backup. Existing worktree folders still need their own copies. Create a backup 1. Select the data to keep, such a",
       "headings": [
-        "Backup",
-        "The layout",
-        "Encrypted secrets",
-        "A clean profile",
-        "Editing files by hand",
-        "Related",
-        "Model selections and shared pools"
+        "Create a backup",
+        "Restore on this or another computer"
       ],
       "section": "Reference",
-      "hash": "6ed052305a911527a1a05b4caf48b45952031dfb45c8cae40690f514c232470f"
+      "hash": "de64c8ff262da18a4b378d476b9e065dbeab39c0e826f9412c84abed9408de27"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
-      "title": "Privacy and security",
-      "summary": "Minnow runs on your machine, and the honest version of \"local first\" is not \"nothing ever leaves\" — it is \"nothing leaves unless you sent it somewhere\". This page is the precise version of that claim, and the list of what protects you when an agent goes wrong. What never leaves N",
+      "title": "Check where your data goes",
+      "summary": "Before sending a prompt Check the model in the composer and the helper bindings in Models → Routing . A cloud model or cloud connected CLI receives the prompt and the context needed for the request, which can include attached images, repository text, tool results, and retrieved B",
       "headings": [
-        "What never leaves",
-        "What does leave, and only when you cause it",
-        "The network boundary",
-        "Secrets",
-        "Containing agents",
-        "Prompt injection",
-        "Data you should not put in Brain",
-        "Deleting things",
-        "Related"
+        "Before sending a prompt",
+        "Protect access to your profile"
       ],
       "section": "Reference",
-      "hash": "67aa06ac00eb5cbe57120e5881f27144661a9ee27ca1b349d0865c98ac0340d8"
+      "hash": "7f91256a0d096a750984ae27d3659e2118b27e6a6619ee06259cc276277c3a1c"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
-      "title": "Troubleshooting",
-      "summary": "Symptoms and fixes, roughly in the order people hit them. Paths refer to the in app Settings app. Start here Before anything else, open Settings → Advanced → Health & diagnostics . It probes each subsystem, groups recent errors, and tails the local log. Copy report produces a red",
+      "title": "Troubleshoot Minnow",
+      "summary": "Open Settings and search Health and diagnostics if several features fail at once. Inspect the failing subsystem and use Copy report if you need to report it. Read the exported report before sharing it. No model, no response, or an incomplete reply 1. Open Models → Providers and r",
       "headings": [
-        "Start here",
-        "Nothing answers me",
-        "Tools and files",
-        "The model forgets things",
-        "Agents and boards",
-        "Automations",
-        "Voice",
-        "Updates and install",
-        "Data and secrets",
-        "Still stuck",
-        "Related"
+        "No model, no response, or an incomplete reply",
+        "Changes or files are missing",
+        "The preview is blank",
+        "A thread, board, or automation is waiting"
       ],
       "section": "Reference",
-      "hash": "ae0dd21d96c1a78a1b1a4fd2592e59af48c432c99e9ea77835403aef2645320f"
+      "hash": "d92af5051db8f70044ae08267f2b80ab69a77c888f4774ce4a85a025bf608e6f"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
-      "title": "Glossary",
-      "summary": "Terms Minnow uses, in the sense Minnow means them. Running — The board is ticking: eligible work starts up to the concurrency cap until you press Stop or the board finishes. Board — A kanban of tasks generated from a plan document, worked by agents. See Orchestrate boards. Brain ",
-      "headings": [
-        "Related"
-      ],
+      "title": "Terms you see in Minnow",
+      "summary": "Term Meaning in the UI Workspace The project folder used for files, Git, and workspace context. Thread A saved conversation inside a workspace. Open the thread card to check which checkout and model it uses. Surface A tab you can open beside or below a thread, such as Files, Term",
+      "headings": [],
       "section": "Reference",
-      "hash": "98cf6c41859fe004a524f1ae5a352baf228abdffb5e1b97f10c6a6926fc7aa56"
+      "hash": "c13ff4cf1d720bc1dc9ddd530b7e2ef277fa5531e15a8bd8bfd5fa83f27248a3"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",
-      "title": "Wiki and Brain",
-      "summary": "Minnow has two knowledge surfaces and they get confused constantly, because both answer questions and both look like wikis. The difference is simple: one is about Minnow and you cannot edit it; the other is about your work and it is entirely yours. The short version Minnow wiki B",
-      "headings": [
-        "The short version",
-        "The Minnow wiki",
-        "Brain",
-        "Asking chat about Minnow",
-        "The GitHub Wiki",
-        "Which one do I want?",
-        "Related"
-      ],
+      "title": "Look up Minnow help or project knowledge",
+      "summary": "To learn how to use Minnow, select Minnow wiki at the bottom of the workspace sidebar, or use Open Minnow wiki in the command palette. Search the manual shipped with your build. You can also ask in chat, “Search the Minnow manual for how to connect to Ollama and cite the page.” T",
+      "headings": [],
       "section": "Reference",
-      "hash": "51a761c429d8d9d5df551b0465996a2ac317d7f84c45b5c1ef1fe2c9b80c0476"
+      "hash": "76d5969ef73001ea05f08cfe9682b981c2af601ca03e51552f66d42056b524e1"
     },
     {
       "path": "documentation/manual/reference/roadmap.md",
       "title": "Roadmap",
-      "summary": "The full roadmap is its own page in this wiki — open Roadmap from the navigation, or search for it. It describes product direction, not delivery dates. This manual describes what ships in the build you have installed. Anything still being built lives on the roadmap page, not here",
-      "headings": [
-        "Related"
-      ],
+      "summary": "See the Minnow roadmap for project direction. For instructions for your installed version, start in the Minnow manual.",
+      "headings": [],
       "section": "Reference",
-      "hash": "413d4466ccdd769a9c63a797a7c89bb6617c7b6402d3a08923e5a82882ba4cbd"
+      "hash": "b312352da9972b8c91921602b69bb6b8da8c017841f57c35ff65985db35b9a35"
     },
     {
       "path": "documentation/ROADMAP.md",
@@ -566,80 +392,6 @@
       ],
       "section": "Legal",
       "hash": "3314f4b7526e771cc2abf670a78e01c1141f6e040b9570c4ea3440af4947df2f"
-    },
-    {
-      "path": "documentation/manual/plugins.md",
-      "title": "Plugins",
-      "summary": "Plugins extend Minnow with apps, menus, custom UI, agent tools, service connections and slash skills. Manage them in Settings → Plugins . Build their source in any user workspace; Minnow's core source is not required. Installed packages and connections are shared across your loca",
-      "headings": [
-        "Install and manage",
-        "Ask Minnow to build a plugin",
-        "Package contract: API v1",
-        "Tools and storage",
-        "Connections",
-        "Panels",
-        "Apps, menus and DOM extensions",
-        "Chat usage and token counters",
-        "Bundled skills",
-        "API and lifecycle"
-      ],
-      "section": "Overview",
-      "hash": "75a9f622b813dfecaed2da77672a4ea955c46b27522cc518e501a69ab7424104"
-    },
-    {
-      "path": "documentation/manual/chat/persistent-agent-chats.md",
-      "title": "Agent conversations",
-      "summary": "Delegating a task creates a saved conversation for that agent. Open it to read the work, answer a question, choose a model, or send a follow up. Switching chats or closing a chat view does not stop accepted work. Minnow's server must remain running for work to continue. Open an a",
-      "headings": [
-        "Open an agent chat",
-        "An assignment and its conversation",
-        "Choose each agent's model",
-        "Send, queue and steer",
-        "Questions and approvals",
-        "Stop work",
-        "Messages between chats",
-        "Continue after an interruption",
-        "Saved history and older tasks",
-        "Checkouts, deletion and backups",
-        "Continue from the CLI",
-        "Related"
-      ],
-      "section": "Chat",
-      "hash": "b9fa6faa596465747350a5a4ebc3d36c4f9e9659a442e591ee375c0a5beab54c"
-    },
-    {
-      "path": "documentation/manual/extend/mcp-hub.md",
-      "title": "Connect other agents to Minnow",
-      "summary": "Minnow provides an MCP server so external agents can use its Issues tracker, Brain wiki, and user manual. Keep Minnow running. One connection works across projects: the requesting agent supplies its current workspace, and Minnow validates that folder against its open/recent works",
-      "headings": [
-        "Connect over stdio",
-        "Connect over HTTP",
-        "Available tools"
-      ],
-      "section": "Extend Minnow",
-      "hash": "9ea2f438cd5723008248c7cdbb03ab60a37cc14b58f4edc8eddaa3e9005a7fba"
-    },
-    {
-      "path": "documentation/manual/reference/backup-and-restore.md",
-      "title": "Backup and restore",
-      "summary": "Everything you own in Minnow lives in one folder, and the key that protects your credentials sits in that same folder. A disk failure takes both. Backup writes the parts worth keeping into one file you can put somewhere else, and restore brings them back — on this computer or a n",
-      "headings": [
-        "What goes into a backup",
-        "What is never backed up",
-        "Passphrases and credentials",
-        "Back up now",
-        "Scheduled snapshots",
-        "Restore",
-        "What a restore leaves alone",
-        "When the backup carries a different encryption key",
-        "Undo",
-        "Restoring on a new computer",
-        "Versions",
-        "If something goes wrong",
-        "Related"
-      ],
-      "section": "Reference",
-      "hash": "3e478577700b86e10b451d97e09c74d10232ad3c36c30d48b3029aac07dad561"
     }
   ]
 }

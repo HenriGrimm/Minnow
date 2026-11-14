@@ -1,98 +1,17 @@
-# Context, memory, and rules
+# Give Minnow the context it needs
 
-A model has no memory. Every turn, Minnow rebuilds everything it knows from scratch and sends it. Understanding what goes into that rebuild is the difference between an assistant that seems sharp and one that seems to have early-onset amnesia.
+## Point to the evidence
 
-Three separate mechanisms feed it, and they solve different problems:
+Put the goal, expected outcome, and relevant file or error in the same prompt. Attach an image for a visual bug and include the route or steps that reproduce it. Open the thread card if you are unsure which checkout the prompt will use.
 
-| Mechanism | Question it answers | Lives |
-|-----------|---------------------|-------|
-| **Context window** | What is in this conversation right now? | In the request, rebuilt every turn |
-| **Memory (Brain)** | What did we establish, days ago? | On disk, retrieved when relevant |
-| **Rules** | What must always be true of your behaviour? | On disk, injected every turn |
+> In `src/search.ts`, find why the empty query returns every note. The expected result is an empty list. Add or update the test for an empty query, then run that test.
 
-## The context window
+If the agent missed a constraint, send it again explicitly. The context indicator by the composer helps spot long threads. When old turns have been compacted, attach the precise file or quote the exact requirement you need preserved. For a clean start, open a new thread and hand over the goal, current status, and links.
 
-The ring beside **Send** shows how much of the model's window this conversation occupies. Click it to see the token count and when automatic compaction starts. Open **Details** for the context breakdown, request and session usage, and system prompt controls.
+## Keep decisions across threads
 
-The breakdown separates **context used** (the latest request’s prompt and reply, plus pending input) from **session usage** (tokens across all recorded requests, including tool rounds and the chat title). Each tool round sends history again, so session usage can greatly exceed the context size. Cached input may have a different price; token totals are not a bill.
+- Put project rules or build commands that teammates share into a versioned file such as `AGENTS.md`. Reference it in the prompt if the agent needs to act on a specific section.
+- Save decisions you want to retrieve later in [Brain](../apps/brain.md). Ask for a concise title, the decision, and its source. Open the saved note to verify it.
+- Use **Settings → AI and agents → Rules** for standing instructions. Use **Chat context** in the same group to control default project documents, Brain context, and code map context.
 
-Everything competes for that space: the system prompt, your standing rules, retrieved memories, the tool definitions loaded so far, the whole conversation so far, and every tool result. A single large file read can cost more than an hour of conversation.
-
-If the ring shows no cap, the model did not report a context length. Minnow will not invent one.
-
-**Symptoms of a full window** are distinctive: the model forgets a constraint you set earlier, repeats work it already did, or starts answering a version of your question from ten messages ago. Fixes, in order of how much they cost you:
-
-1. Start a new chat for the new subtask. Cheapest and usually right.
-2. Remove large attachments you no longer need.
-3. Move the durable facts into Brain, then start fresh — the facts come back through retrieval instead of scrollback.
-4. Switch to a larger-context model.
-
-The ring is a guide, not a wall. Some providers truncate silently when you overflow and some fail outright.
-
-**Tool result size** is a different setting. Settings → Integrations → Tools caps how much text each file read, search, or shell command **returns in the first place**. Context policy only acts on history that is already in the chat. See [Tools and permissions](tools-and-permissions.md).
-
-### Context policy for agents
-
-Agents that run unattended — board tasks, sub-agents, scheduled jobs — cannot ask you to start a new chat, so they need a rule for what to do when they hit their cap. **Settings → Agents → Context policy** sets the global default:
-
-| Policy | What happens at the cap |
-|--------|-------------------------|
-| **Compact** | Near the cap, old tool results shrink to short stubs and older turns fold into a "Prior context" summary: the goal, files touched, commits, open errors, todos. Nothing is deleted. The default. |
-| **Slide** | Oldest turns fall off the front. |
-| **Truncate** | Hard cut. |
-
-Individual work agents and sub-agent types can override it, or inherit the global default. Settings from older versions that say Summarize, Drop middle or Archive now run as Compact. Enforcement needs a known model context length or an optional token cap; when neither is available, there is nothing to enforce against.
-
-Under the policy, **Compaction tuning** sets when compaction starts (80% of the model window by default), how far it goes (50%), how many recent turns always stay word for word (2), and the size of the summary (12% of the window, at most 6k tokens). You can set an optional token cap below the model window; leaving it blank uses the full model window, with tool schemas counted against the available space. A wide gap between the start and the target means fewer compactions, so the start of the prompt stays the same for longer and local models don't have to reprocess it.
-
-Compaction applies to chats too, and it never deletes anything. It starts when the conversation reaches about 80% of the window and folds older turns until it is near half. The folded messages stay in the transcript, dimmed, because they are no longer in the model context. A **Context compacted** divider marks where it happened, with how many turns were folded and the token count before and after; expand it to see exactly what the model now reads instead. Board task and sub-agent transcripts show the same divider. Your latest message is always sent word for word. When the model needs an exact detail from a folded part, it can look it up with the `recall_history` tool.
-
-Type **`/compact`**, or click **Compact now** in the context popover, to compact a chat right away. Add text after it to say what the summary must keep, for example `/compact keep the API decisions`. `/compress` and `/summarize` do the same thing.
-
-## Memory
-
-Memory in Minnow is not a hidden vector blob. It is **Brain** — a real wiki of markdown pages in your Minnow home that you can open, read, edit and delete.
-
-When memory is on, Minnow retrieves relevant pages on the first user turn of a chat and saves the excerpts with it. Later turns replay that snapshot. To refresh notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`; a new chat refreshes automatic retrieval. Defaults: semantic embeddings enabled, up to 12 hits retrieved, roughly 500 characters of query-relevant excerpt per hit rather than a generic preview, capped at about 8,000 characters injected. Retrieved content is fenced as untrusted data, the same as a web page.
-
-### Saving a memory
-
-Three ways:
-
-- **Ask.** "Remember that we deploy on Fridays" — the model calls `save_memory`, which follows the global permission mode.
-- **Write a page yourself** in Brain → Edit.
-- **Let synthesis extract one.** By default, facts below 0.6 confidence are skipped, facts from 0.6 up to 0.85 queue in Brain → Proposals, and facts at or above 0.85 are saved directly. See [Brain](../apps/brain.md) for confidence settings and how to require review for all eligible facts.
-
-Every individual save raises a small review card for ten seconds with the title and an excerpt. It has **Reject**, which deletes the page, and **Open memory**, which takes you to it. Hovering pauses the timer. If the model saves something wrong, you find out immediately instead of a week later when it confidently repeats it.
-
-### What belongs in memory
-
-Good: durable decisions and their reasons, conventions, names and roles, environment quirks, "we tried X and it failed because Y".
-
-Bad: transcripts, anything that changes weekly, secrets. Memory is retrieved into prompts — including prompts sent to a cloud provider if that is what you are using.
-
-Managing it is in [the Brain app](../apps/brain.md): browse the graph, edit pages, run **Lint** to find orphans, stale pages, broken links and contradictions.
-
-## Rules
-
-Rules are standing instructions injected into every system prompt. "Always use TypeScript strict mode." "Never commit without running tests." "Answer in British English."
-
-**Settings → Agents → Rules.** Rules are off by default and organised into groups you can enable or disable together — a "Work" group and a "Personal" group, say, without rewriting the text each time. Empty groups can be deleted from that page. A group that still has rules stays until those rules are moved or deleted.
-
-Keep them short and testable. Rules cost context on every single turn, so a page of them is a page you pay for constantly. If something applies to one project only, a memory page is usually better than a global rule.
-
-## System prompt
-
-**Settings → Agents** lets you edit the base system prompt and see estimated tokens for the prompt, tools, and rules. **Require Flaticon interface icons** adds guidance to use `@flaticon/flaticon-uicons` for interface icons.
-
-Setup profiles package agent settings, rules, and skill preferences for export and import.
-## Recall
-
-Once a conversation has been compacted, the model gets the `recall_history` tool. It can search the whole conversation, folded parts included, or read specific messages word for word by the `#` numbers the summary cites. That way it retrieves the actual earlier detail instead of relying on the summary. Board tasks and sub-agents have it too.
-
-## Related
-
-- [Brain app](../apps/brain.md)
-- [Working in chat](../chat/chatting.md)
-- [Tools and permissions](tools-and-permissions.md)
-- [Agents, sub-agents, and packs](../orchestrate/agents.md)
+Before adding sensitive context, check the selected model and routing for supporting tasks. See [Privacy and security](../reference/privacy-and-security.md).

@@ -71,11 +71,15 @@ describe('product wiki catalog generation', () => {
       'documentation/manual/README.md',
       'documentation/manual/get-started/install.md',
       'documentation/manual/get-started/connect-a-model.md',
-      'documentation/manual/get-started/costs-and-providers.md',
       'documentation/manual/get-started/first-chat.md',
+      'documentation/manual/get-started/costs-and-providers.md',
     ]);
     const appsBlock = paths.filter((pagePath) => pagePath.includes('/manual/apps/'));
     assert.deepEqual(appsBlock[0], 'documentation/manual/apps/overview.md');
+    assert.equal(
+      generated.entries.find((entry) => entry.path === 'documentation/manual/plugins.md')?.section,
+      'Extend Minnow',
+    );
     const sorted = [...generated.entries].sort(compareProductWikiEntries);
     assert.deepEqual(sorted.map((entry) => entry.path), paths);
   });

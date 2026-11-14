@@ -1,74 +1,49 @@
-# Orchestrate boards
+# Run a plan with Orchestrate
 
-A board runs a plan through builders, independent testers, isolated Git worktrees, merging, and final integration checks.
+Use a board when a change can be split into tasks with their own checks and checkout boundaries. Open a Git workspace before starting.
 
-## Start a board
+## Prepare and start the board
 
-Open **Orchestrate** from Code, choose a plan under `documentation/plans/`, and open the board. Select a starting branch and a model, then press **Start**.
+1. Make a plan under `documentation/plans/`. Describe what each task must **Build**, how to **Test** it, what to **Accept**, which files it **Touches**, and what it **Depends on**. Assign a dependency if one task needs files or behavior from another. For a greenfield plan, make scaffolding a prerequisite of the work that uses it.
+2. Put existing reference files under **Inputs** using backticked workspace-relative paths. Include any fixture, spec, or screenshot that a separate checkout needs to reproduce a check.
+3. Open **Boards** from the workspace sidebar or use **Open boards** in the command palette. Pick the plan. If parsing fails, use **Repair** and review the validation error and suggested changes.
+4. Check the starting branch, model, and **Concurrency**, then select **Start**. Set concurrency to 1 to run tasks sequentially.
 
-Each task in the plan names its Build, Test, Accept, Touches, and Depends on requirements. Waves organize cards; explicit dependencies determine readiness. For a fresh project, make the scaffold a prerequisite of tasks that need it.
+Here is a one-task starting point. Replace its paths and checks with ones that exist in your project. Keep each task ID in both `todos` and the task heading.
 
-If the plan does not parse, **Repair** opens a planning chat to correct the named schema or dependency errors and retries opening the board.
+```markdown
+---
+name: forecast-labels
+overview: Show readable labels on the forecast card.
+todos:
+  - id: W1-A
+    content: Add labels and a fallback
+    status: pending
+isProject: true
+---
 
-## Execution controls
+# Forecast labels
 
-| Control | Behavior |
-| --- | --- |
-| **Start** | Starts eligible work up to the concurrency cap and enables automatic recovery |
-| **Pause** | Holds live conversations at model/tool boundaries; Resume continues those attempts |
-| **Stop** | Ends current attempts and prevents automatic resumption until you start the board again |
-| **Concurrency** | Limits concurrent tasks; set it to 1 for sequential execution |
+## Wave Breakdown
 
-Operations already in progress can finish when paused. Paused time does not consume an attempt's wall-clock limit.
+### Wave 1 — Labels
 
-Running boards started with automatic recovery resume after Minnow restarts, using their recorded workspace. Explicitly stopped and paused boards stay held. Older boards retain their previous startup behavior until explicitly started with the current recovery policy.
+#### Task W1-A: Add labels and a fallback
+- **Build:** Map forecast codes to labels and add a fallback for unknown codes.
+- **Test:** Run `node --test test/forecast.test.mjs`.
+- **Accept:** Code 0 shows Clear sky. Unknown codes show Conditions unavailable.
+- **Touches:** src/forecast.js, test/forecast.test.mjs
+- **Depends on:**
+```
 
-## Automatic recovery
+## Watch work and resolve a hold
 
-Failed attempts retain their task checkout. Repairs continue from existing work and the recorded failure. Isolated failed attempts also preserve recoverable checkpoints, including newly created files and the distinction between staged and unstaged changes.
+Open a task's **Activity** to see builder and tester attempts. Use **Spec** to compare the work with its instructions and **Files** to inspect planned or merged changes. Open **Needs attention** for a missing prerequisite, exhausted retries, or an integration error. Resolve the named condition and choose **Check again** when offered. The board can retry some prerequisites automatically.
 
-Board backups include these source checkpoints and require a passphrase. Temporary engine ownership files are excluded from backups.
+Choose **Pause** to hold live work at the next model or tool boundary, then **Resume** to continue those attempts. Choose **Stop** to end attempts and hold automatic recovery until you start again. Recovery keeps failed checkouts available for inspection and can wait for provider capacity without spending a repair attempt.
 
-After verified completion, Minnow reclaims clean merged task checkouts and their recovery copies. Unresolved work, waived tasks and checkouts with later edits remain retained. The integration branch keeps merged source.
+## Decide whether the result is ready
 
-Temporary provider outages, rate limits, quota resets and host capacity pressure enter a wait. The board resumes automatically when eligible. These waits do not consume code-repair attempts. Healthy work already running continues, and unrelated eligible tasks can progress.
+Read the task checks and the final integration report. A required check passes when the tester demonstrates it against the tested commit. A missing environment or capability leaves the result blocked. **Completed with waivers** identifies requirements skipped with explicit approval. Review the integration branch and final checks before pushing or opening a PR.
 
-Repeated implementation failures trigger a focused diagnostic attempt before the remaining repair attempts. Minnow retains acceptance requirements and stops spending attempts when the configured repair budget is exhausted.
-
-A final typecheck, lint, test or build failure creates a separate integration repair task. After that task is tested and merged, final checks run again. Original unfinished tasks retain their own scope.
-
-## Action needed
-
-Credentials, unavailable devices, missing reference files, unsupported verification capabilities and exhausted repair budgets can require your action. The board shows the specific prerequisite and retains its progress.
-
-Open **Needs attention** in the header to inspect recovery prerequisites, unfinished tasks, failed integration checks and board errors. The count badge and inbox are shared by the board and report views. Select a notice to see its details and available actions; command output stays folded until you open it. Informational waits and updates appear under **Board notices**. Close the inbox with its close button, Escape or a click outside it.
-
-Minnow automatically checks supported file, executable, local service, browser and CLI prerequisites. Once they are ready, the board continues. For an uncheckable prerequisite, resolve it and choose **Check again**. There is no additional Start or Rerun step. For a budget hold, increase the corresponding limit in **Settings → Autopilot**, then check again. Changing the board model re-evaluates affected provider holds.
-
-A missing recorded workspace stays held instead of running in another project. Reconnect the original directory to continue.
-
-## Verification and completion
-
-The tester independently runs the task's required checks. It reports **fail** for an observed defect and **blocked** when a required check cannot run. Required browser behavior needs executable browser verification; inspecting source does not establish rendered behavior.
-
-Required verification IDs derive from the task's Test and Accept specifications. A passing report accounts for each ID with evidence, and approval is tied to the tested commit. Editing the task changes its verification contract.
-
-List existing reference files in a plan's **Inputs** section using backticked workspace-relative paths. Minnow copies those declared files into the isolated board and commits them there. Missing inputs hold setup; the original workspace is not staged or committed.
-
-A rebase that changes tested content returns the task to testing before merge. Final checks apply to the current integration revision.
-
-A board completes when required tasks are merged and final verification passes. Explicit user waivers are recorded and displayed as **Completed with waivers**. An abandoned or stranded task is incomplete, even if other final checks passed.
-
-## Inspect work
-
-Click a task to open its details over the board. **Spec** shows the Build, Test, and Accept instructions and offers **Edit spec** when the task is editable. **Activity** lists attempts and opens each agent's transcript. A task with an active agent opens directly to its live transcript. **Files** shows planned files or merged changes. Press **Escape** to return to the task card.
-
-**Start** or **Retry** appears in the header when available. Open **More task actions** for actions such as **Reset**, **Rewind**, **Skip**, or **Merge and skip**. Reset discards the selected unmerged task's runtime work. Rewind restores integration to an earlier point and resets affected later work. Skip records a waiver for the omitted requirement.
-
-## Limits and models
-
-The header's model and reasoning settings apply to new attempts. Active attempts keep their selected settings. Recovery uses the existing provider routing and eligible model pool.
-
-**Settings → Autopilot** controls build/test repair allowances, final repair rounds, a board-wide recovery budget, and the per-attempt wall-clock limit. Waiting for resources does not spend the code-repair budget.
-
-Recovery does not expand tool permissions or authorize publishing. Review the integration result before committing, pushing or opening a pull request.
+See [Board work agents](agents.md) for how to read attempt results and choose a recovery action.

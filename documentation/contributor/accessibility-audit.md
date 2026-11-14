@@ -10,7 +10,7 @@ Press **`?`** (when not typing in a text field) to open the shell keyboard short
 
 | App | Core flow (keyboard-only) | Notes |
 |-----|---------------------------|-------|
-| **Shell / app rail** | Tab through menubar and app rail tiles; Enter launches apps | Ctrl+Tab cycles workspaces picker and recent apps |
+| **Graphite workspace sidebar** | Tab through sidebar navigation and footer controls; Enter launches apps | Ctrl+Tab cycles workspaces picker and recent apps |
 | **Code chat** | Tab to composer; type message; Enter send; `/` skills; model picker Arrow keys | Streaming uses throttled `aria-live` (no token spam) |
 | **Code** | File tree arrows; editor Tab/Escape; Ctrl/Cmd+K Quick Edit | Terminal: focus with tab; Ctrl/Cmd+C copies selection |
 | **Research** | Tab through hub controls; Enter starts run | Progress uses `aria-live="polite"` |
@@ -31,9 +31,9 @@ Release-gated apps are out of scope until their gate flips; audit them in the PR
 
 ## Screen reader smoke (NVDA on Windows)
 
-1. App rail: tile names announced; Ctrl+Tab cycle announces the focused app.
+1. Workspace sidebar: button names announced; Ctrl+Tab cycle announces the focused app.
 2. Chat stream: "Generating…" / "Thinking…" once; prose throttled (~3s); "Response complete" at end.
-3. Composer mode picker and model listbox: role/listbox + arrow navigation.
+3. Composer skill picker and model listbox: role/listbox + arrow navigation.
 4. Tool approval: digit shortcuts documented in strip; buttons labeled.
 
 ## Contrast (WCAG AA)

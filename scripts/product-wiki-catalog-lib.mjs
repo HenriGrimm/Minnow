@@ -81,6 +81,7 @@ function sectionForPath(relativePath) {
   if (normalized.startsWith('plugins/')) return 'Extensions';
   if (normalized.startsWith('agent-packs/')) return 'Extensions';
   if (normalized.startsWith('maintainer/')) return 'Maintainers';
+  if (normalized === 'manual/plugins.md') return 'Extend Minnow';
   if (normalized.startsWith('manual/')) {
     const rest = normalized.slice('manual/'.length);
     const segments = rest.split('/');

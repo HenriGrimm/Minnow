@@ -1,12 +1,12 @@
 # Setup from source
 
-Step-by-step guide to run Minnow from a git clone **for development**. End users should download a packaged build from [Releases](https://github.com/HenriGrimm/Minnow/releases) and follow [Install and first launch](../manual/get-started/install.md). Index: [`../README.md`](../README.md). Architecture orientation: [architecture.md](architecture.md). Exhaustive reference: [`../context.md`](../context.md).
+Run Minnow from a Git clone for development. To use a packaged build, follow [Install and open a workspace](../manual/get-started/install.md). For implementation details, see the [architecture overview](architecture.md) and [technical reference](../context.md).
 
 ## 1. Prerequisites
 
 | Requirement | Notes |
 |-------------|-------|
-| **Node.js 18+** (20+ recommended) | ES modules, Vite 6, native `node:test`. Check with `node -v`. |
+| **Node.js 24** | Matches the version in CI. Check with `node -v`. |
 | **npm** | Ships with Node. |
 | **Git** | To clone and contribute. |
 | **LM Studio** or another OpenAI-compatible provider | Needed to chat; the UI launches without one. |
@@ -19,7 +19,7 @@ Native modules (`better-sqlite3`, `@lydell/node-pty`) ship prebuilt binaries for
 ```bash
 git clone https://github.com/HenriGrimm/Minnow.git
 cd Minnow
-npm install
+npm ci
 ```
 
 `postinstall` automatically:
@@ -103,24 +103,17 @@ curl.exe -H "X-Minnow-Token: $(Get-Content $env:USERPROFILE\.minnow\session-toke
 
 A bare request without the header returns `401 Unauthorized` — that is the gate working, not a broken server.
 
-## 5. First-run checklist in the UI
+## 5. Verify the Graphite build
 
-1. **Provider** — **Models → Providers**: confirm the base URL and that the provider is reachable.
-2. **Model** — pick one from the menubar model chip (use refresh if empty). Vision tasks need a **VLM**; tool-calling models work best for agent turns.
-3. **Mode** — composer: General / Build / Plan / Debug. (Orchestrate opens from the sidebar hub, not the composer picker.)
-4. **Permissions** — choose the global Manual / Auto / Full access mode. Settings → Tools configures schema loading, caching, and result limits. Server tools need `npm start` and a healthy tools ping.
-5. **Workspace** — open **Code** and pick a project folder; file/git tools resolve under this root.
+1. Open a project folder from **Choose a workspace**, or use **Sandbox** for a temporary project.
+2. Select **New thread** in the workspace sidebar. Choose a connected model in the composer and follow [the first-change walkthrough](../manual/get-started/first-chat.md).
+3. Open the **Side panel** and choose **Files** or **Diff**. Use **Bottom panel** to open Terminal. If tools fail across features, search Settings for **Health and diagnostics**, then check the tool server logs.
 
-## 6. Optional contributor setup
+## 6. Configure optional services
 
-- **WSL / Git Bash (Windows)** — Settings → General → Chat & terminal → **Default shell**. Git Bash appears when Git for Windows is installed; WSL distros appear when WSL is installed. Requires `npm start`.
-- **Voice** — Models → Voice: local Whisper / Qwen3-TTS or provider APIs.
-- **Memory & Brain** — the **Brain** app owns memory settings and embeddings.
-- **MCP** — Settings → Tools & integrations → **MCP servers**: Context7 built in; add custom servers.
-- **Skills** — Settings → Tools & integrations → **Skills** / **Skills Library**: 19 built-in skills ship in-tree, plus third-party `SKILL.md` packs.
-- **Webhooks** — Settings → Tools & integrations → **Webhooks**: HMAC-signed outbound deliveries.
-
-> **Compare, Benchmarking, and Experts** are release-gated off in this build — see [apps-and-routes.md](apps-and-routes.md).
+- **Windows shells** live under **Settings → Code and workspace → Terminal**. Install Git for Windows for Git Bash or set up WSL for its distros.
+- **Voice** lives under **Models → Voice**. **Brain → Settings** controls its own memory and embeddings.
+- **MCP servers**, **Skills Library**, and **Webhooks** live under **Settings → Extensions**.
 
 ## 7. Next steps
 

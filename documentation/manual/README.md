@@ -1,84 +1,28 @@
 # Minnow manual
 
-Minnow is a full agentic development workspace that runs on your own computer: editor, agents, terminal, git, issues, planning, knowledge, and local model hosting in one app. It talks to models you host yourself — LM Studio, Ollama, `llama-server`, or any OpenAI-compatible endpoint — and it can also talk to cloud APIs if you give it a key. Either way, your chats, notes, files, and credentials stay in a folder on your disk. Nothing is uploaded to Minnow's authors, and there is no telemetry — an arrangement that was once unremarkable and is now, apparently, a feature.
+## Get to your first result
 
-You open a project folder and land in **Code**, with your files and editor beside chat. Existing project conversations stay selected; New threads open with the composer and ready issues. Five surfaces support that work from the app rail — **Source Control**, **Models**, **Brain**, **Issues**, and **Automations** — plus **Settings** from the menubar. The same assistant and tool set back all of them, which is the part that matters: an issue the agent files, a branch it makes, and a note it writes all refer to the same project, without you carrying anything between windows.
+1. [Install Minnow](get-started/install.md) and open a workspace. Use **Sandbox** to try it with an empty folder.
+2. [Connect a model](get-started/connect-a-model.md) and select it in the composer.
+3. [Ask about the project, make a change, and review it](get-started/first-chat.md).
 
-This manual covers the packaged app you install from GitHub Releases. If you build from source, everything here still applies, plus the developer setup notes in the [GitHub Wiki](https://github.com/HenriGrimm/Minnow/wiki).
+## Find the steps for what you want to do
 
-## Start here
+| I want to… | Start here |
+| --- | --- |
+| Find a thread, file, command, or setting | [Find your way around Graphite](apps/overview.md) |
+| Edit a file, run a check, or open a local preview | [Work in Code](apps/code.md) |
+| Inspect a diff and commit my changes | [Source Control](apps/code.md#source-control-center) |
+| Choose what an agent can do or answer an approval | [Tools and permissions](concepts/tools-and-permissions.md) |
+| Give an agent more context, steer it, or recover a turn | [Work in a thread](chat/chatting.md) |
+| Capture a bug and give it to an agent | [Issues](apps/issues.md) |
+| Check delegated work or run a plan in worktrees | [Agent conversations](chat/persistent-agent-chats.md) · [Orchestrate](orchestrate/boards.md) |
+| Save a project decision or find it again | [Brain](apps/brain.md) |
+| Run a recurring check while Minnow is running | [Automations](apps/scheduler.md) |
+| Use the same thread on my phone | [Connect a device](extend/companion.md) |
+| Move my Minnow profile to another computer | [Backup and restore](reference/backup-and-restore.md) |
+| Fix a missing model, stalled thread, or broken preview | [Troubleshooting](reference/troubleshooting.md) |
 
-If you have five minutes, do these three things in order:
+For tooling beyond the workspace, see [MCP, language servers, and browser tools](extend/integrations.md), [plugins](plugins.md), and [voice](extend/voice.md).
 
-1. [Install Minnow](get-started/install.md) and let it open.
-2. [Connect a model](get-started/connect-a-model.md) — without one, the model picker stays empty and nothing can answer you.
-3. [Send your first chat](get-started/first-chat.md) and approve your first tool call.
-
-After that, [How Minnow works](concepts/how-minnow-works.md) is the page that makes the rest of the product make sense.
-
-## Finding help while you work
-
-The **?** button in the menubar opens this manual inside Minnow. Press **Ctrl+K** / **Cmd+K** while it is open to jump to search. Pages match the version you have installed.
-
-Chat can also read this manual. Every chat can load three read-only tools — `minnow_docs_search`, `minnow_docs_read`, `minnow_docs_list` — so you can ask "how do I point Minnow at Ollama?" and get an answer with a page citation instead of a guess.
-
-Press **?** anywhere outside a text field for the keyboard shortcut sheet.
-
-**Brain is not this manual.** Brain is your own wiki, and you can edit it. This manual ships with the build and is read-only. See [Wiki and Brain](reference/wiki-and-brain.md) if the two get confused.
-
-## Everything in this manual
-
-### Get started
-
-- [Install and first launch](get-started/install.md) — installers, SmartScreen, updates, the system tray
-- [Connect a model](get-started/connect-a-model.md) — LM Studio, Ollama, local serve, cloud APIs, routing
-- [Costs and providers](get-started/costs-and-providers.md) — pricing, subscriptions, free options, and local hardware compared
-- [Your first chat](get-started/first-chat.md) — workspace picker, Code chat, approving a tool
-
-### Core concepts
-
-- [How Minnow works](concepts/how-minnow-works.md) — the shell, the tool server, what is local, what is not
-- [Tools and permissions](concepts/tools-and-permissions.md) — the approval card, Manual/Auto/Full access, the workspace boundary
-- [Context, memory, and rules](concepts/context-and-memory.md) — the context ring, Brain memory, standing rules
-
-### Chat
-
-- [Working in chat](chat/chatting.md) — attachments, dictation, queueing, steering, stopping, undo, branches
-- [Agent conversations](chat/persistent-agent-chats.md) — saved child chats, per-agent models, requests and messages between chats
-- [Skills and slash commands](chat/skills-and-commands.md) — `/` skills, the Skills Library, `/goal`, `/loop`
-
-### Apps
-
-- [Code](apps/code.md) — editor, terminal, git, dev servers, preview: the surface you work in
-- [Source Control Center](apps/code.md#source-control-center) — changes, history, branches, stashes, worktrees, pull requests, CI
-- [Apps overview](apps/overview.md) — Code and the surfaces around it, and how each one opens
-- [Models](apps/models.md) — downloads, local serving, providers, routing, sampler, usage
-- [Issues](apps/issues.md) — list, board, agent triage
-- [Brain](apps/brain.md) — your wiki, memories, ingest, and code index
-- [Automations](apps/scheduler.md) — agents that run on their own: PR review, issue fixing, presets
-- [Settings](apps/settings.md) — the full map of every settings section
-
-### Orchestrate
-
-- [Orchestrate boards](orchestrate/boards.md) — turn a plan into a kanban board that agents work through
-- [Agents, sub-agents, and packs](orchestrate/agents.md) — work agents, delegation, autopilot, watchdog
-
-### Extend Minnow
-
-- [Plugins](plugins.md) — create, install and manage tools, connections, panels and skills
-
-- [Integrations](extend/integrations.md) — MCP servers, language servers, browser automation, webhooks, search
-- [Connect other agents to Minnow](extend/mcp-hub.md) — use Issues, Brain, and the manual through MCP
-- [Voice](extend/voice.md) — dictation and spoken replies
-- [Use Minnow on your phone](extend/companion.md) — connect a phone or tablet, at home or anywhere
-
-### Reference
-
-- [Keyboard shortcuts](reference/keyboard-shortcuts.md)
-- [Where your data lives](reference/configuration.md) — Minnow home, its layout, `MINNOW_HOME`
-- [Backup and restore](reference/backup-and-restore.md) — one-file backups, scheduled snapshots, moving to a new computer
-- [Privacy and security](reference/privacy-and-security.md) — what leaves your machine, and what stops it
-- [Troubleshooting](reference/troubleshooting.md)
-- [Glossary](reference/glossary.md)
-- [Wiki and Brain](reference/wiki-and-brain.md)
-- [Roadmap](reference/roadmap.md)
+To open this manual in Minnow, press **Ctrl+K** or **Cmd+K** outside the editor and search for **Open Minnow wiki**. You can search it there or ask a thread to find a page and cite it. See [Keyboard shortcuts](reference/keyboard-shortcuts.md) for keys that depend on where focus is.

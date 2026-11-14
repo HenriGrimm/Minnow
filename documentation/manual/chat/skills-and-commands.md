@@ -1,150 +1,24 @@
-# Skills and slash commands
+# Use skills and slash commands
 
-Type **/** at the start of an empty composer and the menu opens. Keep typing to filter it; the best match on a command's name comes first.
+Type **/** at the start of an empty composer, then choose a skill or command from the menu. Continue with the exact task and relevant file or issue. Use the picker to see what is installed.
 
-- **Recent** — the last few things you picked, when you have not typed anything yet.
-- **Commands** — the workflow skills `/ask`, `/plan` and `/debug`, then app commands: **Review**, **Model**, **Permissions**, **Reasoning**, **MCP**, plus `/goal`, `/loop`, `/followup` and `/compact`, which change how the *chat* behaves rather than what the model is told.
-- **Skills** — packaged instructions that shape how the model does one job.
+## Workflow skills
 
-Commands that have a current value show it on the right — the model name, or **Auto** beside Permissions — so the menu doubles as a status panel. Commands marked **›** open a submenu in place: **Review** picks what to review (uncommitted changes, this branch, or the last commit), **Permissions** switches between Manual, Auto and Full access, and **Reasoning** picks the reasoning level the model supports.
+| Skill | Use it to | Example |
+| --- | --- | --- |
+| **/ask** | Investigate with a read-only turn | `/ask What invokes the newsletter job? Show the entry point and schedule.` |
+| **/plan** | Save an implementation plan under `documentation/plans/` | `/plan Plan CSV export for filtered results. Save the steps and checks in documentation/plans/csv-export.md.` |
+| **/debug** | Narrow down a failure with evidence | `/debug The first upload succeeds and the second returns 409. Start with the failing test and explain the cause before changing files.` |
 
-Navigate with **↑ ↓**, choose with **Enter** or **Tab**, open a submenu with **→**, go back with **←** or **Escape**. Add your own text after a skill name before sending.
+A workflow skill applies to the turn. To build after reviewing a plan, send a normal prompt and reference the plan file, or open it in [Orchestrate](../orchestrate/boards.md) if it is structured for a board.
 
-## Workflow skills: `/ask`, `/plan`, `/debug`
+## Run a follow-up or compact a thread
 
-Minnow has one agent. These three skills shape a single turn instead of switching the chat into a mode:
+- Use **/goal** when a thread needs to iterate toward a testable result. State the goal and what counts as success. Inspect each iteration and stop once you have the evidence you need.
+- Use **/loop** to schedule a prompt in the current thread. Check the parsed interval and make sure the thread is available to run it. Use [Automations](../apps/scheduler.md) for a job with its own run history.
+- Use **/followup** to add next steps to the thread. Check the command menu for the available options.
+- Use **/compact** when you need to shorten a long conversation. Restate critical details from earlier messages if you need their exact wording.
 
-| Command | What the turn does |
-|---------|--------------------|
-| `/ask` | Answers, explains, compares or brainstorms without changing anything. The turn is **read-only** — files, git and settings stay untouched, whatever your permission level. |
-| `/plan` | Writes or revises an implementation plan under `documentation/plans/`. The turn can read, research and run checks, but can **only write plan files**. |
-| `/debug` | Reproduces a bug, finds the root cause, fixes and verifies it, and files or updates it in Issues. Uses your normal permission level. |
+## Install or write a skill
 
-The `/ask` and `/plan` limits are enforced when each tool runs, not just requested in the prompt. Edit any of the three in **Settings → Agents → Workflow skills**.
-
-## Skills
-
-A skill is a `SKILL.md` file with a short front matter block and a body of instructions. Sending `/skill-name` loads those instructions for the current turn. `/caveman` and `/partymode` also pin themselves for subsequent turns. To remove any pinned skill, select **×** beside its name in the composer.
-
-Agents can also choose relevant skills during requested work with **Load skill**. The tool discovers enabled skills, loads their instructions, and reads bundled text references. It does not pin a skill or execute its steps; the agent uses its existing tools and permissions to follow the workflow. Skills marked `disable-model-invocation: true` remain available through explicit slash invocation and are excluded from agent discovery.
-
-Built-in skills are enabled by default.
-
-| Skill | What it does |
-|-------|--------------|
-| `/ask-user` | Gathers structured answers from you before starting large or ambiguous work |
-| `/browser-automation` | Drives Minnow's built-in browser for login flows, SPAs and screenshots |
-| `/build-plugin` | Authors and installs plugin packages with tools, connection fields, panels and skills |
-| `/caveman` | Ultra-compressed replies — cuts token use sharply while keeping technical accuracy |
-| `/code-review` | Security, correctness and style pass over a diff |
-| `/create-pr` | Push the current branch and open a GitHub pull request with `gh` |
-| `/debug-error` | Systematic trace of a tool failure or stack trace |
-| `/docs-update` | Brings README and project docs back in line with the code |
-| `/explain-code` | Teaches the code instead of changing it |
-| `/fix-ci` | Investigates GitHub Actions failures, fixes scoped issues, and re-runs local CI gates |
-| `/frontend-design` | Designs, builds and refines interfaces with art direction, working interactions and visual checks |
-| `/git-setup` | Initializes git in the workspace and connects a GitHub remote |
-| `/git-commit` | Writes a conventional commit message from the staged diff |
-| `/impeccable` | Design, critique and refine UI against the project's design system |
-| `/orchestrate-plan` | Runs a multi-phase plan via sub-agents with a verify gate after each phase (orchestrator does not write product code) |
-| `/partymode` | Bird Man, your local party animal |
-| `/plan-work` | Discovery and phased plans in `documentation/plans/` via sub-agents (planner does not write product code) |
-| `/refactor-safe` | Small, tested refactors with a minimal diff |
-| `/security-review` | OWASP-style pass over changes or files |
-| `/ui-designer` | UI audit with screenshots, then plan or implement |
-| `/write-tests` | Deterministic tests that match the project's existing style |
-
-Turn individual ones off in **Settings → Integrations → Skills**. Only enabled skills appear in the picker.
-
-Some skills are model-invocable and some are not. A skill marked otherwise can only be run by you typing it, so the model cannot decide on its own to enter caveman mode.
-
-## Installing more
-
-**Settings → Integrations → Skills → Skills Library** browses curated third-party packs: **Matt Pocock**, **Addy Osmani Agent Skills**, **Superpowers**, **last30days** and **Browserbase**. Install a whole pack or pick individual skills. You can also install directly from a GitHub URL.
-
-Each pack is pinned to a specific commit rather than tracking a branch, so an install is reproducible and cannot change under you. Downloads are restricted to GitHub hosts. Installs land in `skills/` in your Minnow home, record where they came from, and are enabled immediately.
-
-Browsing works offline — Minnow ships an index of each pack's contents. Installing needs a network.
-
-## Writing your own
-
-Create a folder in `skills/` under your Minnow home with a `SKILL.md` inside:
-
-```markdown
----
-name: release-notes
-description: >-
-  Draft release notes from the git log since the last tag. Use for /release-notes.
-disable-model-invocation: true
----
-
-# Release notes
-
-1. Run `git log <last-tag>..HEAD --oneline`.
-2. Group commits into Added / Changed / Fixed.
-3. Write one user-facing line per entry. No commit hashes, no internal ticket ids.
-4. Call out anything that breaks compatibility under its own heading.
-```
-
-Then enable it in the Skills catalog. A user skill wins over a built-in of the same name, so you can override a shipped skill by shadowing it.
-
-Set `disable-model-invocation: false` (or omit it) to let agents discover and load your skill during relevant work. Keep it `true` for workflows you want to start explicitly.
-
-## `/goal`
-
-`/goal <condition>` tells the chat to keep working until something is actually true — not until the model feels finished.
-
-After each turn a separate evaluator agent checks the condition against the code and test results, then either confirms it or sends the chat back to work. It is the difference between "I have fixed the tests" and tests that pass.
-
-- `/goal all tests in test/orchestrator pass`
-- `/goal clear` stops the loop (`stop`, `off` and `reset` also work)
-
-The goal persists on the chat across reloads. Bind a capable model to the evaluator role in **Models → Routing → Goal evaluator** — a weak evaluator will happily rubber-stamp a broken build.
-
-## `/loop`
-
-`/loop` re-runs a prompt on a schedule while Minnow is open and the chat is idle.
-
-| Form | Behaviour |
-|------|-----------|
-| `/loop 5m <prompt>` | Fixed interval. Units `s` `m` `h` `d`; anything under a minute rounds up to one. |
-| `/loop <prompt>` | Self-paced — Minnow picks a delay from 1 to 60 minutes based on how much the output is changing. |
-| `/loop` | Maintenance mode: runs the checklist in `.minnow/loop.md` in your workspace, or a built-in one. |
-
-The chat panel shows a countdown with pause, resume, skip, interval edit and stop. Loops expire after seven days.
-
-A global ticker wakes at each loop's stored due time, so a reload or a laptop sleep does not lose the schedule.
-
-`/goal`, `/loop` and `/followup` are mutually exclusive on one chat, and `/clear` clears all three.
-
-**`/loop` is not an automation.** A loop lives in one chat, keeps its context, and needs that chat idle. An [automation](../apps/scheduler.md) is a headless run in a chosen workspace with a chosen model, independent of any conversation. Iterating on something belongs in a loop; a nightly report belongs in Automations.
-
-## `/followup`
-
-`/followup` hands the work on to a **new chat** instead of continuing this one. The new chat opens with a context summary of the chat before it plus the task it exists to do, so nothing has to be re-explained.
-
-| Form | Behaviour |
-|------|-----------|
-| `/followup` | One follow-up; the agent picks the task from this chat's context |
-| `/followup <prompt>` | One follow-up with the task you give it |
-| `/followup <n>` | `n` follow-ups in a chain; the agent picks each task |
-| `/followup <n> <prompt>` | `n` follow-ups; yours is the first task, the agent picks the rest |
-
-`/followup 5 review the build for bugs and fix them` starts with the bug review, then hands off four more times — each link choosing the next task from what the link before it did. Chains stop at ten links.
-
-The first follow-up opens in front of you because it is your own next task. Later links arrive in the sidebar with an unread dot, so a long chain does not keep pulling the window away. The chat panel shows how many links are left and has a **Stop chain** button; `/followup stop` does the same. Arming a chain never sends anything to the model, and it is safe to type while the current reply is still running.
-
-A chain is stored on its chat, so it survives a reload or a restart: quit with a link pending and it fires when Minnow comes back.
-
-The agent-chosen tasks use the model bound in **Models → Routing → Utility tasks**.
-
-## `/compact`
-
-`/compact` folds older turns of the chat into a summary now, instead of waiting for the window to fill. The last couple of turns stay word for word, and nothing is deleted from the transcript. Text after the command tells the summary what to keep: `/compact keep the schema decisions`. `/compress` and `/summarize` are aliases. See [Context, memory, and rules](../concepts/context-and-memory.md).
-
-## Related
-
-- [Working in chat](chatting.md)
-- [Tools and permissions](../concepts/tools-and-permissions.md)
-- [Automations](../apps/scheduler.md)
-- [Settings app](../apps/settings.md)
+Open **Settings → Extensions → Skills Library** to install a collection or add a skill folder by GitHub URL. Open **Settings → Extensions → Skills** to manage installed skills. A custom skill is a folder with a `SKILL.md` file. Give it a description that says when to use it, clear steps, and the conditions for finishing. Test it in a fresh thread using a representative task.

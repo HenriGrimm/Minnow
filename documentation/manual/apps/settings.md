@@ -1,82 +1,17 @@
-# Settings
+# Find and change a setting
 
-Open Settings from the menubar gear. Pages are grouped by what you want to change. Model configuration lives in the [Models app](models.md).
+Open **Settings** from the command palette. Search by the control name or what you want to change. Select a result to open its page and highlight the control.
 
-## Find a setting
+| You want to… | Search for or open |
+| --- | --- |
+| Change the theme, tint, text, density, or window zoom | **General → Appearance** |
+| Change the tray behavior or rerun setup | **General → Startup and setup** |
+| Connect a phone or check updates | **General → Devices** or **Updates** |
+| Change shells, editor settings, or language support | **Code and workspace → Terminal**, **Editor**, or **Language servers** |
+| Connect GitHub | **Code and workspace → External Connections** |
+| Change project context, rules, or agent defaults | **AI and agents → Chat context**, **Rules**, or **Agents and permissions** |
+| Install an extension or connect MCP | **Extensions → Plugins**, **Skills Library**, or **MCP servers** |
+| Back up your data or change filesystem access | **Data and privacy → Backups** or **Access** |
+| Inspect a failure or copy a report | **About → Health and diagnostics** |
 
-Press **Ctrl+K** / **Cmd+K** with Settings open. Search for a setting or an everyday phrase such as "stop sounds", "backups", or "let agents edit files". Choose a result to open its page and highlight the control.
-
-Search also opens related settings in **Brain** and **Models**. Sidebar groups expand independently, so you can keep frequently used pages visible.
-
-## The map
-
-| Group | Pages |
-|-------|-------|
-| **General** | Startup & setup, Appearance, Notifications, Audio, Devices, Updates |
-| **Code & workspace** | Editor, Terminal, Language servers, Browser, External Connections, Issues |
-| **AI & agents** | Models & connections, Agents, Chat context, Rules, Tools, Autopilot, Timeouts & recovery |
-| **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
-| **Data & privacy** | Backups, Access |
-| **About & troubleshooting** | About, Health & diagnostics |
-
-### General
-
-**Startup & setup** controls desktop tray behavior and launch at startup. It also links to common settings and lets you run setup again.
-
-**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, fonts, and colors. Choose **Dark**, **Light**, or **System** mode. Select an **Accent color** swatch or choose **Custom…** to use the color picker or enter a hex value. Drag the **Surface tint** slider from 0% to 100% to adjust how much of the accent reaches backgrounds and selections. In a browser, use the browser's zoom controls.
-
-Choose **Advanced colors → Edit colors…** to change individual interface colors. Select an element, set its color and opacity, then apply your changes. You can reset individual colors, pause your overrides, or import and export a palette under **Palette options**.
-
-**Density** adjusts spacing in sidebars, menus, chats, and lists. **Compact** fits more on screen, **Cozy** is the default, and **Roomy** adds more space between items. Text size is set separately.
-
-**Notifications** controls desktop notifications and sound packs. The menubar **Activity** dropdown keeps live work and session outcomes visible even when alerts are muted or disabled. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
-
-**Audio** selects input and output devices and microphone processing. Speech recognition and read-aloud models live in **Models → Voice**.
-
-### Code & workspace
-
-**External Connections** brings GitHub, Fly.io, Supabase, and Clerk account setup together. The vendor CLIs manage credentials.
-
-For **GitHub**, select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow displays the verified username. If the CLI is missing, use the setup action or install link and select **Check again**. Accounts supplied through `GH_TOKEN` or `GITHUB_TOKEN` are identified as environment-managed.
-
-For **Fly.io**, **Supabase**, and **Clerk**, the page checks the shell configured for the current workspace. Use **Install CLI** where offered, or open the **Install guide** for your platform. Select **Sign in** and follow the CLI prompts in the terminal, then return to External Connections to verify. If a newly installed CLI is still missing, restart Minnow so it picks up PATH changes. In chat, use `/fly-cli`, `/supabase-cli`, or `/clerk-cli` to guide the agent through that service's commands. The agent's shell actions follow your usual tool permissions.
-
-**Editor** controls wrapping, indentation, inline AI suggestions, their context, and their model. **Terminal** controls panel behavior and the default shell, with workspace overrides. **Language servers** configures code diagnostics and symbol completions.
-
-**Browser** controls the preview panel, navigation permission, restored tabs, and allowed origins. **Issues** configures issue IDs, GitHub sync, types, statuses, priorities, and defaults.
-
-### AI & agents
-
-**Models & connections** opens Models. **Agents** configures the shared system prompt, work agents, sub-agent types, and context policy. **Chat context** chooses the default Brain notes, code map, and project documents added to chats. **Rules** manages standing instructions.
-
-**Tools** configures structured arguments, tool loading, caching, and result size. The global permission mode governs all agent actions.
-
-**Autopilot** sets board defaults for task concurrency, git worktrees, retries, planner fallback, and recovery. Each board can override these defaults. **Timeouts & recovery** sets idle and maximum durations for model responses and describes sub-agent recovery.
-
-### Extensions
-
-**Plugins** installs and manages local extension packages. Review a workspace folder, then install it and configure its connections, tools, skills, or panels. See [Plugins](../plugins.md).
-
-**Skills** manages installed agent instructions. **Skills Library** is a separate page for browsing and installing third-party collections; expand **Add from GitHub URL** to install a skill folder from a repository. **Agent packs** shows installed collections first, with ZIP upload and optional pack creation instructions below.
-
-**Web search** selects a provider and API keys. **Servers** manages local services such as SearXNG; model hosting lives in Models. **MCP servers** adds tools from external Model Context Protocol servers. **Connect other apps** gives other agents access to Minnow's Issues, Brain, and manual. **Webhooks** sends signed event notifications to other services.
-
-### Data & privacy
-
-**Backups** manages [backups and restore](../reference/backup-and-restore.md). **Access** controls filesystem access and the agent shell sandbox.
-
-File and git tools stay inside open workspaces by default. See [Tools and permissions](../concepts/tools-and-permissions.md).
-
-### Devices
-
-**Devices** connects phones and tablets. **Connect a phone** shows a QR to scan. The **Home network** and **Anywhere** cards turn each kind of connection on or off without a restart, and **Your devices** lists connected devices with **Rename** and **Disconnect**. See [Use Minnow on your phone](../extend/companion.md).
-
-### About & troubleshooting
-
-**About** shows version, runtime, storage, and startup diagnostics. **Updates** checks Minnow and installed CLI providers. The **Updates** button beside Settings shows how many updates are available and opens a popover with versions and actions. When the sidebar is open, both buttons are at its bottom. Minnow downloads desktop updates in the background and waits for you to restart. CLI updates start when you select **Update** and show their result in the app. In Settings, choose **Stable** or **Beta** for Minnow releases. **Health & diagnostics** shows subsystem health, captured errors, local logs, and a redacted report you can copy.
-
-## Where settings are stored
-
-Settings are saved in your Minnow home in files such as config.json, tools.json, search.json, rules.json, and skills.json. Secrets are encrypted. Browser-only appearance preferences are saved on the device.
-
-See [Where your data lives](../reference/configuration.md).
+Open [Models](models.md) to configure providers, model routing, and voice. For tool approvals, use the [composer permission control](../concepts/tools-and-permissions.md).

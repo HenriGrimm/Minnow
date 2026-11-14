@@ -1,102 +1,20 @@
-# Where your data lives
+# Find your profile and project files
 
-Everything Minnow keeps lives in one folder, called **Minnow home**. Chats, settings, your Brain wiki, encrypted credentials, downloaded models, logs — all of it, in files you can inspect, back up, or delete.
+Minnow home is `%USERPROFILE%\.minnow` on Windows and `~/.minnow` on macOS and Linux. If you launch with `MINNOW_HOME`, Minnow uses that directory. Use a new directory for a clean test profile.
 
-| Platform | Path |
-|----------|------|
-| Windows | `%USERPROFILE%\.minnow` |
-| macOS and Linux | `~/.minnow` |
+| You need | Look in Minnow home |
+| --- | --- |
+| Chat history and database snapshots | `sessions/` |
+| Brain pages and indexes | `brain/` |
+| Issues and attachments | `issues/` |
+| Preferences and appearance | `config.json` and `appearance.json` |
+| Provider connections and model files | `providers/` and `models/` |
+| Automation definitions and runs | `scheduler.json` and `scheduler-runs/` |
+| Diagnostics | `logs/` |
+| Built-in Sandbox workspace | `workspace/` |
 
-Set the `MINNOW_HOME` environment variable to use a different folder — useful for a clean profile to experiment in without touching your real one.
+Project folders you open live at their own paths. Use the thread card and Terminal to check the active path before recovering or moving files.
 
-Minnow creates every folder it might need on first run, so empty directories in there are normal and not a sign of anything wrong.
+Use [Backup and restore](backup-and-restore.md) to move your profile. Back up project repositories and uncommitted worktrees separately. Keep `.key` private and with its encrypted data. Deleting it makes saved credentials unreadable.
 
-## Backup
-
-**Settings → Data & privacy → Backups** writes the parts of this folder worth keeping into one file, on demand or on a schedule, and restores them here or on another computer. It knows which folders are caches, copies databases safely while Minnow is running, and encrypts your credentials with a passphrase. See [Backup and restore](backup-and-restore.md).
-
-If you would rather copy files yourself, these are the ones that matter:
-
-| Item | Why |
-|------|-----|
-| **`.key`** | The encryption key for every secret Minnow holds — API keys, OAuth tokens, webhook secrets, scheduled-job prompts. **Lose this and none of them can be decrypted.** There is no recovery; you re-enter everything. |
-| **`sessions/`** | Your entire chat history |
-| **`brain/`** | Your knowledge wiki and memories |
-| **`config.json`** | Your preferences |
-
-Copying by hand has two traps. `sessions/sessions.db` is a live database: copy it while Minnow is running and the copy can be inconsistent, so quit Minnow first. And a copy of `.key` is as sensitive as the credentials it unlocks — keep it somewhere you would keep a password.
-
-## The layout
-
-| Path | Contents |
-|------|----------|
-| `config.json` | Workspace, features, voice, terminal, tool security, fallbacks |
-| `model-reasoning-defaults.json` | Per-provider, per-model reasoning-level defaults from the model picker |
-| `.key` | The encryption key for secrets (restricted permissions on Unix) |
-| `sessions/` | Chat history in SQLite, with a full-text search index |
-| `sessions/snapshots/` | Rotating copies of the chat history database — the three newest, taken at most twice a day |
-| `brain/` | Wiki pages, vectors, ingested sources, code index databases, proposals |
-| `providers/` | Provider profiles, encrypted secrets, reported capabilities |
-| `models/` | Downloaded model artifacts; voice models under `models/voice/` |
-| `voice/` | Python environment for local speech |
-| `tools.json` | Tool loading, caching, result limits, and search settings |
-| `search.json` | Search provider, fallback chain, API keys |
-| `servers.json`, `servers/` | Managed local servers (SearXNG, `llama-cpp`) |
-| `skills.json`, `skills/` | Skill enable flags and installed skills |
-| `rules.json` | Your standing rules |
-| `prompts/`, `profiles/` | Prompt overrides and portable setup bundles |
-| `work-agents.json`, `sub-agents.json` | Agent overrides and sub-agent types |
-| `agent-packs/` | Installed agent packs |
-| `issues/` | Issue store and taxonomy |
-| `scheduler.json`, `scheduler-runs/` | Scheduled jobs and their run history |
-| `backup.json` | Backup contents, scheduled-snapshot settings and the encrypted snapshot passphrase |
-| `pre-restore/` | Data set aside by a restore, kept until you undo the restore or delete it |
-| `restore-staging/` | A backup unpacked and checked, waiting for the restart that applies it |
-| `research/` | Saved research reports |
-| `mcp.json`, `mcp/` | MCP server configuration |
-| `lsp.json`, `lsp/` | Language server configuration |
-| `webhooks.json` | Encrypted outgoing webhook configuration, including destination URLs |
-| `auth/devices.json` | Connected phones and tablets — credential hashes only, never tokens |
-| `auth/handoff.json` | Pending Home Screen sign-ins — hashes only |
-| `tailnet/` | The built-in Tailscale node's identity (never backed up) |
-| `oauth/` | Encrypted OAuth tokens |
-| `updater.json` | Your update channel |
-| `appearance.json` | Theme, custom colors, and fonts |
-| `browser-profiles/` | Disposable Agent Browser session profiles; tabs are not restored between sessions |
-| `logs/` | `diagnostics.jsonl` and `crash.jsonl` |
-| `worktrees/` | Git worktrees created for isolated board tasks |
-| `workspace/` | **Sandbox** workspace folder (`~/.minnow/workspace`) for chats without a project root |
-| `backups/` | Brain wiki backups (created when you export or restore the wiki) |
-
-Some folders in there are scaffolded ahead of the features that fill them and stay empty. That is normal, and nothing needs cleaning up.
-
-Browser preferences live in the `browser` block of `config.json`: whether browser automation is enabled, whether navigation is allowed, the allowed origin patterns, and whether visible preview tabs are restored on boot. The desktop setting `browser.nativeAgentTabs` enables live Electron guests for new reservations. Native tabs use ephemeral partitions and headless tabs use temporary profiles under `browser-profiles/`. Both close with their service.
-
-One exception: older profiles may still hold a large `sessions/state.json.backup`. It was an earlier backup format, nothing reads it any more, and the `sessions/snapshots/` copies replace it. Minnow leaves it alone — delete it yourself if you want the space back.
-
-## Encrypted secrets
-
-API keys and similar values are encrypted with AES-256-GCM under `.key`. Deleting or rotating that file makes existing secrets permanently unreadable — Minnow will simply show empty fields where your keys were, and you re-enter them.
-
-On Unix the key file is created with owner-only permissions.
-
-## A clean profile
-
-Point `MINNOW_HOME` at an empty directory and launch. You get a fresh Minnow — new setup wizard, no chats, no keys — and your real profile is untouched. Useful for testing a configuration, or for keeping work and personal setups apart.
-
-## Editing files by hand
-
-Everything except the encrypted secrets is plain JSON or markdown. Reading them is fine. Editing them is a recovery tool, not a workflow: Minnow normalizes configuration on load, so an unexpected shape gets replaced with defaults rather than honoured. Change settings through the app where you can.
-
-Brain pages are the exception — they are ordinary markdown and editing them directly is entirely reasonable. Some people keep `brain/` in a git repository.
-
-## Related
-
-- [Backup and restore](backup-and-restore.md)
-- [Privacy and security](privacy-and-security.md)
-- [Brain app](../apps/brain.md)
-- [Troubleshooting](troubleshooting.md)
-
-## Model selections and shared pools
-
-`default-model.json` stores the last composer-selected chat model. It is shared across workspaces; each saved chat keeps its own model. `model-routers/global-v2.json` stores shared pool definitions, catalog revision, migration aliases, assignments and evaluator decisions. Older workspace pool files are retained after migration so existing chat and board references remain recoverable.
+Change preferences in Settings. If you need to copy a live database by hand, quit Minnow first, including the process in the tray.

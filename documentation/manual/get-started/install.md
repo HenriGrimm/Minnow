@@ -1,78 +1,15 @@
-# Install and first launch
+# Install and open a workspace
 
-Minnow ships as a normal desktop application. This page covers getting it onto your machine, what happens the first time it opens, and how updates work afterwards.
+1. Download Minnow from [GitHub Releases](https://github.com/HenriGrimm/Minnow/releases). On Windows, run the Setup `.exe`. On macOS, choose the DMG for your Mac's architecture and drag Minnow into Applications. On Linux, download the AppImage for your architecture, make it executable, and launch it.
+2. On the setup screen, choose how to [connect a model](connect-a-model.md). Select **Restore from a backup** if you are moving an existing profile.
+3. In the workspace picker, open the folder that contains your project files. Select **Sandbox** if you want to try Minnow with an empty folder. Code opens after you choose a workspace.
 
-Once it is running, go straight to [Connect a model](connect-a-model.md) — the interface works without one, but nothing can answer you until a provider responds.
+If you downloaded an unsigned Windows build and Windows shows **More info**, verify the source and file before choosing **Run anyway**. On macOS, follow the release notes for the specific build if macOS blocks opening it.
 
-## Download
+## Keep work running or quit
 
-Get the installer from [Minnow Releases](https://github.com/HenriGrimm/Minnow/releases).
+Closing the desktop window normally leaves Minnow running in the system tray. To shut down the tool server, chats, and automations, choose **Quit Minnow** from the tray. To change what the close button does, search **Keep Minnow running** in Settings.
 
-| Platform | What you download |
-|----------|-------------------|
-| Windows | NSIS installer (`.exe`) |
-| macOS | `.dmg`, or `.zip` if you prefer to unzip into Applications yourself |
-| Linux | **AppImage** (`Minnow-x.x.x-x86_64.AppImage`) from the same releases page. Make it executable (`chmod +x …`) and run it — no system package manager required. Tray integration may need AppIndicator or StatusNotifier (common on KDE; GNOME may need an extension). Or [build from source](https://github.com/HenriGrimm/Minnow/wiki/Setup-from-source) via the wiki. |
+Use **Settings → General → Updates** to check the installed version, select the Stable or Beta channel, or check for updates. Restart when Minnow shows an update is ready.
 
-### If Windows blocks the installer
-
-Builds may be unsigned, and SmartScreen will announce that the publisher is unknown. This is true. It is also the most accurate thing Windows will tell you today. Choose **More info**, then **Run anyway** — you should only need to do it once, after which Windows will forget it ever objected.
-
-## What happens on first launch
-
-On a new installation, Minnow opens directly into **setup**. After completing or skipping setup, choose a project folder in the **workspaces picker**, then land in **Code** with chat in the left rail beside your editor.
-
-Two things happen behind the scenes:
-
-- Minnow creates its home folder, `%USERPROFILE%\.minnow` on Windows or `~/.minnow` elsewhere, and scaffolds the folders it uses. Empty directories in there are normal; they are waiting for things that have not happened to you yet. See [Where your data lives](../reference/configuration.md).
-- A local tool server starts on port **9473**. It is what lets chat read files, run git, open a terminal, and save your sessions. It listens on loopback only unless you deliberately turn on LAN access.
-
-The **Minnow setup** dialog opens over the workspace picker. Connect a provider and choose a default chat model, or select **Set up later** to open a workspace right away. To reopen the dialog, go to **Settings → General → Run setup again**. To bring an existing Minnow profile with you, choose **Restore from a backup**.
-
-Choose **Subscriptions**, **Run with Minnow**, **Cloud API**, or **Local server**. Minnow can download a model for your hardware or load a GGUF file from an existing model folder. For Claude Code, Codex, or Cursor, enable an installed, signed-in agent and choose a model. **Sign in** keeps setup open while you approve access in your browser.
-
-On macOS, choose **Install** to set up the selected agent in place. Minnow downloads missing Node.js and npm into its own home folder; no Homebrew or system-wide npm installation is required. **Set up GitHub** installs GitHub CLI and continues to browser sign-in. If Git is missing, approve Apple’s Command Line Tools installer; setup continues when it finishes. Keep the setup panel open to follow progress, or return and retry to rejoin an installation. On other platforms, setup shows the CLI installation command.
-
-Use **Settings** to change appearance, permissions, web search, GitHub, or memory. Use **Models → Routing** to choose models for specific tasks.
-
-## Closing, quitting, and the tray
-
-Closing the window does **not** quit Minnow. By default it hides to the system tray so chats, agents, scheduled jobs and the tool server keep running. That is deliberate: a long agent run should survive you closing the window.
-
-If several workspace windows are open, closing one asks whether to **close that workspace** (stop its chats and agents, and drop the folder from the next launch) or **keep it in the background**. The prompt is the same Minnow dialog used elsewhere in the app. Check **Do this every time** to skip the question until you change **Closing one of several windows** under Desktop app.
-
-The tray menu has Open, New chat, current agent/model status, unload local models, Settings, and launch-at-startup. **Quit Minnow** from the tray does a full shutdown.
-
-Change this under **Settings → General → Desktop app**:
-
-- **Keep Minnow running after closing the window** — on by default; turn it off if you want the close button to quit.
-- **Launch Minnow at startup** — off by default; this registers a real OS login item.
-
-## Updates
-
-Packaged builds check GitHub Releases in the background. When a build is downloaded and ready, a **Restart** pill appears in the menubar with the new version.
-
-**Settings → General → Updates** has the rest: current version, release notes, a manual **Check for updates**, and the channel.
-
-| Channel | What you get |
-|---------|--------------|
-| **Stable** | Normal releases. The default for stable installers. |
-| **Beta** | Pre-releases as well. The default for beta installers. Newer features, rougher edges. |
-
-Two things worth knowing: a completed download stays ready even if a later check fails, so a flaky network does not lose your update; and because closing to tray keeps Minnow alive, an update that wants a restart applies when you actually quit and reopen, not when you close the window.
-
-## Quick health check
-
-If something is clearly not working, in order:
-
-1. Is your model provider actually running, with a model loaded?
-2. **Models → Providers** — is the base URL right? Press refresh.
-3. **Settings → Advanced → Health & diagnostics** — subsystem probes, grouped errors, and a local log tail. **Copy report** produces a redacted markdown summary you can paste into a bug report.
-
-Everything on that page stays on your machine. Minnow sends no telemetry.
-
-More symptoms and fixes: [Troubleshooting](../reference/troubleshooting.md).
-
-## Next
-
-[Connect a model](connect-a-model.md)
+Continue with [Connect a model](connect-a-model.md) and [Make and review your first change](first-chat.md).
