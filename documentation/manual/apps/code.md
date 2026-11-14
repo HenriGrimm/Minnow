@@ -1,6 +1,6 @@
 # Edit, run, and review in Code
 
-Start in an open workspace and choose a thread or **New thread**. The thread header opens the side and bottom panels. Use **+** in an open panel to add another surface. See [Graphite navigation](overview.md) for the launcher and thread card.
+Start in an open workspace and choose a thread or **New thread**. The thread header opens the side and bottom panels. Use **+** in an open panel to add another surface. See [Workspace navigation](overview.md) for the launcher and thread card.
 
 ## Find and edit a file
 

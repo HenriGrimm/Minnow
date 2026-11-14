@@ -4,17 +4,24 @@ import fs from 'node:fs/promises';
 import { AGENT_CLI_DEFINITIONS, clearAgentCliModelCatalogCache } from './agent-cli-catalog.js';
 import { detectAgentCli } from './agent-cli-detect.js';
 import { getAgentCliProviderConfig } from '../providers/store.js';
-import { applyAgentCliCaptureEnv, cursorAgentVersionSortKey, resolveAgentCliBin, resolveWindowsNpmAgentCliUpdate } from '../generations/agent-cli/resolve-bin.js';
+import {
+  applyAgentCliCaptureEnv,
+  cursorAgentVersionSortKey,
+  resolveAgentCliBin,
+  resolveWindowsNpmAgentCliUpdate,
+} from '../generations/agent-cli/resolve-bin.js';
 import { beginAgentCliMaintenance } from '../generations/agent-cli/admission.js';
 import { cliSessionIsIdle, disposeCliSessions } from '../generations/agent-cli/lifecycle.js';
 import { runProcess } from '../process-runner.js';
+import { installWindowsCursorRelease, windowsCursorVersionsDir } from './cursor-windows-update.js';
 
 const VERSION = /(?:^|\s)v?(\d+\.\d+\.\d+(?:-[\w.-]+)?)(?=\s|$)/i;
 const CURSOR_VERSION = /\b(\d{4}\.\d{1,2}\.\d{1,2}(?:-\d{2}-\d{2}-\d{2})?-[a-f0-9]{6,40})\b/i;
+const CURSOR_WINDOWS_UPDATE_URL = 'https://cursor.com/install?win32=true&update=true&channel=prod';
 const FEEDS = {
   claude: 'https://registry.npmjs.org/@anthropic-ai%2fclaude-code/latest',
   codex: 'https://registry.npmjs.org/@openai%2fcodex/latest',
-  cursor: process.platform === 'win32' ? 'https://cursor.com/install?win32=true' : 'https://cursor.com/install',
+  cursor: process.platform === 'win32' ? CURSOR_WINDOWS_UPDATE_URL : 'https://cursor.com/install',
 };
 
 export function parseCliVersion(kind, text) {
@@ -59,7 +66,9 @@ async function readLatestVersion(kind, request) {
   } finally { await reader.cancel().catch(() => {}); }
   if (kind === 'cursor') {
     // Read the artifact version from the platform's official installer as text.
-    return parseCliVersion(kind, raw.match(/https:\/\/downloads\.cursor\.com\/lab\/([^/]+)\//)?.[1]);
+    const artifact = raw.match(/https:\/\/downloads\.cursor\.com\/lab\/([^/]+)\//)?.[1];
+    const version = parseCliVersion(kind, artifact);
+    return version === artifact ? version : null;
   }
   const version = parseCliVersion(kind, JSON.parse(raw).version);
   return version?.includes('-') ? null : version;
@@ -75,6 +84,11 @@ export function createAgentCliUpdates(deps = {}) {
   let lastCheck = 0;
   let lastResult;
 
+  function cacheFeed(kind, version, at = Date.now()) {
+    if (feeds.get(kind)?.at > at) return;
+    feeds.set(kind, { version, at, expiresAt: at + (version ? 4 * 60 * 60_000 : 5 * 60_000) });
+  }
+
   async function scan(force) {
     if (checking) return checking;
     const now = Date.now();
@@ -87,8 +101,8 @@ export function createAgentCliUpdates(deps = {}) {
       let feed = feeds.get(kind);
       if (installedVersion && (!feed || now >= feed.expiresAt || (force && now - feed.at >= 60_000))) {
         const version = await readLatestVersion(kind, request).catch(() => null);
-        feed = { version, at: now, expiresAt: now + (version ? 4 * 60 * 60_000 : 5 * 60_000) };
-        feeds.set(kind, feed);
+        cacheFeed(kind, version, now);
+        feed = feeds.get(kind);
       }
       const latestVersion = feed?.version ?? null;
       return { kind, label, installedVersion, latestVersion,
@@ -100,6 +114,31 @@ export function createAgentCliUpdates(deps = {}) {
     return checking;
   }
 
+  async function updateWindowsCursor(versionsDir, before, label) {
+    const latest = await readLatestVersion('cursor', request).catch(() => null);
+    if (!latest) throw new Error(`Could not update ${label}. Cursor's release information is unavailable. Check your connection and retry.`);
+    cacheFeed('cursor', latest);
+    const previous = parseCliVersion('cursor', before.version);
+    const state = previous ? compareCliVersions('cursor', previous, latest) : 'available';
+    if (state === 'current') return { installedVersion: previous };
+    if (state === 'unavailable') throw new Error(`Could not update ${label}. Cursor's release could not be ordered against your installed version.`);
+
+    const signal = AbortSignal.timeout(180_000);
+    let failure;
+    try {
+      await installWindowsCursorRelease(versionsDir, latest, {
+        request, run, signal, parseVersion: text => parseCliVersion('cursor', text),
+      });
+    } catch (error) { failure = error; }
+    clearAgentCliModelCatalogCache('cursor');
+    const installedVersion = parseCliVersion('cursor', (await detectCli('cursor', true)).version);
+    if (installedVersion && compareCliVersions('cursor', installedVersion, latest) === 'current') return { installedVersion };
+    const reason = signal.aborted ? 'The updater timed out. Check your connection and retry.'
+      : failure?.code ? 'The Windows package could not be installed. Check installation permissions and available disk space.'
+        : failure?.message || 'Minnow could not start the new version. Retry the update.';
+    throw new Error(`Could not update ${label}. ${reason}`);
+  }
+
   function update(kind) {
     if (running.has(kind)) return running.get(kind);
     const { providerId, label } = AGENT_CLI_DEFINITIONS[kind];
@@ -109,6 +148,10 @@ export function createAgentCliUpdates(deps = {}) {
       await disposeCliSessions(session => session.providerId === providerId && (session.closed || cliSessionIsIdle(session)));
       const before = await detectCli(kind, true);
       if (!before.resolvedCommand) throw new Error(`${label} is not installed.`);
+      if (process.platform === 'win32' && kind === 'cursor') {
+        const versions = windowsCursorVersionsDir(before);
+        if (versions) return updateWindowsCursor(versions, before, label);
+      }
       let invocation = process.platform === 'win32'
         ? await resolveWindowsNpmAgentCliUpdate(kind, before.resolvedBinPath) : null;
       if (!invocation) {

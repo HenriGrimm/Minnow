@@ -29,6 +29,7 @@ import {
 } from '../appearance/fonts';
 import { seedLocalStorageFromAppearanceBoot } from '../appearance/persist';
 import { applyGraphitePreferences } from '../appearance/graphite-preferences';
+import { parseCssColor, rgbaToColorInputValue } from '../appearance/color-format';
 
 export {
   getFollowSystem,
@@ -79,6 +80,30 @@ export function applyThemeFromPreference(_pref?: LegacyThemePreference): void {
 }
 
 let appearanceUnsubs: Array<() => void> = [];
+let previewScrollbarObserver: MutationObserver | undefined;
+
+function syncPreviewScrollbarAccent(): void {
+  const setAccent = window.minnow?.preview?.setScrollbarAccent;
+  if (!setAccent || previewScrollbarObserver) return;
+  const root = document.documentElement;
+  let lastColor: string | undefined;
+  const sync = () => {
+    const resolved = parseCssColor(getComputedStyle(root).getPropertyValue('--mn-accent'));
+    if (!resolved) return;
+    const color = rgbaToColorInputValue(resolved);
+    if (color === lastColor) return;
+    lastColor = color;
+    void setAccent(color).catch(() => {
+      if (lastColor === color) lastColor = undefined;
+    });
+  };
+  previewScrollbarObserver = new MutationObserver(sync);
+  previewScrollbarObserver.observe(root, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'data-graphite-accent', 'style'],
+  });
+  sync();
+}
 
 /** Re-apply custom tokens and fonts when appearance prefs change. */
 function wireAppearanceListeners(): void {
@@ -100,6 +125,7 @@ export function initTheme(): void {
   syncThemeListeners();
   wireAppearanceListeners();
   applyResolvedTheme(getStoredTheme());
+  syncPreviewScrollbarAccent();
 }
 
 /** Persist preference and refresh syntax highlighting. */

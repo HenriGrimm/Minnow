@@ -1,5 +1,5 @@
 import { loadBrowserMeta } from '../config/browser-meta';
-import type { MinnowPreviewApi } from '../electron';
+import type { MinnowPreviewApi, MinnowPreviewLoadFailedDetail } from '../electron';
 import {
   getFilePanelState,
   patchFilePanelState,
@@ -22,6 +22,7 @@ import { listViewerTabs } from './file-viewer-tab-store';
 import { withSessionToken } from '../api/session-token.ts';
 import { detectEmbedBlockedFrame } from './preview-embed-detect';
 import { resolveIsolatedPreviewLoadUrl, resolvePreviewLoadUrl, workspacePreviewUrl } from './preview-load-url';
+import { clearPreviewLoadError, isAbortedPreviewLoad, previewRetrySource, showPreviewLoadError } from './preview-load-error';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
 import {
   canAgentRevealPreviewPanel,
@@ -621,9 +622,32 @@ function hidePreviewStatus(): void {
   }
 }
 
+function syncActivePreviewLoadError(): void {
+  const tab = getActivePreviewTab();
+  const body = getPreviewBody();
+  if (tab?.loadFailed) {
+    hidePreviewStatus();
+    if (tab.source?.kind === 'url' && tab.loadFailed.url) {
+      syncAddressBarFromNavigation(tab.loadFailed.url);
+    }
+    showPreviewLoadError(body, tab.loadFailed, tab.source, reloadPreview);
+  } else {
+    clearPreviewLoadError(body);
+  }
+  scheduleElectronPreviewHostVisibilitySync();
+}
+
+function clearPreviewTabError(tabId: string): void {
+  if (!getPreviewTab(tabId)?.loadFailed) return;
+  setPreviewTabLoadFailed(tabId, undefined);
+  if (tabId === getActivePreviewTabId()) syncActivePreviewLoadError();
+}
+
 function setPreviewLoading(loading: boolean, tabId?: string): void {
   const id = resolveTabId(tabId);
   if (id) setPreviewTabLoading(id, loading);
+  if (id && loading) clearPreviewTabError(id);
+  if (id !== getActivePreviewTabId()) return;
   const el = getLoadingIndicator();
   if (!el) return;
   el.classList.toggle('hidden', !loading);
@@ -675,10 +699,12 @@ function onPreviewNavigation(url: string, tabId?: string): void {
     void revealPreviewPanelForAgentNavigation(url);
   }
 
+  if (url?.startsWith('chrome-error:')) return;
   if (resolvedTabId === getActivePreviewTabId()) {
     syncAddressBarFromNavigation(url);
   }
-  if (!url || url === 'about:blank' || url.startsWith('chrome-error:')) return;
+  if (!url || url === 'about:blank') return;
+  if (resolvedTabId) clearPreviewTabError(resolvedTabId);
   if (resolvedTabId === getActivePreviewTabId()) {
     hidePreviewStatus();
   }
@@ -720,6 +746,7 @@ function onPreviewGuestCrashed(
   clearLoadedTabGuest(resolvedTabId);
   setPreviewTabGuestCrashed(resolvedTabId, detail);
   if (resolvedTabId !== getActivePreviewTabId()) return;
+  syncActivePreviewLoadError();
   setPreviewLoading(false, resolvedTabId);
   const reason = detail.reason?.trim() || 'crashed';
   showPreviewStatus(
@@ -728,37 +755,14 @@ function onPreviewGuestCrashed(
 }
 
 function onPreviewLoadFailed(
-  detail: {
-    errorCode: number;
-    errorDescription: string;
-    url?: string;
-  },
+  detail: MinnowPreviewLoadFailedDetail,
   tabId?: string,
 ): void {
-  const resolvedTabId = resolveTabId(tabId);
-  if (resolvedTabId) {
-    setPreviewTabLoadFailed(resolvedTabId, {
-      errorCode: detail.errorCode,
-      errorDescription: detail.errorDescription,
-    });
-  }
-  if (resolvedTabId !== getActivePreviewTabId()) return;
-  setPreviewLoading(false, resolvedTabId ?? undefined);
-  let message =
-    detail.errorDescription?.trim() ||
-    `Preview failed to load (error ${detail.errorCode}).`;
-  if (detail.errorCode === -27 || /ERR_BLOCKED_BY_RESPONSE/i.test(message)) {
-    message =
-      'This site refused to load in the embedded browser. Use Open in new tab, or try again after restarting Minnow.';
-  }
-  const previewSource = getActivePreviewSource();
-  const externalUrl =
-    detail.url && (detail.url.startsWith('http') || detail.url.startsWith('file:'))
-      ? detail.url
-      : previewSource?.kind === 'url'
-        ? previewSource.url
-        : undefined;
-  showPreviewStatus(message, externalUrl);
+  const id = resolveTabId(tabId);
+  if (!id || !getPreviewTab(id) || isAbortedPreviewLoad(detail)) return;
+  setPreviewTabLoadFailed(id, detail);
+  setPreviewLoading(false, id);
+  if (id === getActivePreviewTabId()) syncActivePreviewLoadError();
 }
 
 // ── Electron host ────────────────────────────────────────────────────────────
@@ -811,6 +815,7 @@ async function clearPreviewGuest(tabId?: string): Promise<void> {
   const api = getPreviewApi();
   if (!api) return;
   const id = resolveTabId(tabId);
+  if (id) clearPreviewTabError(id);
   clearLoadedTabGuest(id ?? undefined);
   if (api.tabs?.close && id) {
     await api.tabs.close(id);
@@ -842,11 +847,13 @@ async function loadSourceInPreview(
   if (!api) return;
   const id = resolveTabId(tabId);
   if (!id) return;
+  const isCurrentSource = () => sourcesEqual(getPreviewTabSource(id), source);
   setPreviewLoading(true, id);
   let url: string;
   try {
     url = await resolveIsolatedPreviewLoadUrl(source, cacheBust, getFileTreeListingWorkspaceRoot());
   } catch (error) {
+    if (!isCurrentSource()) return;
     onPreviewLoadFailed({
       errorCode: -2,
       errorDescription: error instanceof Error ? error.message : String(error),
@@ -855,12 +862,15 @@ async function loadSourceInPreview(
     return;
   }
 
+  if (!isCurrentSource()) return;
   await ensureElectronPreviewTab(id);
+  if (!isCurrentSource()) return;
   await showPreviewHost();
 
+  if (!isCurrentSource()) return;
   if (api.navigateAndWait) {
     const result = await api.navigateAndWait(url, id);
-    if (!result.ok) {
+    if (!result.ok && !getPreviewTab(id)?.loadFailed && isCurrentSource()) {
       onPreviewLoadFailed(
         {
           errorCode: result.errorCode ?? -1,
@@ -992,6 +1002,7 @@ function applySourceToFrame(tabId: string, source: PreviewSource, cacheBust?: nu
   clearFrameBlockedTimer();
   if (tabId === getActivePreviewTabId()) {
     hidePreviewStatus();
+    clearPreviewTabError(tabId);
     const input = getUrlInput();
     if (input) input.value = sourceToAddressBar(source);
   }
@@ -1008,7 +1019,10 @@ function applySourceToFrame(tabId: string, source: PreviewSource, cacheBust?: nu
     .then((url) => {
       if (frameLoadVersions.get(tabId) === version && frame.isConnected) frame.src = url;
     })
-    .catch((error) => showPreviewStatus(error instanceof Error ? error.message : String(error)));
+    .catch((error) => {
+      if (frameLoadVersions.get(tabId) !== version || !frame.isConnected) return;
+      onPreviewLoadFailed({ errorCode: -2, errorDescription: String(error) }, tabId);
+    });
 }
 
 function applySourceToPreview(source: PreviewSource, cacheBust?: number, tabId?: string): void {
@@ -1075,6 +1089,7 @@ export async function activatePreviewTabGuest(
 
   showActiveTabFrame();
   syncPreviewChromeFromState();
+  syncActivePreviewLoadError();
 
   const tab = getPreviewTab(tabId);
   if (!tab) return;
@@ -1189,8 +1204,8 @@ export async function closePreviewTabUi(tabId: string): Promise<void> {
   clearLoadedTabGuest(tabId);
   closePreviewTab(tabId);
   if (usesGraphiteContentTabs()) {
+    syncActivePreviewLoadError();
     refreshGraphiteSurfaceLayout();
-    scheduleElectronPreviewHostVisibilitySync();
     return;
   }
   slotTabs.unregisterPreviewTab(tabId);
@@ -1199,6 +1214,7 @@ export async function closePreviewTabUi(tabId: string): Promise<void> {
   if (isLastTab) {
     cancelDeferredPreviewLoad();
     hidePreviewStatus();
+    syncActivePreviewLoadError();
     setPreviewLoading(false);
     if (listViewerTabs().length > 0) {
       showViewerSplit();
@@ -1308,22 +1324,6 @@ export async function openUrlInPreviewPanel(url: string): Promise<void> {
   }
 
   await revealPreviewPanelForAgentNavigation(trimmed);
-  scheduleElectronPreviewHostVisibilitySync();
-
-  if (api.navigateAndWait) {
-    const result = await api.navigateAndWait(trimmed);
-    if (!result.ok) {
-      showPreviewStatus(
-        result.errorDescription?.trim() || 'Preview failed to load',
-        trimmed,
-      );
-      return;
-    }
-    hidePreviewStatus();
-    scheduleElectronPreviewHostVisibilitySync();
-    return;
-  }
-
   await loadSourceInPreview({ kind: 'url', url: trimmed });
   scheduleElectronPreviewHostVisibilitySync();
 }
@@ -1441,6 +1441,11 @@ function reloadPreview(): void {
 
   const api = getPreviewApi();
   const activeSource = getActivePreviewSource();
+  const failed = tabId ? getPreviewTab(tabId)?.loadFailed : undefined;
+  if (failed && activeSource) {
+    loadPreviewSource(previewRetrySource(activeSource, failed), { cacheBust: true });
+    return;
+  }
   if (!activeSource) {
     const input = getUrlInput();
     const parsed = input ? parseAddressInput(input.value) : null;
@@ -1577,24 +1582,28 @@ function bindPreviewIpcListeners(): void {
   unsubscribePageTitle?.();
   unsubscribeGuestCrashed?.();
 
-  unsubscribeNavigation = api.onNavigation((url, tabId) => {
+  unsubscribeNavigation = api.onNavigation((url, tabId, instanceId) => {
+    if (instanceId && instanceId !== DESIGN_MODE_INSTANCE_ID) return;
     onPreviewNavigation(url, tabId);
   });
-  unsubscribeLoading = api.onLoading((loading, tabId) => {
+  unsubscribeLoading = api.onLoading((loading, tabId, instanceId) => {
+    if (instanceId && instanceId !== DESIGN_MODE_INSTANCE_ID) return;
     setPreviewLoading(loading, tabId);
     if (!loading && usesElectronPreview() && resolveTabId(tabId) === getActivePreviewTabId()) {
       void showPreviewHost();
       onPreviewReloadSettled();
     }
   });
-  unsubscribeLoadFailed = api.onLoadFailed((detail, tabId) => {
+  unsubscribeLoadFailed = api.onLoadFailed((detail, tabId, instanceId) => {
+    if (instanceId && instanceId !== DESIGN_MODE_INSTANCE_ID) return;
     onPreviewLoadFailed(detail, tabId);
   });
   unsubscribePageTitle = api.onPageTitle((title, tabId) => {
     const id = resolveTabId(tabId);
     if (id && title.trim()) setPreviewTabTitle(id, title);
   });
-  unsubscribeGuestCrashed = api.onGuestCrashed?.((detail, tabId) => {
+  unsubscribeGuestCrashed = api.onGuestCrashed?.((detail, tabId, instanceId) => {
+    if (instanceId && instanceId !== DESIGN_MODE_INSTANCE_ID) return;
     onPreviewGuestCrashed(detail, tabId);
   }) ?? null;
   unsubscribeDevToolsState?.();

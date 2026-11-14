@@ -227,27 +227,71 @@ test('stopped work settles even when child cards or task attention have not caug
   assert.ok(mount.querySelector('.chat-turn-changes'));
 });
 
-test('automatic agent handoffs share the original work group and only its last reply is final', () => {
-  chat.history.push(
-    { role: 'user', content: 'First result.', commandId: 'resume-one',
-      provenance: { version: 1, actor: 'system', source: 'task_delivery', kind: 'delegation_result' } },
-    { role: 'assistant', content: 'One review is done. Waiting for the others.' },
-    { role: 'user', content: '[Sub-agent finished] Last result.', hiddenFromTranscript: true },
-    { role: 'assistant', content: 'All reviews are done. Here are the consolidated findings.' },
-  );
+test('automatic agent handoffs keep each settled reply visible in the original work group', () => {
   chat.chatCommandVersion = 1;
-  chat.agentExecution = { executionId: 'resume-execution', commandId: 'resume-one', status: 'completed' };
+  chat.history[0].commandId = 'review-command';
+  chat.history[0].workStatus = 'completed';
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-turn-final').dataset.historyIndex, '3');
+
+  chat.history.push({ role: 'user', content: 'First result.', commandId: 'resume-one',
+    provenance: { version: 1, actor: 'system', source: 'task_delivery', kind: 'delegation_result' } });
+  chat.agentExecution = { executionId: 'resume-execution', commandId: 'resume-one', status: 'running' };
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work').dataset.outcome, 'live');
+  assert.equal(mount.querySelector('.chat-turn-final').dataset.historyIndex, '3');
+  assert.ok(!mount.querySelector('.chat-turn-final').classList.contains('chat-work-hidden'));
+
+  chat.history.push(
+    ...tool('review', 'src/review.ts'),
+    { role: 'assistant', content: 'All reviews are done. Here are the consolidated findings.' },
+    { role: 'user', content: '[Sub-agent finished] Last result.', hiddenFromTranscript: true },
+    { role: 'assistant', content: 'The consolidated findings already include that result.' },
+  );
+  chat.agentExecution.status = 'completed';
   const turns = collectTranscriptTurns(chat);
   assert.equal(turns.length, 1);
-  assert.deepEqual(turns[0].finalIndices, [chat.history.length - 1]);
+  assert.deepEqual(turns[0].finalIndices, [3, 7, 9]);
   assert.equal(turns[0].executionStatus, 'completed');
   renderChatFromHistory(chat);
-  assert.equal(mount.querySelectorAll('.chat-work').length, 1);
+  const headers = mount.querySelectorAll('.chat-work');
+  assert.equal(headers.length, 1);
+  assert.equal(headers[0].getAttribute('aria-expanded'), 'false');
   assert.equal(mount.querySelectorAll('.chat-turn-changes').length, 1);
-  assert.match(mount.querySelector('.chat-turn-final').textContent, /All reviews are done/);
+  const replies = [...mount.querySelectorAll('.chat-turn-final')];
+  assert.deepEqual(replies.map(row => Number(row.dataset.historyIndex)), [3, 7, 9]);
+  assert.ok(replies.every(row => !row.classList.contains('chat-work-hidden')));
+  assert.ok(mount.querySelector('.msg.assistant[data-history-index="5"]').classList.contains('chat-work-hidden'));
+  assert.equal(mount.querySelector('.chat-reply-foot').dataset.index, '9');
   assert.equal(mount.querySelector('.agent-message--result'), null);
   assert.ok(!mount.textContent.includes('First result.'));
-  assert.ok([...mount.querySelectorAll('.msg.assistant')].find(row => row.textContent.includes('One review is done')).classList.contains('chat-work-hidden'));
+  assert.ok(!mount.textContent.includes('Last result.'));
+});
+
+test('a legacy check-in with tool activity and no reply leaves the prior answer visible', () => {
+  chat.history.push(
+    { role: 'user', content: '[Sub-agent check-in] Still working.' },
+    ...tool('check-in', 'src/status.ts'),
+    { role: 'assistant', content: '', thinking: ['No update needed.'] },
+    { role: 'user', content: 'Another request.' },
+    { role: 'assistant', content: 'Another answer.' },
+  );
+  assert.deepEqual(collectTranscriptTurns(chat).map(turn => turn.finalIndices), [[3], [9]]);
+  renderChatFromHistory(chat);
+  assert.deepEqual([...mount.querySelectorAll('.chat-turn-final')].map(row => row.dataset.historyIndex), ['3', '9']);
+  assert.ok(!mount.querySelector('.msg.assistant[data-history-index="3"]').classList.contains('chat-work-hidden'));
+});
+
+test('a peer message steered into a parent turn keeps the preceding reply and shows its sender', () => {
+  chat.history.push(
+    { role: 'user', content: '[Sub-agent finished] Review sent by a peer.', steer: true,
+      provenance: { version: 1, actor: 'agent', source: 'agent_tool', kind: 'peer_message', sourceChatId: 'reviewer' } },
+    { role: 'assistant', content: 'That result is included in the report.' },
+  );
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelectorAll('.chat-work').length, 1);
+  assert.deepEqual([...mount.querySelectorAll('.chat-turn-final')].map(row => row.dataset.historyIndex), ['3', '5']);
+  assert.match(mount.querySelector('.agent-message summary').textContent, /Message from/);
 });
 
 test('historical work outcomes survive subsequent turns and do not inherit another command status', () => {
@@ -1004,9 +1048,14 @@ test('a sub-agent card replaces its spawn row on the rail without breaking the c
   assert.ok(read.classList.contains('chat-step--joined'), 'the rail runs past the hidden row into the card');
 });
 
-test('the latest settled answer gets copy, remake and its speed; older turns do not', () => {
+test('the latest compact reply has copy and remake controls while built-in metrics stay below the composer', () => {
   chat.history.push({ role: 'user', content: 'Now update settings.' }, ...tool('b', 'src/settings.ts'),
-    { role: 'assistant', content: 'Settings updated.' });
+    {
+      role: 'assistant',
+      content: 'Settings updated.',
+      stats: { tokens_per_second: 43.8 },
+      usage: { prompt_tokens: 10_000, completion_tokens: 5522 },
+    });
   renderChatFromHistory(chat);
   const feet = mount.querySelectorAll('.chat-reply-foot');
   assert.equal(feet.length, 1);
@@ -1016,9 +1065,59 @@ test('the latest settled answer gets copy, remake and its speed; older turns do 
   );
   const cards = mount.querySelectorAll('.chat-turn-changes');
   assert.equal(cards[1].nextElementSibling, feet[0], 'the footer sits under the latest changes card');
+  assert.equal(feet[0].textContent, '');
+  assert.ok(mount.querySelectorAll('.msg-stat-value').length > 0);
+  assert.equal(mount.querySelector('.msg-stat-value:not([hidden])'), null);
   setChatView('full');
-  assert.equal(mount.querySelectorAll('.chat-reply-foot').length, 0, 'full view keeps the raw metric chips instead');
+  assert.equal(mount.querySelector('.chat-reply-foot, .msg-stat-value:not([hidden])'), null);
   setChatView('compact');
+});
+
+test('per-message plugin contributions follow transcript repaints and dispose on unload', { timeout: 5000 }, async (t) => {
+  const observer = Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver');
+  globalThis.MutationObserver = win.MutationObserver;
+  const { createPluginUiContext } = await import('../../src/plugins/ui-context.ts');
+  const owner = createPluginUiContext('metrics', 'release', []);
+  t.after(() => {
+    owner.dispose();
+    if (observer) Object.defineProperty(globalThis, 'MutationObserver', observer);
+    else delete globalThis.MutationObserver;
+  });
+  const assistant = chat.history.at(-1);
+  assistant.stats = { tokens_per_second: 43.8 };
+  assistant.usage = { prompt_tokens: 10_000, completion_tokens: 5522 };
+  renderChatFromHistory(chat);
+
+  let disposed = 0;
+  let reportMount;
+  const mountPlugin = (slot, className, position, metric) => owner.context.mountSlot(slot, (target) => {
+    assert.ok(target.textContent.includes(metric));
+    const element = document.createElement('span');
+    element.className = className;
+    element.textContent = 'Plugin contribution';
+    reportMount?.(className);
+    return { element, dispose: () => { disposed++; } };
+  }, position);
+  mountPlugin('chat.message-metrics', 'plugin-usage', 'append', `${(15_522).toLocaleString()} tokens`);
+  mountPlugin('chat.message-throughput', 'plugin-throughput', 'after', '43.8 tok/s');
+  const original = mount.querySelector('.plugin-throughput');
+  assert.ok(original);
+  assert.ok(original.parentElement.matches('[data-plugin-slot="chat.message-metrics"]'));
+  assert.equal(original.previousElementSibling.dataset.pluginSlot, 'chat.message-throughput');
+  assert.ok(mount.querySelector('[data-plugin-slot="chat.message-metrics"] > .plugin-usage'));
+
+  const remounted = new Promise((resolve) => {
+    let count = 0;
+    reportMount = () => { if (++count === 2) resolve(); };
+  });
+  renderChatFromHistory(chat);
+  await remounted;
+  assert.equal(original.isConnected, false);
+  assert.ok(mount.querySelector('.plugin-usage, .plugin-throughput'));
+  assert.equal(disposed, 2);
+  owner.dispose();
+  assert.equal(disposed, 4);
+  assert.equal(mount.querySelector('.plugin-usage, .plugin-throughput'), null);
 });
 
 test('a repeat sync of a long live turn writes no transcript classes', async () => {

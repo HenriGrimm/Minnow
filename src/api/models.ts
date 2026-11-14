@@ -659,13 +659,13 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
     const enabled = providers.filter((p) => p.enabled !== false);
 
     if (enabled.length === 0) {
-      sel.innerHTML = '<option value="">No providers configured</option>';
+      sel.innerHTML = '<option value="">No providers enabled</option>';
       const { loadRouterConfig, routerOptions } = await import('../models/routers');
       const routers = await loadRouterConfig().catch(() => null);
       if (routers) routerOptions(sel, routers);
       restoreDefaultModelOption(sel);
       syncModelSelectPicker();
-      setStatus('err', 'No providers configured. Open Models → Providers to add one.');
+      setStatus('err', 'Open Models → Providers to enable or add a provider.');
       updateModelLoadUnloadButtons();
       return;
     }
@@ -676,7 +676,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
       const { providers: listed } = await listProviders();
       const enabledCount = listed.filter((p) => p.enabled !== false).length;
       if (enabledCount === 0) {
-        setStatus('err', 'No providers configured. Open Models → Providers to add one.');
+        setStatus('err', 'Open Models → Providers to enable or add a provider.');
       } else {
         setStatus('err', 'Cannot reach one or more providers. Check Models → Providers.');
       }

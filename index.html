@@ -1172,11 +1172,12 @@
     <div class="models-header-status" id="modelsHeaderStatus" role="status" aria-live="polite"></div>
     <button
       type="button"
-      class="icon-btn models-inspector-toggle"
+      class="graphite-surface-icon models-inspector-toggle"
       id="btnModelsInspector"
       aria-expanded="true"
       aria-controls="modelsInspector"
       aria-label="Toggle model details"
+      title="Toggle model details"
     >
       <i class="fi fi-rr-sidebar-flip icon-svg" aria-hidden="true"></i>
     </button>
@@ -1269,7 +1270,9 @@
   </header>
   <div class="brain-page-body">
     <nav class="brain-rail brain-overlay-surface" aria-label="Brain sections">
-      <span class="brain-rail__title" aria-hidden="true">Brain</span>
+      <div class="brain-rail__heading" data-back-to-chat-header>
+        <span class="brain-rail__title" aria-hidden="true">Brain</span>
+      </div>
       <button type="button" class="brain-rail__btn" data-brain-nav="graph" aria-current="page" title="Graph">
         <i class="fi fi-rr-chart-network icon-svg" aria-hidden="true"></i>
         <span class="brain-rail__label">Graph</span>
@@ -2029,11 +2032,8 @@
 <main id="schedulerView" class="scheduler-page" aria-label="Automations">
   <header class="scheduler-header" data-app-titlebar data-back-to-chat-header>
     <div class="scheduler-header__brand">
-      <span id="schedulerPageIcon" class="scheduler-header__icon" aria-hidden="true"></span>
-      <div class="scheduler-header__titles">
-        <h1>Automations</h1>
-        <p id="schedulerSummary" class="scheduler-summary" aria-live="polite">—</p>
-      </div>
+      <h1 class="scheduler-header__title">Automations</h1>
+      <output id="schedulerCount" class="scheduler-count" aria-label="Total automations" hidden></output>
     </div>
     <div class="scheduler-header__controls">
       <button type="button" class="scheduler-btn scheduler-btn--primary" id="btnSchedulerAdd">New automation</button>

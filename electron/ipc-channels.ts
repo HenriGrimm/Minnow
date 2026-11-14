@@ -1,4 +1,5 @@
 export const PREVIEW_SHOW = 'minnow:preview:show';
+export const PREVIEW_SET_SCROLLBAR_ACCENT = 'minnow:preview:set-scrollbar-accent';
 export const PREVIEW_HIDE = 'minnow:preview:hide';
 export const PREVIEW_CLEAR = 'minnow:preview:clear';
 export const PREVIEW_LOAD_URL = 'minnow:preview:load-url';

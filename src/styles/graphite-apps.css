@@ -33,7 +33,7 @@
   background: var(--mn-graphite-sheet, var(--mn-bg));
 }
 
-.mn-graphite-apps :is(.models-page-header__title, .settings-page-header h1, .brain-rail__title, .brain-page-header__title, .scheduler-header__titles h1, .issues-header__titles h1, .graphite-thread-title, .scc-changes__heading, .ov2__list-title) {
+.mn-graphite-apps :is(.models-page-header__title, .settings-page-header h1, .brain-rail__title, .brain-page-header__title, .scheduler-header__title, .issues-header__titles h1, .graphite-thread-title, .scc-head__title, .scc-changes__heading, .ov2__list-title) {
   color: var(--mn-graphite-text, var(--mn-fg));
   font-size: var(--mn-type-md);
   font-weight: var(--mn-weight-medium);
@@ -44,7 +44,6 @@
 .mn-graphite-apps :is(.models-nav, .brain-rail.brain-overlay-surface, .settings-nav, .scc-rail, .ov2__list) {
   background: var(--mn-graphite-sheet, var(--mn-bg));
   border-inline-end-color: var(--mn-graphite-line, var(--mn-border));
-  scrollbar-width: thin;
 }
 
 .mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item, .ov2__board-btn) {
@@ -100,7 +99,7 @@
 }
 
 /* View switches share one quiet track and the same selection fill as the rail. */
-.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) {
+.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg, .scheduler-header .auto-seg) {
   gap: var(--mn-space-0-5);
   padding: var(--mn-space-0-5);
   border: 1px solid var(--mn-graphite-line, var(--mn-border));
@@ -108,7 +107,7 @@
   background: var(--mn-graphite-raised, var(--mn-surface-1));
 }
 
-.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) > button {
+.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg, .scheduler-header .auto-seg) > button {
   min-height: var(--mn-workbench-segment-h);
   padding: 0 var(--mn-space-2);
   border: 0;
@@ -119,13 +118,13 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) > button:hover {
+  .mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg, .scheduler-header .auto-seg) > button:hover {
     background: var(--mn-graphite-hover, var(--mn-surface-elevated));
     color: var(--mn-graphite-text, var(--mn-fg));
   }
 }
 
-.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg) > button:is([aria-pressed='true'], .is-active) {
+.mn-graphite-apps :is(.issues-page:not(.issues-page--embedded) .issues-view-toggle, .brain-graph-toolbar .brain-graph-seg, .scheduler-header .auto-seg) > button:is([aria-pressed='true'], .is-active) {
   background: var(--mn-sel, var(--mn-surface-2));
   color: var(--mn-graphite-text, var(--mn-fg));
 }
@@ -254,22 +253,12 @@
   --settings-content-pad-top: var(--mn-space-2);
 }
 
-.mn-graphite-apps .settings-content .settings-location {
-  max-width: 696px;
-  margin-inline-start: 0;
-  padding-inline: 0;
-}
-
 .mn-graphite-apps .settings-location__section {
   display: none;
 }
 
 .mn-graphite-apps .settings-content .settings-area.is-active > h2 {
   font-weight: 500;
-}
-
-.mn-graphite-apps .settings-content :is(.settings-area, .settings-hub) {
-  margin-inline-start: 0;
 }
 
 /* Models */
@@ -397,7 +386,6 @@
     padding: 0 24px 16px;
     border: 0;
     overflow-y: auto;
-    scrollbar-width: thin;
   }
 
   .mn-graphite-apps .models-server .models-server-sessions {
@@ -484,18 +472,23 @@
   padding: var(--mn-space-2) var(--mn-workbench-rail-inset) var(--mn-space-3);
 }
 
-.brain-rail__title {
+.brain-rail__heading {
   display: none;
 }
 
-.mn-graphite-apps .brain-rail__title {
+.mn-graphite-apps .brain-rail__heading {
   display: flex;
   flex: none;
   align-items: center;
+  gap: var(--mn-space-1);
   min-height: var(--mn-workbench-band-h);
   margin: calc(-1 * var(--mn-space-2)) calc(-1 * var(--mn-workbench-rail-inset)) var(--mn-space-1-5);
   padding-inline: var(--mn-workbench-gutter);
   border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
+}
+
+.mn-graphite-apps :is(.brain-page-header__navigation, .brain-graph-toolbar > .back-to-chat) {
+  display: none;
 }
 
 .mn-graphite-apps .brain-page.is-graph-canvas-bg .brain-rail.brain-overlay-surface {

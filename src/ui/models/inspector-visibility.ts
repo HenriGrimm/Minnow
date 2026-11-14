@@ -1,20 +1,39 @@
+import { usesGraphiteModels } from './graphite-chrome';
+
 const STORAGE_KEY = 'minnow.models.inspector';
 
 function modelsRoot(): HTMLElement | null {
   return document.getElementById('modelsView');
 }
 
+function isGraphiteServerSection(root: HTMLElement): boolean {
+  return root.dataset.modelsSection === 'server' && usesGraphiteModels();
+}
+
 /** Whether the right-hand inspector column is visible on workbench sections. */
 export function isModelsInspectorOpen(): boolean {
-  return !modelsRoot()?.classList.contains('is-inspector-hidden');
+  const root = modelsRoot();
+  return Boolean(root && !root.classList.contains('is-inspector-hidden') &&
+    (!isGraphiteServerSection(root) || root.classList.contains('is-runtime-inspector')));
+}
+
+export function syncModelsInspectorToggle(): void {
+  document.getElementById('btnModelsInspector')?.setAttribute('aria-expanded', String(isModelsInspectorOpen()));
+}
+
+export function toggleModelsInspector(): void {
+  const root = modelsRoot();
+  if (!root) return;
+  const open = !isModelsInspectorOpen();
+  if (isGraphiteServerSection(root)) root.classList.toggle('is-runtime-inspector', open);
+  setModelsInspectorOpen(open);
 }
 
 /** Show or hide the inspector; syncs the header toggle and localStorage. */
 export function setModelsInspectorOpen(open: boolean): void {
   const root = modelsRoot();
   root?.classList.toggle('is-inspector-hidden', !open);
-  const toggle = document.getElementById('btnModelsInspector');
-  toggle?.setAttribute('aria-expanded', String(open));
+  syncModelsInspectorToggle();
   try {
     localStorage.setItem(STORAGE_KEY, open ? '1' : '0');
   } catch {

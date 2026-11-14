@@ -96,24 +96,32 @@
     /* Equal gutters center the transcript. The checklist stays close to it on wide screens. */
     --chat-todo-outer-inset: clamp(var(--mn-space-8), 3cqi, 5rem);
     --chat-todo-min-rail-width: calc(12rem + var(--chat-todo-outer-inset));
+    --chat-todo-column-gap: clamp(var(--mn-space-8), 3cqi, 4rem);
     grid-template: auto minmax(0, 1fr) /
       minmax(var(--chat-todo-min-rail-width), 1fr)
       minmax(0, var(--chat-composer-max))
       minmax(var(--chat-todo-min-rail-width), 1fr);
-    column-gap: clamp(var(--mn-space-8), 3cqi, 4rem);
+    column-gap: var(--chat-todo-column-gap);
   }
 
-  .chat-viewport:has(> .chat-todo-panel) > :is(.chat-area, .chat-viewport-dock) {
+  .chat-viewport:has(> .chat-todo-panel) > .chat-viewport-dock {
     grid-area: 2 / 2;
   }
 
   .chat-viewport:has(> .chat-todo-panel) > .chat-area {
-    --chat-todo-transcript-padding-inline: 0px;
+    /* The scrollport spans the panel. Keep the reading column inside the checklist rails. */
+    grid-area: 2 / 1 / 3 / -1;
+    scrollbar-gutter: stable both-edges;
+    --chat-todo-transcript-padding-inline: max(
+      0px,
+      calc(var(--chat-todo-min-rail-width) + var(--chat-todo-column-gap) - (100% - var(--chat-composer-max)) / 2)
+    );
     padding-inline: var(--chat-todo-transcript-padding-inline);
   }
 
   .chat-viewport > .chat-todo-panel {
     grid-area: 2 / 1;
+    z-index: 1;
     width: min(22rem, calc(100% - var(--chat-todo-outer-inset)));
     min-width: 0;
     margin: var(--mn-space-8) 0 0;
@@ -964,35 +972,24 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   }
 }
 
-/* Stats pill under assistant message */
-.msg-stats {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 0 4px;
+/* Give per-message plugin contributions space only when they are mounted. */
+.msg-stats,
+.msg-stats > [data-message-metric] {
+  display: none;
 }
 
-.stat-chip {
+.msg-stats:has(> :not([data-message-metric]), > [data-message-metric] > :not(.msg-stat-value)) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mn-space-2);
+}
+
+.msg-stats > [data-message-metric]:has(> :not(.msg-stat-value)) {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: var(--mn-type-2xs);
-  letter-spacing: .06em;
-  padding: 2px 7px;
-  border-radius: var(--mn-radius-xs);
-  border: 1px solid var(--mn-border-strong);
-  color: var(--mn-fg-subtle);
-  white-space: nowrap;
+  gap: var(--mn-space-1);
 }
-
-.stat-chip span { font-weight: 700; }
-.stat-chip.c { color: var(--mn-accent); border-color: color-mix(in srgb, var(--mn-accent) 35%, transparent); }
-.stat-chip.g { color: var(--mn-success); border-color: color-mix(in srgb, var(--mn-success) 35%, transparent); }
-.stat-chip.y { color: var(--mn-warning); border-color: color-mix(in srgb, var(--mn-warning) 35%, transparent); }
-.stat-chip.r { color: var(--mn-danger); border-color: color-mix(in srgb, var(--mn-danger) 35%, transparent); }
-/* llama.cpp-only chips: prompt-processing rate and speculative-draft acceptance. */
-.stat-chip.b { color: var(--mn-fg-muted); border-color: color-mix(in srgb, var(--mn-fg-muted) 35%, transparent); }
-.stat-chip.p { color: var(--mn-accent-ink); border-color: color-mix(in srgb, var(--mn-accent-ink) 35%, transparent); }
 
 /* ── Tool call rows ────────────────────────────────────────────────────────
    A transcript can hold hundreds of these, so a settled call is one quiet line:

@@ -552,7 +552,6 @@
   field-sizing: content;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: auto;
   text-rendering: auto;
   font-variant-ligatures: none;
   transition: none;

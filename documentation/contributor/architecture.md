@@ -39,7 +39,7 @@ A high-level map of how Minnow fits together. For the exhaustive, file-by-file r
 
 No UI framework — direct TypeScript + DOM with CSS tokens. Boot order in [`src/main.ts`](../../src/main.ts): page bridge → OS shell → router. Key areas:
 
-- **`src/os/`** — workspace gate, routes, app registry, and the Graphite sidebar and stage. Code side and bottom panels live in `src/ui/surfaces/`.
+- **`src/os/`** — workspace gate, routes, app registry, and the workspace sidebar and app stage. Code side and bottom panels live in `src/ui/surfaces/`.
 - **`src/chat/`** — chat orchestration, workflow skill clamps, and prompt composition (`prompts/`).
 - **`src/tools/`** — the tool catalog ([`definitions.ts`](../../src/tools/definitions.ts); counts and release states in the [generated inventory](architecture-inventory.md)), executors, and permission gating. Product chat send is [`runChatTurn`](../../src/chat/run-turn-chat.ts) around [`runTurn()`](../../server/runner/run-turn.js) — not a client copy of the stream/tool loop.
 - **`src/agents/`** — sub-agent runner/controller, work agents, sampler resolution, UI Designer.

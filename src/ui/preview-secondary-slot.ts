@@ -1,8 +1,8 @@
+import type { MinnowPreviewLoadFailedDetail } from '../electron';
 import type { PreviewSource } from '../state/file-panel';
-import { getPreviewTab, updatePreviewTabSource } from './preview-tab-store';
+import { getPreviewTab, setPreviewTabLoadFailed, setPreviewTabLoading, updatePreviewTabSource } from './preview-tab-store';
 import { resolveIsolatedPreviewLoadUrl } from './preview-load-url';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
-import { showToast } from './toast';
 import {
   bindPreviewInstanceToElement,
   setPreviewInstanceVisible,
@@ -12,6 +12,7 @@ import { getSlotContent, WORKSPACE_PREVIEW_SECONDARY_INSTANCE } from './right-pa
 import { HTTP_URL_RE, parsePreviewAddress } from './preview-url';
 import { attachBrowserUrlSuggest } from './browser-url-suggest';
 import { bindPreviewBrowserMenu } from './preview-browser-menu';
+import { clearPreviewLoadError, isAbortedPreviewLoad, previewRetrySource, showPreviewLoadError } from './preview-load-error';
 
 const PREVIEW_FILE_API = '/api/preview/file/';
 
@@ -22,7 +23,6 @@ let activeSecondaryTabId: string | null = null;
 let loadedSecondaryUrl: string | null = null;
 const loadedSecondaryGuests = new WeakSet<NonNullable<ReturnType<typeof getPreviewTab>>>();
 let secondaryControlsBound = false;
-let unsubscribeSecondaryNavigation: (() => void) | null = null;
 
 function usesElectron(): boolean {
   return Boolean(window.minnow?.preview);
@@ -42,6 +42,25 @@ function getSecondaryBackButton(): HTMLButtonElement | null {
 
 function getSecondaryForwardButton(): HTMLButtonElement | null {
   return document.getElementById('btnPreviewForwardSecondary') as HTMLButtonElement | null;
+}
+
+function syncSecondaryLoadError(tabId: string | null): void {
+  const tab = tabId ? getPreviewTab(tabId) : undefined;
+  const body = getBody();
+  if (tab?.loadFailed) {
+    if (tab.source?.kind === 'url' && tab.loadFailed.url) syncSecondaryUrlInputFromNavigation(tab.loadFailed.url);
+    showPreviewLoadError(body, tab.loadFailed, tab.source, reloadSecondaryPreview);
+  } else {
+    clearPreviewLoadError(body);
+  }
+  scheduleSecondaryPreviewHostLayoutSync();
+}
+
+function onSecondaryLoadFailed(tabId: string, detail: MinnowPreviewLoadFailedDetail): void {
+  if (isAbortedPreviewLoad(detail)) return;
+  setPreviewTabLoadFailed(tabId, detail);
+  setPreviewTabLoading(tabId, false);
+  if (tabId === activeSecondaryTabId) syncSecondaryLoadError(tabId);
 }
 
 function sourceToAddressBar(source: PreviewSource): string {
@@ -141,20 +160,26 @@ async function loadSecondaryPreviewSource(
   updatePreviewTabSource(tabId, source);
   syncSecondaryPreviewUrlInput(source);
   activeSecondaryTabId = tabId;
+  setPreviewTabLoadFailed(tabId, undefined);
+  syncSecondaryLoadError(tabId);
 
   const bust = options?.cacheBust ? Date.now() : undefined;
+  const isCurrent = () => activeSecondaryTabId === tabId && getPreviewTab(tabId)?.source === source;
   let url: string;
   try {
     url = await resolveIsolatedPreviewLoadUrl(source, bust, getFileTreeListingWorkspaceRoot());
   } catch (error) {
-    showToast(error instanceof Error ? error.message : String(error));
+    if (isCurrent()) {
+      onSecondaryLoadFailed(tabId, { errorCode: -2, errorDescription: String(error) });
+    }
     return;
   }
+  if (!isCurrent()) return;
   loadedSecondaryUrl = url;
 
   if (usesElectron()) {
     hideFrame();
-    await loadSecondaryElectron(tabId, url);
+    await loadSecondaryElectron(tabId, url, { isCurrent });
     return;
   }
 
@@ -180,6 +205,11 @@ function reloadSecondaryPreview(): void {
   const tab = getPreviewTab(tabId);
   const source = tab?.source;
   const api = window.minnow?.preview;
+
+  if (tab?.loadFailed && source) {
+    void loadSecondaryPreviewSource(previewRetrySource(source, tab.loadFailed), { cacheBust: true });
+    return;
+  }
 
   if (usesElectron() && api) {
     if (source?.kind === 'workspace') {
@@ -219,15 +249,25 @@ function bindSecondaryPreviewIpcListeners(): void {
   const api = window.minnow?.preview;
   if (!api) return;
 
-  unsubscribeSecondaryNavigation?.();
-  unsubscribeSecondaryNavigation = api.onNavigation((url, tabId, instanceId) => {
-    if (instanceId && instanceId !== WORKSPACE_PREVIEW_SECONDARY_INSTANCE) return;
-    const secondaryTabId = getSecondaryPreviewTabId();
-    if (!secondaryTabId) return;
-    const resolvedTabId = tabId ?? secondaryTabId;
-    if (resolvedTabId !== secondaryTabId) return;
+  api.onNavigation((url, tabId, instanceId) => {
+    if (instanceId !== WORKSPACE_PREVIEW_SECONDARY_INSTANCE || !tabId || !getPreviewTab(tabId)) return;
+    if (!url || url === 'about:blank' || url.startsWith('chrome-error:')) return;
+    if (getPreviewTab(tabId)?.loadFailed) setPreviewTabLoadFailed(tabId, undefined);
+    commitSecondaryTabSourceFromNavigation(url, tabId);
+    if (tabId !== activeSecondaryTabId) return;
     syncSecondaryUrlInputFromNavigation(url);
-    commitSecondaryTabSourceFromNavigation(url, secondaryTabId);
+    syncSecondaryLoadError(tabId);
+  });
+  api.onLoading?.((loading, tabId, instanceId) => {
+    if (instanceId !== WORKSPACE_PREVIEW_SECONDARY_INSTANCE || !tabId) return;
+    setPreviewTabLoading(tabId, loading);
+    if (!loading || !getPreviewTab(tabId)?.loadFailed) return;
+    setPreviewTabLoadFailed(tabId, undefined);
+    if (tabId === activeSecondaryTabId) syncSecondaryLoadError(tabId);
+  });
+  api.onLoadFailed?.((detail, tabId, instanceId) => {
+    if (instanceId !== WORKSPACE_PREVIEW_SECONDARY_INSTANCE || !tabId || !getPreviewTab(tabId)) return;
+    onSecondaryLoadFailed(tabId, detail);
   });
 }
 
@@ -298,6 +338,7 @@ export function bindSecondaryPreviewControls(): void {
 /** Hide secondary preview guest and clear slot UI. */
 export function hideSecondaryPreviewSlot(): void {
   activeSecondaryTabId = null;
+  syncSecondaryLoadError(null);
   loadedSecondaryUrl = null;
   syncSecondaryPreviewUrlInput(null);
   hideFrame();
@@ -342,7 +383,18 @@ async function loadSecondaryElectron(
   if (options?.isCurrent?.() === false) return;
   const tab = getPreviewTab(tabId);
   if (existing && options?.reuse && tab && loadedSecondaryGuests.has(tab)) return;
-  await api.loadURL(url, tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
+  if (api.navigateAndWait) {
+    const result = await api.navigateAndWait(url, tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
+    if (!result.ok && !tab?.loadFailed && options?.isCurrent?.() !== false) {
+      onSecondaryLoadFailed(tabId, {
+        errorCode: result.errorCode ?? -1,
+        errorDescription: result.errorDescription ?? 'Navigation failed',
+        url,
+      });
+    }
+  } else {
+    await api.loadURL(url, tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
+  }
   if (tab) loadedSecondaryGuests.add(tab);
 }
 
@@ -377,20 +429,25 @@ export async function renderSecondaryPreviewSlot(
   }
   const previous = activeSecondaryTabId;
   activeSecondaryTabId = tabId;
-  syncSecondaryPreviewUrlInput(tab.source);
+  const source = tab.source;
+  syncSecondaryPreviewUrlInput(source);
+  syncSecondaryLoadError(tabId);
+  const isCurrent = () => options?.isCurrent?.() !== false && activeSecondaryTabId === tabId && tab.source === source;
   let url: string;
   try {
-    url = tab.source ? await resolveIsolatedPreviewLoadUrl(tab.source, undefined, getFileTreeListingWorkspaceRoot()) : 'about:blank';
+    url = source ? await resolveIsolatedPreviewLoadUrl(source, undefined, getFileTreeListingWorkspaceRoot()) : 'about:blank';
   } catch (error) {
-    showToast(error instanceof Error ? error.message : String(error));
+    if (isCurrent()) {
+      onSecondaryLoadFailed(tabId, { errorCode: -2, errorDescription: String(error) });
+    }
     return;
   }
-  if (options?.isCurrent?.() === false || activeSecondaryTabId !== tabId) return;
+  if (!isCurrent()) return;
   if (!options?.forceLoad && previous === tabId && loadedSecondaryUrl === url) return;
   loadedSecondaryUrl = url;
   if (usesElectron()) {
     hideFrame();
-    await loadSecondaryElectron(tabId, url, { reuse: Boolean(options && !options.forceLoad), isCurrent: options?.isCurrent });
+    await loadSecondaryElectron(tabId, url, { reuse: Boolean(options && !options.forceLoad), isCurrent });
     return;
   }
   if (secondaryBound) {

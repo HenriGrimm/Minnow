@@ -1,4 +1,4 @@
-# Graphite shell
+# Workspace shell
 
 Use the workspace sidebar for navigation and thread history. Keep thread-level controls in the header and compose optional work surfaces into the side or bottom panel.
 

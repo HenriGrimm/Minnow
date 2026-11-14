@@ -19,7 +19,7 @@
   line-height: 1;
 }
 
-/* Embedded app page headers (Issues, Scheduler, Calendar). */
-:is(#issuesPageIcon, #schedulerPageIcon, #calendarPageIcon, .issues-header__icon, .scheduler-header__icon, .calendar-hdr-ico) .icon-svg {
+/* Embedded app page headers (Issues, Calendar). */
+:is(#issuesPageIcon, #calendarPageIcon, .issues-header__icon, .calendar-hdr-ico) .icon-svg {
   --mn-icon-size: 18px;
 }

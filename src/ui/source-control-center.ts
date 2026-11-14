@@ -229,9 +229,14 @@ function buildHeader(): HTMLElement {
   header.dataset.appTitlebar = '';
 
   const identity = el('div', 'scc-head__identity');
+  const repoContext = el('div', 'scc-head__context');
 
   repoNameEl = el('span', 'scc-head__repo');
-  identity.append(createBackToChatButton(closeSourceControlCenter), repoNameEl);
+  identity.append(
+    createBackToChatButton(closeSourceControlCenter),
+    el('h1', 'scc-head__title', 'Source Control'),
+    repoContext,
+  );
 
   branchBtn = button({
     icon: 'gitBranch',
@@ -241,7 +246,6 @@ function buildHeader(): HTMLElement {
     onClick: () => openBranchSwitcher(),
   });
   branchBtn.appendChild(createIcon('chevronDown', { className: 'scc-btn__icon', size: 12 }));
-  identity.appendChild(branchBtn);
 
   worktreeBtn = button({
     icon: 'gitWorktree',
@@ -250,11 +254,10 @@ function buildHeader(): HTMLElement {
     className: 'scc-head__context-btn',
     onClick: () => showSection('worktrees'),
   });
-  identity.appendChild(worktreeBtn);
 
   forgeChipEl = el('span', 'scc-head__forge');
   forgeChipEl.hidden = true;
-  identity.appendChild(forgeChipEl);
+  repoContext.append(repoNameEl, branchBtn, worktreeBtn, forgeChipEl);
 
   const sync = el('div', 'scc-head__sync');
   sync.setAttribute('role', 'group');

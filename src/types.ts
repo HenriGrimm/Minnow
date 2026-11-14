@@ -259,7 +259,7 @@ export type AnthropicThinkingBlock =
   | { type: 'thinking'; thinking: string; signature: string }
   | { type: 'redacted_thinking'; data: string };
 
-/** Assistant history entry; may include per-bubble metric chips when restored. */
+/** Assistant history entry with optional generation stats and usage. */
 export interface AssistantMessage {
   thinkingBlocks?: AnthropicThinkingBlock[];
   role: 'assistant';

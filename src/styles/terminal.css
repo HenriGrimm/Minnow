@@ -115,7 +115,6 @@
   align-items: center;
   overflow-x: auto;
   padding-block: 4px;
-  scrollbar-width: thin;
 }
 
 .terminal-tab {
@@ -482,6 +481,24 @@
 /* FitAddon sizes rows to the viewport; do not stretch past the cell grid. */
 .terminal-xterm-viewport .xterm {
   width: 100%;
+}
+
+@media (forced-colors: none) {
+  .terminal-xterm-viewport .xterm .xterm-scrollable-element > .scrollbar > .slider {
+    background: var(--mn-scrollbar-thumb);
+    border: 2px solid transparent;
+    border-block-width: 5px;
+    border-radius: var(--mn-radius-pill);
+    background-clip: padding-box;
+  }
+
+  .terminal-xterm-viewport .xterm .xterm-scrollable-element > .scrollbar > .slider:hover {
+    background-color: var(--mn-scrollbar-thumb-hover);
+  }
+
+  .terminal-xterm-viewport .xterm .xterm-scrollable-element > .scrollbar > .slider.active {
+    background-color: var(--mn-scrollbar-thumb-active);
+  }
 }
 
 .terminal-output .stderr-line {

@@ -10,7 +10,7 @@ import {
 import { iconHtml } from './icon';
 import { compareProductWikiEntries } from '../product-wiki/nav-order.mjs';
 import { renderProductWikiMarkdown } from './product-wiki-markdown';
-import { closeShellOverlays, isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { bindShellOverlayDismissal, closeShellOverlays, isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import { createBackToChatButton } from './back-to-chat';
 
 const DEFAULT_PAGE_PATH = 'documentation/manual/README.md';
@@ -154,7 +154,6 @@ function ensureProductWikiRoot(): HTMLElement {
         <input id="productWikiSearch" type="search" autocomplete="off" placeholder="Search setup, apps, settings, troubleshooting…" />
         <kbd>Ctrl K</kbd>
       </label>
-      <button id="productWikiClose" class="product-wiki__icon-button" type="button" aria-label="Close wiki" title="Close wiki">${iconHtml('close', { size: 16 })}</button>
     </header>
     <div class="product-wiki__body">
       <nav id="productWikiNav" class="product-wiki__nav" aria-label="Wiki pages">
@@ -333,12 +332,6 @@ function closeMobileNavigation(): void {
 
 /** Bind overlay controls once. */
 function bindProductWiki(root: HTMLElement): void {
-  root.querySelector('#productWikiClose')?.addEventListener('click', () => {
-    closeProductWiki();
-    const trigger = document.querySelector<HTMLElement>('[data-shell-overlay="wiki"]');
-    if (trigger?.getClientRects().length) trigger.focus();
-    else document.querySelector<HTMLElement>('.mn-os-mb-chat-toggle:not([hidden])')?.focus();
-  });
   root.querySelector('#productWikiNavScrim')?.addEventListener('click', closeMobileNavigation);
   root.querySelector('#productWikiNavToggle')?.addEventListener('click', () => {
     const open = root.classList.toggle('is-nav-open');
@@ -381,36 +374,27 @@ export function initProductWiki(): void {
   if (initialized) return;
   initialized = true;
   ensureProductWikiRoot();
+  bindShellOverlayDismissal(document);
   window.addEventListener('hashchange', () => void syncProductWikiFromHash());
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented) return;
-    if (event.key === 'Escape' && isShellOverlayOpen('wiki')) {
-      event.preventDefault();
-      closeProductWiki();
-      document.querySelector<HTMLElement>('[data-shell-overlay="wiki"]')?.focus();
-      return;
-    }
     if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== 'k') return;
     if (productWikiPathFromHash(window.location.hash) === null) return;
     event.preventDefault();
     document.getElementById('productWikiSearch')?.focus();
-  });
-  document.addEventListener('pointerdown', (event) => {
-    if (!isShellOverlayOpen('wiki')) return;
-    const target = event.target as Element | null;
-    if (target?.closest('#productWikiOverlay, [data-shell-overlay], [data-above-shell-overlay]')) return;
-    closeProductWiki();
   });
   void syncProductWikiFromHash();
 }
 
 /** Open the official product wiki from any Minnow surface. */
 export function openProductWiki(path = DEFAULT_PAGE_PATH): void {
-  if (!isShellOverlayOpen('wiki')) closeShellOverlays();
-  if (productWikiPathFromHash(window.location.hash) === null) {
-    returnHash = window.location.hash || '#/desktop';
+  if (!isShellOverlayOpen('wiki')) {
+    closeShellOverlays();
+    if (productWikiPathFromHash(window.location.hash) === null) {
+      returnHash = window.location.hash || '#/desktop';
+    }
+    openShellOverlay('wiki', closeProductWiki);
   }
-  openShellOverlay('wiki', closeProductWiki);
   navigateToProductWikiPage(path);
 }
 

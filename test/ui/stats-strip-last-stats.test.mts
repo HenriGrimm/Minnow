@@ -16,7 +16,6 @@ const { refreshMetricsStripForChat, updateStatsExpandPreview, updateStrip } = aw
 const { showCachedModelInfo } = await import('../../src/api/models.ts');
 const { formatStatCount } = await import('../../src/usage/format-stat-count.ts');
 const { buildLastStatsSnapshot } = await import('../../src/usage/chat-turn-metrics.ts');
-const { appendStats } = await import('../../src/ui/messages.ts');
 const { getContextBudget } = await import('../../src/chat/context-usage.ts');
 
 /** @type {import('happy-dom').Window | undefined} */
@@ -60,7 +59,7 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     }
   });
 
-  test('hydrates prompt-only lastStats from the last assistant chip usage', () => {
+  test('hydrates prompt-only lastStats from the last assistant message usage', () => {
     setupStripDom();
     seedMinimalSession();
     const chat = getActiveChat();
@@ -100,6 +99,7 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     updateStatsExpandPreview();
     assert.equal(document.getElementById('statsExpandPreview')!.textContent, '32.0 t/s · 1,250 tokens');
     assert.equal(document.getElementById('statusMetricPreview')!.textContent, '32.0 t/s');
+    assert.equal(document.getElementById('statusMetricTokenPreview')!.textContent, ' · 1,250 tokens');
     assert.equal(document.getElementById('statusMetricPreview')!.dataset.pluginSlot, 'chat.throughput');
   });
 
@@ -174,13 +174,7 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     assert.equal(document.getElementById('cntPrompt')?.textContent, formatStatCount(1000).display);
   });
 
-  /**
-   * A tool-loop turn used to leave three different numbers on screen: the chip
-   * showed the final round, the strip showed latest-prompt + summed completions,
-   * and the ring inherited the strip's rollup. All three are context occupancy
-   * now — the final round's prompt + reply.
-   */
-  test('chip, strip and context ring agree after a multi-round tool turn', async () => {
+  test('the strip and context ring use final-round occupancy after a multi-round tool turn', async () => {
     setupStripDom();
     seedMinimalSession();
     const chat = getActiveChat();
@@ -214,17 +208,12 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
 
     refreshMetricsStripForChat(chat);
 
-    const chipRow = document.createElement('div');
-    appendStats(chipRow, { tokens_per_second: 20 }, finalRound);
-    const chipTokens = chipRow.querySelector('.stat-chip.r span')?.textContent;
-
     const budget = await getContextBudget({ chat, modelId: chat.modelId });
 
     assert.equal(
       document.getElementById('stripTotal')?.textContent,
       formatStatCount(finalRound.total_tokens).display,
     );
-    assert.equal(chipTokens, formatStatCount(finalRound.total_tokens).display);
     assert.equal(budget.used, finalRound.total_tokens);
     assert.equal(budget.isEstimate, false);
     assert.equal(budget.sessionUsage?.totalTokens, 35_300);

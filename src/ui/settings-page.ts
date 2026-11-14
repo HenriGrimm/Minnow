@@ -5,6 +5,7 @@ import '../styles/settings-graphite.css';
 import { isPairedDevice } from '../api/session-token';
 import { detectLocalServer } from '../tools/client';
 import { refreshSettingsSection } from './settings-sections';
+import { closeProviderEditor } from './settings-providers';
 import { disposeAppUpdatesSettings } from './settings-updates';
 import {
   initSettingsPromptEstimate,
@@ -502,6 +503,7 @@ export function openSettings(
 
 /** Close settings and return to Code, the window stack, or desktop. */
 export function closeSettings(options?: { skipNavigate?: boolean }): void {
+  closeProviderEditor();
   disposeAppUpdatesSettings();
   shellOverlayClosed('settings');
   if (!options?.skipNavigate && isOsEmbedded() && closeSettingsAndReturnToCaller()) {

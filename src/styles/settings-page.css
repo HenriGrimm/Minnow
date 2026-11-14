@@ -264,7 +264,7 @@
   padding: 0 var(--settings-content-pad-x) 40px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
 }
 
 .settings-content:has(.settings-category.is-active .settings-area.is-active.settings-section--wide) {

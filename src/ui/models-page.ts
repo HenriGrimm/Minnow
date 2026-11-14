@@ -1,4 +1,5 @@
 import '../styles/models-page.css';
+import '../styles/surface-icon.css';
 import '../styles/models-workspace.css';
 import '../styles/models-load-settings.css';
 import '../styles/models-inspector.css';
@@ -23,12 +24,15 @@ import { closeLoadSettingsPopover } from './models/load-settings-popover';
 import {
   readModelsInspectorPreference,
   setModelsInspectorOpen,
+  syncModelsInspectorToggle,
+  toggleModelsInspector,
 } from './models/inspector-visibility';
 import { restoreReparentedSettingsSections } from './models/settings-reparent';
 import { formatModelsHeaderLoadingLabel, getModelsState, refreshModels, runningServes, subscribeModelsStore, teardownModelsStore } from './models/store';
 import { teardownServerSection } from './models/server-panel';
 import { teardownEngineSection } from './models/engine-panel';
 import { mountGraphiteModelsChrome, updateGraphiteModelsChrome, usesGraphiteModels } from './models/graphite-chrome';
+import { closeProviderEditor } from './settings-providers';
 
 export type { ModelsSectionId };
 export { DEFAULT_MODELS_SECTION };
@@ -110,6 +114,7 @@ function renderHeaderStatus(): void {
 // ── Sections ─────────────────────────────────────────────────────────────────
 
 function setActiveSection(section: ModelsSectionId): void {
+  if (section !== 'providers') closeProviderEditor();
   closeLoadSettingsPopover();
   activeSection = section;
   const root = getModelsRoot();
@@ -118,6 +123,7 @@ function setActiveSection(section: ModelsSectionId): void {
   root?.classList.toggle('is-workbench', WORKBENCH_SECTIONS.has(section));
   root?.classList.toggle('is-discover', section === 'recommend');
   root?.classList.toggle('is-runtime-workspace', section === 'installed' || section === 'server');
+  syncModelsInspectorToggle();
 
   const displaySection = usesGraphiteModels() && section === 'thinking' ? 'sampler' : section;
   const navSection = usesGraphiteModels() && section === 'engine' ? 'settings' : displaySection;
@@ -166,12 +172,7 @@ function bindStaticSections(): void {
   });
 
   const toggle = document.getElementById('btnModelsInspector');
-  toggle?.addEventListener('click', () => {
-    const runtime = usesGraphiteModels() && activeSection === 'server';
-    const hidden = root?.classList.contains('is-inspector-hidden') || (runtime && !root?.classList.contains('is-runtime-inspector'));
-    if (runtime) root?.classList.toggle('is-runtime-inspector', Boolean(hidden));
-    setModelsInspectorOpen(Boolean(hidden));
-  });
+  toggle?.addEventListener('click', toggleModelsInspector);
 
   const stored = readModelsInspectorPreference();
   const wideEnough = (getModelsRoot()?.clientWidth ?? window.innerWidth) >= 1040;
@@ -262,6 +263,7 @@ export function openModels(section?: ModelsSectionId): void {
 
 /** Close Models and return to chat or desktop. */
 export function closeModels(options?: { skipNavigate?: boolean }): void {
+  closeProviderEditor();
   const root = getModelsRoot();
   const shell = getChatShell();
   if (!root || !shell) return;

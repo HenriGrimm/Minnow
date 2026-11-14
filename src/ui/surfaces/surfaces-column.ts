@@ -1,3 +1,4 @@
+import '../../styles/surface-icon.css';
 import '../../styles/surfaces.css';
 import { findChatById, getActiveChat, getChatMessageCount, sessionState } from '../../state/sessions';
 import { getWorkspacePath } from '../../state/workspace';
@@ -288,7 +289,7 @@ function control(label: string, icon: IconName, run: () => void): HTMLButtonElem
   button.type = 'button';
   button.title = label;
   button.setAttribute('aria-label', label);
-  button.append(createIcon(icon, { size: 14 }));
+  button.append(createIcon(icon));
   button.addEventListener('click', run);
   return button;
 }

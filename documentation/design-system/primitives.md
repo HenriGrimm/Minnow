@@ -20,7 +20,6 @@ The classes and factories below are the **existing per-surface primitives**. The
 
 | Class | File | Use |
 |-------|------|-----|
-| `.stat-chip` + `.c` `.g` `.y` `.r` | [`messages.css`](../../src/styles/messages.css) | Per-message inference metrics (9px uppercase mono) |
 | `.stats-cell` semantic classes | [`stats.css`](../../src/styles/stats.css) | Desktop metrics strip |
 | `.issues-label[data-swatch]` | [`issues.css`](../../src/styles/issues.css) | Issue label chips; catalog color via `--mn-label-*` |
 

@@ -25,6 +25,7 @@ import {
   showPreviewGuestIfHidden,
 } from './preview-guest-reveal.js';
 import { PREVIEW_SESSION_PARTITION } from './preview-session.js';
+import { wirePreviewScrollbars } from './preview-scrollbars.js';
 import { previewCaptureGate as captureGate, createPreviewCaptureVisibility } from './preview-capture-gate.js';
 import { enableCdpPicking, type CdpPickSession } from './preview-cdp-pick.js';
 import {
@@ -57,6 +58,7 @@ export interface PreviewLoadSourcePayload {
 
 interface PreviewHostEntry {
   view: WebContentsView;
+  syncScrollbarAccent: () => Promise<void>;
   visible: boolean;
   devtools: WebContentsView | null;
   devtoolsPopout: BrowserWindow | null;
@@ -83,6 +85,7 @@ const cdpPickSessions = new Map<number, CdpPickSession>();
 const lastBoundsByInstance = new Map<string, PreviewBounds>();
 
 const devtoolsDockByWindow = new Map<number, DevToolsDockPosition>();
+const scrollbarAccentByWindow = new Map<number, string>();
 
 const captureVisibility = createPreviewCaptureVisibility(captureGate);
 
@@ -562,6 +565,7 @@ function destroyHostForWindow(win: BrowserWindow): void {
   }
   wiredWindowIds.delete(win.id);
   devtoolsDockByWindow.delete(win.id);
+  scrollbarAccentByWindow.delete(win.id);
 }
 
 async function loadSourceInGuest(
@@ -737,7 +741,8 @@ function createTabGuest(win: BrowserWindow, tabId: string, instanceId: string): 
   view.setBackgroundColor('#ffffff');
   view.setVisible(false);
   attachPermissionHandler(view.webContents);
-  const entry: PreviewHostEntry = { view, visible: false, devtools: null, devtoolsPopout: null };
+  const syncScrollbarAccent = wirePreviewScrollbars(view.webContents, () => scrollbarAccentByWindow.get(win.id) ?? '');
+  const entry: PreviewHostEntry = { view, syncScrollbarAccent, visible: false, devtools: null, devtoolsPopout: null };
   wirePreviewGuestEvents(win, tabId, entry, instanceId);
   return entry;
 }
@@ -864,6 +869,21 @@ export function registerPreviewHostIpc(): void {
     getEntry: getActiveEntry,
     openDevTools: openEntryDevTools,
     isCdpPickActive: (webContentsId) => cdpPickSessions.has(webContentsId),
+  });
+
+  trustedIpc.handle(channels.PREVIEW_SET_SCROLLBAR_ACCENT, async (event, accent: unknown) => {
+    const win = windowFromInvoke(event);
+    if (!win || typeof accent !== 'string' || !/^#[\da-f]{6}$/i.test(accent)) return;
+    if (scrollbarAccentByWindow.get(win.id) === accent) return;
+    ensureWindowWiring(win);
+    scrollbarAccentByWindow.set(win.id, accent);
+    const updates: Array<Promise<void>> = [];
+    for (const instanceId of previewInstances.listInstanceIds(win.id)) {
+      const state = previewInstances.get(win.id, instanceId);
+      if (!state) continue;
+      for (const entry of state.tabs.values()) updates.push(entry.syncScrollbarAccent());
+    }
+    await Promise.all(updates);
   });
 
   trustedIpc.handle(channels.PREVIEW_TAB_CREATE, (event, tabId?: string, instanceId?: string) => {

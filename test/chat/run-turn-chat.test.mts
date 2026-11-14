@@ -838,7 +838,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.equal(document.querySelector('.mn-toast--success'), null);
   });
 
-  test('P10-G three-round turn: live stats, lastStats, per-message footer, main ledger', async () => {
+  test('P10-G three-round turn: composer metrics, lastStats, main ledger', async () => {
     setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
     installChatDom();
     setRunTurnForTests(async (options) => {
@@ -959,7 +959,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     // Token counts are context occupancy — the final round's prompt + reply.
     // Summing completions (100 + 200 + 50) double-counts: rounds 0 and 1 are
     // already inside round 2's 3000-token prompt, and that rollup is what used
-    // to make the strip disagree with the ring and the last assistant chip.
+    // to make the strip disagree with the context ring.
     assert.equal(chat.lastStats?.prompt_tokens, 3000, 'strip keeps latest prompt, not a sum');
     assert.equal(chat.lastStats?.completion_tokens, 50, 'final round only, not the turn rollup');
     assert.equal(chat.lastStats?.total_tokens, 3050);
@@ -974,8 +974,11 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     const area = document.getElementById('chatArea');
     const assistantRows = area?.querySelectorAll('.msg.assistant') ?? [];
     assert.equal(assistantRows.length, 3);
+    const throughputs = Array.from(assistantRows, (row) =>
+      row.querySelector('[data-plugin-slot="chat.message-throughput"]')?.textContent);
+    assert.deepEqual(throughputs, ['10.0 tok/s', '20.0 tok/s', '50.0 tok/s']);
     for (const row of assistantRows) {
-      assert.ok(row.querySelector('.msg-stats'), 'per-message stats footer on each live row');
+      assert.ok(row.querySelector('[data-plugin-slot="chat.message-metrics"]'));
     }
 
     const entries = chat.tokenLedger?.entries ?? [];

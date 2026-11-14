@@ -4,6 +4,7 @@
 
 import { fileExtension as extensionOf } from '../../src/attachments/document-extensions.mjs';
 import { getDocumentPreviewKind } from '../../src/attachments/document-extensions.mjs';
+import { previewScrollbarCss } from './scrollbars.js';
 
 /** Maximum spreadsheet rows rendered per sheet in preview HTML. */
 const MAX_PREVIEW_ROWS_PER_SHEET = 1000;
@@ -24,6 +25,7 @@ function escapeHtml(value) {
 }
 
 const PREVIEW_STYLES = `
+${previewScrollbarCss}
 body {
   font-family: system-ui, -apple-system, Segoe UI, sans-serif;
   margin: 0;

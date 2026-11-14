@@ -6,6 +6,7 @@ import type { ModelsSectionId } from './models-section-ids';
 import { mountModelPoolOverview } from './model-pool-overview';
 import { encodeModelSelectKey } from '../lib/model-select-key';
 import { formatModelLabel } from '../lib/format-model-label';
+import { isContextMenuOpen } from './context-menu';
 
 export function openModelsPopover(anchor: HTMLButtonElement): () => void {
   const panel = document.createElement('section');
@@ -54,10 +55,10 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
     panel.remove();
     shellOverlayClosed('models');
     document.removeEventListener('pointerdown', outside, true);
-    document.removeEventListener('keydown', key);
+    window.removeEventListener('keydown', key, true);
     window.removeEventListener('resize', position);
     window.removeEventListener('minnow:graphite-workspace-changed', position);
-    anchor.focus();
+    anchor.focus({ preventScroll: true });
   };
 
   const position = (): void => {
@@ -76,8 +77,11 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
     close();
   };
   const key = (event: KeyboardEvent): void => {
-    if (event.defaultPrevented || event.key !== 'Escape' || panel.querySelector('.auxiliary-model-popover:not(.hidden)')) return;
+    if (event.defaultPrevented || event.key !== 'Escape' || isContextMenuOpen()
+      || panel.querySelector('.auxiliary-model-popover:not(.hidden)')) return;
     event.preventDefault();
+    // Handle Escape before page-level shortcuts, like the shared popover does.
+    event.stopImmediatePropagation();
     close();
   };
   const navigate = (section: ModelsSectionId): void => {
@@ -104,7 +108,7 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
   markPreviewOccluder(panel, 'panel');
   position();
   document.addEventListener('pointerdown', outside, true);
-  document.addEventListener('keydown', key);
+  window.addEventListener('keydown', key, true);
   window.addEventListener('resize', position);
   window.addEventListener('minnow:graphite-workspace-changed', position);
   dismiss.focus();

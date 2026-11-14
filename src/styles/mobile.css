@@ -753,11 +753,14 @@ html.mn-phone .brain-page.is-graph-canvas-bg .brain-page-body {
 
 /* ---------- Source Control ---------- */
 
-/* Identity (repo, branch, worktree) gets the first row and sync + commands the
-   second. The forge slug is information the Pull requests section already
-   shows, and it was the item that crushed the repo name to one letter. */
 html.mn-phone .scc-head {
   padding: 8px var(--mn-phone-pad-right) 8px var(--mn-phone-pad-left);
+}
+
+/* Let repository controls wrap below the title when their labels need room. */
+html.mn-phone .scc-head__identity {
+  flex-wrap: wrap;
+  row-gap: var(--mn-space-1);
 }
 
 html.mn-phone .scc-head__forge {
@@ -765,7 +768,6 @@ html.mn-phone .scc-head__forge {
 }
 
 html.mn-phone .scc-head__repo {
-  flex: none;
   max-width: 14ch;
 }
 

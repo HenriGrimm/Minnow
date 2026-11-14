@@ -219,7 +219,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const final = ongoing ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
       ?? assistants.filter((row) => !row.hasAttribute('data-history-index')
         && !row.matches('[data-turn-kind="assistant-tools"], .msg--awaiting-prose')).at(-1);
-    const finalIndices = new Set(ongoing ? [] : turn.finalIndices);
+    const finalIndices = new Set(ongoing ? turn.finalIndices.slice(0, turn.settledReplyCount) : turn.finalIndices);
     const replies = assistants.filter((row) => row === final || finalIndices.has(Number(row.dataset.historyIndex)));
     const replyRows = new Set(replies);
     const thoughts = replies.flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>(':scope > .thoughts-panel-wrap, :scope > .thought-stage')));
@@ -547,13 +547,6 @@ function endLabel(run: TranscriptTurn['run'], failed: boolean, stopped: boolean,
 
 type WorkOutcome = 'live' | 'done' | 'failed' | 'stopped' | 'recovery';
 
-/** "101 tok/s · 103k tok" from the reply's metric chips (hidden in compact view). */
-function replyStatsText(final: HTMLElement): string {
-  const rate = final.querySelector('.msg-stats .stat-chip.c span')?.textContent?.trim();
-  const total = final.querySelector('.msg-stats .stat-chip.r span')?.textContent?.trim();
-  return [rate ? `${Math.round(Number(rate)) || rate} tok/s` : '', total ? `${total} tok` : ''].filter(Boolean).join(' · ');
-}
-
 function footButton(icon: 'copy' | 'refresh', label: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
@@ -565,7 +558,7 @@ function footButton(icon: 'copy' | 'refresh', label: string, onClick: () => void
   return button;
 }
 
-/** Copy, Remake and the reply's speed under the latest settled answer. */
+/** Reply actions under the latest settled answer. */
 function syncReplyFoot(
   group: WorkGroup,
   replies: HTMLElement[],
@@ -589,8 +582,6 @@ function syncReplyFoot(
     foot.className = 'chat-reply-foot';
     foot.dataset.index = String(index);
     foot.dataset.canRewrite = String(canRewrite);
-    const stats = document.createElement('span');
-    stats.className = 'chat-reply-foot__stats';
     foot.append(
       footButton('copy', 'Copy reply', () => {
         void import('./message-actions').then((m) => m.copyMessageRows(group.replies ?? []));
@@ -598,13 +589,9 @@ function syncReplyFoot(
       ...(canRewrite ? [footButton('refresh', 'Remake reply', () => {
         void import('./message-actions').then((m) => m.remakeAssistantRow(chat.id, index));
       })] : []),
-      stats,
     );
     group.foot = foot;
   }
-  const stats = foot.querySelector('.chat-reply-foot__stats');
-  const text = replyStatsText(final);
-  if (stats && stats.textContent !== text) stats.textContent = text;
   if (after.nextElementSibling !== foot) after.after(foot);
 }
 

@@ -41,6 +41,7 @@ async function run() {
   fs.writeFileSync(preload, `const {contextBridge,ipcRenderer}=require('electron');
     contextBridge.exposeInMainWorld('preview', {
       create: () => ipcRenderer.invoke('minnow:preview:tab-create','test'),
+      setAccent: color => ipcRenderer.invoke('minnow:preview:set-scrollbar-accent', color),
       load: url => ipcRenderer.invoke('minnow:preview:load-url',url,'test')
     });`);
   const shell = new BrowserWindow({ show: false, webPreferences: { preload, sandbox: true } });
@@ -49,10 +50,18 @@ async function run() {
   trustShellWebContents(shell.webContents.id);
   registerPreviewHostIpc();
   await shell.loadURL(host);
+  await shell.webContents.executeJavaScript("preview.setAccent('#a8ee18')");
   await shell.webContents.executeJavaScript('preview.create()');
   await shell.webContents.executeJavaScript('preview.load(' + JSON.stringify(project) + ')');
   const guest = webContents.getAllWebContents().find(wc => wc.getURL() === project + '/');
   assert.ok(guest, 'real project guest loaded');
+  const scrollbarAccent = `getComputedStyle(document.documentElement)
+    .getPropertyValue('--mn-scrollbar-thumb-active').trim()`;
+  assert.equal(await guest.executeJavaScript(scrollbarAccent), '#a8ee18');
+  await shell.webContents.executeJavaScript("preview.setAccent('#6e9bff')");
+  assert.equal(await guest.executeJavaScript(scrollbarAccent), '#6e9bff');
+  await shell.webContents.executeJavaScript('preview.load(' + JSON.stringify(project + '/next') + ')');
+  assert.equal(await guest.executeJavaScript(scrollbarAccent), '#6e9bff');
   const status = await guest.executeJavaScript("fetch('/turn', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r=>r.status)");
   assert.equal(status, 204);
   assert.equal(seenOrigin, project);

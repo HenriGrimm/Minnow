@@ -1,6 +1,6 @@
 ---
 name: Minnow
-description: Graphite workspace with nine dark and light palette families, surface tint, and a shared type and spacing scale.
+description: Minnow workspace with nine dark and light palette families, surface tint, and a shared type and spacing scale.
 colors:
   bg: "#0f1216"
   surface-0: "#0b0d11"
@@ -138,9 +138,11 @@ components:
 
 ## Palette themes
 
-`<html data-theme="{family}-{mode}">` (e.g. `swamp-dark`, `coral-light`) is set from **Settings → Appearance → Theme**, the inline boot script in `index.html`, or `initTheme()` in [`src/theme.ts`](src/theme.ts). The families are **Graphite**, **Swamp**, **Desert**, **Ocean**, **Coral**, **Mono**, **Matrix**, **Human**, and **Mint**. Each has dark and light variants. Hex and rgba literals exist only in [`src/styles/tokens.css`](src/styles/tokens.css); application CSS uses **`--mn-*`** tokens (26 core variables in [`CORE_THEME_TOKEN_KEYS`](src/appearance/types.ts) plus extended semantics via `color-mix`). Extracted inventory: [`documentation/design-system/`](documentation/design-system/README.md).
+`<html data-theme="{family}-{mode}">` (e.g. `swamp-dark`, `coral-light`) is set from **Settings → Appearance → Theme**, the inline boot script in `index.html`, or `initTheme()` in [`src/theme.ts`](src/theme.ts). The palette options include the default palette, **Swamp**, **Desert**, **Ocean**, **Coral**, **Mono**, **Matrix**, **Human**, and **Mint**. Each has dark and light variants. Hex and rgba literals exist only in [`src/styles/tokens.css`](src/styles/tokens.css); application CSS uses **`--mn-*`** tokens (26 core variables in [`CORE_THEME_TOKEN_KEYS`](src/appearance/types.ts) plus extended semantics via `color-mix`). Extracted inventory: [`documentation/design-system/`](documentation/design-system/README.md).
 
-Storage uses `minnow.theme`, `minnow.theme.followSystem` and `minnow.theme.family`. New profiles start with **Graphite** and **50%** surface tint. Saved families, custom colors, font overrides and older aliases migrate on read. Graphite uses bundled Geist and Geist Mono by default.
+Storage uses `minnow.theme`, `minnow.theme.followSystem` and `minnow.theme.family`. New profiles start with the default palette and **50%** surface tint. Saved families, custom colors, font overrides and older aliases migrate on read. Minnow uses bundled Geist and Geist Mono by default.
+
+Visible scrollbars in both directions use rounded, neutral thumbs over a transparent track. The thumb brightens on hover and uses the current accent while dragging in Chromium. The terminal shares these colors, and forced-colors mode uses system styling.
 
 ## Overview
 
@@ -155,7 +157,7 @@ Minnow is a long-session chat bench: conversation first, metrics as instrumentat
 - Off-black / off-white surfaces per family (never pure `#000` / `#fff` in palette blocks).
 - Family accent on send, selection, links, and user bubbles (`--mn-accent-soft`; text selection uses `--mn-selection-bg`, including CodeMirror `drawSelection` in dark mode).
 - Semantic success / warning / danger for stats and tool status only.
-- JetBrains Mono for stats, chips, and code by default; system UI at 14px elsewhere. Settings → Appearance can swap either stack from a Google Fonts catalog (lazy-loaded).
+- JetBrains Mono for stats and code by default, with system UI at 14px elsewhere. Settings → Appearance can swap either stack from a Google Fonts catalog (lazy-loaded).
 - Flat elevation: shadows use `var(--mn-shadow)`; hover veils use `color-mix` on `--mn-fg`.
 
 ## Colors
@@ -173,7 +175,7 @@ Palette is **family-dependent**. The YAML colors record the legacy Swamp token r
 
 ### Tertiary (metrics only)
 
-- **`--mn-success`**, **`--mn-warning`**, **`--mn-danger`**: Stats strip, stat chips (`.c` / `.g` / `.y` / `.r`), status dots, token fill bars. Never navigation chrome or decorative gradients.
+- **`--mn-success`**, **`--mn-warning`**, **`--mn-danger`**: Stats strip, status dots, token fill bars. Never navigation chrome or decorative gradients.
 
 ### Neutrals
 
@@ -205,7 +207,7 @@ for component usage and accessibility rules.
 
 **Body Font:** `system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif` (14px base, line-height 1.5).
 
-**Label/Mono Font:** JetBrains Mono (400–600) by default for stats strip, per-message chips, token counts, fenced code, and field hints that reference code. Appearance → Fonts can substitute another Google Mono family; only the selected pair is requested.
+**Label/Mono Font:** JetBrains Mono (400–600) by default for the stats strip, fenced code, and field hints that reference code. Appearance → Fonts can substitute another Google Mono family.
 
 **Character:** Calm technical sans for UI; mono carries numeric instrumentation. No display serif or geometric marketing face.
 
@@ -214,8 +216,8 @@ for component usage and accessibility rules.
 - **Title** (600, 15px, -0.02em tracking): App title in top bar, drawer header.
 - **Body** (400, 14px, 1.5): Messages, inputs, drawer fields, chat list names.
 - **Label** (600, 11px, 0.06em uppercase): Sidebar "Chats", stats expand label, stat cell names.
-- **Caption** (500, 9–12px): Session model id, sidebar stats line, stat chips, field hints.
-- **Mono stat** (600, 17px tabular-nums): Stats strip values; chips at 9px uppercase with bold inner span.
+- **Caption** (500, 9–12px): Session model id, sidebar stats line, field hints.
+- **Mono stat** (600, 17px tabular-nums): Stats strip values.
 
 ### Type scale
 
@@ -223,7 +225,7 @@ Font sizes come from `--mn-type-*` in [`tokens.css`](src/styles/tokens.css). (`-
 
 | Token | Size | Typical use |
 |-------|------|-------------|
-| `--mn-type-2xs` | 10px | Stat chips, dense metadata |
+| `--mn-type-2xs` | 10px | Dense metadata |
 | `--mn-type-xs` | 11px | Labels, uppercase section heads |
 | `--mn-type-sm` | 12px | Captions, hints, tooltips, small controls |
 | `--mn-type-md` | 13px | Controls, menus, list rows |
@@ -284,8 +286,6 @@ Controls come from the shared library in [`src/ui/components/`](src/ui/component
 
 ### Chips
 
-- **Style:** 9px uppercase, 1px border `--border-strong`, text `--text-dim`.
-- **Semantic variants:** `.c` accent, `.g` success, `.y` warning, `.r` danger with matching border alpha tints.
 - **Issue labels:** ten catalog swatches (`--mn-label-*` in [`tokens.css`](src/styles/tokens.css)), tinted into `--mn-bg` / `--mn-fg` on `.issues-label[data-swatch]`. Not metric success/warning/danger.
 
 ### Issues list
@@ -327,7 +327,7 @@ Controls come from the shared library in [`src/ui/components/`](src/ui/component
 - **Do** build controls from [`src/ui/components/`](src/ui/components/) and size type, space, radius and layers from the scale tokens instead of literals.
 - **Do** respect `prefers-reduced-motion` and limit transitions to color, border, opacity, and transform (not layout).
 - **Do** use `(hover: hover) and (pointer: fine)` for hover-heavy styles; keep 44px touch targets on session actions.
-- **Do** treat stats as instrumentation: mono, tabular nums, compact chips.
+- **Do** use compact, tabular monospace values in the metrics strip.
 
 ### Don't:
 

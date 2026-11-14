@@ -220,7 +220,6 @@
   max-height: 128px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
 }
 
 .attach-preview.hidden {
@@ -387,7 +386,6 @@
   overflow-y: auto;
   /* Wheel/trackpad at the top or bottom edge must not chain-scroll the chat behind it. */
   overscroll-behavior: contain;
-  scrollbar-width: auto;
   /* Ligatures + theme transitions on the focused field delay caret/glyph paint. */
   text-rendering: auto;
   font-variant-ligatures: none;

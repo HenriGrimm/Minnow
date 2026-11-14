@@ -234,6 +234,7 @@ export interface MinnowPreviewContextMenuApi {
 }
 
 export interface MinnowPreviewApi {
+  setScrollbarAccent?(color: string): Promise<void>;
   show(bounds?: MinnowPreviewBounds, tabId?: string, instanceId?: string): Promise<void>;
   hide(tabId?: string, instanceId?: string): Promise<void>;
   clear(tabId?: string, instanceId?: string): Promise<void>;

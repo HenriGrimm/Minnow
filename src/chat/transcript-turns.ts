@@ -7,8 +7,10 @@ export interface TranscriptTurn {
   fork: number;
   end: number;
   finalIndex: number | null;
-  /** Reply parts since the last work call, including prose around bookkeeping. */
+  /** Reply parts from each execution in this work group, in transcript order. */
   finalIndices: number[];
+  /** Leading reply parts delivered before an agent handoff. */
+  settledReplyCount: number;
   toolCount: number;
   run?: TurnRunRecord;
   workDurationMs?: number;
@@ -27,27 +29,32 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
   let turn: TranscriptTurn | undefined;
   for (let i = 0; i < chat.history.length; i++) {
     const msg = chat.history[i];
-    const agentResume = msg.role === 'user' && (isSubAgentResumeUserMessage(msg)
-      || msg.provenance?.kind === 'delegation_result');
-    // Steering and automatic agent handoffs extend the original work group.
-    if (msg.role === 'user' && (!isHiddenTranscriptUserMessage(msg) || msg.provenance?.kind === 'delegation_result') && (!turn || !msg.steer && !agentResume)) {
-      turn = { fork: i, end: i, finalIndex: null, finalIndices: [], toolCount: 0 };
-      turns.push(turn);
-      pendingToolIds.clear();
+    if (msg.role === 'user') {
+      const hidden = isHiddenTranscriptUserMessage(msg);
+      const delegationResult = msg.provenance?.kind === 'delegation_result';
+      const agentHandoff = delegationResult || (hidden && isSubAgentResumeUserMessage(msg))
+        || (msg.steer && msg.provenance?.kind === 'peer_message');
+      // Steering and automatic agent handoffs extend the original work group.
+      if ((!hidden || delegationResult) && (!turn || !msg.steer && !agentHandoff)) {
+        turn = { fork: i, end: i, finalIndex: null, finalIndices: [], settledReplyCount: 0, toolCount: 0 };
+        turns.push(turn);
+        pendingToolIds.clear();
+      }
+      if (!turn) continue;
+      if (msg.commandId) byCommand.set(msg.commandId, turn);
+      if (msg.workStatus) turn.executionStatus = msg.workStatus;
+      if (typeof msg.workDurationMs === 'number' && Number.isFinite(msg.workDurationMs) && msg.workDurationMs >= 0) {
+        turn.workDurationMs = (turn.workDurationMs ?? 0) + msg.workDurationMs;
+      }
+      if (agentHandoff) {
+        turn.settledReplyCount = turn.finalIndices.length;
+      } else if (msg.steer) {
+        turn.finalIndices.length = turn.settledReplyCount;
+        turn.finalIndex = turn.finalIndices.at(-1) ?? null;
+      }
     }
     if (!turn) continue;
     turn.end = i;
-    if (msg.role === 'user') {
-      if (msg.commandId) byCommand.set(msg.commandId, turn);
-      if (msg.workStatus) turn.executionStatus = msg.workStatus;
-    }
-    if (msg.role === 'user' && typeof msg.workDurationMs === 'number' && Number.isFinite(msg.workDurationMs) && msg.workDurationMs >= 0) {
-      turn.workDurationMs = (turn.workDurationMs ?? 0) + msg.workDurationMs;
-    }
-    if (msg.role === 'user' && (msg.steer || agentResume)) {
-      turn.finalIndices = [];
-      turn.finalIndex = null;
-    }
     if (msg.role === 'tool' && pendingToolIds.delete(msg.tool_call_id) && isToolResultFailure(msg.content)) {
       turn.toolCount--;
     }
@@ -56,8 +63,8 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
         turn.toolCount += msg.tool_calls.length;
         for (const call of msg.tool_calls) pendingToolIds.add(call.id);
         if (!msg.tool_calls.every((call) => REPLY_BOOKKEEPING_TOOLS.has(call.function.name))) {
-          turn.finalIndices = [];
-          turn.finalIndex = null;
+          turn.finalIndices.length = turn.settledReplyCount;
+          turn.finalIndex = turn.finalIndices.at(-1) ?? null;
           continue;
         }
       }

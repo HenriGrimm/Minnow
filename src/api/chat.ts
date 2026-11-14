@@ -57,7 +57,7 @@ import {
 import {
   appendBubble,
   appendInjectionNoticesDom,
-  appendStats,
+  appendMessageMetricSlots,
   appendStreamingAssistantRow,
   revealAssistantProseBubble,
   setAssistantErrorBubble,
@@ -715,7 +715,7 @@ export async function sendMessage(): Promise<void> {
       chat.modelInfo = { ...modelInfo };
       chat.modelId = binding.modelId || chat.modelId;
       recordChatMessage(chat);
-      appendStats(wrap, meta.stats, meta.usage);
+      appendMessageMetricSlots(wrap, meta.stats, meta.usage);
       if (thinkingNorm.length > 0) {
         renderThoughtsToggle(wrap, thinkingNorm, {
           durationMs: thinkingDurationMs > 0 ? thinkingDurationMs : undefined,

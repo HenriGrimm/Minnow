@@ -69,15 +69,31 @@
 .scc-head__identity {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--mn-space-3);
   min-width: 0;
   flex: 1;
 }
 
-.scc-head__repo {
-  font-weight: 650;
+.scc-head__title {
+  flex-shrink: 0;
+  margin: 0;
   font-size: var(--scc-title-sm);
-  letter-spacing: -0.015em;
+  font-weight: 600;
+  line-height: var(--mn-leading-tight);
+  letter-spacing: var(--mn-tracking-title);
+  white-space: nowrap;
+}
+
+.scc-head__context {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  min-width: 0;
+}
+
+.scc-head__repo {
+  color: var(--mn-fg-muted);
+  font-size: var(--scc-text-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

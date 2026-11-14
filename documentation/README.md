@@ -5,7 +5,7 @@
 - [Install and open a workspace](manual/get-started/install.md)
 - [Connect a model](manual/get-started/connect-a-model.md)
 - [Make and review your first change](manual/get-started/first-chat.md)
-- [Find your way around Graphite](manual/apps/overview.md)
+- [Find your way around Minnow](manual/apps/overview.md)
 - [Browse the manual by task](manual/README.md)
 - [Troubleshoot a model, thread, preview, or automation](manual/reference/troubleshooting.md)
 

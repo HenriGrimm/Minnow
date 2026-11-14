@@ -8,6 +8,7 @@ import { invalidateNativePolicyBeforeWrite, invalidateNativeProviderBeforeWrite 
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
+import { withFileWriteLocks } from '../workspace/file-write-lock.js';
 import {
   readEncryptedJsonFile,
   writeEncryptedJsonFile,
@@ -519,6 +520,11 @@ export async function updateProvider(id, body) {
   if (isAgentCliProviderId(id) || body.apiKind === 'agent-cli-v1') {
     throw new Error('Agent CLI providers must be configured through /api/models/agent-clis');
   }
+  await withFileWriteLocks([path.join(providerDir(id), 'profile.json')], () => patchProviderProfile(id, body));
+  return getProvider(id);
+}
+
+async function patchProviderProfile(id, body) {
   const profile = await readProfile(id);
   const now = new Date().toISOString();
 
@@ -588,7 +594,6 @@ export async function updateProvider(id, body) {
 
   profile.updatedAt = now;
   await writeProfile(id, profile);
-  return getProvider(id);
 }
 
 /**
@@ -607,7 +612,8 @@ export async function deleteProvider(id) {
     throw new Error('Provider not found');
   }
 
-  await fs.rm(providerDir(id), { recursive: true, force: true });
+  const dir = providerDir(id);
+  await withFileWriteLocks([path.join(dir, 'profile.json')], () => fs.rm(dir, { recursive: true, force: true }));
 
   const active = await getActiveProviderId();
   if (active === id) {
@@ -729,14 +735,15 @@ async function ensureAgentCliProvider(kind, enabled) {
 export async function setAgentCliProviderEnabled(kind, enabled) {
   if (typeof enabled !== 'boolean') throw new Error('enabled must be a boolean');
   const defaults = agentCliDefaults(kind);
-  const { profile } = await ensureAgentCliProvider(defaults.kind, enabled);
-  profile.enabled = enabled;
-  profile.updatedAt = new Date().toISOString();
-  await writeProfile(defaults.id, profile);
-  const secrets = await readSecrets(defaults.id);
-  return toProviderPublic(profile, {
-    ...secretsFlags(secrets),
-    hasCliToken: Boolean(secrets.cliToken?.trim()),
+  return withFileWriteLocks([path.join(providerDir(defaults.id), 'profile.json')], async () => {
+    const { profile, secrets } = await ensureAgentCliProvider(defaults.kind, enabled);
+    profile.enabled = enabled;
+    profile.updatedAt = new Date().toISOString();
+    await writeProfile(defaults.id, profile);
+    return toProviderPublic(profile, {
+      ...secretsFlags(secrets),
+      hasCliToken: Boolean(secrets.cliToken?.trim()),
+    });
   });
 }
 
@@ -783,29 +790,32 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     ) },
     { partial: true },
   );
-  const { profile, secrets } = await ensureAgentCliProvider(defaults.kind, false);
-  profile.agentCli = validateAgentCliProfile({
-    ...profile.agentCli,
-    ...patch,
-    kind: defaults.kind,
-    sessionMode: 'auto',
+  const result = await withFileWriteLocks([path.join(providerDir(defaults.id), 'profile.json')], async () => {
+    const { profile, secrets } = await ensureAgentCliProvider(defaults.kind, false);
+    profile.agentCli = validateAgentCliProfile({
+      ...profile.agentCli,
+      ...patch,
+      kind: defaults.kind,
+      sessionMode: 'auto',
+    });
+    profile.updatedAt = new Date().toISOString();
+    if (body.clearCliToken === true) secrets.cliToken = '';
+    if (typeof body.cliToken === 'string' && body.cliToken.trim()) {
+      secrets.cliToken = body.cliToken.trim();
+    }
+    await writeProfile(defaults.id, profile);
+    if (body.clearCliToken === true || typeof body.cliToken === 'string' && body.cliToken.trim()) {
+      await writeSecrets(defaults.id, secrets);
+    }
+    return toProviderPublic(profile, {
+      ...secretsFlags(secrets),
+      hasCliToken: Boolean(secrets.cliToken?.trim()),
+    });
   });
-  profile.updatedAt = new Date().toISOString();
-  if (body.clearCliToken === true) secrets.cliToken = '';
-  if (typeof body.cliToken === 'string' && body.cliToken.trim()) {
-    secrets.cliToken = body.cliToken.trim();
-  }
-  await writeProfile(defaults.id, profile);
-  if (body.clearCliToken === true || typeof body.cliToken === 'string' && body.cliToken.trim()) {
-    await writeSecrets(defaults.id, secrets);
-  }
   // Load lazily: runner catalog resolution itself depends on the provider store.
   const { invalidateContextWindowCatalog } = await import('../models/context-window.js');
   invalidateContextWindowCatalog(defaults.id);
-  return toProviderPublic(profile, {
-    ...secretsFlags(secrets),
-    hasCliToken: Boolean(secrets.cliToken?.trim()),
-  });
+  return result;
 }
 
 export { LM_STUDIO_LOCAL_ID, DEFAULT_LM_STUDIO_URL, buildAuthHeaders };

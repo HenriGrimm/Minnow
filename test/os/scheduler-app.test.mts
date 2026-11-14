@@ -32,7 +32,7 @@ function setupSchedulerDom(win: import('happy-dom').Window): void {
     </div>
     <main id="schedulerView" class="scheduler-page">
       <header class="scheduler-header"><div class="scheduler-header__controls"><button id="btnSchedulerAdd">New automation</button></div>
-      <p id="schedulerSummary"></p></header>
+      <output id="schedulerCount" hidden></output></header>
       <div id="schedulerPanelMount"></div>
     </main>
   `;
@@ -79,7 +79,7 @@ describe('scheduler markup contract', () => {
     assert.match(html, /id="schedulerView"/);
     assert.match(html, /id="schedulerPanelMount"/);
     assert.match(html, /id="schedulerStatus"/);
-    assert.match(html, /id="schedulerSummary"/);
+    assert.match(html, /<h1 class="scheduler-header__title">Automations<\/h1>\s*<output id="schedulerCount"/);
     assert.match(html, /id="btnSchedulerAdd"/);
   });
 });
@@ -165,7 +165,7 @@ describe('scheduler workspace shell', () => {
     setLocalServerAvailableForTests(true);
     const mount = document.getElementById('schedulerPanelMount')!;
     app = mountAutomationsApp(mount, {
-      summary: document.getElementById('schedulerSummary'),
+      count: document.getElementById('schedulerCount'),
       controls: document.querySelector<HTMLElement>('.scheduler-header__controls'),
       addButton: document.getElementById('btnSchedulerAdd') as HTMLButtonElement,
       notify: () => {},
@@ -180,6 +180,9 @@ describe('scheduler workspace shell', () => {
 
   test('an empty hub offers presets and the gallery', async () => {
     const mount = await mountApp();
+    const count = document.getElementById('schedulerCount')!;
+    assert.equal(count.hidden, false);
+    assert.equal(count.textContent, '0');
     assert.match(mount.querySelector('.auto-empty__title')?.textContent ?? '', /Nothing runs on its own yet/);
     const picks = [...mount.querySelectorAll('.auto-pick')].map(node => node.textContent);
     assert.ok(picks.includes('PR Reviewer'));
@@ -220,7 +223,11 @@ describe('scheduler workspace shell', () => {
     const rows = [...mount.querySelectorAll('.auto-row:not(.auto-row--head)')];
     assert.equal(rows.length, 2);
     assert.match(rows[1].textContent ?? '', /Weekdays at 9:00 AM/);
-    assert.match(document.getElementById('schedulerSummary')?.textContent ?? '', /1 running · 1 needs you · 2 automations/);
+    const count = document.getElementById('schedulerCount')!;
+    assert.equal(count.textContent, '2');
+    document.querySelector<HTMLButtonElement>('.auto-seg button:nth-child(2)')!.click();
+    assert.equal(mount.querySelectorAll('.auto-row:not(.auto-row--head):not([hidden])').length, 1);
+    assert.equal(count.textContent, '2');
     overview = { jobs: [], activity: [], now: new Date().toISOString() };
   });
 

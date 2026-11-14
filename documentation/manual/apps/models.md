@@ -4,7 +4,7 @@ Open **Models** from the command palette. To connect a provider for the first ti
 
 ## Download, load, and unload a local model
 
-1. In **Discover**, use the recommended list or search Hugging Face for a model. Inspect its available files and estimated memory fit at your intended context size. Choose a GGUF for llama.cpp, or an MLX model for Apple Silicon.
+1. In **Discover**, pick a recommendation or search Hugging Face, then choose **View model**. Discover selects one GGUF download based on your hardware and context size. Choose **Show all quants** to compare variants. A checkmark means the variant fits the estimated memory budget. On Apple Silicon, you can also search for MLX snapshots.
 2. Download the variant and watch its progress in the download shelf. To use an existing model file, add its folder in **Storage** and check **My models**.
 3. In **My models**, open the model and its load settings. Start with a context that fits your hardware, then select **Load**.
 4. Open **Local server** to see whether the runtime is starting or ready and to inspect logs. Select the ready model in the composer. Use **Unload** to free its memory.
@@ -13,7 +13,7 @@ If loading fails, keep the model selected in **Local server** while you read the
 
 ## Providers and subscriptions
 
-Use **Providers** to manage API endpoints, keys, and model discovery. Use **Subscriptions** for the supported installed agent CLIs. Verify the model appears on the expected provider before selecting it. Pick it in the composer or press **Ctrl+M** / **Cmd+M**. Your selection becomes the starting choice for new ordinary threads. Existing threads keep their saved model.
+Use **Providers** to manage API endpoints, keys, and model discovery. Use the switch on a provider row to control whether its models are available. Choose **Edit** to open the connection editor and read the full result of a connection test. Changes save automatically. Use **Subscriptions** to manage sign-in and installation for supported agent CLIs. Verify the model appears on the expected provider before selecting it. Pick it in the composer or press **Ctrl+M** / **Cmd+M**. Your selection becomes the starting choice for new ordinary threads. Existing threads keep their saved model.
 
 ## Routing
 

@@ -31,7 +31,6 @@
   border-radius: var(--radius-sm);
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
 }
 
 .code-change-strip {

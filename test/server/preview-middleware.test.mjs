@@ -77,6 +77,7 @@ describe('preview middleware', () => {
     );
     await fs.writeFile(path.join(workspaceDir, 'style.css'), 'body { color: red; }', 'utf8');
     await fs.writeFile(path.join(workspaceDir, 'UPPER.HTML'), '<script>window.ran=true</script>', 'utf8');
+    await fs.writeFile(path.join(workspaceDir, 'headless.html'), '<!DOCTYPE html><p>Preview</p>', 'utf8');
     await fs.writeFile(path.join(workspaceDir, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>', 'utf8');
     process.env.MINNOW_WORKSPACE = workspaceDir;
     await setWorkspaceRoot(workspaceDir);
@@ -113,6 +114,26 @@ describe('preview middleware', () => {
     assert.equal(res.status, 200);
     assert.match(res.body, /Hello/);
     assert.doesNotMatch(res.body, /<base\s/i);
+  });
+
+  test('isolated HTML previews get scrollbar styling while raw source stays intact', async () => {
+    async function serveHtml(query = '') {
+      const response = { setHeader() {}, end(body) { this.body = body; } };
+      await handlePreviewRequest(
+        { method: 'GET', headers: { host: '127.0.0.1' } },
+        response,
+        '/api/preview/file/headless.html',
+        new URLSearchParams(query),
+        { resolveSafePath, runWithPathAccess: (fn) => fn(), isolated: true },
+      );
+      return response;
+    }
+    const preview = await serveHtml();
+    assert.equal(preview.statusCode, 200);
+    assert.match(preview.body, /^<!DOCTYPE html><base[^>]*><style>/i);
+    assert.match(preview.body, /::-webkit-scrollbar-thumb:active/);
+    const raw = await serveHtml('raw=1');
+    assert.equal(raw.body, '<!DOCTYPE html><p>Preview</p>');
   });
 
   test('main-origin active documents retain sandbox protection', async () => {

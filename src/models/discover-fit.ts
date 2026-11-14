@@ -1,3 +1,4 @@
+import type { HubFile } from './api-client';
 import { estimateServeMemory } from './serve-memory-estimate';
 import type { HardwareSnapshot } from './types';
 
@@ -23,7 +24,7 @@ export function discoverFit(input: {
   const unknown = {
     label: 'Fit unknown',
     detail:
-      'Choose a file to check memory. Estimates need file size, model metadata, and detected hardware.',
+      'Estimates need the download size, model metadata, and detected hardware.',
     memoryGb: null,
     fits: false,
     tone: 'unknown' as const,
@@ -68,4 +69,31 @@ export function discoverFit(input: {
     tone: fitsGpu || (!gpu && fitsRam) ? 'good' : 'warning',
     detail: `Estimated ${memoryGb.toFixed(1)} GiB at ${input.context.toLocaleString()} tokens, including runtime overhead and headroom.${fitsRam && !fitsGpu ? ' CPU execution will be slower.' : ''} ${memory.geometrySource === 'heuristic' ? 'Approximate model geometry.' : 'Based on model-family geometry.'} Other apps and runtime settings affect actual fit.`,
   };
+}
+
+export interface DiscoverVariant {
+  file: HubFile;
+  fit: DiscoverFit;
+}
+
+/** Choose a balanced download from the fastest fitting memory tier. */
+export function recommendDiscoverVariant(
+  variants: DiscoverVariant[],
+  preferredFilename?: string,
+): DiscoverVariant | undefined {
+  const available = variants.filter(({ file }) => !file.error);
+  const fitting = available.filter(({ fit }) => fit.fits);
+  const gpuFitting = fitting.filter(({ fit }) => fit.label === 'Fits GPU memory' || fit.label === 'Fits unified memory');
+  const fittingTier = gpuFitting.length ? gpuFitting : fitting;
+  const candidates = fittingTier.length ? fittingTier : available;
+  const preferred = candidates.find(({ file }) => file.filename === preferredFilename)
+    ?? candidates.find(({ file }) => file.quant === 'Q4_K_M');
+
+  if (fitting.length) {
+    return preferred ?? candidates.reduce<DiscoverVariant | undefined>((largest, candidate) =>
+      (candidate.file.sizeBytes ?? 0) > (largest?.file.sizeBytes ?? 0) ? candidate : largest, undefined);
+  }
+  const smallest = candidates.reduce<DiscoverVariant | undefined>((best, candidate) =>
+    (candidate.fit.memoryGb ?? Infinity) < (best?.fit.memoryGb ?? Infinity) ? candidate : best, undefined);
+  return smallest ?? preferred ?? candidates[0];
 }

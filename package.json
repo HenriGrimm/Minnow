@@ -276,7 +276,8 @@
       "!src/**/*.ts",
       "!src/**/*.tsx",
       "!src/**/*.css",
-      "src/styles/tokens.css"
+      "src/styles/tokens.css",
+      "src/styles/scrollbars.css"
     ],
     "asarUnpack": [
       "server/voice/python/**",

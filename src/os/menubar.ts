@@ -163,7 +163,7 @@ export function renderMenubar(root: HTMLElement): () => void {
   const cleanupWikiState = bindShellOverlayTrigger(wikiBtn, 'wiki');
   wikiBtn.setAttribute('aria-controls', 'productWikiOverlay');
   wikiBtn.addEventListener('click', () => {
-    if (isShellOverlayOpen('wiki')) closeShellOverlay();
+    if (isShellOverlayOpen('wiki')) closeShellOverlay('wiki');
     else openProductWiki();
   });
 

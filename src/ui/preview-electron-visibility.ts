@@ -253,7 +253,7 @@ function canPaintElectronPreviewHost(): boolean {
   if (isFullscreenOverlayObscuringWorkspace()) return false;
   if (isProductWikiOverlayVisible()) return false;
   const body = document.getElementById('previewBody');
-  if (!body) return false;
+  if (!body || body.classList.contains('has-load-error')) return false;
   const rect = body.getBoundingClientRect();
   return rect.width > 0 && rect.height > 0;
 }

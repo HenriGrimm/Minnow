@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import {
   bindPreviewInstanceToElement,
+  syncPreviewInstanceBounds,
   setPreviewInstanceVisible,
   unbindPreviewInstance,
   resetPreviewInstanceHostsForTests,
@@ -32,8 +33,14 @@ describe('preview-instance-host', () => {
   }
 
   function makeElement(rect: { left: number; top: number; width: number; height: number }): HTMLElement {
+    const classes = new Set<string>();
     return {
       getBoundingClientRect: () => rect,
+      classList: {
+        contains: (name: string) => classes.has(name),
+        add: (name: string) => classes.add(name),
+        remove: (name: string) => classes.delete(name),
+      },
     } as unknown as HTMLElement;
   }
 
@@ -112,6 +119,20 @@ describe('preview-instance-host', () => {
     const byInstance = Object.fromEntries(showCalls.map((c) => [c.instanceId, c.bounds]));
     assert.deepEqual(byInstance.design, { x: 0, y: 0, width: 100, height: 100 });
     assert.deepEqual(byInstance['workspace-preview'], { x: 300, y: 0, width: 400, height: 400 });
+  });
+
+  test('a failed split preview hides its native guest until a retry', () => {
+    const el = makeElement({ left: 0, top: 0, width: 300, height: 300 });
+    const instanceId = 'workspace-preview-secondary';
+    bindPreviewInstanceToElement(instanceId, el);
+    el.classList.add('has-load-error');
+    syncPreviewInstanceBounds(instanceId);
+    assert.deepEqual(hideCalls, [{ tabId: undefined, instanceId }]);
+    assert.equal(showCalls.length, 1);
+
+    el.classList.remove('has-load-error');
+    syncPreviewInstanceBounds(instanceId);
+    assert.equal(showCalls.length, 2);
   });
 
   test('setPreviewInstanceVisible(false) hides without unbinding', async () => {

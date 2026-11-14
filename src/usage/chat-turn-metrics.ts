@@ -40,7 +40,7 @@ export function lastStatsHasMetrics(ls: LastStats | null | undefined): ls is Las
 }
 
 /**
- * Usage object for strip/chip painters. Fills `total_tokens` from prompt+completion
+ * Usage object for the metrics strip. Fills `total_tokens` from prompt+completion
  * only when the provider omitted it.
  */
 export function lastStatsToUsage(ls: LastStats): Usage {
@@ -51,7 +51,7 @@ export function lastStatsToUsage(ls: LastStats): Usage {
   return normalizeUsageTotals(usage);
 }
 
-/** Timing fields for strip/chip painters. */
+/** Timing fields for the metrics strip. */
 export function lastStatsToStats(ls: LastStats): Stats {
   const stats: Stats = {};
   if (ls.tokens_per_second != null) stats.tokens_per_second = ls.tokens_per_second;
@@ -63,7 +63,7 @@ export function lastStatsToStats(ls: LastStats): Stats {
 
 /**
  * Persistable snapshot from a round’s stats/usage.
- * Always derive `total_tokens` the same way chips do.
+ * Derives the total from prompt and completion counts when needed.
  */
 export function buildLastStatsSnapshot(
   stats: Stats | undefined,

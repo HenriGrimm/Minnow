@@ -18,6 +18,7 @@
 .chat-thread > .tool-call-msg,
 .chat-thread > .tool-call-batch,
 .chat-thread > .sub-agent-card,
+.chat-thread > .sub-agent-group,
 .chat-thread > .chat-work,
 .chat-thread > .chat-turn-todos,
 .chat-thread > .chat-turn-changes {
@@ -99,7 +100,6 @@
 .chat-thread .msg-bubble--md p { margin: 0.6em 0; }
 .chat-thread > .msg { animation: none; }
 .chat-thread > .msg.assistant { gap: 10px; }
-.chat-thread[data-chat-view='compact'] > .msg > .msg-stats { display: none; }
 .chat-thread .chat-work-hidden { display: none !important; }
 
 /* Compact rules stop at a nested full-view thread: an orchestrator board renders
@@ -380,7 +380,6 @@
   cursor: pointer;
 }
 .chat-reply-foot__btn:focus-visible { outline: 2px solid var(--mn-focus-ring); outline-offset: 1px; }
-.chat-reply-foot__stats { margin-left: 8px; font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
 @media (hover: hover) and (pointer: fine) {
   .chat-reply-foot__btn:hover { background: var(--chat-raise); color: var(--mn-fg); }
 }

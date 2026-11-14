@@ -247,7 +247,7 @@ import {
   appendBubble,
   appendCompactionDividerDom,
   appendInjectionNoticesDom,
-  appendStats,
+  appendMessageMetricSlots,
   appendStreamingAssistantRow,
   removeOrphanStreamingRow,
   renderChatFromHistory,
@@ -1290,11 +1290,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       if (flush) streamingStatsPublisher?.flush(input);
       else streamingStatsPublisher?.schedule(input);
     };
-    const appendLiveRowStats = (row: HTMLElement, stats: Stats, usage: Usage): void => {
-      if (!row.isConnected || !isStreamDomVisible(chat.id)) return;
-      row.querySelector('.msg-stats')?.remove();
-      appendStats(row, stats, usage);
-    };
     const recordRoundLedger = (
       streamMeta: StreamMetaAccumulator,
       t0: number,
@@ -1373,9 +1368,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       beginNextStreamingRow,
       onRoundFinalized: ({ wrap: closedWrap, connected }) => {
         if (!connected || !isStreamDomVisible(chat.id)) return;
-        if (metricsState.lastRound) {
-          appendLiveRowStats(closedWrap, metricsState.lastRound.stats, metricsState.lastRound.usage);
-        }
+        appendMessageMetricSlots(closedWrap, metricsState.lastRound?.stats, metricsState.lastRound?.usage);
         const histIdx = stampLiveRowHistoryIndex(closedWrap);
         if (histIdx === undefined) return;
         void import('../ui/message-actions').then(({ attachMessageActions }) => {
@@ -2003,8 +1996,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           durationMs: thinkingDurationMs,
           domVisible: isStreamDomVisible(chat.id),
         });
-        if (metricsState.lastRound) {
-          appendLiveRowStats(wrap, metricsState.lastRound.stats, metricsState.lastRound.usage);
+        if (isStreamDomVisible(chat.id)) {
+          appendMessageMetricSlots(wrap, metricsState.lastRound?.stats, metricsState.lastRound?.usage);
         }
       } else {
         thoughtController?.consumePersistedSegments();

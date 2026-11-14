@@ -575,9 +575,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
           durationMs: durationMs != null && durationMs > 0 ? durationMs : undefined,
         });
       }
-      if (msg.stats || msg.usage) {
-        appendStats(wrap, msg.stats || {}, msg.usage || {});
-      }
+      appendMessageMetricSlots(wrap, msg.stats, msg.usage);
       if (msg.stopped) {
         markMessageStopped(wrap);
       }
@@ -692,9 +690,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
   if (withThinking.truncated && !ctx.presentation) {
     markMessageTruncated(wrap, chat);
   }
-  if (msg.stats || msg.usage) {
-    appendStats(wrap, msg.stats || {}, msg.usage || {});
-  }
+  appendMessageMetricSlots(wrap, withThinking.stats, withThinking.usage);
   attachActions(wrap, {
     chatId: chat.id,
     historyIndex: i,
@@ -1546,53 +1542,39 @@ export function anchorPersistedThoughtsOnRow(
   wrap.classList.remove('msg--awaiting-prose');
 }
 
-// ── Stats ────────────────────────────────────────────────────────────────────
-
-/** Add per-turn metric chips under an assistant bubble. */
-export function appendStats(
-  wrap: HTMLElement,
-  stats: Stats | undefined,
-  usage: Usage | undefined
-): void {
-  const s = stats || {};
-  // Derive total from prompt+completion for legacy rows that omitted total_tokens.
-  const u = normalizeUsageTotals(usage || {});
-
-  const chips = document.createElement('div');
-  chips.className = 'msg-stats';
-  chips.dataset.pluginSlot = 'chat.message-metrics';
-
-  const defs: [string, boolean, string][] = [
-    ['c', s.tokens_per_second != null, `<span>${s.tokens_per_second?.toFixed(1)}</span> tok/s`],
-    ['g', s.time_to_first_token != null, `TTFT <span>${s.time_to_first_token?.toFixed(3)}s</span>`],
-    ['y', s.generation_time != null, `gen <span>${s.generation_time?.toFixed(3)}s</span>`],
-    ['r', u.total_tokens != null, `<span>${formatStatCount(u.total_tokens).display}</span> tokens`],
-    [
-      'b',
-      s.prompt_tokens_per_second != null,
-      `pp <span>${s.prompt_tokens_per_second?.toFixed(0)}</span> tok/s`,
-    ],
-    [
-      'p',
-      s.draft_acceptance != null,
-      `draft <span>${((s.draft_acceptance ?? 0) * 100).toFixed(0)}%</span> accepted`,
-    ],
+/** Retain per-message plugin mount targets and the metric text their callbacks can read. */
+export function appendMessageMetricSlots(wrap: HTMLElement, stats?: Stats, usage?: Usage): void {
+  if ((!stats && !usage) || wrap.querySelector(':scope > .msg-stats')) return;
+  const total = normalizeUsageTotals(usage ?? {}).total_tokens;
+  const formattedTotal = total == null ? undefined : formatStatCount(total);
+  const metrics: Array<[string, string | undefined, string, string?]> = [
+    ['c', stats?.tokens_per_second?.toFixed(1), ' tok/s'],
+    ['g', stats?.time_to_first_token?.toFixed(3), 's', 'TTFT '],
+    ['y', stats?.generation_time?.toFixed(3), 's', 'gen '],
+    ['r', formattedTotal?.display, ' tokens'],
+    ['b', stats?.prompt_tokens_per_second?.toFixed(0), ' tok/s', 'pp '],
+    ['p', stats?.draft_acceptance == null ? undefined : (stats.draft_acceptance * 100).toFixed(0), '% accepted', 'draft '],
   ];
-
-  for (const [cls, show, html] of defs) {
-    if (!show) continue;
+  const row = document.createElement('div');
+  row.className = 'msg-stats';
+  row.dataset.pluginSlot = 'chat.message-metrics';
+  for (const [kind, value, suffix, prefix = ''] of metrics) {
+    if (value === undefined) continue;
     const chip = document.createElement('div');
-    chip.className = `stat-chip ${cls}`;
-    if (cls === 'c') chip.dataset.pluginSlot = 'chat.message-throughput';
-    chip.innerHTML = html;
-    if (cls === 'r' && u.total_tokens != null) {
-      const formatted = formatStatCount(u.total_tokens);
-      if (formatted.full) chip.setAttribute('title', formatted.full);
-    }
-    chips.appendChild(chip);
+    chip.className = `stat-chip ${kind}`;
+    chip.dataset.messageMetric = '';
+    if (kind === 'c') chip.dataset.pluginSlot = 'chat.message-throughput';
+    if (kind === 'r' && formattedTotal?.full) chip.title = formattedTotal.full;
+    const text = document.createElement('small');
+    text.className = 'msg-stat-value';
+    text.hidden = true;
+    const number = document.createElement('span');
+    number.textContent = value;
+    text.append(prefix, number, suffix);
+    chip.append(text);
+    row.append(chip);
   }
-
-  if (chips.children.length) wrap.appendChild(chips);
+  if (row.childElementCount) wrap.append(row);
 }
 
 /** Clear the active chat's message history (session row remains). */

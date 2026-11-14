@@ -78,6 +78,7 @@ describe('brain markup contract', () => {
   test('index.html defines brainView shell', () => {
     const html = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
     assert.match(html, /id="brainView"/);
+    assert.match(html, /<div class="brain-rail__heading" data-back-to-chat-header>\s*<span class="brain-rail__title"[^>]*>Brain<\/span>/);
     assert.match(html, /id="brainSection-graph"/);
     assert.match(html, /id="brainGraphCanvas"/);
     assert.match(html, /id="brainInspector"/);

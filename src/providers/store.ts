@@ -70,6 +70,7 @@ let cachedList: ProviderListResponse | null = null;
 let cachedAt: number | null = null;
 let providersAvailable = false;
 let providersInFlight: Promise<ProviderListResponse> | null = null;
+let providerCacheRevision = 0;
 
 const PROVIDERS_CACHE_TTL_MS = 30_000;
 
@@ -98,6 +99,7 @@ export function getViteOnlyFallbackProvider(): ProviderPublic {
 // ── List ─────────────────────────────────────────────────────────────────────
 
 async function fetchProvidersList(): Promise<ProviderListResponse> {
+  const revision = providerCacheRevision;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROVIDERS_TIMEOUT_MS);
   try {
@@ -111,6 +113,7 @@ async function fetchProvidersList(): Promise<ProviderListResponse> {
     }
     const data = (await res.json()) as ProviderListResponse;
     if (!Array.isArray(data.providers)) throw new Error('Invalid provider registry');
+    if (revision !== providerCacheRevision) return listProviders();
     providersAvailable = true;
     cachedList = data;
     cachedAt = Date.now();
@@ -132,7 +135,7 @@ export async function listProviders(): Promise<ProviderListResponse> {
   }
 
   if (!providersInFlight) {
-    providersInFlight = (async () => {
+    const request = (async () => {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try { return await fetchProvidersList(); } catch {
           if (cachedList) return cachedList;
@@ -140,7 +143,8 @@ export async function listProviders(): Promise<ProviderListResponse> {
       }
       providersAvailable = false;
       throw new Error('Could not load providers from the host. Check the connection and retry.');
-    })().finally(() => { providersInFlight = null; });
+    })().finally(() => { if (providersInFlight === request) providersInFlight = null; });
+    providersInFlight = request;
   }
   return providersInFlight;
 }
@@ -331,6 +335,8 @@ export async function updateProviderSecrets(
 
 /** Clear cached list after external changes. */
 export function invalidateProviderCache(): void {
+  providerCacheRevision += 1;
+  providersInFlight = null;
   cachedList = null;
   cachedAt = null;
   notifyModelInventory();

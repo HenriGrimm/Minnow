@@ -650,8 +650,6 @@
   overscroll-behavior: contain;
   padding: 0;
 }
-.model-select-menu.model-provider-browser::-webkit-scrollbar { width: 6px; }
-.model-select-menu.model-provider-browser::-webkit-scrollbar-thumb { background: var(--mn-border-strong); border-radius: 4px; }
 .model-select-menu.model-provider-browser:not(.hidden) { display: flex; flex-direction: column; }
 .model-browser-models { margin: 0; padding: 0; list-style: none; }
 .model-browser-providers { display: flex; flex: 1 0 248px; min-height: 0; list-style: none; }

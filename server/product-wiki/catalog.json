@@ -10,7 +10,7 @@
         "Find the steps for what you want to do"
       ],
       "section": "Overview",
-      "hash": "1108b2d4589ec61428478516938fdca375e88ae2e118f978982cfdda0ff410fa"
+      "hash": "05ce25c875d01864f377311801dfa29b509942ecc895c12b068f1ca078281d8c"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -123,7 +123,7 @@
     },
     {
       "path": "documentation/manual/apps/overview.md",
-      "title": "Find your way around Graphite",
+      "title": "Find your way around Minnow",
       "summary": "Open a workspace from the picker. Code opens the project's threads. If there is no existing thread to resume, New thread shows the composer and any issues ready to pick up. Find a command or a conversation Press Ctrl+K / Cmd+K outside the editor to open the command palette. Searc",
       "headings": [
         "Find a command or a conversation",
@@ -131,12 +131,12 @@
         "Open a full app"
       ],
       "section": "Apps",
-      "hash": "b85f255abc7d54448ad0e1cd0abf259518aa66df714c9ef370c5a356b4daf46a"
+      "hash": "916cf5e885dd29a71c928ba6bf0be687e3a60d3e88737dbd54e5efa3139ee22e"
     },
     {
       "path": "documentation/manual/apps/code.md",
       "title": "Edit, run, and review in Code",
-      "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Graphite navigation for the launcher and thread card. Find and edit a file 1. Open Side panel → Files . Expand a f",
+      "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Workspace navigation for the launcher and thread card. Find and edit a file 1. Open Side panel → Files . Expand a ",
       "headings": [
         "Find and edit a file",
         "Terminal",
@@ -147,12 +147,12 @@
         "Code map"
       ],
       "section": "Apps",
-      "hash": "219f78428857ab272de1a09eb31c21230cbcaceef8957094bb311676e3096c98"
+      "hash": "e6407e04e8b44a9044f8c66518547d37ba80bee74488de93b33786f5a485b556"
     },
     {
       "path": "documentation/manual/apps/models.md",
       "title": "Manage models, routing, and usage",
-      "summary": "Open Models from the command palette. To connect a provider for the first time, follow Connect a model. Download, load, and unload a local model 1. In Discover , use the recommended list or search Hugging Face for a model. Inspect its available files and estimated memory fit at y",
+      "summary": "Open Models from the command palette. To connect a provider for the first time, follow Connect a model. Download, load, and unload a local model 1. In Discover , pick a recommendation or search Hugging Face, then choose View model . Discover selects one GGUF download based on you",
       "headings": [
         "Download, load, and unload a local model",
         "Providers and subscriptions",
@@ -161,7 +161,7 @@
         "Usage and cost"
       ],
       "section": "Apps",
-      "hash": "7fcaa57db5d15567e631d44e5cc96e956e09d14566e987cd9e03fbcb336ca2c5"
+      "hash": "eb52100345d5bc7d1d87d7cfb245e05a2219c67eb7527a61d764e9c46f5c97ac"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -270,7 +270,7 @@
         "API and lifecycle"
       ],
       "section": "Extend Minnow",
-      "hash": "18dc84ad53d7ed4bbe9226275eca29a7597b643fd7d44a8e6ec08e79817ab53e"
+      "hash": "b16f794c4eea9647aa19b9efa0405b989fd9655f02e31aed4557cba89c77d040"
     },
     {
       "path": "documentation/manual/extend/voice.md",

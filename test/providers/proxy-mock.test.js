@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import { createProvider, deleteProvider, getProvider, updateProvider } from '../../server/providers/store.js';
 import {
   setTestHome,
   rmTestHome,
@@ -77,6 +78,22 @@ after(async () => {
 });
 
 describe('provider CRUD + proxy', () => {
+  it('preserves availability and connection edits when both write the same provider', async () => {
+    const id = 'concurrent-profile';
+    await createProvider({ id, label: 'Original', baseUrl: 'https://example.test', apiKind: 'openai-v1' });
+    try {
+      await Promise.all([
+        updateProvider(id, { enabled: false }),
+        updateProvider(id, { label: 'Updated' }),
+      ]);
+      const provider = await getProvider(id);
+      assert.equal(provider.enabled, false);
+      assert.equal(provider.label, 'Updated');
+    } finally {
+      await deleteProvider(id);
+    }
+  });
+
   it('seeds lm-studio-local on first GET', async () => {
     const res = await httpRequest(baseUrl, 'GET', '/api/providers');
     assert.equal(res.status, 200);

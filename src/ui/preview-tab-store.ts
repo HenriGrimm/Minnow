@@ -1,4 +1,5 @@
 import { randomUUID } from '../lib/random-id.ts';
+import type { MinnowPreviewLoadFailedDetail } from '../electron';
 import {
   getFilePanelState,
   patchFilePanelState,
@@ -13,7 +14,7 @@ export interface PreviewTabState {
   source: PreviewSource | null;
   title: string;
   loading: boolean;
-  loadFailed?: { errorCode: number; errorDescription: string };
+  loadFailed?: MinnowPreviewLoadFailedDetail;
   guestCrashed?: { reason: string; exitCode: number };
   createdAt: number;
 }
@@ -216,7 +217,7 @@ export function setPreviewTabLoading(id: string, loading: boolean): void {
 
 export function setPreviewTabLoadFailed(
   id: string,
-  detail: { errorCode: number; errorDescription: string } | undefined,
+  detail: MinnowPreviewLoadFailedDetail | undefined,
 ): void {
   const tab = tabs.get(id);
   if (!tab) return;

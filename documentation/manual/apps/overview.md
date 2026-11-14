@@ -1,4 +1,4 @@
-# Find your way around Graphite
+# Find your way around Minnow
 
 Open a workspace from the picker. Code opens the project's threads. If there is no existing thread to resume, **New thread** shows the composer and any issues ready to pick up.
 

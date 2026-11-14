@@ -110,6 +110,8 @@ export interface WorkspaceWindowInfo {
 // ── Preview API ──────────────────────────────────────────────────────────────
 
 const preview = {
+  setScrollbarAccent: (color: string): Promise<void> =>
+    ipcRenderer.invoke(channels.PREVIEW_SET_SCROLLBAR_ACCENT, color),
   show: (bounds?: PreviewBounds, tabId?: string, instanceId?: string): Promise<void> =>
     ipcRenderer.invoke(channels.PREVIEW_SHOW, bounds, tabId, instanceId),
   hide: (tabId?: string, instanceId?: string): Promise<void> =>

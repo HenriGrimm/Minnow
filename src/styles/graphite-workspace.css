@@ -393,7 +393,6 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
 .mn-graphite-workspace #osAppRail .chat-list {
   margin-top: 10px;
   padding: 0;
-  scrollbar-width: thin;
 }
 
 .mn-graphite-workspace #osAppRail .chat-list-section-head {
@@ -550,7 +549,6 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
   align-items: stretch;
   max-height: 34vh;
   overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 .mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__btn {
@@ -575,6 +573,10 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
 
 .mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__btn.is-active {
   background: var(--mn-sel, var(--mn-graphite-active, var(--mn-surface-2)));
+}
+
+.mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__btn:focus-visible {
+  outline-offset: -2px;
 }
 
 .mn-graphite-workspace .mn-os-app-rail__nav .mn-os-app-rail__label {
@@ -1055,7 +1057,7 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
 .workspace-picker-overlay--locations .workspace-picker__nav { grid-area: 2 / 2 / 3 / 3; }
 .workspace-picker-overlay--locations .workspace-picker__new-folder-panel { grid-area: 3 / 2 / 4 / 3; }
 .workspace-picker-overlay--locations .workspace-picker__error { grid-area: 4 / 2 / 5 / 3; }
-.workspace-picker-overlay--locations .workspace-picker__body { grid-area: 5 / 2 / 6 / 3; scrollbar-width: thin; }
+.workspace-picker-overlay--locations .workspace-picker__body { grid-area: 5 / 2 / 6 / 3; }
 .workspace-picker-overlay--locations .workspace-picker__list { min-height: 0; }
 .workspace-picker-overlay--locations .workspace-picker__footer { grid-area: 6 / 1 / 7 / 3; }
 

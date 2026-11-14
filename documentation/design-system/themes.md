@@ -9,7 +9,7 @@ Sixteen composed themes on `<html data-theme="{family}-{mode}">`.
 | **swamp** (default) | `swamp-dark` | `swamp-light` | Muted green on cool neutrals |
 | **desert** | `desert-dark` | `desert-light` | Warm amber on taupe |
 | **ocean** | `ocean-dark` | `ocean-light` | Soft cyan on blue-tinted neutrals |
-| **coral** | `coral-dark` | `coral-light` | Warm coral on graphite |
+| **coral** | `coral-dark` | `coral-light` | Warm coral on charcoal |
 | **mono** | `mono-dark` | `mono-light` | Grayscale only |
 | **matrix** | `matrix-dark` | `matrix-light` | Phosphor green on CRT black |
 | **human** | `human-dark` | `human-light` | Burnt orange on near-black |

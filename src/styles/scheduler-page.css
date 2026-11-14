@@ -17,15 +17,15 @@
   display: flex;
 }
 
-/* ---------- page header (aligned with Issues app chrome) ---------- */
+/* ---------- page header ---------- */
 
 .scheduler-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px 16px;
-  min-height: 52px;
-  padding: 10px 20px;
+  gap: var(--mn-space-1) var(--mn-space-2);
+  min-height: var(--topbar-h);
+  padding: var(--mn-space-1) var(--mn-space-4);
   border-bottom: 1px solid var(--mn-border);
   flex-shrink: 0;
   background: var(--mn-surface-1, var(--mn-bg));
@@ -34,27 +34,11 @@
 .scheduler-header__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 0;
-  flex: 1 1 12rem;
+  gap: var(--mn-space-2);
+  flex: 1 0 auto;
 }
 
-.scheduler-header__icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: color-mix(in oklch, var(--mn-accent) 14%, var(--mn-bg));
-  color: var(--mn-accent);
-  flex-shrink: 0;
-}
-
-.scheduler-header__titles {
-  min-width: 0;
-}
-
-.scheduler-header__titles h1 {
+.scheduler-header__title {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
@@ -62,19 +46,25 @@
   line-height: 1.2;
 }
 
-.scheduler-summary {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  line-height: 1.35;
+.scheduler-count {
+  min-inline-size: var(--mn-space-5);
+  padding: var(--mn-space-0-5) var(--mn-space-1-5);
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-graphite-raised, var(--mn-surface-2));
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font: var(--mn-weight-medium) var(--mn-type-xs)/var(--mn-leading-tight) var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .scheduler-header__controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: var(--mn-space-2);
+  margin-inline-start: auto;
 }
 
 .scheduler-btn {
@@ -138,10 +128,4 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-@media (max-width: 640px) {
-  .scheduler-header {
-    padding: 10px 14px;
-  }
 }

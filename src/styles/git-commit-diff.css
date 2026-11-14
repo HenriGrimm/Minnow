@@ -95,7 +95,6 @@
   padding: 6px 8px;
   border-bottom: 1px solid var(--mn-border);
   overflow-x: auto;
-  scrollbar-width: thin;
 }
 
 .git-commit-diff__file-tab {

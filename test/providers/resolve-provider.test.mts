@@ -80,6 +80,19 @@ describe('resolveProvider', () => {
     assert.deepEqual((await listProviders()).providers, PROVIDERS);
   });
 
+  test('an inventory refresh after a provider edit supersedes an older in-flight read', async () => {
+    let finishOldRead!: (response: Response) => void;
+    globalThis.fetch = () => new Promise((resolve) => { finishOldRead = resolve; });
+    const oldRead = listProviders();
+    invalidateProviderCache();
+    const updated = PROVIDERS.map((provider) => ({ ...provider, enabled: false }));
+    globalThis.fetch = async () => Response.json({ providers: updated });
+    assert.deepEqual((await listProviders()).providers, updated);
+    finishOldRead(Response.json({ providers: PROVIDERS }));
+    assert.deepEqual((await oldRead).providers, updated);
+    assert.deepEqual((await listProviders()).providers, updated);
+  });
+
   test('returns the requested enabled provider', async () => {
     const provider = await resolveProvider('mlx-lm-local');
     assert.equal(provider.id, 'mlx-lm-local');

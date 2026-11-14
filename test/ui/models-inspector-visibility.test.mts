@@ -17,6 +17,7 @@ describe('models inspector visibility', () => {
   });
 
   afterEach(() => {
+    document.documentElement.classList.remove('mn-graphite-apps');
     document.body.innerHTML = '';
   });
 
@@ -30,6 +31,29 @@ describe('models inspector visibility', () => {
     assert.equal(isModelsInspectorOpen(), true);
     assert.equal(document.getElementById('btnModelsInspector')?.getAttribute('aria-expanded'), 'true');
     assert.equal(localStorage.getItem('minnow.models.inspector'), '1');
+  });
+
+  test('Local Server highlights the toggle only while its inspector is visible', async () => {
+    const { setModelsInspectorOpen, syncModelsInspectorToggle, toggleModelsInspector } = await import(
+      '../../src/ui/models/inspector-visibility.ts'
+    );
+    const root = document.getElementById('modelsView')!;
+    const toggle = document.getElementById('btnModelsInspector')!;
+    document.documentElement.classList.add('mn-graphite-apps');
+    setModelsInspectorOpen(true);
+
+    root.dataset.modelsSection = 'server';
+    syncModelsInspectorToggle();
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(localStorage.getItem('minnow.models.inspector'), '1');
+
+    toggleModelsInspector();
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.ok(root.classList.contains('is-runtime-inspector'));
+
+    toggleModelsInspector();
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    assert.ok(root.classList.contains('is-inspector-hidden'));
   });
 });
 

@@ -10,7 +10,7 @@ Press **`?`** (when not typing in a text field) to open the shell keyboard short
 
 | App | Core flow (keyboard-only) | Notes |
 |-----|---------------------------|-------|
-| **Graphite workspace sidebar** | Tab through sidebar navigation and footer controls; Enter launches apps | Ctrl+Tab cycles workspaces picker and recent apps |
+| **Workspace sidebar** | Tab through sidebar navigation and footer controls; Enter launches apps | Ctrl+Tab cycles workspaces picker and recent apps |
 | **Code chat** | Tab to composer; type message; Enter send; `/` skills; model picker Arrow keys | Streaming uses throttled `aria-live` (no token spam) |
 | **Code** | File tree arrows; editor Tab/Escape; Ctrl/Cmd+K Quick Edit | Terminal: focus with tab; Ctrl/Cmd+C copies selection |
 | **Research** | Tab through hub controls; Enter starts run | Progress uses `aria-live="polite"` |

@@ -9,6 +9,7 @@ import { createReadStream } from 'node:fs';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { runWithToolContext } from '../runtime/path-access.js';
 import { contentTypeForPreviewPath } from './mime-types.js';
+import { previewScrollbarStyle } from './scrollbars.js';
 import {
   isDocumentHtmlPreviewPath,
   renderDocumentPreviewHtml,
@@ -29,6 +30,14 @@ const BLOCKED_PATH_SEGMENTS = new Set([
 /** Cap concurrent preview streams (cloud browsers exhaust sockets easily). */
 const MAX_CONCURRENT_PREVIEW_STREAMS = 24;
 let activePreviewStreams = 0;
+
+function insertPreviewHeadMarkup(html, markup) {
+  const head = /<head\b[^>]*>/i.exec(html);
+  // Keep a leading doctype in place for files that omit an explicit head.
+  const doctype = /^\s*<!doctype\s[^>]*>/i.exec(html);
+  const offset = head ? head.index + head[0].length : doctype?.[0].length ?? 0;
+  return html.slice(0, offset) + markup + html.slice(offset);
+}
 
 /**
  * @param {string} relativePath
@@ -57,11 +66,7 @@ function injectPreviewBaseHref(html, relativePath, origin, filePrefix = PREVIEW_
     ? `${filePrefix}${encodedDir}/`
     : filePrefix;
   const baseTag = `<base href="${origin}${basePath}">`;
-  const headMatch = html.match(/<head[^>]*>/i);
-  if (headMatch) {
-    return html.replace(headMatch[0], `${headMatch[0]}${baseTag}`);
-  }
-  return `${baseTag}${html}`;
+  return insertPreviewHeadMarkup(html, baseTag);
 }
 
 function sendJson(res, status, payload) {
@@ -252,6 +257,7 @@ export async function handlePreviewRequest(req, res, pathname, searchParams, dep
     if (isHtml && !wantDownload) {
       let html = await fsp.readFile(absPath, 'utf8');
       if (!wantRaw) {
+        if (deps.isolated) html = insertPreviewHeadMarkup(html, previewScrollbarStyle);
         const origin = `http://${req.headers.host ?? '127.0.0.1'}`;
         html = injectPreviewBaseHref(html, relativePath, origin, deps.baseFilePrefix);
       }

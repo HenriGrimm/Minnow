@@ -296,7 +296,7 @@
 .models-inspector--details .models-inspector__footer {
   flex-wrap: wrap;
   padding: 14px 20px;
-  background: var(--mn-bg);
+  background: transparent;
 }
 
 .models-inspector--details .models-inspector__footer .models-btn {

@@ -1,4 +1,4 @@
-# Graphite layout
+# Workspace layout
 
 | Region | Owns | Code |
 | --- | --- | --- |
@@ -11,4 +11,4 @@ Keep the chat measure consistent across transcript, composer, and Metrics. Panel
 
 For desktop changes, verify keyboard focus after resizing, moving, or closing a tab. Check the stage with both panels open and with the workspace sidebar hidden. For phone layouts, verify that a surface can open in a single sheet and return focus to its trigger when closed. Run with reduced motion before shipping a new transition.
 
-See [Graphite shell](shell.md) for route boundaries and [tokens](tokens.md) for shared scales.
+See [Workspace shell](shell.md) for route boundaries and [tokens](tokens.md) for shared scales.

@@ -1,4 +1,4 @@
-/** One shell overlay can sit above the routed Settings app. */
+/** A shell popover can sit above an open page. */
 type ShellOverlay = {
   id: string;
   close: () => void;
@@ -6,27 +6,27 @@ type ShellOverlay = {
 let overlays: ShellOverlay[] = [];
 const listeners = new Set<() => void>();
 const boundDocuments = new WeakSet<Document>();
+const pageRoots: Record<string, string> = {
+  settings: 'settingsView', workspace: 'osWorkspaceGate', wiki: 'productWikiOverlay',
+};
 
-function bindDismissal(doc: Document): void {
+export function bindShellOverlayDismissal(doc: Document): void {
   if (boundDocuments.has(doc)) return;
   boundDocuments.add(doc);
-  const panels: Record<string, string> = {
-    settings: 'settingsView', workspace: 'osWorkspaceGate', wiki: 'productWikiOverlay',
-  };
   // Observe the top layer before its own outside-click handler can close it.
   doc.addEventListener('pointerdown', (event) => {
     const active = overlays.at(-1);
-    if (!active || !panels[active.id]) return;
+    if (!active || !pageRoots[active.id]) return;
     if (active.id === 'workspace' && doc.getElementById('osWorkspaceGate')?.classList.contains('workspace-gate--opening')) return;
     const target = event.target as Element | null;
     // Dialogs, sheets and prompts layered above an open overlay belong to it.
     if (target?.closest('[data-shell-overlay], [data-above-shell-overlay]')) return;
-    if (doc.getElementById(panels[active.id])?.contains(target)) return;
+    if (doc.getElementById(pageRoots[active.id])?.contains(target)) return;
     closeShellOverlay();
   }, true);
   doc.addEventListener('keydown', (event) => {
     const active = overlays.at(-1);
-    if (event.defaultPrevented || event.key !== 'Escape' || !active || !panels[active.id]) return;
+    if (event.defaultPrevented || event.key !== 'Escape' || !active || !pageRoots[active.id]) return;
     if (active.id === 'workspace' && (doc.getElementById('osWorkspaceGate')?.classList.contains('workspace-gate--opening')
       || (event.target as Element | null)?.closest?.('[data-above-shell-overlay]'))) return;
     const id = active.id;
@@ -56,7 +56,7 @@ export function closeShellOverlay(id = overlays.at(-1)?.id): void {
   notify();
 }
 
-/** Clear both layers before navigating away from the current surface. */
+/** Clear the layers before navigating away from the current surface. */
 export function closeShellOverlays(): void {
   if (overlays.length === 0) return;
   const previous = overlays;
@@ -66,9 +66,11 @@ export function closeShellOverlays(): void {
 }
 
 export function openShellOverlay(id: string, close: () => void): void {
-  if (!isShellOverlayTopmost(id)) {
+  const top = overlays.at(-1)?.id;
+  const keepPage = top && pageRoots[top] && (id === 'models' || id === 'update');
+  if (top !== id) {
     if (id === 'wiki') closeShellOverlays();
-    else if (!isShellOverlayTopmost('settings')) closeShellOverlay();
+    else if (top !== 'settings' && !keepPage) closeShellOverlay();
   }
   overlays = [...overlays.filter((overlay) => overlay.id !== id), { id, close }];
   notify();
@@ -83,7 +85,7 @@ export function shellOverlayClosed(id: string): void {
 /** Multiple nav controls may represent the same surface (e.g. Settings rail + header). */
 export function bindShellOverlayTrigger(button: HTMLElement, id: string): () => void {
   button.dataset.shellOverlay = id;
-  bindDismissal(button.ownerDocument);
+  bindShellOverlayDismissal(button.ownerDocument);
   const sync = () => {
     const open = isShellOverlayOpen(id);
     button.setAttribute('aria-expanded', String(open));

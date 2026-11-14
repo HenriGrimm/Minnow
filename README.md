@@ -4,7 +4,7 @@ Minnow is an open-source desktop workspace for coding with local or hosted model
 
 [Download Minnow](https://github.com/HenriGrimm/Minnow/releases) · [User manual](documentation/manual/README.md) · [Build from source](documentation/contributor/setup-from-source.md) · [Discord](https://discord.gg/U4FPzv9K4X)
 
-![Graphite Code workspace showing the Fieldnotes demo thread and the forecast source file in the side panel](documentation/images/hero.png)
+![Minnow Code workspace showing the Fieldnotes demo thread and the forecast source file in the side panel](documentation/images/hero.png)
 
 ## Get started
 
@@ -15,17 +15,17 @@ Minnow is an open-source desktop workspace for coding with local or hosted model
 
 Follow the [first-change walkthrough](documentation/manual/get-started/first-chat.md) for a complete example, including tool approvals.
 
-## Work in Graphite
+## Work in Minnow
 
 | Task | Where to start |
 | --- | --- |
 | Read or edit a file while keeping the thread visible | Open **Files** in the side panel. Put **Terminal** below it or open **Browser** for a local preview. [Work in Code](documentation/manual/apps/code.md) |
-| See what an agent did | Read the **Edited** summary for changed files, open **Diff** for the checkout, or use **Agents** for delegated work. [Find your way around Graphite](documentation/manual/apps/overview.md) |
+| See what an agent did | Read the **Edited** summary for changed files, open **Diff** for the checkout, or use **Agents** for delegated work. [Find your way around Minnow](documentation/manual/apps/overview.md) |
 | Take a bug from report to review | Capture an issue from the thread. Start a linked conversation, optionally in a new Git worktree, and inspect the result under **Work**. [Work with issues](documentation/manual/apps/issues.md) |
 | Run a multi-step plan | Open **Boards** to assign tasks to builders and testers, inspect checkouts, and verify the integration result. [Run a plan with Orchestrate](documentation/manual/orchestrate/boards.md) |
 | Keep a decision or repeat a check | Save a project decision in **Brain**, or create an **Automation** with a schedule and run history. [Brain](documentation/manual/apps/brain.md) · [Automations](documentation/manual/apps/scheduler.md) |
 
-![Graphite Source Control showing the forecast diff in the demo repository](documentation/images/app-source-control.png)
+![Minnow Source Control showing the forecast diff in the demo repository](documentation/images/app-source-control.png)
 
 ## Models and permissions
 
@@ -33,7 +33,7 @@ Pick a model per thread. Use **Models** to download and serve local models, conf
 
 Use **Manual**, **Auto**, or **Full access** in the composer to set tool permissions. Start a turn with **/ask** for read-only investigation or **/plan** to write a plan under `documentation/plans/`. [Tools and permissions](documentation/manual/concepts/tools-and-permissions.md) · [Data and privacy](documentation/manual/reference/privacy-and-security.md)
 
-![Graphite Models showing the Discover catalog and estimated hardware fit](documentation/images/app-models.png)
+![Minnow Models showing the Discover catalog and estimated hardware fit](documentation/images/app-models.png)
 
 ## Help and contributing
 

@@ -1,7 +1,7 @@
 import { fetchHubFiles, type HubFile, type ModelDownloadFormat } from '../../models/api-client';
-import { discoverFit } from '../../models/discover-fit';
+import { discoverFit, recommendDiscoverVariant } from '../../models/discover-fit';
 import type { HardwareSnapshot } from '../../models/types';
-import { el, formatBytes, textButton } from './dom';
+import { el, formatBytes, icon, textButton } from './dom';
 import { downloadModel, getModelsState } from './store';
 import { openDownloadedModels } from './discover-downloads';
 
@@ -14,7 +14,19 @@ export interface DiscoverSelection {
   maxContext?: number;
   format: ModelDownloadFormat;
   sizeBytes?: number | null;
+  preferredFilename?: string;
 }
+
+function quantName(file: HubFile): string {
+  return file.quant || file.filename.split('/').pop()!;
+}
+
+const compactFitLabels: Record<string, string> = {
+  'Fits GPU memory': 'Fits GPU',
+  'Fits unified memory': 'Fits unified',
+  'Fits in RAM': 'Fits RAM',
+  'Exceeds memory budget': 'Over budget',
+};
 
 export function createDiscoverInspector(
   host: HTMLElement,
@@ -23,60 +35,69 @@ export function createDiscoverInspector(
 ) {
   let selection: DiscoverSelection | null = null;
   let files: HubFile[] = [];
-  let selected = '';
+  let chosenFilename = '';
+  let showQuants = false;
+  let targetEngine: 'mtplx' | undefined;
   let loading = false;
   let error = '';
-  let pending = false;
+  let downloadError = '';
+  const pendingRepos = new Set<string>();
   let controller: AbortController | null = null;
+  let disposed = false;
+  host.setAttribute('aria-label', 'Model details');
 
   const render = () => {
+    const focused = document.activeElement;
+    const focusKey = host.contains(focused) ? (focused as HTMLElement).dataset.discoverFocus : undefined;
+    const scrollTop = host.scrollTop;
+    const quantScroll = host.querySelector('.discover-quant-options')?.scrollTop ?? 0;
     host.replaceChildren();
-    host.setAttribute('aria-label', 'Model file inspector');
+    paint();
+    host.scrollTop = scrollTop;
+    const options = host.querySelector('.discover-quant-options');
+    if (options) options.scrollTop = quantScroll;
+    if (focusKey) {
+      const replacement = [...host.querySelectorAll<HTMLElement>('[data-discover-focus]')]
+        .find((node) => node.dataset.discoverFocus === focusKey && !node.matches(':disabled'));
+      (replacement ?? host.querySelector<HTMLElement>('h3'))?.focus({ preventScroll: true });
+    }
+  };
+
+  function paint(): void {
     if (!selection) {
       host.append(
-        el('h3', undefined, 'Find your next model'),
-        el(
-          'p',
-          'models-muted',
-          'Choose a recommendation or a Hugging Face result to compare files and check memory before downloading.',
-        ),
-        el(
-          'div',
-          'discover-inspector__steps',
-          '1  Choose a model\n2  Check its files and fit\n3  Download, then open My Models',
-        ),
+        el('h3', undefined, 'Choose a model'),
+        el('p', 'models-muted', 'Select a model to see its download and estimated memory fit.'),
       );
       return;
     }
     const model = selection;
     const back = textButton('Back to models', backToResults);
     back.classList.add('discover-inspector__back');
-    host.append(back);
+    back.dataset.discoverFocus = 'back';
     const heading = el('h3', undefined, model.name);
     heading.tabIndex = -1;
-    host.append(
-      el('span', 'discover-eyebrow', 'Your selection'),
-      heading,
-      el('p', 'discover-repo', model.repoId),
-    );
+    heading.dataset.discoverFocus = 'heading';
+    host.append(back, heading);
     if (model.reason) host.append(el('p', 'models-muted', model.reason));
-    const link = el('a', 'discover-source', 'Model card on Hugging Face') as HTMLAnchorElement;
+    const link = el('a', 'discover-source', 'Model card on Hugging Face');
     link.href = `https://huggingface.co/${model.repoId}`;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
+    link.dataset.discoverFocus = 'source';
     host.append(link);
     if (loading) {
-      const message = el('p', 'models-muted', 'Reading repository files…');
+      const message = el('p', 'models-muted discover-file-status', 'Finding a download…');
       message.setAttribute('role', 'status');
       host.append(message);
       return;
     }
     if (error) {
-      const message = el('p', 'discover-error', error);
+      const message = el('p', 'discover-error discover-file-status', error);
       message.setAttribute('role', 'alert');
       host.append(
         message,
-        textButton('Try again', () => void select(model)),
+        textButton('Try again', () => void select(model, true)),
         textButton(
           'Hugging Face settings',
           () => void import('../models-page').then((m) => m.openModels('settings')),
@@ -84,224 +105,203 @@ export function createDiscoverInspector(
       );
       return;
     }
-    const fieldset = el('fieldset', 'discover-files') as HTMLFieldSetElement;
-    fieldset.append(
-      el('legend', undefined, model.format === 'mlx' ? 'MLX snapshot' : 'Choose a GGUF file'),
-    );
     if (model.format === 'gguf' && !files.length) {
-      host.append(
-        el(
-          'p',
-          'models-muted',
-          'No language-model GGUF files found. This repository may contain only projectors or a different weights format.',
-        ),
-      );
+      host.append(el('p', 'models-muted discover-file-status', 'No GGUF model weights found in this repository.'));
       return;
     }
-    if (model.format === 'mlx')
-      fieldset.append(
-        el('p', 'models-muted', 'Downloads the repository snapshot for MLX on Apple Silicon.'),
-      );
-    for (const file of files) {
-      const label = el('label', 'discover-file');
-      const radio = el('input') as HTMLInputElement;
-      radio.type = 'radio';
-      radio.name = 'discover-gguf-file';
-      radio.value = file.filename;
-      radio.checked = selected === file.filename;
-      radio.disabled = Boolean(file.error) || pending;
-      radio.addEventListener('change', () => {
-        selected = file.filename;
-        render();
-        host.querySelector<HTMLInputElement>('input:checked')?.focus();
-      });
-      const copy = el('span', 'discover-file__copy');
-      copy.append(
-        el('strong', undefined, file.quant || 'Unknown quantization'),
-        el('span', 'discover-file__name', file.filename),
-        el(
-          'span',
-          'models-muted',
-          file.error ??
-            `${file.files.length > 1 ? `${file.files.length} shards · ` : ''}${file.sizeBytes ? formatBytes(file.sizeBytes) : 'Size unknown'}`,
-        ),
-      );
-      const env = environment();
-      const estimate = discoverFit({
-        name: model.name,
-        params: model.params,
-        sizeBytes: file.sizeBytes,
-        arch: model.arch,
-        context: env.context,
-        maxContext: model.maxContext,
-        hardware: env.hardware,
-      });
-      copy.append(
-        el(
-          'span',
-          `discover-fit discover-fit--${estimate.tone}`,
-          estimate.memoryGb
-            ? `~${estimate.memoryGb.toFixed(1)} GiB memory · ${estimate.label}`
-            : estimate.label,
-        ),
-      );
-      label.append(radio, copy);
-      fieldset.append(label);
-    }
-    host.append(fieldset);
-    const file = files.find((row) => row.filename === selected);
+
     const env = environment();
-    const fit =
-      model.format === 'gguf'
-        ? discoverFit({
-            name: model.name,
-            sizeBytes: file?.sizeBytes ?? null,
-            params: model.params,
-            arch: model.arch,
-            maxContext: model.maxContext,
-            context: env.context,
-            hardware: env.hardware,
-          })
-        : null;
-    const fitBox = el('div', 'discover-fit-detail');
-    fitBox.append(
-      el('strong', undefined, fit?.label ?? 'MLX memory depends on runtime settings'),
-      el(
-        'p',
-        'models-muted',
-        fit?.detail ??
-          'Snapshot size is not a runtime memory estimate. Check the load settings in My Models after downloading.',
-      ),
+    const variants = files.map((file) => ({
+      file,
+      fit: discoverFit({ ...env, ...model, sizeBytes: file.sizeBytes }),
+    }));
+    const suggested = recommendDiscoverVariant(variants, model.preferredFilename);
+    let variant = variants.find(({ file }) => file.filename === chosenFilename) ?? suggested;
+    const summary = el('section', 'discover-variant-summary');
+    summary.setAttribute('aria-label', 'Download options');
+    host.append(summary);
+    const paintDownload = () => {
+      summary.replaceChildren();
+      if (model.format === 'mlx') {
+        summary.append(el('h4', undefined, 'MLX snapshot'));
+        const label = el('label', 'models-field');
+        label.append(el('span', 'models-field__label', 'Download destination'));
+        const target = el('select', 'models-select');
+        for (const [value, name] of [['', 'Minnow MLX cache'], ['mtplx', 'MTPLX cache (runtime contract required)']]) {
+          const option = el('option', undefined, name);
+          option.value = value;
+          target.append(option);
+        }
+        target.value = targetEngine ?? '';
+        target.dataset.discoverFocus = 'destination';
+        target.addEventListener('change', () => { targetEngine = target.value === 'mtplx' ? 'mtplx' : undefined; });
+        label.append(target);
+        summary.append(label);
+      } else if (variant) {
+        const { file, fit } = variant;
+        const heading = el('h4', undefined, variant === suggested && fit.fits ? 'Recommended download' : 'Selected download');
+        const identity = el('div', 'discover-variant-summary__file');
+        const quant = el('strong', undefined, quantName(file));
+        quant.title = file.filename;
+        identity.append(quant, el('span', 'models-muted', file.sizeBytes ? `${formatBytes(file.sizeBytes)} download` : 'Download size unknown'));
+        const status = el('div', 'discover-variant-summary__fit');
+        const badge = el('span', `discover-fit discover-fit--${fit.tone}`);
+        if (fit.fits) badge.append(icon('check'));
+        badge.append(fit.label);
+        status.append(badge);
+        if (fit.memoryGb !== null) status.append(el('span', 'models-muted', `~${fit.memoryGb.toFixed(1)} GiB at ${env.context.toLocaleString()} tokens`));
+        status.title = fit.detail;
+        summary.append(heading, identity, status);
+        if (fit.label === 'Context too long') summary.append(el('p', 'models-muted', fit.detail));
+        if (fit.label === 'Fits in RAM' && env.hardware?.hasGpu) {
+          summary.append(el('p', 'models-muted', 'Running from RAM can be slower.'));
+        }
+      } else {
+        summary.append(el('p', 'models-muted', 'No complete download is available.'));
+        return;
+      }
+      appendDownload(summary, model, variant?.file);
+    };
+    paintDownload();
+
+    if (variants.length > 1 || variants.some(({ file }) => file.error)) {
+      const options = el('div', 'discover-quant-options');
+      options.id = 'discover-quant-options';
+      const toggle = textButton('', () => {
+        showQuants = !showQuants;
+        paintOptions();
+      });
+      toggle.classList.add('discover-quant-toggle');
+      toggle.dataset.discoverFocus = 'quants';
+      toggle.setAttribute('aria-controls', options.id);
+      const paintOptions = () => {
+        toggle.setAttribute('aria-expanded', String(showQuants));
+        toggle.replaceChildren(icon(showQuants ? 'angle-small-up' : 'angle-small-down'), showQuants ? 'Hide quants' : 'Show all quants');
+        options.hidden = !showQuants;
+        options.replaceChildren();
+        if (!showQuants) return;
+        const fieldset = el('fieldset', 'discover-files');
+        fieldset.setAttribute('aria-label', 'Quantizations');
+        const quantCounts = new Map<string, number>();
+        for (const { file } of variants) quantCounts.set(file.quant, (quantCounts.get(file.quant) ?? 0) + 1);
+        for (const row of variants) {
+          const { file, fit } = row;
+          const label = el('label', 'discover-file');
+          label.title = file.error ?? `${file.filename}\n${fit.detail}`;
+          const radio = el('input');
+          radio.type = 'radio';
+          radio.name = 'discover-gguf-file';
+          radio.value = file.filename;
+          radio.dataset.discoverFocus = `file:${file.filename}`;
+          radio.checked = variant === row;
+          radio.disabled = Boolean(file.error) || pendingRepos.has(model.repoId);
+          radio.addEventListener('change', () => {
+            chosenFilename = file.filename;
+            variant = row;
+            downloadError = '';
+            paintDownload();
+          });
+          const copy = el('span', 'discover-file__copy');
+          copy.append(el('strong', undefined, quantName(file)));
+          if (file.quant && (quantCounts.get(file.quant) ?? 0) > 1) {
+            copy.append(el('span', 'discover-file__name', file.filename));
+          }
+          const size = el('span', 'discover-file__size', file.sizeBytes ? formatBytes(file.sizeBytes) : 'Unknown size');
+          const status = el('span', `discover-fit discover-fit--${file.error ? 'unknown' : fit.tone}`);
+          if (!file.error && fit.fits) status.append(icon('check'));
+          status.append(file.error ? 'Unavailable' : (compactFitLabels[fit.label] ?? fit.label));
+          label.append(radio, copy, size, status);
+          fieldset.append(label);
+        }
+        options.append(fieldset);
+      };
+      paintOptions();
+      host.append(toggle, options);
+    }
+  }
+
+  function appendDownload(summary: HTMLElement, model: DiscoverSelection, file?: HubFile): void {
+    const exactInstalled = file && getModelsState().library.some(
+      (row) => row.repoId === model.repoId && row.path?.replace(/\\/g, '/').endsWith(`/${file.filename}`),
     );
-    if (!model.maxContext && model.format === 'gguf')
-      fitBox.append(
-        el(
-          'p',
-          'models-muted',
-          'The repository has not supplied a verified context limit. Check the model card before loading.',
-        ),
-      );
-    host.append(fitBox);
-    const exactInstalled =
-      model.format === 'gguf' &&
-      file &&
-      getModelsState().library.some(
-        (row) =>
-          row.repoId === model.repoId &&
-          row.path?.replace(/\\/g, '/').endsWith(`/${file.filename}`),
-      );
     if (exactInstalled) {
-      host.append(textButton('Open in My Models', openDownloadedModels, 'primary'));
+      const open = textButton('Open in My Models', openDownloadedModels, 'primary');
+      open.dataset.discoverFocus = 'download';
+      summary.append(open);
       return;
     }
     const active = getModelsState().downloads.find(
-      (job) =>
-        job.repoId === model.repoId &&
+      (job) => job.repoId === model.repoId &&
         (model.format === 'mlx' || (job.repoFilePath ?? job.filename) === file?.filename) &&
         ['queued', 'running', 'paused', 'interrupted'].includes(job.status),
     );
-    let targetEngine: 'mtplx' | undefined;
-    if (model.format === 'mlx') {
-      const label = el('label', 'models-field');
-      label.append(el('span', 'models-field__label', 'Download destination'));
-      const target = el('select', 'models-select');
-      for (const [value, name] of [['', 'Minnow MLX cache'], ['mtplx', 'MTPLX cache (runtime contract required)']]) {
-        const option = el('option', undefined, name); option.value = value; target.append(option);
-      }
-      target.addEventListener('change', () => { targetEngine = target.value === 'mtplx' ? 'mtplx' : undefined; });
-      label.append(target); host.append(label);
-    }
-    const feedback = el('p', 'discover-inspector__feedback');
-    feedback.setAttribute('role', 'status');
-    const download = textButton(
-      active
-        ? active.status === 'paused'
-          ? 'Paused in downloads'
-          : 'In download queue'
-        : pending
-          ? 'Adding to downloads…'
-          : model.format === 'mlx'
-            ? 'Download MLX snapshot'
-            : `Download ${file?.quant || 'selected file'}`,
+    const pending = pendingRepos.has(model.repoId);
+    const button = textButton(
+      active ? (active.status === 'paused' ? 'Paused in downloads' : 'In download queue')
+        : pending ? 'Adding to downloads…' : 'Download',
       () => {
-        pending = true;
+        pendingRepos.add(model.repoId);
+        downloadError = '';
         render();
         void downloadModel(model.repoId, file?.quant, {
           format: model.format,
           engine: targetEngine,
           filename: file?.filename,
           sizeBytes: file?.sizeBytes ?? model.sizeBytes ?? undefined,
-        })
-          .then(() => {
-            pending = false;
-            if (selection === model) render();
-          })
-          .catch((err: unknown) => {
-            pending = false;
-            if (selection !== model) return;
-            render();
-            host.querySelector('.discover-inspector__feedback')!.textContent =
-              err instanceof Error ? err.message : 'Could not queue download. Try again.';
-          });
+        }).catch((err: unknown) => {
+          if (selection === model) {
+            downloadError = err instanceof Error ? err.message : 'Could not queue download. Try again.';
+          }
+        }).finally(() => {
+          pendingRepos.delete(model.repoId);
+          if (!disposed && selection?.repoId === model.repoId) render();
+        });
       },
       'primary',
     );
-    download.disabled =
-      pending || Boolean(active) || (model.format === 'gguf' && (!file || Boolean(file.error)));
-    host.append(download, feedback);
-    if (file?.files.length && file.files.length > 1)
-      host.append(
-        el('p', 'models-muted', 'All shards download together. Minnow loads the first shard.'),
-      );
-  };
+    button.disabled = pending || Boolean(active);
+    if (file && !button.disabled) button.setAttribute('aria-label', `Download ${quantName(file)}`);
+    button.dataset.discoverFocus = 'download';
+    summary.append(button);
+    if (downloadError) {
+      const feedback = el('p', 'discover-error', downloadError);
+      feedback.setAttribute('role', 'alert');
+      summary.append(feedback);
+    }
+    if (file && file.files.length > 1) {
+      summary.append(el('p', 'models-muted', `Includes all ${file.files.length} parts of this model.`));
+    }
+  }
 
-  const select = async (model: DiscoverSelection) => {
+  async function select(model: DiscoverSelection, focus = false): Promise<void> {
     controller?.abort();
-    controller = new AbortController();
-    const request = controller;
+    const request = new AbortController();
+    controller = request;
     selection = model;
     files = [];
-    selected = '';
+    chosenFilename = '';
+    showQuants = false;
+    targetEngine = undefined;
     error = '';
-    pending = false;
+    downloadError = '';
     loading = model.format === 'gguf';
+    host.scrollTop = 0;
     render();
-    host.querySelector('h3')?.focus();
+    if (focus) host.querySelector('h3')?.focus({ preventScroll: true });
     if (!loading) return;
     try {
       const result = await fetchHubFiles(model.repoId, request.signal);
-      if (request.signal.aborted) return;
-      files = result;
-      const env = environment();
-      const fitting = files.filter(
-        (file) =>
-          !file.error &&
-          discoverFit({
-            name: model.name,
-            params: model.params,
-            sizeBytes: file.sizeBytes,
-            arch: model.arch,
-            context: env.context,
-            maxContext: model.maxContext,
-            hardware: env.hardware,
-          }).fits,
-      );
-      const preferred =
-        fitting.find((file) => file.quant === 'Q4_K_M') ??
-        fitting[0] ??
-        files.find((file) => file.quant === 'Q4_K_M' && !file.error) ??
-        files.find((file) => !file.error);
-      selected = preferred?.filename ?? '';
+      if (!request.signal.aborted) files = result;
     } catch (err) {
-      if (request.signal.aborted) return;
-      error = err instanceof Error ? err.message : 'Could not read repository files.';
+      if (!request.signal.aborted) error = err instanceof Error ? err.message : 'Could not find repository downloads.';
     } finally {
       if (!request.signal.aborted) {
         loading = false;
         render();
       }
     }
-  };
+  }
+
   render();
-  return { select, refresh: render, dispose: () => controller?.abort() };
+  return { select, refresh: render, dispose: () => { disposed = true; controller?.abort(); } };
 }

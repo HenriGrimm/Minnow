@@ -1,4 +1,4 @@
-# Test a Minnow release in Graphite
+# Test a Minnow release
 
 Use a packaged build, a disposable Minnow home, and a small Git repository with a test command and a local preview. Record the version, platform, provider, and workspace used. Use a disposable remote for the GitHub checks.
 

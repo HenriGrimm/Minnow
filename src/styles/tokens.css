@@ -18,6 +18,9 @@ body {
 }
 
 :root {
+  --mn-scrollbar-thumb: color-mix(in srgb, var(--mn-fg) 32%, transparent);
+  --mn-scrollbar-thumb-hover: color-mix(in srgb, var(--mn-fg) 55%, transparent);
+  --mn-scrollbar-thumb-active: var(--mn-accent);
   /* Type scale. `--mn-text-*` names are colour aliases, so sizes use `--mn-type-*`. */
   --mn-type-2xs: 10px;
   --mn-type-xs: 11px;

@@ -40,7 +40,7 @@ function syncInstance(instanceId: string): void {
   if (!bound || !api) return;
   const version = ++bound.syncVersion;
 
-  if (!bound.visible) {
+  if (!bound.visible || bound.element.classList.contains('has-load-error')) {
     clearPreviewOcclusionPlaceholders(bound.element);
     bound.guestVisible = false;
     stopPreviewFrameCache(bound.element);

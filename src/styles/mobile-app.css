@@ -2724,14 +2724,24 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
   min-height: var(--touch-min);
 }
 
-.m-native-app-host .scheduler-header__icon { display: none; }
-.m-native-app-host .scheduler-header__controls { flex: none; }
-.m-native-app-host #btnSchedulerAdd { min-height: var(--touch-min); }
-.m-native-app-host .scheduler-summary {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.m-native-app-host .scheduler-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--mn-space-2);
+  row-gap: 0;
 }
+
+.m-native-app-host .scheduler-header__brand { grid-column: 2; }
+.m-native-app-host .scheduler-header__controls { display: contents; }
+.m-native-app-host #btnSchedulerAdd { grid-column: 3; }
+.m-native-app-host .scheduler-header .auto-seg {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  justify-self: start;
+  margin-block-end: var(--mn-space-1);
+}
+
+.m-native-app-host .scheduler-header :is(#btnSchedulerAdd, .auto-seg > button) { min-height: var(--touch-min); }
 
 .m-native-app-host .scheduler-editor-overlay {
   padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(8px, var(--m-safe-bottom)) max(8px, env(safe-area-inset-left, 0px));

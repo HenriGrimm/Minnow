@@ -3,10 +3,12 @@ import { createProviderAccountUsageView } from './provider-account-usage';
 
 import { showToast } from './toast';
 import '../styles/settings-general.css';
+import '../styles/settings-controls.css';
 import '../styles/settings-providers.css';
 
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
 import { fetchModels } from '../api/models';
+import { setAgentCliEnabled } from '../models/agent-clis';
 import {
   findLoadedModelIdForProvider,
   findProbeModelIdForProvider,
@@ -43,15 +45,18 @@ import {
   createSettingsActionsRow,
   createSettingsSelectRow,
 } from './settings-controls';
-import { createSettingsToggleRow } from './settings-switch';
+import { createSettingsSwitch } from './settings-switch';
 import { setStatus } from './status';
-import { appConfirm } from './app-dialog';
+import { openDialog, type DialogHandle } from './components/dialog';
+import { createTabs } from './components/tabs';
+import { createButton } from './components/button';
 import { readDefaultModelBinding, resolveEffectiveChatModelBinding } from './default-model';
 import {
   appendSettingsCrosslinks,
 } from './settings-layout';
 
-let stopProviderUsageViews: Array<() => void> = [];
+let providerEditor: { row: HTMLElement; dialog: DialogHandle; confirmation?: DialogHandle } | undefined;
+const providerForms = new WeakMap<HTMLElement, HTMLFormElement>();
 const CUSTOM_API_KIND: ApiKind = 'openai-v1';
 const draftConnectionChecks = new WeakMap<HTMLFormElement, AbortController>();
 
@@ -541,7 +546,6 @@ let providersListEl: HTMLElement | null = null;
 let providersOfflineEl: HTMLElement | null = null;
 let providersAddGroupEl: HTMLElement | null = null;
 let providersAddFormBound = false;
-let providersListActionsBound = false;
 let providersRenderRevision = 0;
 
 // ── Fields ───────────────────────────────────────────────────────────────────
@@ -558,7 +562,6 @@ function ensureProvidersShell(): HTMLElement {
 
   mount.replaceChildren();
   providersAddFormBound = false;
-  providersListActionsBound = false;
 
   const shell = el('div', 'settings-general settings-providers');
   mount.appendChild(shell);
@@ -956,12 +959,6 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
 
   const resolved = pathsForProvider(provider);
 
-  const { row: enabledLabel, input: enabledInput } = createSettingsToggleRow('Enabled', {
-    name: 'enabled',
-    checked: provider.enabled !== false,
-  });
-  form.append(enabledLabel);
-
   const idField = el('div', 'field');
   idField.append(el('label', undefined, 'Provider id'));
   const idInput = document.createElement('input');
@@ -974,6 +971,7 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   idField.dataset.providerAdvancedField = '';
   form.append(idField);
 
+  const fields = el('div', 'settings-providers-connection-fields');
   const labelField = el('div', 'field');
   labelField.append(el('label', undefined, 'Display name'));
   const labelInput = document.createElement('input');
@@ -984,7 +982,7 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   labelInput.autocomplete = 'off';
   labelInput.value = provider.label;
   labelField.append(labelInput);
-  form.append(labelField);
+  fields.append(labelField);
 
   const urlField = el('div', 'field');
   urlField.append(el('label', undefined, 'Base URL'));
@@ -997,7 +995,8 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   baseUrlInput.spellcheck = false;
   baseUrlInput.value = provider.baseUrl;
   urlField.append(baseUrlInput);
-  form.append(urlField);
+  fields.append(urlField);
+  form.append(fields);
 
   const kindSel = appendApiFields(form, provider.apiKind, provider.authStyle ?? 'bearer');
   appendPathFields(form, resolved.modelsPath, resolved.chatCompletionsPath, provider.apiKind);
@@ -1016,13 +1015,11 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   const keyHint = el(
     'p',
     'field-hint',
-    provider.hasApiKey || provider.hasBearer
-      ? 'Key saved. Leave blank to keep it.'
-      : 'Stored encrypted on this machine.',
+    provider.hasApiKey || provider.hasBearer ? 'Key saved' : 'Stored encrypted on this machine.',
   );
   keyHint.dataset.providerKeyHint = provider.id;
   keyField.append(keyHint);
-  form.append(keyField);
+  fields.append(keyField);
 
   appendGatewayFields(form, provider);
   wirePathSyncOnApiKindChange(form, kindSel);
@@ -1101,12 +1098,15 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   const saveStatus = el(
     'p',
     'field-hint settings-providers-save-status',
-    'Changes save when a field loses focus.',
+    '',
   );
   saveStatus.setAttribute('role', 'status');
   saveStatus.dataset.providerEditStatus = provider.id;
-  form.append(saveStatus);
-  form.append(createSettingsActionsRow([], { className: 'settings-providers-form-actions' }));
+  const actions = createSettingsActionsRow([], { className: 'settings-providers-form-actions' });
+  const feedback = el('div', 'settings-providers-footer-feedback');
+  feedback.append(saveStatus);
+  actions.append(feedback);
+  form.append(actions);
 
   organizeProviderForm(form);
   return form;
@@ -1125,6 +1125,43 @@ function formatStructuredOutputBadge(
   return { label: 'Structured output unknown', tone: 'muted' };
 }
 
+function createProviderSwitch(row: HTMLElement, provider: ProviderPublic): HTMLLabelElement {
+  let enabled = provider.enabled !== false;
+  const { root, input } = createSettingsSwitch({
+    checked: enabled,
+    ariaLabel: `Enable ${provider.label}`,
+  });
+  row.dataset.enabled = String(enabled);
+  input.addEventListener('change', async () => {
+    if (input.getAttribute('aria-disabled') === 'true') {
+      input.checked = enabled;
+      return;
+    }
+    const next = input.checked;
+    input.checked = enabled;
+    input.setAttribute('aria-disabled', 'true');
+    try {
+      if (provider.agentCli) {
+        enabled = (await setAgentCliEnabled(provider.agentCli.kind, next)).enabled;
+        invalidateProviderCache();
+      } else {
+        const result = await updateProvider(provider.id, { enabled: next });
+        if (!result.ok) throw new Error(result.error);
+        enabled = result.provider.enabled !== false;
+      }
+      row.dataset.enabled = String(enabled);
+    } catch (error) {
+      setStatus('err', `Could not change provider availability. ${error instanceof Error ? error.message : ''}`.trim());
+      return;
+    } finally {
+      input.checked = enabled;
+      input.removeAttribute('aria-disabled');
+    }
+    if (document.getElementById('modelSelect')) void fetchModels().catch(() => {});
+  });
+  return root;
+}
+
 /** Compact connection summary, with configuration disclosed on demand. */
 export function createProviderSettingsRow(
   provider: ProviderPublic,
@@ -1135,80 +1172,116 @@ export function createProviderSettingsRow(
   const row = el('div', 'settings-providers-row');
   row.setAttribute('role', 'listitem');
   row.dataset.providerId = provider.id;
-  const panel = el('details', 'settings-providers-edit-panel');
-  const summary = el('summary', 'settings-providers-row-head');
+  const head = el('div', 'settings-providers-row-head');
   const identity = el('span', 'settings-providers-row-identity');
-  identity.append(el('span', 'settings-providers-name', provider.label));
-  if (active) identity.firstElementChild?.append(el('span', 'models-provider-active', 'Active'));
-  identity.append(el('span', 'settings-providers-endpoint', provider.baseUrl));
-  const state = el('span', 'settings-providers-state', provider.enabled === false ? 'Disabled' : 'Enabled');
-  state.dataset.enabled = String(provider.enabled !== false);
-  const chevron = el('span', 'settings-providers-chevron', '');
-  chevron.setAttribute('aria-hidden', 'true');
-  summary.append(createProviderLogo(provider), identity, state, chevron);
-  summary.setAttribute('aria-label', `${provider.label}, ${state.textContent}. Connection settings`);
-  panel.append(summary);
-  const reveal = () => {
-    if (!panel.open || panel.querySelector('form')) return;
-    const body = el('div', 'settings-providers-card-body');
-    const form = buildProviderEditForm(provider);
-    const advanced = form.querySelector('.settings-providers-advanced');
-    const usageDetails = el('details', 'provider-account-usage-details');
-    const usageView = createProviderAccountUsageView(provider.id, {
-      visible: () => panel.open && usageDetails.open && usageDetails.isConnected
-        && Boolean(usageDetails.getClientRects().length),
+  const title = el('span', 'settings-providers-row-title');
+  title.append(el('span', 'settings-providers-name', provider.label));
+  if (active) title.append(el('span', 'models-provider-active', 'Active'));
+  identity.append(title, el('span', 'settings-providers-endpoint', provider.baseUrl));
+  const edit = createButton({ label: 'Edit', variant: 'ghost', size: 'sm', className: 'settings-providers-edit' });
+  edit.setAttribute('aria-label', `Edit ${provider.label}`);
+  edit.setAttribute('aria-haspopup', 'dialog');
+  const testResult = el('span', 'models-provider-result', '—');
+  testResult.id = `provider-${provider.id}-test-result`;
+  testResult.setAttribute('role', 'status');
+  let form: HTMLFormElement;
+  let tabs: ReturnType<typeof createTabs>;
+  let usageView: ReturnType<typeof createProviderAccountUsageView>;
+  let status: HTMLElement;
+  let test: HTMLButtonElement;
+  const syncUsage = () => {
+    if (form.isConnected && tabs.getSelected() === 'usage') usageView.start();
+    else usageView.stop();
+  };
+  const refreshCapabilities = async () => {
+    const caps = await readProviderCapabilities(provider.id);
+    const structured = form.querySelector('.settings-providers-capabilities');
+    if (structured) structured.textContent = formatStructuredOutputBadge(caps, provider.id).label;
+  };
+  const buildEditor = () => {
+    form = buildProviderEditForm(provider);
+    providerForms.set(row, form);
+    const connection = form.querySelector<HTMLElement>('.settings-providers-connection-fields')!;
+    const advanced = form.querySelector<HTMLDetailsElement>('.settings-providers-advanced')!;
+    const advancedPanel = advanced.querySelector<HTMLElement>('.settings-providers-advanced-content')!;
+    const usagePanel = el('div', 'settings-providers-usage');
+    usageView = createProviderAccountUsageView(provider.id, {
+      visible: () => usagePanel.isConnected && !usagePanel.hidden && Boolean(usagePanel.getClientRects().length),
     });
-    usageDetails.append(el('summary', undefined, 'Account usage'), usageView.root);
-    const syncUsage = () => {
-      if (panel.open && usageDetails.open) usageView.start();
-      else usageView.stop();
-    };
-    usageDetails.addEventListener('toggle', syncUsage);
-    panel.addEventListener('toggle', syncUsage);
-    stopProviderUsageViews.push(usageView.stop);
-    form.insertBefore(usageDetails, advanced);
+    usagePanel.append(usageView.root);
     const structured = el('p', 'field-hint', formatStructuredOutputBadge(capabilities, provider.id).label);
-    advanced?.append(structured);
-    if (!capabilities) {
-      void readProviderCapabilities(provider.id).then((caps) => {
-        structured.textContent = formatStructuredOutputBadge(caps, provider.id).label;
-      });
-    }
-    const actions = form.querySelector<HTMLElement>(':scope > .settings-providers-form-actions');
-    const test = el('button', 'settings-action-btn', 'Test connection');
-    test.type = 'button';
+    structured.classList.add('settings-providers-capabilities');
+    advancedPanel.append(structured);
+    tabs = createTabs({
+      ariaLabel: 'Provider settings',
+      tabs: [
+        { id: 'connection', label: 'Connection', panel: connection },
+        { id: 'advanced', label: 'Advanced', panel: advancedPanel },
+        { id: 'usage', label: 'Account usage', panel: usagePanel },
+      ],
+      onChange: syncUsage,
+    });
+    advanced.replaceWith(tabs.root);
+    if (!capabilities) void refreshCapabilities();
+    form.addEventListener('provider-advanced-error', () => tabs.select('advanced'));
+    form.addEventListener('provider-capabilities-changed', () => void refreshCapabilities());
+    const actions = form.querySelector<HTMLElement>(':scope > .settings-providers-form-actions')!;
+    test = createButton({ label: 'Test connection', size: 'sm' });
     test.dataset.providerTest = provider.id;
-    actions?.append(test);
+    actions.prepend(test);
     if (canRemove) {
-      const remove = el('button', 'settings-inline-btn settings-providers-remove', 'Remove provider');
-      remove.type = 'button';
+      const remove = createButton({ label: 'Remove provider', variant: 'ghost', size: 'sm', className: 'settings-providers-remove' });
       remove.dataset.providerRemove = provider.id;
-      remove.setAttribute('aria-label', `Remove ${provider.label}`);
-      actions?.append(remove);
+      actions.append(remove);
     }
-    const status = el('p', 'settings-providers-connection-status hidden');
+    status = el('p', 'settings-providers-connection-status');
     status.dataset.providerConnectionStatus = '';
     status.setAttribute('role', 'status');
-    form.append(status);
-    body.append(form);
-    panel.append(body);
+    form.querySelector('.settings-providers-footer-feedback')?.append(status);
+    bindProviderEditorActions(row, form);
   };
-  panel.addEventListener('toggle', reveal);
-  row.append(panel);
+  const controls = el('div', 'settings-providers-row-controls');
   const metrics = el('div', 'models-provider-metrics');
-  const modelCount = el('span', 'models-provider-models', '—');
   const latency = el('span', 'models-provider-latency', '—');
   latency.title = 'Round-trip time for the connection test';
-  const result = el('span', 'models-provider-result');
-  result.setAttribute('role', 'status');
-  const quickTest = el('button', 'models-provider-test', 'Test');
-  quickTest.type = 'button';
+  const quickTest = createButton({ label: 'Test', size: 'sm', className: 'models-provider-test' });
   quickTest.dataset.providerTest = provider.id;
   quickTest.setAttribute('aria-label', `Test ${provider.label}`);
-  metrics.append(el('span', 'models-provider-kind', provider.apiKind), modelCount, latency,
-    el('span', 'models-provider-credential', provider.hasApiKey || provider.hasBearer ? 'Key saved' : 'No key'), quickTest, result);
-  row.append(metrics);
+  quickTest.setAttribute('aria-describedby', testResult.id);
+  metrics.append(el('span', 'models-provider-kind', provider.apiKind), testResult, latency,
+    el('span', 'models-provider-credential', provider.hasApiKey || provider.hasBearer ? 'Key saved' : 'No key'));
+  controls.append(quickTest, edit, createProviderSwitch(row, provider));
+  head.append(createProviderLogo(provider), identity, metrics, controls);
+  row.append(head);
+  quickTest.addEventListener('click', () => void testProviderConnection(row, quickTest));
+  edit.addEventListener('click', () => {
+    if (providerEditor?.row === row && providerEditor.dialog.overlay.isConnected) return;
+    closeProviderEditor();
+    if (!form) buildEditor();
+    status.textContent = testResult.title;
+    status.dataset.tone = testResult.dataset.tone ?? '';
+    test.setAttribute('aria-disabled', String(quickTest.disabled));
+    edit.focus();
+    const dialog = openDialog({
+      title: row.querySelector('.settings-providers-name')?.textContent ?? provider.label,
+      body: form,
+      className: 'settings-providers-editor',
+      initialFocus: tabs.list.querySelector<HTMLElement>('[aria-selected="true"]') ?? undefined,
+      onClose: () => {
+        usageView.stop();
+        if (row.isConnected && isProviderFormDirty(form) && !form.querySelector('[data-provider-edit-error]:not(.hidden)')) scheduleProviderEditSave(row, form);
+        providerEditor = undefined;
+      },
+    });
+    providerEditor = { row, dialog };
+    syncUsage();
+  });
   return row;
+}
+
+export function closeProviderEditor(): void {
+  providerEditor?.confirmation?.close();
+  providerEditor?.dialog.close();
 }
 
 /** CLI connections are configured in Models → Subscriptions, but still belong in Providers. */
@@ -1222,14 +1295,12 @@ export function createAgentCliProviderSettingsRow(provider: ProviderPublic): HTM
     el('span', 'settings-providers-name', provider.label),
     el('span', 'settings-providers-endpoint', 'Subscription'),
   );
-  const state = el('span', 'settings-providers-state', provider.enabled === false ? 'Disabled' : 'Enabled');
-  state.dataset.enabled = String(provider.enabled !== false);
-  const manage = el('button', 'settings-inline-btn', 'Manage connection');
+  const manage = el('button', 'settings-inline-btn settings-providers-manage', 'Manage connection');
   manage.type = 'button';
   manage.addEventListener('click', () => {
     void import('./models-page').then((m) => m.openModels('clis'));
   });
-  head.append(createProviderLogo(provider), identity, state, manage);
+  head.append(createProviderLogo(provider), identity, manage, createProviderSwitch(row, provider));
   row.append(head);
   return row;
 }
@@ -1298,49 +1369,51 @@ function isProviderFormDirty(form: HTMLFormElement): boolean {
   });
 }
 
-async function testProviderConnection(button: HTMLButtonElement): Promise<void> {
-  const row = button.closest('.settings-providers-row');
-  const inline = button.classList.contains('models-provider-test');
-  const form = button.closest('form') ?? row?.querySelector('form');
-  const status = inline ? row?.querySelector<HTMLElement>('.models-provider-result')
-    : form?.querySelector<HTMLElement>('[data-provider-connection-status]');
-  if (!status) return;
-  status.classList.remove('hidden');
-  status.dataset.tone = 'muted';
+async function testProviderConnection(row: HTMLElement, button: HTMLButtonElement): Promise<void> {
+  const result = row.querySelector<HTMLElement>('.models-provider-result');
+  const quickTest = row.querySelector<HTMLButtonElement>('.models-provider-test');
+  if (!result || !quickTest || quickTest.disabled) return;
+  const form = providerForms.get(row);
+  const report = (label: string, message: string, tone: string) => {
+    result.textContent = label;
+    result.title = message;
+    result.dataset.tone = tone;
+    const status = form?.querySelector<HTMLElement>('[data-provider-connection-status]');
+    if (status) {
+      status.textContent = message;
+      status.dataset.tone = tone;
+    }
+  };
   if (form && isProviderFormDirty(form)) {
-    status.textContent = 'Wait for changes to save before testing this connection.';
+    report('Changes pending', 'Wait for changes to save before testing this connection.', 'muted');
     return;
   }
-  button.disabled = true;
-  button.textContent = 'Testing…';
-  status.textContent = 'Checking the saved connection…';
-  status.dataset.tone = 'muted';
+  quickTest.disabled = true;
+  form?.querySelector('[data-provider-test]')?.setAttribute('aria-disabled', 'true');
+  report('Testing…', 'Checking the saved connection…', 'muted');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
   const started = performance.now();
-  const modelCount = row?.querySelector('.models-provider-models');
-  const latency = row?.querySelector('.models-provider-latency');
+  const latency = row.querySelector('.models-provider-latency');
   try {
     const response = await fetch(`/api/providers/${encodeURIComponent(button.dataset.providerTest ?? '')}/models`, { cache: 'no-store', signal: controller.signal });
     const body = await response.json() as { data?: unknown[]; unreachable?: boolean; error?: string };
     if (!response.ok || body.unreachable || body.error) throw new Error(body.error || `Connection failed (HTTP ${response.status}).`);
     if (!Array.isArray(body.data)) throw new Error('The server returned an invalid model catalog.');
     const count = body.data.length;
-    if (modelCount) modelCount.textContent = `${count} ${count === 1 ? 'model' : 'models'}`;
+    const models = `${count} ${count === 1 ? 'model' : 'models'}`;
     if (latency) latency.textContent = `${Math.round(performance.now() - started)} ms`;
-    if (row instanceof HTMLElement) row.dataset.connection = 'connected';
-    status.dataset.tone = 'ok';
-    status.textContent = count ? `Connected. ${count} ${count === 1 ? 'model' : 'models'} available.` : 'Connected. No models available yet.';
+    report(models, count ? `Connected. ${models} available.` : 'Connected. No models available yet.', 'ok');
   } catch (error) {
-    if (modelCount) modelCount.textContent = '—';
     if (latency) latency.textContent = '—';
-    if (row instanceof HTMLElement) row.dataset.connection = 'failed';
-    status.dataset.tone = 'error';
-    status.textContent = error instanceof Error && error.name === 'AbortError' ? 'Connection timed out. Check the server address and try again.' : error instanceof Error ? error.message : 'Could not connect.';
+    const timedOut = error instanceof Error && error.name === 'AbortError';
+    const message = timedOut ? 'Connection timed out. Check the server address and try again.'
+      : error instanceof Error ? error.message : 'Could not connect.';
+    report(timedOut ? 'Timed out' : 'Connection failed', message, 'error');
   } finally {
     clearTimeout(timer);
-    button.disabled = false;
-    button.textContent = inline ? 'Test' : 'Test connection';
+    quickTest.disabled = false;
+    form?.querySelector('[data-provider-test]')?.removeAttribute('aria-disabled');
   }
 }
 
@@ -1552,15 +1625,15 @@ function bindProvidersAddForm(): void {
         setStatus('err', secretResult.error);
         const key = apiKeyInput?.value ?? '';
         await renderProvidersSettingsSection();
-        const panel = Array.from(providersListEl?.querySelectorAll<HTMLDetailsElement>('.settings-providers-edit-panel') ?? []).find((entry) => entry.closest<HTMLElement>('[data-provider-id]')?.dataset.providerId === id);
-        if (panel) {
-          panel.open = true;
-          panel.dispatchEvent(new Event('toggle'));
-          const keyInput = panel.querySelector<HTMLInputElement>('input[name="apiKey"]');
-          if (keyInput) keyInput.value = key;
-          setProviderEditFormError(id, `Provider added. API key could not be saved: ${secretResult.error}. Press Enter in the key field to retry.`);
+        const row = providersListEl?.querySelector<HTMLElement>(`[data-provider-id="${id}"]`);
+        const edit = row?.querySelector<HTMLButtonElement>('.settings-providers-edit');
+        if (row && edit) {
           closeProvidersAddPanel();
           resetProvidersAddFlow();
+          edit.click();
+          const keyInput = providerForms.get(row)?.querySelector<HTMLInputElement>('input[name="apiKey"]');
+          if (keyInput) keyInput.value = key;
+          setProviderEditFormError(id, `Provider added. API key could not be saved: ${secretResult.error}. Press Enter in the key field to retry.`);
           keyInput?.focus();
         }
         return;
@@ -1576,24 +1649,24 @@ function bindProvidersAddForm(): void {
 }
 
 /** Update the provider row header without rebuilding the list. */
-function updateProviderRowSummary(form: HTMLFormElement, provider: ProviderPublic): void {
-  const row = form.closest('.settings-providers-row');
-  if (!row) return;
+function updateProviderRowSummary(row: HTMLElement, provider: ProviderPublic): void {
   const name = row.querySelector<HTMLElement>('.settings-providers-name');
   if (name) name.textContent = provider.label;
   const endpoint = row.querySelector<HTMLElement>('.settings-providers-endpoint');
   if (endpoint) endpoint.textContent = provider.baseUrl;
-  const enabled = provider.enabled !== false;
-  const state = row.querySelector<HTMLElement>('.settings-providers-state');
-  if (state) {
-    state.textContent = enabled ? 'Enabled' : 'Disabled';
-    state.dataset.enabled = String(enabled);
+  const kind = row.querySelector('.models-provider-kind');
+  if (kind) kind.textContent = provider.apiKind;
+  row.querySelector('.settings-providers-edit')?.setAttribute('aria-label', `Edit ${provider.label}`);
+  row.querySelector('[role="switch"]')?.setAttribute('aria-label', `Enable ${provider.label}`);
+  row.querySelector('.models-provider-test')?.setAttribute('aria-label', `Test ${provider.label}`);
+  if (providerEditor?.row === row) {
+    const title = providerEditor.dialog.panel.querySelector('.mn-dialog__title');
+    if (title) title.textContent = provider.label;
   }
-  row.querySelector('summary')?.setAttribute('aria-label', `${provider.label}, ${enabled ? 'Enabled' : 'Disabled'}. Connection settings`);
 }
 
 /** Persist one provider edit form in place, keeping the panel open. */
-async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
+async function saveProviderEditForm(row: HTMLElement, form: HTMLFormElement): Promise<void> {
   const id = form.dataset.providerId ?? '';
   const errEl = form.querySelector<HTMLElement>(`[data-provider-edit-error="${id}"]`);
   const statusEl = form.querySelector<HTMLElement>(`[data-provider-edit-status="${id}"]`);
@@ -1603,7 +1676,6 @@ async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
   const apiKindInput = form.querySelector<HTMLSelectElement>('select[name="apiKind"]');
   const authStyleInput = form.querySelector<HTMLSelectElement>('select[name="authStyle"]');
   const apiKeyInput = form.querySelector<HTMLInputElement>('input[name="apiKey"]');
-  const enabledInput = form.querySelector<HTMLInputElement>('input[name="enabled"]');
   const keyValue = apiKeyInput?.value.trim() ?? '';
 
   const label = labelInput?.value.trim() ?? '';
@@ -1619,8 +1691,7 @@ async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
   if (!baseUrlInput?.validity.valid) { baseUrlInput?.focus(); throw new Error('Enter a valid server URL.'); }
   const paths = parsePathFields(form);
   if ('error' in paths) {
-    const advanced = form.querySelector<HTMLDetailsElement>('.settings-providers-advanced');
-    if (advanced) advanced.open = true;
+    form.dispatchEvent(new Event('provider-advanced-error'));
     if (errEl) {
       errEl.textContent = paths.error;
       errEl.classList.remove('hidden');
@@ -1630,8 +1701,7 @@ async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
 
   const pricingParsed = parsePricingFromForm(form);
   if (pricingParsed && 'error' in pricingParsed) {
-    const advanced = form.querySelector<HTMLDetailsElement>('.settings-providers-advanced');
-    if (advanced) advanced.open = true;
+    form.dispatchEvent(new Event('provider-advanced-error'));
     if (errEl) {
       errEl.textContent = pricingParsed.error;
       errEl.classList.remove('hidden');
@@ -1664,7 +1734,6 @@ async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
     baseUrl,
     apiKind: parseApiKind(apiKindInput),
     authStyle: parseAuthStyle(authStyleInput),
-    enabled: enabledInput?.checked === true,
     modelsPath: paths.modelsPath,
     chatCompletionsPath: paths.chatCompletionsPath,
     messagesPath: paths.messagesPath,
@@ -1686,7 +1755,7 @@ async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
     return;
   }
 
-  updateProviderRowSummary(form, result.provider);
+  updateProviderRowSummary(row, result.provider);
   const secretResult = await saveApiKeyIfProvided(id, keyValue);
   if (secretResult.ok === false) {
     if (errEl) {
@@ -1704,8 +1773,10 @@ async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
     apiKeyInput.placeholder = 'Leave blank to keep current key';
     const keyHint = form.querySelector<HTMLElement>(`[data-provider-key-hint="${id}"]`);
     if (keyHint) {
-      keyHint.textContent = 'Key saved. Leave blank to keep it.';
+      keyHint.textContent = 'Key saved';
     }
+    const credential = row.querySelector('.models-provider-credential');
+    if (credential) credential.textContent = 'Key saved';
   }
   savedDefaults.forEach((apply) => apply());
   if (statusEl) statusEl.textContent = isProviderFormDirty(form) ? 'Changes pending…' : 'Saved';
@@ -1716,13 +1787,14 @@ const providerEditSaveTimers = new WeakMap<HTMLFormElement, ReturnType<typeof se
 const providerEditQueuedSaves = new WeakSet<HTMLFormElement>();
 
 /** Coalesce provider edit saves so a blur and an Enter press write once. */
-function scheduleProviderEditSave(form: HTMLFormElement): void {
+function scheduleProviderEditSave(row: HTMLElement, form: HTMLFormElement): void {
   const pending = providerEditSaveTimers.get(form);
   if (pending) clearTimeout(pending);
   providerEditSaveTimers.set(
     form,
     setTimeout(() => {
       providerEditSaveTimers.delete(form);
+      if (!isProviderFormDirty(form)) return;
       if (form.dataset.saving === '1') {
         providerEditQueuedSaves.add(form);
         return;
@@ -1730,49 +1802,37 @@ function scheduleProviderEditSave(form: HTMLFormElement): void {
       const error = form.querySelector('[data-provider-edit-error]');
       const status = form.querySelector('[data-provider-edit-status]');
       if (status) status.textContent = 'Saving…';
-      void runProviderFormAction(form, error, () => saveProviderEditForm(form)).then(() => {
+      void runProviderFormAction(form, error, () => saveProviderEditForm(row, form)).then(() => {
         if (error && !error.classList.contains('hidden') && status) status.textContent = 'Could not save changes.';
-        if (providerEditQueuedSaves.delete(form)) scheduleProviderEditSave(form);
+        if (providerEditQueuedSaves.delete(form)) scheduleProviderEditSave(row, form);
       });
     }, 200),
   );
 }
 
-/** Delegate remove, edit-form submit, and capability probe on the provider list. */
-function bindProvidersListActions(listEl: HTMLElement): void {
-  if (providersListActionsBound) return;
-  providersListActionsBound = true;
-
-  listEl.addEventListener('submit', (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLFormElement)) return;
-    if (!target.classList.contains('settings-providers-edit-form')) return;
+/** Keep editing actions with the form as it moves into and out of the sheet. */
+function bindProviderEditorActions(row: HTMLElement, form: HTMLFormElement): void {
+  form.addEventListener('submit', (event) => {
     event.preventDefault();
-    scheduleProviderEditSave(target);
+    scheduleProviderEditSave(row, form);
   });
 
   // Edit forms save when a field loses focus.
-  listEl.addEventListener('change', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const form = target.closest<HTMLFormElement>('form.settings-providers-edit-form');
-    if (form) scheduleProviderEditSave(form);
+  form.addEventListener('change', () => {
+    scheduleProviderEditSave(row, form);
   });
 
-  listEl.addEventListener('keydown', (event) => {
+  form.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' || !(event.target instanceof HTMLInputElement)) return;
-    const form = event.target.closest<HTMLFormElement>('form.settings-providers-edit-form');
-    if (!form) return;
     event.preventDefault();
-    scheduleProviderEditSave(form);
+    scheduleProviderEditSave(row, form);
   });
 
-  listEl.addEventListener('click', (event) => {
+  form.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target.closest('button') : null;
     if (!(target instanceof HTMLButtonElement)) return;
-    if (target.dataset.providerTest) { void testProviderConnection(target); return; }
-    const form = target.closest('form');
-    if (form && (target.dataset.providerModelProbe || target.dataset.providerStructuredProbe) && isProviderFormDirty(form)) {
+    if (target.dataset.providerTest) { void testProviderConnection(row, target); return; }
+    if ((target.dataset.providerModelProbe || target.dataset.providerStructuredProbe) && isProviderFormDirty(form)) {
       setProviderEditFormError(form.dataset.providerId ?? '', 'Wait for changes to save before checking capabilities.');
       return;
     }
@@ -1806,7 +1866,7 @@ function bindProvidersListActions(listEl: HTMLElement): void {
             manual: true,
           });
           showToast(`Model capabilities probed for ${modelProbeId}`);
-          await renderProvidersSettingsSection();
+          form.dispatchEvent(new Event('provider-capabilities-changed'));
           await fetchModels();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -1842,7 +1902,7 @@ function bindProvidersListActions(listEl: HTMLElement): void {
               : {}),
           });
           showToast(`Structured output probed for ${structuredProbeId}`);
-          await renderProvidersSettingsSection();
+          form.dispatchEvent(new Event('provider-capabilities-changed'));
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           setProviderEditFormError(structuredProbeId, msg);
@@ -1856,28 +1916,37 @@ function bindProvidersListActions(listEl: HTMLElement): void {
     if (!removeId) return;
 
     void (async () => {
-      if (
-        !(await appConfirm(
-          `Remove provider "${removeId}"? This deletes ~/.minnow/providers/${removeId}/.`,
-          { confirmLabel: 'Remove', danger: true },
-        ))
-      ) {
-        return;
-      }
+      const confirmation = openDialog({
+        title: `Remove ${row.querySelector('.settings-providers-name')?.textContent ?? removeId}?`,
+        description: 'This removes the connection and its saved credentials from Minnow.',
+        actions: [
+          { id: 'cancel', label: 'Cancel', autoFocus: true },
+          { id: 'remove', label: 'Remove', variant: 'danger' },
+        ],
+      });
+      if (providerEditor?.row === row) providerEditor.confirmation = confirmation;
+      if (await confirmation.closed !== 'remove') return;
+      const pending = providerEditSaveTimers.get(form);
+      if (pending) clearTimeout(pending);
+      providerEditSaveTimers.delete(form);
+      providerEditQueuedSaves.delete(form);
       const result = await deleteProvider(removeId);
       if (result.ok === false) {
         setStatus('err', result.error);
         return;
       }
+      row.remove();
+      if (providerEditor?.row === row) closeProviderEditor();
       await fetchModels();
       await renderProvidersSettingsSection();
+      document.getElementById('settingsProvidersAddButton')?.focus();
     })();
   });
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
-/** Agent CLI providers are managed exclusively from Models → Subscriptions. */
+/** Subscription providers use a different connection editor. */
 export function filterGenericProviderSettingsRows(
   providers: ProviderPublic[],
 ): ProviderPublic[] {
@@ -1887,8 +1956,6 @@ export function filterGenericProviderSettingsRows(
 /** Refresh Settings → Providers list and offline/add panel visibility. */
 export async function renderProvidersSettingsSection(): Promise<void> {
   const revision = ++providersRenderRevision;
-  stopProviderUsageViews.forEach(stop => stop());
-  stopProviderUsageViews = [];
   let listEl: HTMLElement;
   try {
     listEl = ensureProvidersShell();
@@ -1897,8 +1964,6 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   }
 
   bindProvidersAddForm();
-  bindProvidersListActions(listEl);
-  const openIds = new Set(Array.from(listEl.querySelectorAll<HTMLDetailsElement>('.settings-providers-edit-panel[open]'), (panel) => panel.closest<HTMLElement>('[data-provider-id]')?.dataset.providerId));
   const { providers, activeProviderId } = await listProviders().catch(() => ({ providers: [], activeProviderId: '' }));
   if (revision !== providersRenderRevision || !listEl.isConnected) return;
   const online = isServerStorageMode() && isProvidersApiAvailable();
@@ -1911,6 +1976,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   if (!online) providersAddGroupEl?.classList.add('hidden');
 
   if (!online) {
+    closeProviderEditor();
     listEl.removeAttribute('role');
     listEl.replaceChildren();
     return;
@@ -1922,6 +1988,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   const canRemove = providers.length > 1;
 
   if (configurableProviders.length === 0 && cliProviders.length === 0) {
+    closeProviderEditor();
     listEl.setAttribute('role', 'status');
     listEl.replaceChildren(
       el(
@@ -1934,12 +2001,13 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   }
 
   const rows = document.createDocumentFragment();
-  configurableProviders.sort((a, b) => Number(b.enabled !== false) - Number(a.enabled !== false));
+  const editingRow = providerEditor?.row;
+  if (editingRow && !configurableProviders.some((provider) => provider.id === editingRow.dataset.providerId)) closeProviderEditor();
   configurableProviders.forEach((provider) => {
-    const row = createProviderSettingsRow(provider, canRemove, null, provider.id === activeProviderId);
+    const row = provider.id === editingRow?.dataset.providerId
+      ? editingRow
+      : createProviderSettingsRow(provider, canRemove, null, provider.id === activeProviderId);
     rows.append(row);
-    const panel = row.querySelector<HTMLDetailsElement>('.settings-providers-edit-panel');
-    if (panel && openIds.has(provider.id)) panel.open = true;
   });
   for (const provider of cliProviders) {
     rows.appendChild(createAgentCliProviderSettingsRow(provider));

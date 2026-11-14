@@ -1,6 +1,6 @@
 # README screenshots
 
-Capture the running Graphite desktop app with a disposable Minnow profile and a demo Git project. Save screenshots at the same viewport and scale. Check them at GitHub README width, especially the filenames, diff, and sidebar controls.
+Capture the running Minnow desktop app with a disposable Minnow profile and a demo Git project. Save screenshots at the same viewport and scale. Check them at GitHub README width, especially the filenames, diff, and sidebar controls.
 
 | File | What to capture |
 | --- | --- |

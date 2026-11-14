@@ -64,7 +64,7 @@
   flex-shrink: 1;
 }
 
-/* Orchestration status: compact instrumentation chip (stat-chip family). */
+/* Compact orchestration status. */
 .board-header__badge {
   display: inline-flex;
   align-items: center;
@@ -282,7 +282,6 @@
   min-width: 0;
   overflow-x: auto;
   padding-bottom: 2px;
-  scrollbar-width: thin;
 }
 
 .board-running-tasks__chip {
@@ -2537,7 +2536,6 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   padding-bottom: 2px;
-  scrollbar-width: thin;
 }
 
 .board-wave-compact__chip {

@@ -3,9 +3,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { detectAgentCli } from '../../server/models/agent-cli-detect.js';
 import { createAgentCliUpdates } from '../../server/models/agent-cli-updates.js';
 import { admitAgentCli } from '../../server/generations/agent-cli/admission.js';
+import { resolveWindowsCmdShim } from '../../server/generations/agent-cli/resolve-bin.js';
 import { handleAgentCliModelsRequest } from '../../server/models/agent-cli-middleware.js';
 import { setRequestIngress } from '../../server/network/ingress.js';
 
@@ -78,6 +80,68 @@ test('reports a Claude update connection failure without returning vendor output
   await assert.rejects(updates.update('claude'), {
     message: 'Could not update Claude Code. The updater could not reach the download server. Check your network or proxy and retry.',
   });
+});
+
+test('Windows Update verifies and stages the public Cursor package before switching versions', { skip: process.platform !== 'win32' }, async t => {
+  const local = await fs.mkdtemp(fileURLToPath(new URL('./.cursor-update-', import.meta.url)));
+  const originalLocal = process.env.LOCALAPPDATA;
+  process.env.LOCALAPPDATA = local;
+  t.after(async () => {
+    process.env.LOCALAPPDATA = originalLocal;
+    await fs.rm(local, { recursive: true, force: true });
+  });
+  const root = path.join(local, 'cursor-agent');
+  const versions = path.join(root, 'versions');
+  const oldVersion = '2026.10.01-e373342';
+  const latest = '2026.11.13-eacade1';
+  const launcher = path.join(root, 'agent.cmd');
+  await fs.mkdir(path.join(versions, oldVersion), { recursive: true });
+  await fs.writeFile(launcher, 'powershell.exe -File "%SCRIPT_DIR%\\agent.ps1" %*\r\n');
+  await fs.writeFile(path.join(versions, oldVersion, 'node.exe'), '');
+  await fs.writeFile(path.join(versions, oldVersion, 'index.js'), '');
+  const requests = [];
+  let probeVersion = oldVersion;
+  const updates = createAgentCliUpdates({
+    detect: async kind => {
+      if (kind !== 'cursor') return { installed: false };
+      const bin = await resolveWindowsCmdShim(launcher);
+      return { installed: true, version: path.basename(path.dirname(bin.command)), resolvedBinPath: bin.display,
+        resolvedCommand: bin.command, resolvedArgsPrefix: bin.argsPrefix };
+    },
+    fetch: async (url, options) => {
+      requests.push(url);
+      if (url.startsWith('https://cursor.com/')) {
+        return new Response(`$downloadUrl = 'https://downloads.cursor.com/lab/${latest}/'\nthrow 'This script is metadata only'`);
+      }
+      const archiveUrls = ['x64', 'arm64'].map(arch => `https://downloads.cursor.com/lab/${latest}/windows/${arch}/agent-cli-package.zip`);
+      assert.ok(archiveUrls.includes(url), url);
+      assert.equal(options.redirect, 'error');
+      return new Response('package fixture');
+    },
+    run: async (command, args, { cwd }) => {
+      assert.equal(path.basename(path.dirname((await resolveWindowsCmdShim(launcher)).command)), oldVersion);
+      const payload = path.join(cwd, 'dist-package');
+      if (path.basename(command) === 'tar.exe') {
+        assert.deepEqual(args, ['-xf', path.join(cwd, 'agent-cli-package.zip'), 'dist-package']);
+        assert.equal(await fs.readFile(args[1], 'utf8'), 'package fixture');
+        await fs.mkdir(payload);
+        await fs.writeFile(path.join(payload, 'node.exe'), '');
+        await fs.writeFile(path.join(payload, 'index.js'), '');
+        return { code: 0 };
+      }
+      assert.equal(command, path.join(payload, 'node.exe'));
+      assert.deepEqual(args, [path.join(payload, 'index.js'), '--version']);
+      return { code: 0, stdout: probeVersion };
+    },
+  });
+  assert.equal((await updates.check()).items[0].state, 'available');
+  await assert.rejects(updates.update('cursor'), /could not report the expected version/);
+  assert.deepEqual(await fs.readdir(versions), [oldVersion]);
+  probeVersion = latest;
+  assert.deepEqual(await updates.update('cursor'), { installedVersion: latest });
+  assert.deepEqual((await fs.readdir(versions)).sort(), [oldVersion, latest]);
+  assert.equal((await updates.check()).items[0].state, 'current');
+  assert.equal(requests[0], 'https://cursor.com/install?win32=true&update=true&channel=prod');
 });
 
 test('Windows Update repairs a Codex shim whose version probe fails', { skip: process.platform !== 'win32' }, async t => {

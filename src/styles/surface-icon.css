@@ -1,0 +1,32 @@
+/* Icon controls for the workbench panels and app headers. */
+.graphite-surface-icon {
+  appearance: none;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--mn-control-h-sm);
+  height: var(--mn-control-h-sm);
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.graphite-surface-icon .icon-svg {
+  --mn-icon-size: var(--mn-icon-sm);
+}
+
+.graphite-surface-icon:is(:hover, [aria-pressed='true'], [aria-expanded='true']) {
+  color: var(--mn-fg);
+  background: var(--mn-sel, var(--mn-surface-2));
+}
+
+@media (pointer: coarse) {
+  [data-app-titlebar] .graphite-surface-icon {
+    width: var(--touch-min);
+    height: var(--touch-min);
+  }
+}

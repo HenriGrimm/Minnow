@@ -10,7 +10,7 @@
 
 | I want to… | Start here |
 | --- | --- |
-| Find a thread, file, command, or setting | [Find your way around Graphite](apps/overview.md) |
+| Find a thread, file, command, or setting | [Find your way around Minnow](apps/overview.md) |
 | Edit a file, run a check, or open a local preview | [Work in Code](apps/code.md) |
 | Inspect a diff and commit my changes | [Source Control](apps/code.md#source-control-center) |
 | Choose what an agent can do or answer an approval | [Tools and permissions](concepts/tools-and-permissions.md) |

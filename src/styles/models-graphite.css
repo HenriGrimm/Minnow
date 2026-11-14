@@ -37,12 +37,6 @@
   min-width: 0;
 }
 
-.mn-graphite-apps #modelsView .models-inspector-toggle {
-  width: var(--mn-workbench-control-h);
-  height: var(--mn-workbench-control-h);
-  border-radius: var(--mn-workbench-control-radius);
-}
-
 .mn-graphite-apps #modelsView .models-nav__label.has-graphite-label .models-nav__original-label,
 .mn-graphite-apps #modelsView :is([data-models-nav='thinking'], [data-models-nav='engine']) {
   display: none;
@@ -407,10 +401,13 @@
   background: var(--mn-sel, var(--mn-surface-2));
 }
 
-.mn-graphite-apps #modelsView .discover-pick__copy > :is(.models-muted, .discover-pick__facts, .discover-eyebrow) { display: none; }
+.mn-graphite-apps #modelsView .discover-pick__copy > :is(.models-muted, .discover-eyebrow) { display: none; }
 .mn-graphite-apps #modelsView .discover-pick__copy .discover-model-identity { margin: 0; }
-.mn-graphite-apps #modelsView .discover-pick__action { display: grid; gap: 4px; min-width: 0; }
-.mn-graphite-apps #modelsView .discover-pick__inspect { min-height: 27px; padding-inline: 6px; font-size: 11.5px; }
+.mn-graphite-apps #modelsView .discover-pick__details { min-height: 27px; padding-inline: 6px; font-size: 11.5px; }
+
+@container discover (max-width: 500px) {
+  .mn-graphite-apps #modelsView .discover-pick { grid-template-columns: minmax(0, 1fr) auto; }
+}
 
 .discover-pick__memory { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 5px; }
 .discover-pick__meter { height: 3px; border-radius: 99px; background: var(--mn-graphite-line-2, var(--mn-border-strong)); }
@@ -487,16 +484,11 @@
 
 .mn-graphite-apps #modelsView .settings-providers-list { overflow: hidden; }
 
+.mn-graphite-apps #modelsView .settings-providers-row { --provider-row-height: 59px; }
 .mn-graphite-apps #modelsView .settings-providers-row-head {
-  min-height: 59px;
   gap: 12px;
-  padding: 8px 16px;
 }
 
-.mn-graphite-apps #modelsView .settings-providers-row:last-child :is(.settings-providers-edit-panel, .settings-providers-row--cli),
-.mn-graphite-apps #modelsView .settings-providers-row--cli:last-child { border-bottom-color: transparent; }
-
-.mn-graphite-apps #modelsView .settings-providers-edit-panel[open] { margin-block: 0; }
 .mn-graphite-apps #modelsView .settings-providers-logo { flex-basis: 26px; width: 26px; height: 26px; }
 .mn-graphite-apps #modelsView .settings-providers-logo-glyph { width: 17px; height: 17px; }
 .mn-graphite-apps #modelsView .settings-providers-name { font-size: 13px; font-weight: 500; }
@@ -1019,8 +1011,13 @@
 .mn-graphite-apps #modelsView .settings-usage .usage-instrument__label { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .mn-graphite-apps #modelsView .settings-usage .usage-instrument__value { overflow-wrap: anywhere; font-size: var(--mn-type-4xl); }
 
-.models-provider-metrics,
-.models-provider-active { display: none; }
+.models-provider-active {
+  flex-shrink: 0;
+  margin-inline-start: 7px;
+  color: var(--mn-fg-muted);
+  font-size: 10px;
+}
+.settings-providers-row[data-enabled='false'] .models-provider-active { display: none; }
 
 .mn-graphite-apps #modelsView .models-voice-overview-heading { margin-bottom: 0; }
 .mn-graphite-apps #modelsView .settings-usage .usage-report > .settings-group { padding: 0; margin: 0; border: 0; }
@@ -1035,61 +1032,3 @@
 }
 
 .mn-graphite-apps #modelsView .models-usage-footer .settings-section-lead { flex: 1; margin: 0; }
-
-@container models (width >= 1070px) {
-  .mn-graphite-apps #modelsView .settings-providers-row { position: relative; }
-  .mn-graphite-apps #modelsView .settings-providers-edit-panel > .settings-providers-row-head { padding-inline-end: 55%; }
-  .mn-graphite-apps #modelsView .settings-providers-edit-panel .settings-providers-logo { display: none; }
-  .mn-graphite-apps #modelsView .settings-providers-edit-panel .settings-providers-row-head::before {
-    width: 7px;
-    height: 7px;
-    flex: none;
-    border-radius: 50%;
-    background: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
-    content: '';
-  }
-
-  .mn-graphite-apps #modelsView .settings-providers-row[data-connection='connected'] .settings-providers-row-head::before { background: var(--mn-success); }
-  .mn-graphite-apps #modelsView .settings-providers-row[data-connection='failed'] .settings-providers-row-head::before { background: var(--mn-danger); }
-  .mn-graphite-apps #modelsView .settings-providers-edit-panel .settings-providers-state { display: none; }
-  .mn-graphite-apps #modelsView .models-provider-active {
-    display: inline-block;
-    margin-inline-start: 7px;
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--mn-success-soft, var(--mn-accent-soft));
-    color: var(--mn-success-ink);
-    font-size: 10px;
-  }
-
-  .mn-graphite-apps #modelsView .models-provider-metrics {
-    position: absolute;
-    inset: 0 14px auto 47%;
-    display: grid;
-    grid-template-columns: minmax(70px, 1.15fr) minmax(53px, 1fr) minmax(42px, .7fr) minmax(50px, .8fr) auto;
-    align-items: center;
-    gap: 5px;
-    min-height: 59px;
-    color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-    font-size: 11.5px;
-    pointer-events: none;
-  }
-
-  .mn-graphite-apps #modelsView :is(.models-provider-kind, .models-provider-latency) { font: 11px var(--font-mono); }
-  .mn-graphite-apps #modelsView .models-provider-test {
-    min-height: 28px;
-    padding: 3px 9px;
-    border: 1px solid var(--mn-graphite-line, var(--mn-border));
-    border-radius: 6px;
-    background: transparent;
-    color: var(--mn-graphite-text, var(--mn-fg));
-    cursor: pointer;
-    pointer-events: auto;
-  }
-
-  .mn-graphite-apps #modelsView .models-provider-test:hover { background: var(--mn-graphite-hover, var(--mn-surface-elevated)); }
-  .mn-graphite-apps #modelsView .models-provider-result:not(:empty) { grid-column: 1 / -1; font-size: 11px; }
-  .mn-graphite-apps #modelsView .models-provider-result[data-tone='error'] { color: var(--mn-danger-ink); }
-  .mn-graphite-apps #modelsView .models-provider-result[data-tone='ok'] { color: var(--mn-success-ink); }
-  .mn-graphite-apps #modelsView .models-provider-result:empty { display: none; }
-}

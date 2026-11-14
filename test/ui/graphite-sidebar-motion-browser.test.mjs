@@ -108,8 +108,9 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
               </div>
             </div>
             <section class="product-wiki hidden" id="wiki">
-              <header class="product-wiki__header" data-app-titlebar><strong>Minnow wiki</strong>
-                <label class="product-wiki__search"><input aria-label="Search wiki"></label><button>Close wiki</button>
+              <header class="product-wiki__header" data-app-titlebar>
+                <div class="product-wiki__identity"><button class="back-to-chat" aria-label="Back to chat">←</button><strong>Minnow wiki</strong></div>
+                <label class="product-wiki__search"><input aria-label="Search wiki"></label>
               </header>
             </section>
           </main>

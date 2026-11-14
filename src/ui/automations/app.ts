@@ -24,7 +24,7 @@ import { renderJobView, type JobViewHandle } from './job-view';
 import { renderSetupView, type SetupDraft } from './setup-view';
 
 export interface AutomationsChrome {
-  summary: HTMLElement | null;
+  count: HTMLElement | null;
   controls: HTMLElement | null;
   addButton: HTMLButtonElement | null;
   notify: (state: 'ok' | 'err', message: string) => void;
@@ -94,7 +94,6 @@ export function mountAutomationsApp(mount: HTMLElement, chrome: AutomationsChrom
   let hub: ReturnType<typeof createHub> | null = null;
   let jobView: JobViewHandle | null = null;
   let viewCleanup: (() => void) | null = null;
-  let loadError: string | null = null;
 
   mount.replaceChildren();
   mount.classList.add('auto-root');
@@ -127,15 +126,11 @@ export function mountAutomationsApp(mount: HTMLElement, chrome: AutomationsChrom
     const onHub = view.name === 'hub';
     filterSeg.hidden = !onHub || !overview?.jobs.length;
     if (chrome.addButton) chrome.addButton.hidden = view.name === 'setup' || view.name === 'gallery';
-    if (!chrome.summary) return;
-    if (!overview) { chrome.summary.textContent = loadError ? 'Tool server offline' : '—'; return; }
-    const running = overview.jobs.filter((job) => job.live || job.running).length;
-    const needs = overview.jobs.filter((job) => job.attention).length;
-    const parts = [];
-    if (running) parts.push(`${running} running`);
-    if (needs) parts.push(`${needs} need${needs === 1 ? 's' : ''} you`);
-    parts.push(`${overview.jobs.length} automation${overview.jobs.length === 1 ? '' : 's'}`);
-    chrome.summary.textContent = overview.jobs.length ? parts.join(' · ') : 'Agents that run on their own while Minnow is open';
+    if (chrome.count) {
+      chrome.count.hidden = !overview;
+      const total = overview ? String(overview.jobs.length) : '';
+      if (chrome.count.textContent !== total) chrome.count.textContent = total;
+    }
   }
 
   function teardownView(): void {
@@ -533,7 +528,6 @@ export function mountAutomationsApp(mount: HTMLElement, chrome: AutomationsChrom
     if (pollTimer) { window.clearTimeout(pollTimer); pollTimer = undefined; }
     if (!mount.isConnected || document.hidden) { schedulePoll(SLOW_POLL_MS); return; }
     if (!isLocalServerAvailable()) {
-      loadError = 'offline';
       renderOffline();
       updateChrome();
       schedulePoll(SLOW_POLL_MS);
@@ -541,14 +535,16 @@ export function mountAutomationsApp(mount: HTMLElement, chrome: AutomationsChrom
     }
     try {
       overview = await fetchAutomationsOverview();
-      loadError = null;
-      if (view.name === 'hub') hub?.update(overview);
+      if (view.name === 'hub' && hub) {
+        if (hub.root.parentElement !== mount) mount.replaceChildren(hub.root);
+        hub.update(overview);
+      }
       if (view.name === 'job') {
         const job = overview.jobs.find((row) => row.id === (view as { jobId: string }).jobId);
         if (job) jobView?.update(job);
       }
-    } catch (error) {
-      loadError = error instanceof Error ? error.message : String(error);
+    } catch {
+      if (!overview) renderOffline();
     }
     updateChrome();
     schedulePoll();

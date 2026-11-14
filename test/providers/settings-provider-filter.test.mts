@@ -41,10 +41,10 @@ test('Settings Providers shows CLI connections with their state and a management
     const row = createAgentCliProviderSettingsRow(provider('codex-cli', 'agent-cli-v1'));
     assert.equal(row.dataset.providerId, 'codex-cli');
     assert.match(row.textContent ?? '', /Codex CLI|codex-cli/);
-    assert.match(row.textContent ?? '', /Enabled/);
+    assert.equal(row.querySelector<HTMLInputElement>('[role="switch"]')?.checked, true);
     assert.match(row.textContent ?? '', /Subscription/);
     assert.match(row.textContent ?? '', /Manage connection/);
-    assert.equal(row.querySelector('.settings-providers-edit-panel'), null);
+    assert.equal(row.querySelector('.settings-providers-edit'), null);
     assert.equal(row.querySelector('[data-provider-remove]'), null);
   } finally {
     win.close();

@@ -103,7 +103,7 @@ curl.exe -H "X-Minnow-Token: $(Get-Content $env:USERPROFILE\.minnow\session-toke
 
 A bare request without the header returns `401 Unauthorized` — that is the gate working, not a broken server.
 
-## 5. Verify the Graphite build
+## 5. Verify the desktop build
 
 1. Open a project folder from **Choose a workspace**, or use **Sandbox** for a temporary project.
 2. Select **New thread** in the workspace sidebar. Choose a connected model in the composer and follow [the first-change walkthrough](../manual/get-started/first-chat.md).

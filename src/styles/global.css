@@ -1,3 +1,5 @@
+@import './scrollbars.css';
+
 :root {
   /* Boot sentinel: proves bundled app CSS is applied (see boot/app-ready.ts).
      Route-independent on purpose — probing shell geometry breaks whenever the
@@ -48,38 +50,6 @@ input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='
 textarea,
 [contenteditable='true'] {
   caret-color: var(--mn-fg);
-}
-
-/* Thin theme scrollbars — bench instrument hairlines (DESIGN.md) */
-:root {
-  --scrollbar-size: 8px;
-  --scrollbar-thumb: var(--mn-border-strong);
-  --scrollbar-track: transparent;
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-}
-
-*::-webkit-scrollbar {
-  width: var(--scrollbar-size);
-  height: var(--scrollbar-size);
-}
-
-*::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
-
-*::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: var(--scrollbar-size);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-*::-webkit-scrollbar-corner {
-  background: transparent;
 }
 
 /* Reserve gutter so thumbs do not cover rounded panel chrome */

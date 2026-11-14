@@ -35,12 +35,14 @@ function setupBrainAppHostDom(doc: Document): void {
     </div>
     <div id="appBody"></div>
     <main id="brainView" class="brain-page" aria-label="Brain">
-      <button type="button" id="btnBrainPageBack" aria-label="Back"></button>
       <h1 id="brainPageHeaderTitle"></h1>
       <p id="brainPageHeaderLead"></p>
       <div id="brainPageHeaderActions"></div>
       <div id="brainPageHeaderUsage" class="hidden"></div>
-      <nav class="brain-rail">${navButtons}</nav>
+      <nav class="brain-rail">
+        <div class="brain-rail__heading" data-back-to-chat-header><span>Brain</span></div>
+        ${navButtons}
+      </nav>
       <div class="brain-content">${sectionPanels}</div>
       <div id="brainGraphStage" class="brain-graph-stage">
         <input type="search" id="brainGraphSearch">
@@ -144,6 +146,12 @@ describe('brain app host layer reveal', () => {
     assert.ok(root?.classList.contains('is-open'));
     assert.ok(root?.classList.contains('is-active'));
     assert.equal(window.location.hash, '#/app/brain/graph');
+
+    const back = root?.querySelector<HTMLButtonElement>('.brain-rail__heading > .back-to-chat');
+    assert.ok(back);
+    back.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(window.location.hash, '#/app/code/chat');
   });
 
   test('reopens brain layer when is-open was set without is-active', async () => {

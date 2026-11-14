@@ -5,7 +5,7 @@ import {
   type ModelDownloadFormat,
 } from '../../models/api-client';
 import { discoverFit } from '../../models/discover-fit';
-import { el, formatBytes, formatCount, textButton } from './dom';
+import { el, formatCount, textButton } from './dom';
 import { getModelsState, refreshHardware, refreshModels, subscribeModelsStore } from './store';
 import { createDiscoverInspector, type DiscoverSelection } from './discover-inspector';
 import { syncDownloadShelf } from './discover-downloads';
@@ -126,12 +126,14 @@ export function render(): void {
   function choose(model: DiscoverSelection): void {
     selectedRepo = model.repoId;
     paintResults();
-    void inspector.select(model).then(() => {
-      if (alive && selectedRepo === model.repoId && workbench.getBoundingClientRect().width < 850)
-        aside.scrollIntoView({ behavior: 'instant', block: 'start' });
-    });
-    if (workbench.getBoundingClientRect().width < 850)
-      aside.scrollIntoView({ behavior: 'instant', block: 'start' });
+    const ready = inspector.select(model, true);
+    if (getComputedStyle(aside).borderTopStyle === 'solid') {
+      const showDetails = () => aside.scrollIntoView({ behavior: 'instant', block: 'start' });
+      showDetails();
+      void ready.then(() => {
+        if (alive && selectedRepo === model.repoId && document.activeElement === aside.querySelector('h3')) showDetails();
+      });
+    }
   }
 
   function paintHardware(): void {
@@ -253,16 +255,7 @@ export function render(): void {
     }
   }
 
-  function recommendedRow(pick: (typeof recommended)[number]): HTMLElement {
-    const fit = discoverFit({
-      name: pick.name,
-      sizeBytes: pick.sizeBytes,
-      params: pick.parameters,
-      arch: pick.architecture,
-      context: preferences.context,
-      maxContext: pick.context,
-      hardware: getModelsState().hardware,
-    });
+  function recommendedRow(pick: (typeof recommended)[number], fit: ReturnType<typeof discoverFit>): HTMLElement {
     const row = el('article', `discover-pick${selectedRepo === pick.repo ? ' is-selected' : ''}`);
     row.dataset.discoverRepo = pick.repo;
     const copy = el('div', 'discover-pick__copy');
@@ -271,15 +264,10 @@ export function render(): void {
       el('span', 'discover-eyebrow', pick.title),
       createModelIdentity(pick.name.split('/').pop()!, creator),
       el('p', 'models-muted', pick.reason),
-      el(
-        'span',
-        'discover-pick__facts',
-        `${pick.parameters}B parameters · Q4_K_M · ${formatBytes(pick.sizeBytes)}`,
-      ),
     );
     const action = el('div', 'discover-pick__action');
     const estimate = el('span', `discover-fit discover-fit--${fit.tone}`, fit.label);
-    estimate.title = fit.detail;
+    estimate.title = `Default download. ${fit.detail}`;
     const memory = el('span', 'models-muted', fit.memoryGb ? `~${fit.memoryGb.toFixed(1)} GiB` : 'Unknown memory');
     const readout = el('span', 'discover-pick__memory');
     readout.append(estimate, memory);
@@ -289,20 +277,19 @@ export function render(): void {
     meter.setAttribute('aria-hidden', 'true');
     if (fit.memoryGb && capacity && capacity > 0) meter.style.setProperty('--fit-ratio', String(Math.min(1, fit.memoryGb / capacity)));
     action.append(readout, meter);
-    const inspect = textButton('Inspect files', () => choose(recommendedSelection(pick)));
-    inspect.classList.add('discover-pick__inspect');
-    inspect.setAttribute('aria-label', `Inspect ${pick.name.split('/').pop()}`);
-    inspect.setAttribute('aria-pressed', String(selectedRepo === pick.repo));
-    row.append(copy, action);
-    row.append(inspect);
+    const details = textButton('View model', () => choose(recommendedSelection(pick)));
+    details.classList.add('discover-pick__details');
+    details.setAttribute('aria-label', `View model ${pick.name.split('/').pop()}`);
+    details.setAttribute('aria-pressed', String(selectedRepo === pick.repo));
+    row.append(copy, action, details);
     row.addEventListener('click', (event) => {
-      if (!(event.target as Element).closest('button, a')) inspect.click();
+      if (!(event.target as Element).closest('button, a')) details.click();
     });
     return row;
   }
 
   function recommendedSelection(pick: (typeof recommended)[number]): DiscoverSelection {
-    return { repoId: pick.repo, name: pick.name.split('/').pop()!, reason: pick.reason, params: pick.parameters, arch: pick.architecture, maxContext: pick.context, format: 'gguf' };
+    return { repoId: pick.repo, name: pick.name.split('/').pop()!, reason: pick.reason, params: pick.parameters, arch: pick.architecture, maxContext: pick.context, format: 'gguf', preferredFilename: pick.filename };
   }
 
   function hubRow(model: HubSearchResult): HTMLElement {
@@ -310,6 +297,7 @@ export function render(): void {
       'article',
       `discover-hub-row${selectedRepo === model.repoId ? ' is-selected' : ''}`,
     );
+    row.dataset.discoverRepo = model.repoId;
     const creator = resolveModelCreator(model.repoId);
     const copy = createModelIdentity(model.repoId.split('/').pop()!, creator);
     const facts = el(
@@ -317,26 +305,24 @@ export function render(): void {
       'discover-hub-row__facts',
       `${model.format.toUpperCase()} · ${formatCount(model.downloads)} downloads${model.gated ? ' · Access required' : ''}`,
     );
-    row.append(
-      copy,
-      facts,
-      textButton('Inspect', () =>
-        choose({
-          repoId: model.repoId,
-          name: model.repoId.split('/').pop()!,
-          params: model.paramsB,
-          arch: model.arch,
-          format: model.format,
-          sizeBytes: model.sizeBytes,
-        }),
-      ),
-    );
+    const name = model.repoId.split('/').pop()!;
+    const details = textButton('View model', () => choose({
+      repoId: model.repoId, name, params: model.paramsB, arch: model.arch,
+      format: model.format, sizeBytes: model.sizeBytes,
+    }));
+    details.setAttribute('aria-label', `View model ${name}`);
+    details.setAttribute('aria-pressed', String(selectedRepo === model.repoId));
+    row.append(copy, facts, details);
     return row;
   }
 
   function paintResults(): void {
     if (!alive) return;
     const focusRepo = document.activeElement?.closest<HTMLElement>('[data-discover-repo]')?.dataset.discoverRepo;
+    const restoreRowFocus = () => {
+      if (focusRepo) [...list.querySelectorAll<HTMLElement>('[data-discover-repo]')]
+        .find((row) => row.dataset.discoverRepo === focusRepo)?.querySelector('button')?.focus({ preventScroll: true });
+    };
     list.replaceChildren();
     pagination.replaceChildren();
     if (preferences.source === 'recommended') {
@@ -367,10 +353,10 @@ export function render(): void {
         selectedRepo = first.repo;
         void inspector.select(recommendedSelection(first));
       }
-      status.textContent = `${picks.length} models`;
+      status.textContent = `${picks.length} ${picks.length === 1 ? 'model' : 'models'}`;
       status.title = `Memory estimates, not performance benchmarks · Reviewed ${recommended[0].reviewedAt}`;
-      for (const { pick } of picks) list.append(recommendedRow(pick));
-      if (focusRepo) [...list.querySelectorAll<HTMLElement>('[data-discover-repo]')].find((row) => row.dataset.discoverRepo === focusRepo)?.querySelector('button')?.focus({ preventScroll: true });
+      for (const { pick, fit } of picks) list.append(recommendedRow(pick, fit));
+      restoreRowFocus();
       if (!picks.length) {
         list.append(
           el(
@@ -392,9 +378,10 @@ export function render(): void {
     title.textContent = 'Explore Hugging Face';
     status.textContent = busy
       ? 'Searching Hugging Face…'
-      : `${results.length} repositories · Inspect a file to check memory`;
+      : `${results.length} ${results.length === 1 ? 'repository' : 'repositories'}`;
     list.setAttribute('aria-busy', String(busy));
     for (const result of results) list.append(hubRow(result));
+    restoreRowFocus();
     if (searchError) {
       const message = el('p', 'discover-error', searchError);
       message.setAttribute('role', 'alert');

@@ -1,0 +1,46 @@
+/* Shared by the app renderer and separately hosted preview documents. */
+@layer minnow-scrollbars {
+  @media (forced-colors: none) {
+    @supports not selector(::-webkit-scrollbar) {
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--mn-scrollbar-thumb, color-mix(in srgb, GrayText 70%, transparent)) transparent;
+      }
+    }
+
+    *::-webkit-scrollbar {
+      width: var(--mn-scrollbar-size, 10px);
+      height: var(--mn-scrollbar-size, 10px);
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background-color: var(--mn-scrollbar-thumb, color-mix(in srgb, GrayText 70%, transparent));
+      border: 2px solid transparent;
+      border-radius: var(--mn-radius-pill, 999px);
+      background-clip: padding-box;
+      min-width: 28px;
+      min-height: 28px;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: var(--mn-scrollbar-thumb-hover, GrayText);
+    }
+
+    *::-webkit-scrollbar-thumb:active {
+      background-color: var(--mn-scrollbar-thumb-active, AccentColor);
+    }
+
+    *::-webkit-scrollbar-track,
+    *::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    *::-webkit-scrollbar-track:vertical {
+      margin-block: 3px;
+    }
+
+    *::-webkit-scrollbar-button {
+      display: none;
+    }
+  }
+}

@@ -11,12 +11,12 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
   if (!browser.available) return t.skip(browser.detail);
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-layout-'));
   const styles = await Promise.all([
-    'tokens', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
+    'tokens', 'scrollbars', 'global', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
     'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar', 'sub-agent-drawer', 'mobile-app', 'automations',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`<!doctype html><style>${styles.join('\n').replace("@import './chat-thread.css';", '')}
+    res.end(`<!doctype html><style>${styles.join('\n').replace("@import './chat-thread.css';", '').replace("@import './scrollbars.css';", '')}
       * { box-sizing: border-box; } body { margin: 0; }
       #mainColumn { display: flex; flex-direction: column; width: calc(100vw - 300px); margin-left: 292px; }
       #workspaceSplit[data-side-open] > #mainColumn { width: calc(100vw - 740px); }
@@ -26,6 +26,13 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
         <div class="chat-viewport">
         <div id="chatArea" class="chat-area chat-thread">
           <div class="msg assistant">A saved reply</div>
+          <details class="sub-agent-group" open>
+            <summary class="sub-agent-group__summary">2 agents · Complete</summary>
+            <div class="sub-agent-group__body">
+              <article class="sub-agent-card sub-agent-card--persistent"><div class="sub-agent-card__panel">Review layout</div></article>
+              <article class="sub-agent-card sub-agent-card--persistent"><div class="sub-agent-card__panel">Review styles</div></article>
+            </div>
+          </details>
           <div class="msg user msg--has-actions">
             <div class="msg-bubble msg-bubble--user-parts"><div class="user-msg-text">continue</div></div>
             <button class="message-actions__trigger" aria-label="Message actions">⋮</button>
@@ -80,14 +87,24 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
 
   for (const [viewport, sideOpen, expected] of [[1440, false, 660], [1728, false, 821], [1440, true, 628], [1100, true, 328]]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width: viewport, height: 900, mobile: false, deviceScaleFactor: 1 });
-    const { composer, transcript, metrics } = await session.evaluate(`(() => {
+    const { composer, transcript, metrics, group, summary, cards } = await session.evaluate(`(() => {
       document.getElementById('workspaceSplit').toggleAttribute('data-side-open', ${sideOpen});
       const measure = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
-      return { composer: measure('.input-bar'), transcript: measure('.msg'), metrics: measure('.graphite-metrics-trigger') };
+      return {
+        composer: measure('.input-bar'), transcript: measure('.msg'), metrics: measure('.graphite-metrics-trigger'),
+        group: measure('.sub-agent-group'), summary: measure('.sub-agent-group__summary'),
+        cards: [...document.querySelectorAll('.sub-agent-card__panel')].map(card => card.getBoundingClientRect().toJSON()),
+      };
     })()`);
     assert.ok(Math.abs(composer.width - expected) < 1, JSON.stringify(composer));
     assert.equal(composer.width, transcript.width);
     assert.equal(composer.left, transcript.left);
+    assert.equal(group.left, transcript.left, `sub-agent group aligns with messages at ${viewport}px`);
+    assert.equal(group.right, transcript.right);
+    assert.equal(summary.left, transcript.left);
+    assert.equal(cards[0].left, transcript.left);
+    assert.ok(cards.every(card => card.right <= transcript.right));
+    if (expected === 328) assert.ok(cards[1].top >= cards[0].bottom);
     assert.ok(metrics.left >= composer.left && metrics.right <= composer.right);
   }
 
@@ -251,21 +268,25 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
     transcript.style.width = '';
     const column = document.querySelector('#mainColumn');
     column.style.height = '650px';
+    transcript.insertAdjacentHTML('beforeend', '<div class="msg assistant" style="min-height: 800px">A long reply</div>');
     column.querySelector('.chat-viewport').insertAdjacentHTML('afterbegin',
       '<details class="chat-turn-todos chat-todo-panel" open><summary class="chat-turn-todos__header">Todo list</summary>' +
       '<ul class="chat-turn-todos__list"><li>Review the checklist</li></ul></details>');
   })()`);
   const measureChecklist = () => session.evaluate(`(() => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+    const area = document.querySelector('#chatArea');
     return { panel: rect('.chat-todo-panel'), composer: rect('#mainColumn > .input-bar'),
-      status: rect('.composer-run-status'), transcript: rect('#chatArea'), column: rect('#mainColumn'),
-      tracks: getComputedStyle(document.querySelector('.chat-viewport')).gridTemplateColumns };
+      status: rect('.composer-run-status'), scrollport: rect('#chatArea'), message: rect('#chatArea > .msg'),
+      column: rect('#mainColumn'), overflowing: area.scrollHeight > area.clientHeight };
   })()`);
   for (const width of [1440, 1100]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
     for (const running of [false, true]) {
       await session.evaluate(`document.querySelector('.composer-run-status').hidden = ${!running}`);
-      const { panel, composer, status } = await measureChecklist();
+      const { panel, composer, status, scrollport, column, overflowing } = await measureChecklist();
+      assert.ok(overflowing);
+      assert.equal(scrollport.right, column.right);
       assert.ok(Math.abs(panel.bottom - composer.top) <= 1, 'checklist touches the composer');
       assert.ok(Math.abs(panel.left - composer.left - (composer.right - panel.right)) <= 1, 'checklist is centered');
       assert.ok(panel.width > 0.8 * composer.width && panel.width < composer.width);
@@ -312,13 +333,15 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
   for (const width of [1580, 2200, 3840]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
     const wide = await measureChecklist();
-    const { panel, transcript, composer, column } = wide;
+    const { panel, scrollport, message, composer, column, overflowing } = wide;
+    assert.ok(overflowing);
+    assert.equal(scrollport.right, column.right);
     assert.ok(panel.width >= 191 && panel.width <= 352, JSON.stringify(wide));
-    assert.ok(transcript.left - panel.right >= 32 && transcript.left - panel.right <= 64, JSON.stringify(wide));
+    assert.ok(message.left - panel.right >= 32 && message.left - panel.right <= 64, JSON.stringify(wide));
     assert.ok(panel.left - column.left >= 32);
     assert.ok(panel.width >= previousPanelWidth);
     previousPanelWidth = panel.width;
-    assert.ok(Math.abs(transcript.left - composer.left) <= 1);
+    assert.ok(Math.abs((message.left + message.right) - (composer.left + composer.right)) <= 1);
   }
   const { root } = await session.client.send('DOM.getDocument');
   const { nodeId } = await session.client.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.chat-todo-panel > summary' });

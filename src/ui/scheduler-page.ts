@@ -2,7 +2,6 @@ import '../styles/scheduler-page.css';
 import '../styles/automations.css';
 import '../styles/settings-controls.css';
 
-import { createAppIcon } from '../os/icons';
 import { isOsAppHash, isOsShellEnabled } from '../os/page-bridge';
 import { navigateToDesktop } from '../os/router';
 import { mountAutomationsApp, type AutomationsApp } from './automations/app';
@@ -43,7 +42,7 @@ function ensureApp(): AutomationsApp | null {
   if (app && body.classList.contains('auto-root')) return app;
   app?.dispose();
   app = mountAutomationsApp(body, {
-    summary: document.getElementById('schedulerSummary'),
+    count: document.getElementById('schedulerCount'),
     controls: document.querySelector<HTMLElement>('#schedulerView .scheduler-header__controls'),
     addButton: document.getElementById('btnSchedulerAdd') as HTMLButtonElement | null,
     notify: setPanelStatus,
@@ -51,16 +50,9 @@ function ensureApp(): AutomationsApp | null {
   return app;
 }
 
-function mountHeaderIcon(): void {
-  const slot = document.getElementById('schedulerPageIcon');
-  if (!slot || slot.childElementCount > 0) return;
-  slot.appendChild(createAppIcon('scheduler'));
-}
-
 export function initSchedulerPage(): void {
   if (initialized) return;
   initialized = true;
-  mountHeaderIcon();
   if (!isOsShellEnabled()) {
     window.addEventListener('hashchange', onHashChange);
     if (
@@ -77,7 +69,6 @@ export async function openScheduler(): Promise<void> {
   if (!root) return;
 
   root.classList.add('is-open');
-  mountHeaderIcon();
   await ensureApp()?.refresh();
 }
 

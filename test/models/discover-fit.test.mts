@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { discoverFit } from '../../src/models/discover-fit.ts';
+import { discoverFit, recommendDiscoverVariant } from '../../src/models/discover-fit.ts';
 import type { HardwareSnapshot } from '../../src/models/types.ts';
 
 const hardware = {
@@ -45,4 +45,28 @@ test('unified memory cannot exceed currently available system memory', () => {
     hardware: { ...hardware, unifiedMemory: true, gpuVramGb: 64, availableRamGb: 1 },
   });
   assert.equal(fit.fits, false);
+});
+
+test('recommends the curated variant within the fastest fitting tier', () => {
+  const variant = (quant: string, sizeGb: number, filename = `${quant}.gguf`, error: string | null = null) => {
+    const sizeBytes = sizeGb * 1024 ** 3;
+    return {
+      file: { filename, quant, files: [filename], sizeBytes, error },
+      fit: discoverFit({ ...input, sizeBytes }),
+    };
+  };
+  const small = variant('Q2_K', 1);
+  const balanced = variant('Q4_K_M', 3);
+  const curated = variant('Q4_0', 3, 'curated.gguf');
+  const larger = variant('Q6_K', 5);
+  const broken = variant('Q4_K_M', 2, 'broken.gguf', 'Missing shards');
+  const ramOnly = variant('Q4_K_M', 15);
+  const overBudget = variant('F16', 34);
+
+  assert.equal(recommendDiscoverVariant([small, balanced, curated, larger], curated.file.filename), curated);
+  assert.equal(recommendDiscoverVariant([small, balanced, larger]), balanced);
+  assert.equal(recommendDiscoverVariant([small, broken, larger, ramOnly]), larger);
+  assert.equal(recommendDiscoverVariant([ramOnly, overBudget]), ramOnly);
+  assert.equal(recommendDiscoverVariant([overBudget, broken]), overBudget);
+  assert.equal(recommendDiscoverVariant([broken]), undefined);
 });
