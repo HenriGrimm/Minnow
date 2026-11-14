@@ -92,3 +92,8 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+.orchestrate-hub__header {
+  flex-shrink: 0;
+  padding: var(--mn-space-1) var(--mn-space-3);
+}

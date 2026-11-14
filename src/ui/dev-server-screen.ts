@@ -41,6 +41,7 @@ import {
   type PortsSortKey,
 } from './dev-server-screen-view';
 import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './main-column-overlay';
+import { createBackToChatButton } from './back-to-chat';
 import {
   filterUserFacingWorktrees,
   formatWorktreeOptionLabel,
@@ -241,6 +242,7 @@ function buildShell(): HTMLElement {
       </section>
     </div>
   `;
+  root.querySelector('.dev-server-screen__heading')?.prepend(createBackToChatButton());
   return root;
 }
 

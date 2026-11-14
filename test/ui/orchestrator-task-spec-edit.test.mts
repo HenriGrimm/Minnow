@@ -184,7 +184,7 @@ describe('task spec editor', () => {
     assert.equal(node.querySelector('form.ov2-spec-edit'), null);
     assert.equal(node.querySelector('.ov2-detail__title')?.textContent, 'Alpha 2');
     assert.ok(node.querySelector('.ov2-spec')?.textContent?.includes('New build'));
-    assert.equal(node.querySelector('.ov2-spec__edited')?.textContent, 'edited');
+    assert.equal(node.querySelector('.ov2-spec__edited')?.textContent, 'Edited');
   });
 
   test('Cancel returns to the read view without a command', () => {

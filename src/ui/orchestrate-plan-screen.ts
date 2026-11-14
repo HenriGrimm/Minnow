@@ -64,6 +64,8 @@ import { isSuperPlanChromeActive, syncSuperPlanChrome } from './super-plan-chrom
 import { isReusableEmptyPlanChat } from '../chat/super-plan/spare-chat';
 import { isChatInCurrentWorkspace } from '../chat/super-plan/plan-library';
 import { getWorkspacePath } from '../state/workspace';
+import { returnToChat } from '../os/router';
+import { createBackToChatButton } from './back-to-chat';
 
 export const ORCHESTRATE_PLAN_SCREEN_ROOT_ID = 'orchestratePlanScreen';
 export const ORCHESTRATE_PLAN_SCREEN_PROMPT_ID = 'orchestratePlanScreenPrompt';
@@ -928,7 +930,10 @@ export function renderOrchestratePlanScreen(
   const header = document.createElement('header');
   header.className = 'orchestrate-plan-stage-header';
   header.dataset.appTitlebar = '';
-  header.textContent = 'Plan';
+  header.append(createBackToChatButton(() => {
+    suspendOrchestratePlanScreenOnLeave(opts.chatId);
+    void returnToChat();
+  }), 'Plan');
   area.append(header, buildPlanScreenDom(opts));
   area.classList.add(CHAT_AREA_PLAN_SCREEN_CLASS);
   document.getElementById('mainColumn')?.classList.add(MAIN_COLUMN_PLAN_SCREEN_CLASS);

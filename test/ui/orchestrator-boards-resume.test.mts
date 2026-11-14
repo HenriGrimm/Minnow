@@ -4,6 +4,7 @@
  */
 import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, test } from 'node:test';
 import { mock } from 'node:test';
 
@@ -246,6 +247,85 @@ describe('V2 Boards last-opened resume', () => {
     const selected = document.querySelector('.ov2__board-btn.is-selected');
     assert.ok(selected, 'last board stays selected in the rail');
     assert.ok(streamOpens > opensAfterFirst, 'reopen must create a new board client stream');
+  });
+
+  test('Boards hides the chat panels, restores their layout, and opens task files in Code', async () => {
+    setupDom(canonicalise(derive([{
+      v: 1, seq: 1, type: 'board.created', boardId: BOARD_ID, name: BOARD_SUMMARY.name,
+      planPath: BOARD_SUMMARY.planPath, waves: [{ n: 1, name: 'Fixture' }],
+      tasks: [{ id: 'W1-A', title: 'Audit task', wave: 1, dependsOn: [], touches: ['README.md'] }],
+    }])));
+    const markup = new activeWindow!.DOMParser().parseFromString(
+      readFileSync(new URL('../../index.html', import.meta.url), 'utf8'), 'text/html',
+    );
+    const stage = document.importNode(markup.getElementById('workspaceSplit')!, true) as HTMLElement;
+    document.getElementById('chatArea')!.remove();
+    document.getElementById('mainColumn')!.replaceWith(stage);
+    const main = document.getElementById('mainColumn')!;
+    Object.defineProperty(stage, 'getClientRects', { value: () => [{}] });
+
+    const { closeOtherCodeStageViews, showCodeStageSection } = await import('../../src/ui/main-column-overlay');
+    const { splitGraphitePanel } = await import('../../src/ui/surfaces/surface-bridge');
+    const { mountSurfacePanels, openSurface, registerSurface, toggleSurfaceMaximize } =
+      await import('../../src/ui/surfaces/surfaces-column');
+    const { createWorkbenchContent } = await import('../../src/ui/surfaces/workbench-content');
+    const files = document.createElement('div');
+    const terminal = document.createElement('div');
+    registerSurface('files', { render: () => files });
+    registerSurface('terminal', { render: () => terminal });
+    mountSurfacePanels(stage, { content: createWorkbenchContent(stage) });
+    openSurface('terminal');
+    openSurface('files');
+    assert.equal(splitGraphitePanel(), true);
+    const side = document.getElementById('surfaceSide')!;
+    const bottom = document.getElementById('surfaceBottom')!;
+    const split = document.getElementById('surfaceSplit')!;
+    assert.deepEqual([side.hidden, bottom.hidden, split.hidden], [false, false, false]);
+
+    for (const maximized of ['', 'side'] as const) {
+      if (maximized) toggleSurfaceMaximize(maximized);
+      assert.equal(stage.dataset.surfaceMax, maximized);
+      await showCodeStageSection('boards');
+
+      const board = document.getElementById('orchestratorBoardsRoot')!;
+      assert.ok(main.contains(board));
+      assert.deepEqual([side.hidden, bottom.hidden, split.hidden], [true, true, true]);
+      assert.equal(stage.dataset.surfaceSide, 'false');
+      assert.equal(stage.dataset.surfaceBottom, 'false');
+      assert.equal(stage.dataset.surfaceMax, '');
+      assert.equal(main.inert, false);
+      const shortcut = new activeWindow!.KeyboardEvent('keydown', {
+        key: 'j', ctrlKey: true, bubbles: true, cancelable: true,
+      });
+      board.dispatchEvent(shortcut);
+      assert.equal(shortcut.defaultPrevented, false);
+
+      await closeOtherCodeStageViews();
+      assert.equal(board.isConnected, false);
+      assert.equal(stage.dataset.surfaceMax, maximized);
+      assert.deepEqual([side.hidden, bottom.hidden, split.hidden], [false, Boolean(maximized), false]);
+      assert.ok(side.contains(files));
+      assert.ok(bottom.contains(terminal));
+    }
+
+    await showCodeStageSection('boards');
+    showBoard(BOARD_ID);
+    await waitForBoardHeader();
+    document.querySelector<HTMLButtonElement>('[data-focus-key="task:W1-A"]')!.click();
+    document.querySelector<HTMLButtonElement>('.ov2-detail [role="tab"][id$="-files"]')!.click();
+    const fileLink = () => document.querySelector<HTMLButtonElement>('[aria-label="Open README.md"]');
+    for (let attempt = 0; attempt < 50 && !fileLink(); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const file = fileLink();
+    assert.ok(file);
+    file.click();
+    const activeFile = () => stage.querySelector('[role="tab"][aria-selected="true"][title="README.md"]');
+    for (let attempt = 0; attempt < 50 && !activeFile(); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(document.getElementById('orchestratorBoardsRoot'), null);
+    assert.ok(activeFile());
   });
 
   test('opens the timeline in an anchored popover instead of below the board', async () => {

@@ -906,7 +906,7 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
 }
 
 .m-thread .input-bar .input-bar-send-stack {
-  gap: 4px;
+  gap: 8px;
   padding: 4px 8px 8px 0;
 }
 
@@ -2696,7 +2696,7 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
   height: 100%;
   background: var(--mn-graphite-sheet);
 }
-.m-native-app-host :is(#btnModelsPageBack, #btnBrainPageBack, #btnSchedulerPageBack, #btnSettingsClose) {
+.m-native-app-host .back-to-chat {
   display: none;
 }
 .m-native-app-host .settings-phone-bar { padding-top: 0; }

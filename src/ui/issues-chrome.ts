@@ -2,6 +2,7 @@ import { ensureNewIssuePropertyFields } from './issues-new-property-field';
 import { ensureNewIssueWorkspaceField } from './issues-new-workspace-field';
 import { createIcon } from './icon';
 import { createButton } from './components/button';
+import { createBackToChatButton } from './back-to-chat';
 
 const CHROME_MARK = 'data-issues-chrome';
 
@@ -69,7 +70,9 @@ function buildHeader(): HTMLElement {
     el('h1', { text: 'Issues' }),
     el('p', { id: 'issuesSummary', class: 'issues-summary', 'aria-live': 'polite' }),
   ]);
-  const brand = el('div', { class: 'issues-header__brand' }, [icon, titles]);
+  const back = createBackToChatButton();
+  back.classList.add('issues-app-back');
+  const brand = el('div', { class: 'issues-header__brand' }, [back, icon, titles]);
 
   const scope = el('select', { id: 'issuesScope', class: 'issues-filter', 'aria-label': 'Workspace scope' }, [
     el('option', { value: 'current_workspace', text: 'Current workspace' }),

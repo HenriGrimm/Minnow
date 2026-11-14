@@ -1,4 +1,5 @@
 import { isPhoneLayout, onPhoneLayoutChange } from './mobile-layout';
+import { createBackToChatButton } from './back-to-chat';
 
 const SECTION_OPEN_CLASS = 'settings-page--phone-section';
 const BAR_ID = 'settingsPhoneBar';
@@ -55,13 +56,20 @@ function ensureBar(root: HTMLElement): void {
   back.className = 'settings-phone-bar__back';
   back.setAttribute('aria-label', 'All settings');
   back.innerHTML = '<i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>';
+  const backLabel = document.createElement('span');
+  backLabel.className = 'settings-phone-bar__back-label';
+  backLabel.textContent = 'All settings';
+  back.append(backLabel);
   back.addEventListener('click', openSettingsPhoneList);
 
   const title = document.createElement('span');
   title.id = `${BAR_ID}Title`;
   title.className = 'settings-phone-bar__title';
 
-  bar.append(back, title);
+  const chatBack = createBackToChatButton(() => {
+    root.querySelector<HTMLButtonElement>('#btnSettingsPageBack')?.click();
+  });
+  bar.append(chatBack, title, back);
   body.prepend(bar);
 }
 

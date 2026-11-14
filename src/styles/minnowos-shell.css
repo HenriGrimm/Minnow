@@ -533,6 +533,25 @@ html.is-electron-shell[data-platform='win32'] .mn-os-mb-window-controls::before 
   flex-direction: column;
 }
 
+.plugin-app__header {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--mn-space-3);
+  min-height: var(--mn-workbench-band-h, var(--topbar-h));
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.plugin-app__content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+html.mn-phone .back-to-chat {
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+}
+
 .mn-os-code-layer.is-active {
   display: flex;
   flex-direction: column;

@@ -9,6 +9,7 @@ import { executeTool } from '../tools/client';
 import { isOsIconName, type OsIconName } from '../os/icons';
 import type { PluginAppId } from '../os/types';
 import { registerPluginSlashCommand, type PluginSlashCommand } from '../chat/slash-commands/registry';
+import { createBackToChatButton } from '../ui/back-to-chat';
 
 export interface PluginAppOptions {
   id: string;
@@ -118,6 +119,13 @@ export function createPluginUiContext(pluginId: string, release: string, tools: 
       root.className = 'mn-os-app-layer plugin-app';
       root.dataset.osApp = appId;
       root.setAttribute('aria-label', options.name);
+      const header = document.createElement('header');
+      header.className = 'plugin-app__header';
+      header.dataset.appTitlebar = '';
+      header.append(createBackToChatButton());
+      const content = document.createElement('div');
+      content.className = 'plugin-app__content';
+      root.append(header, content);
       const appsLayer = document.getElementById('osAppsLayer');
       if (!appsLayer) throw new Error('App shell is not available');
       appsLayer.append(root);
@@ -131,7 +139,7 @@ export function createPluginUiContext(pluginId: string, release: string, tools: 
           assertActive();
           return mounting ??= Promise.resolve().then(() => {
             assertActive();
-            return mount(root);
+            return mount(content);
           }).then(cleanup => { if (typeof cleanup === 'function') own(cleanup); }).catch(error => {
             mounting = undefined;
             throw error;

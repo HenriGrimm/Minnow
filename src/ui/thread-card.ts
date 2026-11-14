@@ -1,6 +1,7 @@
 import '../styles/thread-card.css';
 import { hasHostSessionToken } from '../api/session-token';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
+import { subscribeFirstMessageSubmission } from '../chat/first-message-submission';
 import { findIncompleteToolBatchAtTail } from '../chat/incomplete-tool-batch';
 import { getPendingTranscriptMessages } from '../chat/message-queue';
 import { getCurrentRoute } from '../os/router';
@@ -483,6 +484,9 @@ export function mountGraphiteThreadHeader(): void {
   }
 
   subscribeSidebarRender(refresh);
+  subscribeFirstMessageSubmission(chat => {
+    if (chat === activeChat()) refresh();
+  });
   subscribeSidebarGitState(refresh);
   window.addEventListener('hashchange', refresh);
   window.addEventListener('keydown', event => {

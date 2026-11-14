@@ -5,6 +5,7 @@ import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
 import { satisfiesDependents } from '../../server/orchestrator/core/derive.js';
 import type { DiffLine } from '../chat/prompts/text-diff';
 import type { EngineError, LiveActivity, TaskFileStat } from './client';
+import type { BoardNotice } from './board-attention';
 import {
   bucketWave,
   COLUMNS,
@@ -79,6 +80,7 @@ export interface BoardViewOptions {
   engineErrors?: ReadonlyMap<string, EngineError>;
   transcript?: TranscriptView | null;
   files?: TaskFilesView | null;
+  taskNotice?: BoardNotice | null;
 }
 
 // ── Tones ────────────────────────────────────────────────────────────────────
@@ -495,7 +497,7 @@ function renderTaskCard(
   head.type = 'button';
   head.dataset.taskId = task.id;
   head.tabIndex = selected ? 0 : -1;
-  head.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  head.setAttribute('aria-haspopup', 'dialog');
   head.setAttribute(
     'aria-label',
     `${task.id} ${task.title}, ${phaseLabel(state, task)}`,
@@ -906,6 +908,16 @@ export function isStartable(
 
 
 function attachKeyboardGrid(list: HTMLElement): void {
+  let tabStop = list.querySelector<HTMLElement>('.ov2-task__head[tabindex="0"]')
+    ?? list.querySelector<HTMLElement>('.ov2-task__head');
+  if (tabStop) tabStop.tabIndex = 0;
+  list.addEventListener('focusin', (event) => {
+    const next = (event.target as HTMLElement | null)?.closest<HTMLElement>('.ov2-task__head');
+    if (!next || next === tabStop) return;
+    if (tabStop) tabStop.tabIndex = -1;
+    next.tabIndex = 0;
+    tabStop = next;
+  });
   list.addEventListener('keydown', (event: KeyboardEvent) => {
     const key = event.key;
     if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') {

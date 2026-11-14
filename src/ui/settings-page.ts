@@ -48,7 +48,8 @@ import { fieldByKey } from './settings-catalog';
 import { resolveBrainMemoryRoute } from './brain-memory-routing';
 import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 import { modelsSectionForSettingsArea } from './models-settings-navigation';
-import { getCurrentRoute, launchApp, navigateToDesktop } from '../os/router';
+import { getCurrentRoute, launchApp, navigateToDesktop, returnToChat } from '../os/router';
+import { getAppWindowId } from '../os/app-window';
 import type { LaunchOptions } from '../os/types';
 import { isShellOverlayTopmost, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import { initGraphiteSettingsPresentation } from './settings-graphite';
@@ -115,9 +116,6 @@ function syncSettingsOsWindowChrome(): void {
       osWindow.scrollTop = 0;
     }
   }
-  document
-    .getElementById('btnSettingsPageBack')
-    ?.classList.toggle('hidden', isOsEmbedded());
 }
 
 /** Parse `#/settings/<category|legacy-area>`. */
@@ -535,6 +533,18 @@ export function closeSettings(options?: { skipNavigate?: boolean }): void {
   );
 }
 
+function backToChatFromSettings(): void {
+  const settingsInst = getForegroundSettingsInstance();
+  if (!settingsInst || !getSettingsRoot()?.classList.contains('is-open')) return;
+  if (getAppWindowId()) {
+    void returnToChat();
+    return;
+  }
+  closeSettings({ skipNavigate: true });
+  void returnToChat();
+  closeInstance(settingsInst.id);
+}
+
 function onHashChange(): void {
   const hash = window.location.hash;
   if (hash.startsWith('#/settings')) {
@@ -589,9 +599,7 @@ export function initSettingsPage(): void {
 
   document
     .getElementById('btnSettingsPageBack')
-    ?.addEventListener('click', () => {
-      closeSettings();
-    });
+    ?.addEventListener('click', backToChatFromSettings);
 
   initSettingsMobileNav();
   document.addEventListener('keydown', (event) => {

@@ -66,7 +66,9 @@ test('trusted UI adds DOM, apps, menus and commands, then revokes them with clea
   assert.ok(listRailApps().some(row => row.id === app.id));
   await Promise.all([getAppById(app.id)!.open!(), getAppById(app.id)!.open!()]);
   assert.equal(mounts, 1);
-  assert.equal(document.getElementById(`osAppLayer-${app.id}`)!.textContent, 'Token totals');
+  const appRoot = document.getElementById(`osAppLayer-${app.id}`)!;
+  assert.equal(appRoot.querySelector('header > button')?.getAttribute('aria-label'), 'Back to chat');
+  assert.equal(appRoot.querySelector('.plugin-app__content')?.textContent, 'Token totals');
   launchInstance(app.id);
   assert.equal(getForegroundAppId(), app.id);
 

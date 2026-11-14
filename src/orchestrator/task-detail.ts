@@ -4,7 +4,6 @@ import type {
   TaskEditChanges,
   TaskState,
 } from '../../server/orchestrator/core/types';
-import { COLUMNS, columnOf, type ColumnId } from './board-columns';
 import {
   OUTCOME_TONE,
   PHASE_TONE,
@@ -14,7 +13,6 @@ import {
   phaseLabel,
   renderSkeleton,
   retryCount,
-  retryLabel,
   runningAttempt,
   type BoardActions,
   type BoardViewOptions,
@@ -34,6 +32,8 @@ import { renderAttemptScan, resetAttemptWriteUps } from './attempt-report';
 import { humanizeAbandonReason } from './attempt-scan';
 import { el, empty, pill } from './dom';
 import { createIcon } from '../ui/icon';
+import { createTabs } from '../ui/components/tabs';
+import { openContextMenu } from '../ui/context-menu';
 import { renderUnifiedPromptDiff } from '../ui/prompt-diff-unified';
 import { setAssistantBubbleContent } from '../markdown/renderer';
 import { renderAttemptContext } from './attempt-context';
@@ -58,11 +58,8 @@ const conversations = new Map<HTMLElement, { renderer: ConversationView; streami
 const ui = {
   followThread: true,
   threadScrollTop: 0,
-  specOpen: null as boolean | null,
   /** Open spec editor draft; survives live repaints of the overlay. */
   specEdit: null as SpecDraft | null,
-  /** Files panel disclosure; defaults collapsed until the user opens it. */
-  filesOpen: null as boolean | null,
   /** Settled Thoughts the user closed, keyed by attempt and message. */
   collapsedThoughts: new Set<string>(),
   /** Tool cards the user opened, keyed by attempt and tool call. */
@@ -93,7 +90,6 @@ export function settleSpecEdit(taskId: string, error: string | null): void {
     return;
   }
   ui.specEdit = null;
-  ui.specOpen = true;
 }
 
 export function resetTaskDetailUi(): void {
@@ -101,9 +97,7 @@ export function resetTaskDetailUi(): void {
   resetAttemptWriteUps();
   ui.collapsedThoughts.clear();
   ui.expandedToolCalls.clear();
-  ui.specOpen = null;
   ui.specEdit = null;
-  ui.filesOpen = null;
 }
 
 // ── Detail ───────────────────────────────────────────────────────────────────
@@ -120,41 +114,49 @@ export function renderTaskDetail(
   overlay.dataset.focusKey = 'detail-overlay';
   overlay.dataset.taskId = task.id;
   overlay.dataset.phase = task.phase;
-  overlay.dataset.attemptCount = String(task.attempts.length);
-  overlay.addEventListener('click', () => actions.select(null));
+  let pressedScrim = false;
+  overlay.addEventListener('pointerdown', (event) => {
+    pressedScrim = event.target === overlay;
+  });
+  overlay.addEventListener('click', (event) => {
+    if (pressedScrim && event.target === overlay) actions.select(null);
+    pressedScrim = false;
+  });
 
   const detail = el('section', 'ov2-detail');
   detail.setAttribute('role', 'dialog');
   detail.setAttribute('aria-modal', 'true');
   detail.setAttribute('aria-labelledby', titleId);
   detail.tabIndex = -1;
-  detail.addEventListener('click', (event) => event.stopPropagation());
+  detail.dataset.focusKey = 'detail-panel';
 
-  const dismissOnEscape = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    event.stopPropagation();
-    actions.select(null);
-  };
-  overlay.addEventListener('keydown', dismissOnEscape);
-  detail.addEventListener('keydown', dismissOnEscape);
+  detail.append(renderHead(state, task, actions, options, titleId), renderAlertGroup(task, options.taskNotice));
 
-  detail.appendChild(renderHead(state, task, actions, options, titleId));
+  const spec = el('div', 'ov2-detail__page ov2-detail__spec');
+  spec.append(renderSpecPanel(state, task, actions));
+  const activity = el('div', 'ov2-detail__activity');
+  const work = el('div', 'ov2-detail__page ov2-detail__work');
+  work.append(renderWorkSection(state, task, actions, options));
+  activity.append(work, renderThreadPane(state, task, options));
+  const files = el('div', 'ov2-detail__page ov2-detail__files');
+  files.append(renderFilesSection(task, actions, options));
 
-  // Two panes: what the task is on the left, what an agent actually did on the
-  // right. The thread is a conversation and needs its own height to read as one.
-  const panes = el('div', 'ov2-detail__panes');
-
-  const rail = el('div', 'ov2-detail__rail');
-  for (const alert of renderAlerts(task)) rail.appendChild(alert);
-  rail.appendChild(renderFilesSection(task, actions, options));
-  rail.appendChild(renderWorkSection(state, task, actions, options));
-  const spec = renderSpecPanel(state, task, actions);
-  if (spec) rail.appendChild(spec);
-  panes.appendChild(rail);
-
-  panes.appendChild(renderThreadPane(state, task, options));
-  detail.appendChild(panes);
+  const tabs = createTabs({
+    ariaLabel: 'Task details',
+    className: 'ov2-detail__tabs',
+    selected: options.transcript || runningAgentAttempt(task) ? 'activity' : 'spec',
+    tabs: [
+      { id: 'spec', label: 'Spec', panel: spec },
+      { id: 'activity', label: 'Activity', panel: activity },
+      { id: 'files', label: 'Files', panel: files },
+    ],
+    onChange: (id) => {
+      if (id !== 'activity') return;
+      const body = activity.querySelector<HTMLElement>('[data-thread-scroller]');
+      if (body) restoreThreadScroll(body, activity.querySelector<HTMLElement>('.ov2-thread')?.dataset.runState === 'running');
+    },
+  });
+  detail.append(tabs.root);
 
   overlay.appendChild(detail);
   return overlay;
@@ -163,7 +165,7 @@ export function renderTaskDetail(
 export type TaskDetailSyncMode = {
   /** Refresh the Work list (journal-rate: attempt started/ended). */
   syncWork?: boolean;
-  /** How to refresh the right-hand thread. */
+  /** How to refresh the attempt conversation. */
   thread?: 'tail' | 'body' | 'pane' | 'auto';
 };
 
@@ -183,16 +185,14 @@ export function syncTaskDetailOverlay(
 ): void {
   overlay.dataset.taskId = task.id;
   overlay.dataset.phase = task.phase;
-  overlay.dataset.attemptCount = String(task.attempts.length);
 
   if (mode.syncWork !== false) {
     syncHead(overlay, state, task, actions, options);
-  }
-
-  syncFilesPanel(overlay, task, actions, options);
-  syncSpecPanel(overlay, state, task, actions);
-
-  if (mode.syncWork !== false) {
+    const alerts = overlay.querySelector('.ov2-detail__alerts');
+    const nextAlerts = renderAlertGroup(task, options.taskNotice);
+    if (alerts && !alerts.isEqualNode(nextAlerts)) alerts.replaceWith(nextAlerts);
+    syncFilesPanel(overlay, task, actions, options);
+    syncSpecPanel(overlay, state, task, actions);
     syncWorkPanel(overlay, state, task, actions, options);
   }
 
@@ -223,16 +223,8 @@ function syncFilesPanel(
   actions: BoardActions,
   options: BoardViewOptions,
 ): void {
-  const rail = overlay.querySelector('.ov2-detail__rail');
-  if (!(rail instanceof HTMLElement)) return;
-  const current = findRailPanel(rail, 'Files');
-  const next = renderFilesSection(task, actions, options);
-  if (current) current.replaceWith(next);
-  else {
-    const work = findRailPanel(rail, 'Work');
-    if (work) rail.insertBefore(next, work);
-    else rail.appendChild(next);
-  }
+  const page = overlay.querySelector('.ov2-detail__files');
+  page?.replaceChildren(renderFilesSection(task, actions, options));
 }
 
 function syncSpecPanel(
@@ -244,19 +236,22 @@ function syncSpecPanel(
   const title = overlay.querySelector('.ov2-detail__title');
   if (title && title.textContent !== task.title) title.textContent = task.title;
 
-  const rail = overlay.querySelector('.ov2-detail__rail');
-  if (!(rail instanceof HTMLElement)) return;
-  const current = rail.querySelector<HTMLElement>(':scope > [data-spec-panel]');
+  const page = overlay.querySelector<HTMLElement>('.ov2-detail__spec');
+  if (!page) return;
+  const current = page.querySelector<HTMLElement>('[data-spec-panel]');
   if (ui.specEdit?.taskId === task.id) {
     // Never repaint under the user's cursor; a 409 on save explains any race.
     if (current && editorDrafts.get(current) === ui.specEdit) return;
   } else if (current?.dataset.specKey === specKey(state, task)) {
     return;
   }
+  const hadFocus = current?.contains(document.activeElement);
   const next = renderSpecPanel(state, task, actions);
-  if (current && next) current.replaceWith(next);
-  else if (current) current.remove();
-  else if (next) rail.appendChild(next);
+  page.replaceChildren(next);
+  if (hadFocus) {
+    const focusKey = ui.specEdit ? 'spec-edit-title' : 'spec-edit';
+    (next.querySelector<HTMLElement>(`[data-focus-key="${focusKey}"]`) ?? page).focus({ preventScroll: true });
+  }
 }
 
 function syncWorkPanel(
@@ -266,20 +261,9 @@ function syncWorkPanel(
   actions: BoardActions,
   options: BoardViewOptions,
 ): void {
-  const rail = overlay.querySelector('.ov2-detail__rail');
-  if (!(rail instanceof HTMLElement)) return;
-  const current = findRailPanel(rail, 'Work');
+  const current = overlay.querySelector('.ov2-detail__work > .ov2-panel');
   const next = renderWorkSection(state, task, actions, options);
-  if (current) current.replaceWith(next);
-  else rail.appendChild(next);
-}
-
-function findRailPanel(rail: HTMLElement, title: string): HTMLElement | null {
-  for (const panel of rail.querySelectorAll(':scope > .ov2-panel')) {
-    if (!(panel instanceof HTMLElement)) continue;
-    if (panel.querySelector('.ov2-panel__title')?.textContent === title) return panel;
-  }
-  return null;
+  current?.replaceWith(next);
 }
 
 function syncThreadPane(
@@ -297,7 +281,11 @@ function syncThreadPane(
 
   if (!view || !attempt) {
     if (threadMode === 'tail') return;
-    pane.replaceChildren(renderThreadPlaceholder(task));
+    if (body) { conversations.get(body)?.renderer.dispose(); conversations.delete(body); }
+    pane.dataset.runState = '';
+    pane.dataset.attemptEnded = '';
+    const placeholder = renderThreadPlaceholder(task);
+    if (pane.firstElementChild?.textContent !== placeholder.textContent || body) pane.replaceChildren(placeholder);
     return;
   }
 
@@ -375,30 +363,35 @@ function renderHead(
 
   const top = el('div', 'ov2-detail__top');
   const ident = el('div', 'ov2-detail__ident');
-  ident.appendChild(el('span', 'ov2-detail__id', task.id));
+  const eyebrow = el('div', 'ov2-detail__eyebrow');
+  eyebrow.appendChild(el('span', 'ov2-detail__id', task.id));
+  const phase = phaseLabel(state, task);
+  const phaseText = phase === 'idle' ? 'Planned' : phase.charAt(0).toUpperCase() + phase.slice(1);
+  const tone = phase === 'blocked' || phase === 'action needed' ? 'warn'
+    : phase === 'paused' || phase === 'stopped' || phase === 'waiting to resume' ? 'neutral'
+    : PHASE_TONE[task.phase];
+  eyebrow.appendChild(pill(phaseText, tone));
+  ident.appendChild(eyebrow);
   const title = el('h2', 'ov2-detail__title', task.title);
   title.id = titleId;
   ident.appendChild(title);
   top.appendChild(ident);
 
-  const phase = phaseLabel(state, task);
-  top.appendChild(pill(phase, phase === 'paused' || phase === 'stopped' ? 'neutral' : PHASE_TONE[task.phase]));
-
+  const actionItems = buildTaskCardMenuItems(state, task, actions, options);
+  const controls = renderHeadActions(actionItems);
   const close = el('button', 'ov2-detail__close');
   close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
+  close.setAttribute('aria-label', 'Close task');
   close.title = 'Close (Esc)';
   close.dataset.focusKey = 'detail-close';
   close.appendChild(createIcon('close', { size: 16 }));
   close.addEventListener('click', () => actions.select(null));
-  top.appendChild(close);
+  controls.appendChild(close);
+  top.appendChild(controls);
   head.appendChild(top);
 
-  const toolbar = el('div', 'ov2-detail__toolbar');
-  const facts = renderFacts(state, task);
-  const actionItems = buildTaskCardMenuItems(state, task, actions, options);
-  toolbar.append(facts, renderHeadActions(actionItems));
-  head.appendChild(toolbar);
+  const facts = renderFacts(task);
+  head.appendChild(facts);
   head.dataset.headKey = JSON.stringify([
     task.title,
     phase,
@@ -419,44 +412,61 @@ function renderHeadActions(
   wrap.setAttribute('role', 'group');
   wrap.setAttribute('aria-label', 'Task actions');
 
-  for (const item of items) {
-    if (!('onSelect' in item)) continue;
-    const primary = item.id.startsWith('start:');
-    const className = item.danger
-      ? 'ov2-btn ov2-btn--danger'
-      : primary
-        ? 'ov2-btn ov2-btn--primary'
-        : 'ov2-btn';
-    const control = el('button', className, item.label);
+  const primary = items.find((item) => 'onSelect' in item && item.id.startsWith('start:') && !item.disabled);
+  if (primary && 'onSelect' in primary) {
+    const control = el('button', 'ov2-btn ov2-btn--primary', primary.label);
     control.type = 'button';
-    control.disabled = Boolean(item.disabled);
-    control.dataset.taskAction = item.id;
-    control.dataset.focusKey = `detail-action:${item.id}`;
-    if (item.hint) control.title = item.hint;
-    control.addEventListener('click', () => void item.onSelect());
+    control.dataset.taskAction = primary.id;
+    control.dataset.focusKey = `detail-action:${primary.id}`;
+    control.addEventListener('click', () => void primary.onSelect());
     wrap.appendChild(control);
   }
 
+  const more = el('button', 'ov2-detail__close');
+  more.type = 'button';
+  more.dataset.focusKey = 'detail-menu';
+  more.setAttribute('aria-label', 'More task actions');
+  more.setAttribute('aria-haspopup', 'menu');
+  more.title = 'More task actions';
+  more.appendChild(createIcon('more', { size: 16 }));
+  more.addEventListener('click', () => {
+    openContextMenu({
+      anchor: more,
+      mount: more.closest<HTMLElement>('.ov2-detail') ?? undefined,
+      restoreFocus: more,
+      label: 'Task actions',
+      items: items.filter((item) => item !== primary),
+    });
+  });
+  wrap.appendChild(more);
   return wrap;
 }
 
-function renderFacts(state: BoardState, task: TaskState): HTMLElement {
+function renderFacts(task: TaskState): HTMLElement {
   const facts = el('dl', 'ov2-facts');
   const add = (label: string, value: string, mono = false) => {
-    facts.appendChild(el('dt', 'ov2-facts__label', label));
-    facts.appendChild(el('dd', mono ? 'ov2-facts__value ov2-facts__value--mono' : 'ov2-facts__value', value));
+    const item = el('div', 'ov2-facts__item');
+    item.append(el('dt', 'ov2-facts__label', label),
+      el('dd', mono ? 'ov2-facts__value ov2-facts__value--mono' : 'ov2-facts__value', value));
+    facts.appendChild(item);
   };
-  add('Status', columnLabel(columnOf(state, task)));
   add('Wave', String(task.wave));
-  add('Needs', task.dependsOn.length > 0 ? task.dependsOn.join(', ') : 'nothing');
+  if (task.dependsOn.length > 0) add('Depends on', task.dependsOn.join(', '), true);
   const retries = retryCount(task);
-  if (retries > 0) add('Retries', retryLabel(retries));
-  if (task.mergedSha) add('Merged', task.mergedSha.slice(0, 10), true);
+  if (retries > 0) add('Retries', String(retries));
+  if (task.mergedSha) add('Merge', task.mergedSha.slice(0, 10), true);
   return facts;
 }
 
-function columnLabel(id: ColumnId): string {
-  return COLUMNS.find((c) => c.id === id)?.label ?? id;
+function renderAlertGroup(task: TaskState, notice: BoardViewOptions['taskNotice']): HTMLElement {
+  const group = el('div', 'ov2-detail__alerts');
+  if (notice) {
+    const feedback = el('p', `ov2-alert ov2-alert--${notice.tone}`, notice.text);
+    feedback.setAttribute('role', notice.tone === 'bad' ? 'alert' : 'status');
+    group.appendChild(feedback);
+  }
+  group.append(...renderAlerts(task));
+  return group;
 }
 
 
@@ -551,32 +561,16 @@ function renderFilesSection(
   const merged = view?.status === 'ready' && view.source === 'merged' && view.files.length > 0;
   const fileCount = taskFileCount(task, view, merged);
 
-  const details = el('details', 'ov2-panel ov2-files-panel');
-  details.open = ui.filesOpen ?? false;
-  details.addEventListener('toggle', () => {
-    ui.filesOpen = details.open;
-  });
-
-  const summary = el('summary', 'ov2-panel__head ov2-files-panel__summary');
-  summary.dataset.focusKey = 'files-toggle';
-
-  const lead = el('div', 'ov2-files-panel__lead');
-  lead.appendChild(createIcon('chevronRight', { size: 12, className: 'ov2-files-panel__chevron' }));
-  lead.appendChild(el('h3', 'ov2-panel__title', 'Files'));
-  const badge = el('span', 'ov2-files-panel__badge', String(fileCount));
-  badge.setAttribute('aria-label', `${fileCount} file${fileCount === 1 ? '' : 's'}`);
-  lead.appendChild(badge);
-  summary.appendChild(lead);
-
-  if (merged) summary.appendChild(statsLine(view.files.length, view.additions, view.deletions));
-  details.appendChild(summary);
-
+  const meta = merged ? statsLine(view.files.length, view.additions, view.deletions)
+    : el('span', 'ov2-panel__count', `${fileCount} file${fileCount === 1 ? '' : 's'}`);
+  const panel = section(merged ? 'Merged changes' : 'Planned files', meta);
+  panel.classList.add('ov2-files-panel');
   const body = el('div', 'ov2-files-panel__body');
+  panel.appendChild(body);
 
   if (view?.status === 'loading') {
     body.appendChild(renderSkeleton(3, 'ov2-skeleton ov2-skeleton--files'));
-    details.appendChild(body);
-    return details;
+    return panel;
   }
 
   if (merged) {
@@ -588,15 +582,14 @@ function renderFilesSection(
         el('p', 'ov2-panel__note', 'Only the first 400 files are listed.'),
       );
     }
-    details.appendChild(body);
-    return details;
+    return panel;
   }
 
   const planned = task.touchesExpanded?.length ? task.touchesExpanded : task.touches;
   if (planned.length === 0) {
     body.appendChild(empty('This task declared no file footprint.'));
-    details.appendChild(body);
-    return details;
+    if (view?.status === 'error') body.appendChild(el('p', 'ov2-panel__note', view.error));
+    return panel;
   }
   const list = el('div', 'ov2-files ov2-files--planned');
   for (const path of planned) list.appendChild(renderPlannedRow(path, actions));
@@ -610,8 +603,8 @@ function renderFilesSection(
         : 'Its declared footprint. Line counts arrive when the task merges.',
     ),
   );
-  details.appendChild(body);
-  return details;
+  if (view?.status === 'error') body.appendChild(el('p', 'ov2-panel__note', view.error));
+  return panel;
 }
 
 function pathLabel(path: string): HTMLElement {
@@ -739,7 +732,7 @@ const ROLE_LABEL: Record<string, string> = {
 /** Roles run by an agent, and so the only ones with a thread to read. */
 const AGENT_ROLES = new Set(['builder', 'tester']);
 
-/** Prefer the live agent when a task detail opens; engine-only work has no transcript. */
+/** Prefer the live agent when a task detail opens. */
 export function runningAgentAttempt(task: TaskState): Attempt | null {
   const attempt = runningAttempt(task);
   return attempt && AGENT_ROLES.has(attempt.role) ? attempt : null;
@@ -770,15 +763,11 @@ function renderWorkSection(
   actions: BoardActions,
   options: BoardViewOptions,
 ): HTMLElement {
-  const agents = task.attempts.filter((a) => AGENT_ROLES.has(a.role)).length;
-  const meta = agents > 0 ? el('div', 'ov2-panel__meta') : null;
-  if (meta) {
-    meta.appendChild(el('span', 'ov2-panel__count', `${agents} agent${agents === 1 ? '' : 's'}`));
-  }
-  const wrap = section('Work', meta);
+  const meta = task.attempts.length ? el('span', 'ov2-panel__count', String(task.attempts.length)) : null;
+  const wrap = section('Attempts', meta);
 
   if (task.attempts.length === 0) {
-    wrap.appendChild(empty('Nothing has been done to this task yet.'));
+    wrap.appendChild(empty('No attempts yet.'));
     return wrap;
   }
   const list = el('ol', 'ov2-work');
@@ -813,10 +802,6 @@ function renderWorkRow(
     header.title = 'An engine step. It has no agent and no transcript.';
   }
 
-  const marker = el('span', 'ov2-work__index', String(index));
-  marker.setAttribute('aria-hidden', 'true');
-  header.appendChild(marker);
-
   header.appendChild(
     createIcon(ROLE_ICON[attempt.role as keyof typeof ROLE_ICON] ?? 'boardBuild', {
       size: 13,
@@ -824,6 +809,7 @@ function renderWorkRow(
     }),
   );
   header.appendChild(el('span', 'ov2-work__role', ROLE_LABEL[attempt.role] ?? attempt.role));
+  header.appendChild(el('span', 'ov2-work__index', `#${index}`));
 
   const seed =
     attempt.seedKind && attempt.seedKind !== 'initial'
@@ -968,16 +954,7 @@ function renderThreadPlaceholder(task: TaskState): HTMLElement {
     el(
       'p',
       'ov2-thread__blank-title',
-      readable ? 'Pick a Builder or Tester to read it.' : 'No agent has worked on this yet.',
-    ),
-  );
-  wrap.appendChild(
-    el(
-      'p',
-      'ov2-thread__blank-body',
-      readable
-        ? 'Everything it thought, ran and wrote shows up here.'
-        : 'Once one starts, everything it thinks and runs shows up here as it happens.',
+      readable ? 'Select an attempt to read its transcript.' : 'Agent transcripts appear here when a Builder or Tester starts.',
     ),
   );
   return wrap;
@@ -1080,13 +1057,14 @@ function restoreThreadScroll(body: HTMLElement, live: boolean): void {
   if (!body.dataset.scrollBound) {
     body.dataset.scrollBound = '1';
     body.addEventListener('scroll', () => {
+      if (body.closest('[hidden]')) return;
       const distance = body.scrollHeight - body.scrollTop - body.clientHeight;
       ui.followThread = distance <= 32;
       ui.threadScrollTop = body.scrollTop;
     });
   }
   queueMicrotask(() => {
-    if (!body.isConnected) return;
+    if (!body.isConnected || body.closest('[hidden]')) return;
     body.scrollTop = live && ui.followThread ? body.scrollHeight : ui.threadScrollTop;
   });
 }
@@ -1109,12 +1087,11 @@ function renderSpecPanel(
   state: BoardState,
   task: TaskState,
   actions: BoardActions,
-): HTMLElement | null {
+): HTMLElement {
   const panel =
     ui.specEdit?.taskId === task.id
       ? renderSpecEditor(state, task, actions, ui.specEdit)
       : renderSpecSection(state, task, actions);
-  if (!panel) return null;
   panel.dataset.specPanel = '';
   panel.dataset.specKey = specKey(state, task);
   return panel;
@@ -1124,7 +1101,7 @@ function renderSpecSection(
   state: BoardState,
   task: TaskState,
   actions: BoardActions,
-): HTMLElement | null {
+): HTMLElement {
   const parts: Array<[string, string]> = [];
   for (const [label, value] of [
     ['Build', task.buildSpec],
@@ -1134,38 +1111,22 @@ function renderSpecSection(
     if (value) parts.push([label, value]);
   }
   const editable = taskEditBlocker(state, task.id) === null;
-  if (parts.length === 0 && task.touches.length === 0 && !editable) return null;
-
-  const details = el('details', 'ov2-spec');
-  details.open = ui.specOpen ?? task.attempts.length === 0;
-  details.addEventListener('toggle', () => {
-    ui.specOpen = details.open;
-  });
-
-  const summary = el('summary', 'ov2-spec__summary');
-  summary.dataset.focusKey = 'spec-toggle';
-  summary.appendChild(createIcon('chevronRight', { size: 12, className: 'ov2-spec__chevron' }));
-  summary.appendChild(el('span', 'ov2-panel__title', 'Spec'));
-  summary.appendChild(
-    el(
-      'span',
-      'ov2-spec__hint',
-      parts.length > 0 ? parts.map(([label]) => label.toLowerCase()).join(' · ') : 'empty',
-    ),
-  );
+  const panel = el('section', 'ov2-spec');
+  const heading = el('div', 'ov2-spec__header');
+  heading.appendChild(el('h3', 'ov2-panel__title', 'Task specification'));
   if (task.edits > 0) {
-    const edited = el('span', 'ov2-spec__edited', 'edited');
-    edited.title = 'Changed on this board. Agents follow this spec, not the plan file.';
-    summary.appendChild(edited);
+    const edited = el('span', 'ov2-spec__edited', 'Edited');
+    edited.title = 'Agents use the edited board spec.';
+    heading.appendChild(edited);
   }
-  details.appendChild(summary);
+  panel.appendChild(heading);
 
   const body = el('div', 'ov2-spec__body');
   if (editable) {
-    const edit = el('button', 'ov2-btn ov2-btn--ghost ov2-spec__edit', 'Edit');
+    const edit = el('button', 'ov2-btn ov2-spec__edit');
     edit.type = 'button';
     edit.dataset.focusKey = 'spec-edit';
-    edit.title = `Edit ${task.id}'s spec. The plan file is not changed.`;
+    edit.append(createIcon('edit', { size: 14 }), 'Edit spec');
     edit.addEventListener('click', () => {
       ui.specEdit = {
         taskId: task.id,
@@ -1177,10 +1138,10 @@ function renderSpecSection(
         saving: false,
         error: null,
       };
-      replaceSpecPanel(details, state, task, actions);
-      details.ownerDocument.querySelector<HTMLElement>('.ov2-spec-edit textarea')?.focus();
+      const form = replaceSpecPanel(panel, state, task, actions);
+      form.querySelector<HTMLElement>('[data-focus-key="spec-edit-title"]')?.focus();
     });
-    body.appendChild(edit);
+    heading.appendChild(edit);
   }
   for (const [label, value] of parts) {
     const block = el('div', 'ov2-spec__block');
@@ -1196,8 +1157,9 @@ function renderSpecSection(
     block.appendChild(el('p', 'ov2-spec__touches', task.touches.join('  ·  ')));
     body.appendChild(block);
   }
-  details.appendChild(body);
-  return details;
+  if (body.childElementCount === 0) body.appendChild(empty('No specification has been added to this task.'));
+  panel.appendChild(body);
+  return panel;
 }
 
 function replaceSpecPanel(
@@ -1205,10 +1167,10 @@ function replaceSpecPanel(
   state: BoardState,
   task: TaskState,
   actions: BoardActions,
-): void {
+): HTMLElement {
   const next = renderSpecPanel(state, task, actions);
-  if (next) current.replaceWith(next);
-  else current.remove();
+  current.replaceWith(next);
+  return next;
 }
 
 function renderSpecEditor(
@@ -1219,6 +1181,7 @@ function renderSpecEditor(
 ): HTMLElement {
   const form = el('form', 'ov2-spec-edit');
   form.setAttribute('aria-label', `Edit ${task.id}`);
+  form.tabIndex = -1;
   editorDrafts.set(form, draft);
 
   const head = el('div', 'ov2-panel__head');
@@ -1229,8 +1192,8 @@ function renderSpecEditor(
       'p',
       'ov2-spec-edit__note',
       hasRunDebris(state, task)
-        ? 'Saves to this board only; the plan file stays as it is. Retry or Reset afterwards to run it with the new spec.'
-        : 'Saves to this board only; the plan file stays as it is. The next attempt uses the new spec.',
+        ? 'Edits are saved to this board. Retry or reset the task to use the updated spec.'
+        : 'Edits are saved to this board and used on the next attempt.',
     ),
   );
 
@@ -1277,10 +1240,11 @@ function renderSpecEditor(
   const cancel = el('button', 'ov2-btn ov2-btn--ghost', 'Cancel');
   cancel.type = 'button';
   cancel.disabled = draft.saving;
-  cancel.addEventListener('click', () => {
+  const cancelEdit = () => {
     ui.specEdit = null;
-    replaceSpecPanel(form, state, task, actions);
-  });
+    replaceSpecPanel(form, state, task, actions).querySelector<HTMLElement>('[data-focus-key="spec-edit"]')?.focus();
+  };
+  cancel.addEventListener('click', cancelEdit);
   const save = el('button', 'ov2-btn ov2-btn--primary', draft.saving ? 'Saving…' : 'Save');
   save.type = 'submit';
   save.disabled = draft.saving;
@@ -1289,11 +1253,9 @@ function renderSpecEditor(
 
   form.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || draft.saving) return;
-    // Esc leaves the editor, not the whole dialog.
     event.preventDefault();
     event.stopPropagation();
-    ui.specEdit = null;
-    replaceSpecPanel(form, state, task, actions);
+    cancelEdit();
   });
 
   form.addEventListener('submit', (event) => {
@@ -1301,7 +1263,7 @@ function renderSpecEditor(
     if (draft.saving) return;
     if (!draft.title.trim()) {
       draft.error = 'The title cannot be empty.';
-      replaceSpecPanel(form, state, task, actions);
+      replaceSpecPanel(form, state, task, actions).querySelector<HTMLElement>('[data-focus-key="spec-edit-title"]')?.focus();
       return;
     }
     const changes: TaskEditChanges = {
@@ -1313,7 +1275,7 @@ function renderSpecEditor(
     };
     draft.saving = true;
     draft.error = null;
-    replaceSpecPanel(form, state, task, actions);
+    replaceSpecPanel(form, state, task, actions).focus({ preventScroll: true });
     actions.editTask(task.id, changes);
   });
 

@@ -547,7 +547,7 @@
   font: 12px/1.5 var(--font-mono);
 }
 
-.mn-graphite-apps .brain-page.is-graph-canvas-bg .brain-page-header.brain-overlay-surface:not(:has(.brain-page-header__back:not(.hidden), .brain-page-header__actions > *)) {
+.mn-graphite-apps .brain-page.is-graph-canvas-bg .brain-page-header.brain-overlay-surface:not(:has(.brain-page-header__actions > *)) {
   position: absolute;
   width: 1px;
   height: 1px;

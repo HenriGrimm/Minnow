@@ -122,10 +122,8 @@ function parseHashSection(): BrainSectionId {
 function updatePageHeader(section: BrainSectionId): void {
   const titleEl = document.getElementById('brainPageHeaderTitle');
   const leadEl = document.getElementById('brainPageHeaderLead');
-  const backBtn = document.getElementById('btnBrainPageBack');
   if (titleEl) titleEl.textContent = SECTION_TITLES[section];
   if (leadEl) leadEl.textContent = SECTION_LEADS[section];
-  backBtn?.classList.toggle('hidden', isOsEmbedded());
   void refreshUsageLine();
 }
 
@@ -271,11 +269,6 @@ function setActiveSection(section: BrainSectionId, options?: { editPath?: string
 function bindStaticSections(): void {
   if (staticBindingsDone) return;
   staticBindingsDone = true;
-
-  document.getElementById('btnBrainPageBack')?.addEventListener('click', () => {
-    if (requestCloseWindowApp('brain')) return;
-    closeBrain();
-  });
 
   const rail = getBrainRoot()?.querySelector<HTMLElement>('.brain-rail');
   if (rail) {

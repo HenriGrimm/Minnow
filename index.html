@@ -413,7 +413,7 @@
 
 <main id="settingsView" class="settings-page" aria-label="Settings">
   <header class="settings-page-header" data-app-titlebar>
-    <button type="button" class="icon-btn" id="btnSettingsPageBack" aria-label="Back to Code">
+    <button type="button" class="icon-btn back-to-chat" id="btnSettingsPageBack" aria-label="Back to chat" title="Back to chat">
       <i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>
     </button>
     <div id="settingsSearchFinderSlot" class="settings-search-finder-slot">
@@ -725,7 +725,7 @@
 
 <main id="welcomeView" class="welcome-page" aria-label="Choose workspace" hidden>
   <div class="welcome-page__inner">
-    <h1 class="welcome-page__title">Choose a workspace</h1>
+    <div class="welcome-page__heading"><h1 class="welcome-page__title">Choose a workspace</h1></div>
     <p id="welcomeServerBanner" class="welcome-page__banner hidden" role="status">
       Workspace requires <code>npm start</code> (local tool server), not <code>npm run dev</code> alone.
     </p>
@@ -1167,7 +1167,7 @@
 </main>
 
 <main id="modelsView" class="models-page is-workbench" aria-label="Models">
-  <header class="models-page-header" data-app-titlebar>
+  <header class="models-page-header" data-app-titlebar data-back-to-chat-header>
     <h1 class="models-page-header__title">Models</h1>
     <div class="models-header-status" id="modelsHeaderStatus" role="status" aria-live="polite"></div>
     <button
@@ -1252,9 +1252,7 @@
 <main id="brainView" class="brain-page is-graph-canvas-bg" aria-label="Brain">
   <div class="brain-page-chrome">
   <header class="brain-page-header brain-overlay-surface" data-app-titlebar>
-    <button type="button" class="icon-btn brain-page-header__back" id="btnBrainPageBack" aria-label="Back">
-      <i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>
-    </button>
+    <div class="brain-page-header__navigation" data-back-to-chat-header></div>
     <div class="brain-page-header__main">
       <div class="brain-page-header__title-row">
         <h1 class="brain-page-header__title" id="brainPageHeaderTitle">Knowledge graph</h1>
@@ -1319,7 +1317,7 @@
         <p id="brainGraphOffline" class="brain-state-banner brain-card hidden">Start npm start to load the brain.</p>
         <p id="brainGraphEmpty" class="brain-state-banner brain-card hidden">No pages yet. Create one or run Ingest.</p>
         <div id="brainGraphStage" class="brain-graph-stage brain-graph-overlays">
-          <div class="brain-graph-toolbar brain-overlay-card" data-app-titlebar role="toolbar" aria-label="Graph controls">
+          <div class="brain-graph-toolbar brain-overlay-card" data-app-titlebar data-back-to-chat-header role="toolbar" aria-label="Graph controls">
             <div class="brain-graph-toolbar__group brain-graph-toolbar__search">
               <label class="brain-graph-search">
                 <span class="visually-hidden">Search nodes</span>
@@ -1596,7 +1594,7 @@
       <section id="brainSection-code" class="brain-section brain-section--code" aria-label="Code map">
         <div class="code-map" id="codeMap">
           <header class="code-map-bar" data-app-titlebar>
-            <button type="button" class="code-map-icon-btn code-map-bar__back" id="btnCodeBrainMapBack" aria-label="Back to chat"><i class="fi fi-rr-arrow-left" aria-hidden="true"></i></button>
+            <button type="button" class="code-map-icon-btn code-map-bar__back" id="btnCodeBrainMapBack" aria-label="Back to chat" title="Back to chat"><i class="fi fi-rr-arrow-left" aria-hidden="true"></i></button>
             <nav class="code-map-crumbs" id="codeMapCrumbs" aria-label="Breadcrumb"><span class="code-map-crumbs__title">Code map</span></nav>
             <div class="code-map-search" role="search">
               <i class="fi fi-rr-search" aria-hidden="true"></i>
@@ -2029,7 +2027,7 @@
 </main>
 
 <main id="schedulerView" class="scheduler-page" aria-label="Automations">
-  <header class="scheduler-header" data-app-titlebar>
+  <header class="scheduler-header" data-app-titlebar data-back-to-chat-header>
     <div class="scheduler-header__brand">
       <span id="schedulerPageIcon" class="scheduler-header__icon" aria-hidden="true"></span>
       <div class="scheduler-header__titles">

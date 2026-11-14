@@ -129,7 +129,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .composer-expand-btn--busy .composer-expand-btn__spinner {
-    animation-duration: 1.6s;
+    animation: none;
   }
 
   .composer-expand-btn:not(:disabled):hover .composer-expand-btn__icon {

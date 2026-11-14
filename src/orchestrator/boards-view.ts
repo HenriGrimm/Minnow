@@ -62,8 +62,10 @@ import {
 } from '../chat/plans/list-plans';
 import { button, el, empty, pill } from './dom';
 import { createIcon } from '../ui/icon';
-import { deferUntilContextMenuClosed, isContextMenuOpen, openContextMenu } from '../ui/context-menu';
-import { markPreviewOccluder } from '../ui/preview-occlusion';
+import { createBackToChatButton } from '../ui/back-to-chat';
+import { closeContextMenu, deferUntilContextMenuClosed, isContextMenuOpen, openContextMenu } from '../ui/context-menu';
+import { markPreviewOccluder, unmarkPreviewOccluder } from '../ui/preview-occlusion';
+import { refreshGraphiteSurfaceLayout, usesGraphiteContentTabs } from '../ui/surfaces/surface-bridge';
 import {
   attachV2BoardHeaderInstruments,
   detachV2BoardHeaderInstruments,
@@ -149,7 +151,6 @@ interface Surface {
   listPane: HTMLElement;
   boardPane: HTMLElement;
   desktopLayout: boolean;
-  wideInspector: boolean;
   resizeObserver?: ResizeObserver;
 }
 
@@ -248,7 +249,9 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
   boardPane.tabIndex = -1;
   const header = el('header', 'ov2__stage-header');
   header.dataset.appTitlebar = '';
-  header.append(el('h1', 'ov2__list-title', 'Boards'), button({
+  const heading = el('div', 'ov2__stage-heading');
+  heading.append(createBackToChatButton(), el('h1', 'ov2__list-title', 'Boards'));
+  header.append(heading, button({
     label: 'New board',
     title: 'Create a board from a plan file',
     onClick: () => openAskPane(),
@@ -259,7 +262,8 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
   stripMainColumnOverlayClasses();
   area.classList.add(CHAT_AREA_CLASS);
   document.getElementById('mainColumn')?.classList.add(MAIN_COLUMN_CLASS);
-  surface = { root, listPane, boardPane, desktopLayout: false, wideInspector: false };
+  refreshGraphiteSurfaceLayout();
+  surface = { root, listPane, boardPane, desktopLayout: false };
   syncBoardsLayout(surface);
   if (typeof ResizeObserver === 'function') {
     const mounted = surface;
@@ -268,7 +272,7 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
     });
     mounted.resizeObserver.observe(root);
   }
-  document.addEventListener('keydown', onBoardsDocumentKeydown, true);
+  document.addEventListener('keydown', onBoardsDocumentKeydown);
 
   list = createBoardListClient();
   let listedBoardIds = new Set<string>();
@@ -299,7 +303,7 @@ export function teardownBoardsView(): void {
   attentionInbox?.dispose();
   attentionInbox = null;
   surface?.resizeObserver?.disconnect();
-  document.removeEventListener('keydown', onBoardsDocumentKeydown, true);
+  document.removeEventListener('keydown', onBoardsDocumentKeydown);
   unsubscribeBoard?.();
   unsubscribeBoard = null;
   unsubscribeLive?.();
@@ -317,11 +321,12 @@ export function teardownBoardsView(): void {
   stopWatchingModelSelectForSeed();
   modelSeedAttempted.clear();
   modelSeedInflight.clear();
-  if (surface) closeTaskInspector(surface.root);
+  closeTaskDetail();
   document.getElementById(BOARDS_ROOT_ID)?.remove();
   const area = document.getElementById('chatArea');
   area?.classList.remove(CHAT_AREA_CLASS);
   document.getElementById('mainColumn')?.classList.remove(MAIN_COLUMN_CLASS);
+  refreshGraphiteSurfaceLayout();
   document.getElementById('statsExpandBtn')?.setAttribute('aria-label', 'Show inference metrics');
   try { refreshMetricsStripForChat(getActiveChat()); } catch { /* Sessions may still be loading. */ }
   surface = null;
@@ -329,11 +334,9 @@ export function teardownBoardsView(): void {
   // selection without a client if anything renders during unmount.
   if (selectedBoardId) rememberOpenedBoard(selectedBoardId);
   selectedBoardId = null;
-  selectedTaskId = null;
   pendingTasks.clear();
   confirmingDelete.clear();
   renamingBoardId = null;
-  clearTaskDetailState();
   notice = null;
   syncRailButton();
 }
@@ -342,11 +345,10 @@ function onBoardsDocumentKeydown(event: KeyboardEvent): void {
   if ((event.key !== 'Escape' && event.key !== 'Tab') || event.defaultPrevented
     || isContextMenuOpen() || isAppDialogOpen() || isDialogOpen()) return;
   if (!surface || !selectedTaskId) return;
-  const overlay = surface.root.querySelector('.ov2-detail-overlay');
-  if (!overlay || (surface.root.classList.contains('is-inspector-inline') && !overlay.contains(event.target as Node))) return;
-  const panel = overlay.querySelector<HTMLElement>('[aria-modal="true"]');
+  const panel = taskModal?.overlay.querySelector<HTMLElement>('.ov2-detail');
+  if (!panel) return;
   if (event.key === 'Tab') {
-    if (panel) trapTabKey(panel, event);
+    trapTabKey(panel, event);
     return;
   }
   event.preventDefault();
@@ -356,20 +358,20 @@ function onBoardsDocumentKeydown(event: KeyboardEvent): void {
 
 function selectTaskDetail(taskId: string | null): void {
   const previous = selectedTaskId;
+  closeTaskDetail();
   selectedTaskId = taskId;
-  clearTaskDetailState();
   const selected = taskId ? client?.getState()?.tasks.get(taskId) : undefined;
   const activeAttempt = selected ? runningAgentAttempt(selected) : null;
   paintBoard();
-  if (taskId) void loadTaskFiles(taskId);
   if (taskId === null && previous) {
     surface?.root
       .querySelector<HTMLElement>(`[data-focus-key="task:${CSS.escape(previous)}"]`)
-      ?.focus();
+      ?.focus({ preventScroll: true });
     return;
   }
-  if (taskId) {
-    surface?.root.querySelector<HTMLElement>('[data-focus-key="detail-close"]')?.focus();
+  if (selected) {
+    taskModal?.overlay.querySelector<HTMLElement>('.ov2-detail')?.focus({ preventScroll: true });
+    void loadTaskFiles(selected.id);
     if (activeAttempt) void toggleTranscript(activeAttempt.attemptId);
   }
 }
@@ -492,12 +494,11 @@ function selectBoard(boardId: string | null): void {
 
   selectedBoardId = boardId;
   if (boardId) rememberOpenedBoard(boardId);
-  selectedTaskId = null;
+  closeTaskDetail();
   selectedPane = 'Waves';
   closeTimelinePopover(false);
   journalView = null;
   journalLoad = null;
-  clearTaskDetailState();
   pendingTasks.clear();
   confirmingDelete.clear();
   renamingBoardId = null;
@@ -506,7 +507,7 @@ function selectBoard(boardId: string | null): void {
   if (boardId) {
     client = createBoardClient(boardId, { openStream, onTurnEvent: frame => {
       if (selectedBoardId !== boardId) return;
-      const overlay = surface?.root.querySelector<HTMLElement>('.ov2-detail-overlay');
+      const overlay = taskModal?.overlay;
       if (overlay) applyTaskDetailTurnEvent(overlay, frame.attemptId, frame.event, frame.roundIndex);
     } });
     unsubscribeBoard = client.subscribe(() => paintBoard());
@@ -579,7 +580,9 @@ function paintList(): void {
   pane.replaceChildren();
 
   const head = el('div', 'ov2__list-head');
-  head.appendChild(el('h1', 'ov2__list-title', 'Boards'));
+  const heading = el('div', 'ov2__stage-heading');
+  heading.append(createBackToChatButton(), el('h1', 'ov2__list-title', 'Boards'));
+  head.appendChild(heading);
   if (document.documentElement.classList.contains('mn-graphite-apps')) {
     const add = el('button', 'ov2__graphite-add');
     add.type = 'button';
@@ -1271,8 +1274,12 @@ function restoreFocus(captured: { key: string; selectionStart: number | null } |
   const target = surface.root.querySelector<HTMLElement>(
     `[data-focus-key="${CSS.escape(captured.key)}"]`,
   );
-  if (!target) return;
-  target.focus();
+  if (!target || (target as HTMLButtonElement).disabled) {
+    if (captured.key.startsWith('detail-action:')) taskModal?.overlay.querySelector<HTMLElement>('[data-focus-key="detail-menu"]')?.focus();
+    return;
+  }
+  if (target === document.activeElement) return;
+  target.focus({ preventScroll: true });
   if (captured.selectionStart === null) return;
   const input = target as HTMLInputElement;
   try {
@@ -1285,52 +1292,31 @@ function restoreFocus(captured: { key: string; selectionStart: number | null } |
 function syncBoardsLayout(mounted: Surface): boolean {
   const width = mounted.root.getBoundingClientRect().width;
   const desktopLayout = width >= 840 && document.documentElement.classList.contains('mn-graphite-apps');
-  const wideInspector = desktopLayout && width >= 1100;
-  if (mounted.desktopLayout === desktopLayout && mounted.wideInspector === wideInspector) return false;
+  if (mounted.desktopLayout === desktopLayout) return false;
   mounted.desktopLayout = desktopLayout;
-  mounted.wideInspector = wideInspector;
   mounted.root.classList.toggle('is-graphite-overview', desktopLayout);
   return true;
 }
 
-function closeTaskInspector(root: HTMLElement): void {
-  syncTaskModal(null);
-  root.classList.remove('is-detail-open', 'is-inspector-inline');
-  root.querySelector('.ov2-detail-overlay')?.remove();
+function closeTaskDetail(): void {
+  selectedTaskId = null;
+  if (taskModal) {
+    if (taskModal.overlay.querySelector('.mn-menu')) closeContextMenu({ restoreFocus: false });
+    taskModal.release();
+    unmarkPreviewOccluder(taskModal.overlay);
+    taskModal.overlay.remove();
+  }
+  taskModal = null;
+  clearTaskDetailState();
 }
 
-function syncTaskModal(overlay: HTMLElement | null): void {
-  if (taskModal?.overlay === overlay) return;
-  taskModal?.release();
-  taskModal = overlay ? {
+function mountTaskDetail(root: HTMLElement, overlay: HTMLElement): void {
+  root.appendChild(overlay);
+  taskModal = {
     overlay,
     release: isolateModalBackground(overlay, overlay.closest<HTMLElement>('#osStage') ?? document.body),
-  } : null;
-}
-
-function syncInspectorPresentation(overlay: HTMLElement | null, inline: boolean): void {
-  const panel = overlay?.querySelector<HTMLElement>('.ov2-detail');
-  syncTaskModal(inline ? null : overlay);
-  if (!overlay || !panel) return;
-  panel.setAttribute('role', inline ? 'region' : 'dialog');
-  if (inline) panel.removeAttribute('aria-modal');
-  else {
-    panel.setAttribute('aria-modal', 'true');
-    if (!panel.contains(document.activeElement) && !isAppDialogOpen() && !isDialogOpen()) {
-      (panel.querySelector<HTMLElement>('[data-focus-key="detail-close"]') ?? panel).focus({ preventScroll: true });
-    }
-  }
-  markPreviewOccluder(overlay, inline ? 'panel' : 'dialog');
-  const rail = panel.querySelector('.ov2-detail__rail');
-  const spec = rail?.querySelector('[data-spec-panel]');
-  if (rail && spec) {
-    if (spec.tagName === 'DETAILS' && !panel.hasAttribute('data-spec-presented')) {
-      if (inline) (spec as HTMLDetailsElement).open = true;
-      panel.setAttribute('data-spec-presented', '');
-    }
-    if (inline && spec !== rail.firstElementChild) rail.prepend(spec);
-    if (!inline && spec !== rail.lastElementChild) rail.append(spec);
-  }
+  };
+  markPreviewOccluder(overlay, 'dialog');
 }
 
 function paintBoard(): void {
@@ -1347,7 +1333,7 @@ function paintBoard(): void {
     updateStrip({}, {}, undefined, { costUsd: null, board: true });
     if (pane.querySelector('[data-plan-launch]')) return;
     detachV2BoardHeaderInstruments();
-    closeTaskInspector(surface.root);
+    closeTaskDetail();
     pane.classList.add('ov2__board--ask');
     if (pane.querySelector('.ob-pane--ask')) {
       paintAskErrors(pane);
@@ -1370,7 +1356,7 @@ function paintBoard(): void {
     attentionInbox?.update([]);
     updateStrip({}, {}, undefined, { costUsd: null, board: true });
     detachV2BoardHeaderInstruments();
-    closeTaskInspector(surface.root);
+    closeTaskDetail();
     pane.replaceChildren(renderBoardSkeleton());
     return;
   }
@@ -1381,8 +1367,7 @@ function paintBoard(): void {
   metricsButton?.setAttribute('aria-label', `Show board metrics, ${metrics.measured} measured attempts or rounds, ${metrics.active} active attempts`);
 
   const connected = client?.isConnected() ?? false;
-  const inline = surface.root.classList.contains('is-inspector-inline');
-  const scrollTop = (inline ? pane.querySelector<HTMLElement>('.ov2__board-body') : pane)?.scrollTop ?? 0;
+  const scrollTop = pane.scrollTop;
   const focused = captureFocus();
   detachV2BoardHeaderInstruments();
   pane.replaceChildren();
@@ -1437,7 +1422,7 @@ function paintBoard(): void {
         resetTask: (taskId: string) => void commandResetTask(taskId),
       }),
     );
-    closeTaskInspector(surface.root);
+    closeTaskDetail();
     pane.scrollTop = scrollTop;
     restoreFocus(focused);
     return;
@@ -1454,7 +1439,7 @@ function paintBoard(): void {
     body.setAttribute('aria-labelledby', `graphite-board-tab-${selectedPane.toLowerCase()}`);
   }
   if (surface.desktopLayout && selectedPane !== 'Waves') {
-    closeTaskInspector(surface.root);
+    closeTaskDetail();
     body.append(selectedPane === 'Activity' ? renderBoardActivity(state.boardId) : renderBoardVerification(state));
     pane.append(body);
     pane.scrollTop = scrollTop;
@@ -1477,31 +1462,20 @@ function paintBoard(): void {
   pane.append(body);
 
   const selected = selectedTaskId ? state.tasks.get(selectedTaskId) : undefined;
-  const inspectorInline = Boolean(selected && surface.wideInspector);
-  surface.root.classList.toggle('is-detail-open', Boolean(selected));
-  surface.root.classList.toggle('is-inspector-inline', inspectorInline);
-  (inspectorInline ? body : pane).scrollTop = scrollTop;
-  const existingOverlay = surface.root.querySelector<HTMLElement>('.ov2-detail-overlay');
+  pane.scrollTop = scrollTop;
+  const existingOverlay = taskModal?.overlay;
   if (!selected) {
-    existingOverlay?.remove();
-  } else if (existingOverlay && existingOverlay.dataset.taskId === selected.id) {
-    const wasPopulated = (existingOverlay.dataset.attemptCount ?? '0') !== '0';
-    const nowEmpty = selected.attempts.length === 0 && selected.mergedSha === null;
-    if (wasPopulated && nowEmpty) {
-      existingOverlay.remove();
-      surface.root.appendChild(renderTaskDetail(state, selected, actions, options));
-    } else {
-      // Same task: patch work + thread. Remounting would restart chat animations.
-      syncTaskDetailOverlay(existingOverlay, state, selected, actions, options, {
-        syncWork: true,
-        thread: 'auto',
-      });
+    if (taskModal || selectedTaskId) closeTaskDetail();
+  } else if (existingOverlay) {
+    const attemptId = transcript?.attemptId;
+    if (attemptId && !selected.attempts.some((attempt) => attempt.attemptId === attemptId)) {
+      transcript = null;
+      resetTaskDetailLogUi();
     }
+    syncTaskDetailOverlay(existingOverlay, state, selected, actions, boardViewOptions());
   } else {
-    existingOverlay?.remove();
-    surface.root.appendChild(renderTaskDetail(state, selected, actions, options));
+    mountTaskDetail(surface.root, renderTaskDetail(state, selected, actions, options));
   }
-  syncInspectorPresentation(surface.root.querySelector<HTMLElement>('.ov2-detail-overlay'), inspectorInline);
   syncLogPolling(state);
   syncElapsedTicker(state);
 
@@ -1515,10 +1489,7 @@ function renderBoardPaneTabs(attentionCount: number): HTMLElement {
   function select(next: BoardPane): void {
     if (selectedPane === next) return;
     selectedPane = next;
-    if (next !== 'Waves') {
-      selectedTaskId = null;
-      clearTaskDetailState();
-    }
+    if (next !== 'Waves') closeTaskDetail();
     paintBoard();
     document.getElementById(`graphite-board-tab-${next.toLowerCase()}`)?.focus({ preventScroll: true });
   }
@@ -1603,7 +1574,7 @@ function boardActions() {
     select: (taskId: string | null) => selectTaskDetail(taskId),
     openTranscript: (attemptId: string) => void toggleTranscript(attemptId),
     toggleFileDiff: (path: string) => void toggleFileDiff(path),
-    openFile: (path: string) => openTaskFile(path),
+    openFile: (path: string) => void openTaskFile(path),
   };
 }
 
@@ -1619,6 +1590,7 @@ function boardViewOptions() {
     engineErrors: client?.getEngineErrors(),
     transcript,
     files: taskFilesView(),
+    taskNotice: notice,
   };
 }
 
@@ -1649,7 +1621,7 @@ function patchLiveUi(): void {
     syncTaskCardActivity(card, activity, started.get(activity.attemptId) ?? null, now);
   }
 
-  const overlay = surface.root.querySelector<HTMLElement>('.ov2-detail-overlay');
+  const overlay = taskModal?.overlay;
   const state = client.getState();
   const task = selectedTaskId && state ? state.tasks.get(selectedTaskId) : undefined;
   if (!overlay || !task || !state) return;
@@ -1773,7 +1745,7 @@ async function refreshTranscript(attemptId: string): Promise<void> {
       previous?.status === 'ready' &&
       transcriptStructureKey(previous.events) === transcriptStructureKey(result.events);
     transcript = { attemptId, status: 'ready', ...result };
-    const overlay = surface?.root.querySelector<HTMLElement>('.ov2-detail-overlay');
+    const overlay = taskModal?.overlay;
     const state = client?.getState();
     const task = selectedTaskId && state ? state.tasks.get(selectedTaskId) : undefined;
     if (overlay && task && state) {
@@ -1799,7 +1771,7 @@ async function loadTaskFiles(taskId: string): Promise<void> {
   if (!boardId) return;
   if (taskFiles?.taskId === taskId && taskFiles.status !== 'error') return;
 
-  taskFiles = {
+  const loading: TaskFilesView = {
     taskId,
     status: 'loading',
     source: 'planned',
@@ -1810,13 +1782,14 @@ async function loadTaskFiles(taskId: string): Promise<void> {
     diffs: fileDiffs,
     expanded: expandedFiles,
   };
+  taskFiles = loading;
   paintBoard();
   try {
     const result = await readTaskFiles(boardId, taskId);
-    if (selectedTaskId !== taskId || boardId !== selectedBoardId) return;
+    if (taskFiles !== loading) return;
     taskFiles = { ...taskFiles, ...result, status: 'ready' };
   } catch (err) {
-    if (selectedTaskId !== taskId || boardId !== selectedBoardId) return;
+    if (taskFiles !== loading) return;
     taskFiles = {
       ...taskFiles,
       status: 'error',
@@ -1841,11 +1814,12 @@ async function toggleFileDiff(path: string): Promise<void> {
     paintBoard();
     return;
   }
-  fileDiffs.set(path, { status: 'loading', lines: [], truncated: false });
+  const loading: FileDiffView = { status: 'loading', lines: [], truncated: false };
+  fileDiffs.set(path, loading);
   paintBoard();
   try {
     const result = await readTaskFileDiff(boardId, taskId, path);
-    if (selectedTaskId !== taskId || boardId !== selectedBoardId) return;
+    if (fileDiffs.get(path) !== loading) return;
     fileDiffs.set(
       path,
       result
@@ -1853,7 +1827,7 @@ async function toggleFileDiff(path: string): Promise<void> {
         : { status: 'ready', lines: [], truncated: false },
     );
   } catch (err) {
-    if (selectedTaskId !== taskId || boardId !== selectedBoardId) return;
+    if (fileDiffs.get(path) !== loading) return;
     fileDiffs.set(path, {
       status: 'error',
       lines: [],
@@ -1864,8 +1838,10 @@ async function toggleFileDiff(path: string): Promise<void> {
   paintBoard();
 }
 
-function openTaskFile(path: string): void {
-  void import('../ui/file-viewer').then((m) => m.openFileInViewer(path));
+async function openTaskFile(path: string): Promise<void> {
+  const { openFileInViewer } = await import('../ui/file-viewer');
+  if (usesGraphiteContentTabs()) await closeBoardsView();
+  await openFileInViewer(path);
 }
 
 async function toggleTranscript(attemptId: string): Promise<void> {
@@ -1879,14 +1855,15 @@ async function toggleTranscript(attemptId: string): Promise<void> {
     return;
   }
   resetTaskDetailLogUi();
-  transcript = { attemptId, status: 'loading', events: [], truncated: false, capped: false };
+  const loading: TranscriptView = { attemptId, status: 'loading', events: [], truncated: false, capped: false };
+  transcript = loading;
   paintBoard();
   try {
     const result = await readAttemptTranscript(boardId, attemptId, { limit: 500 });
-    if (transcript?.attemptId !== attemptId || boardId !== selectedBoardId) return;
+    if (transcript !== loading) return;
     transcript = { attemptId, status: 'ready', ...result };
   } catch (err) {
-    if (transcript?.attemptId !== attemptId || boardId !== selectedBoardId) return;
+    if (transcript !== loading) return;
     transcript = {
       attemptId,
       status: 'error',

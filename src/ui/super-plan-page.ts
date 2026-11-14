@@ -34,6 +34,7 @@ import { bindComposerAutoResize } from './composer-auto-resize';
 import { cancelComposerExpandFor, initComposerExpand } from './composer-expand';
 import { el, ICON, svg, button } from './super-plan/dom';
 import { RunPane } from './super-plan/run-pane';
+import { createBackToChatButton } from './back-to-chat';
 
 export const SUPER_PLAN_PAGE_ROOT_ID = 'superPlanPage';
 export const SUPER_PLAN_PROMPT_FIELD_ID = 'superPlanPrompt';
@@ -114,8 +115,11 @@ class SuperPlanPage {
     this.root.id = SUPER_PLAN_PAGE_ROOT_ID;
     this.root.setAttribute('role', 'region');
     this.root.setAttribute('aria-label', 'Super Plan');
-    const header = el('header', 'sp-stage-header', 'Super Plan');
+    const header = el('header', 'sp-stage-header');
     header.dataset.appTitlebar = '';
+    header.append(createBackToChatButton(() => {
+      void import('./super-plan-entry').then(({ closeSuperPlanScreen }) => closeSuperPlanScreen());
+    }), 'Super Plan');
     const shell = el('div', 'sp-shell');
     shell.append(this.buildRail(), this.mainEl);
     this.root.append(header, shell);

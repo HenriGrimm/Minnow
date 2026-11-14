@@ -65,7 +65,8 @@ test('model picker tabs keep catalogs, favorites and controls reachable at every
         positionAnchoredModelPicker(panel, anchor, preferred, 8);
         const measure = selector => {
           const el = document.querySelector(selector);
-          return { ...el.getBoundingClientRect().toJSON(), scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
+          return { ...el.getBoundingClientRect().toJSON(), scrollHeight: el.scrollHeight, clientHeight: el.clientHeight,
+            clientWidth: el.clientWidth, clientLeft: el.clientLeft };
         };
         return {
           placement: panel.dataset.placement,
@@ -112,7 +113,11 @@ test('model picker tabs keep catalogs, favorites and controls reachable at every
     assert.ok(state.providers.clientHeight >= 44 && state.speed.clientHeight >= 30, JSON.stringify(state));
     assert.equal(state.settings.width, state.settings.height, 'settings is a square icon button');
     assert.equal(state.settings.top, state.speed.top, 'footer controls share a row');
-    assert.ok(state.panel.right - state.settings.right <= 10, 'settings sits at the right edge');
+    // A constrained panel scrolls as a whole; classic scrollbars occupy part of
+    // its outer width. Measure the gutter from the usable edge, not the scrollbar.
+    const contentRight = state.panel.left + state.panel.clientLeft + state.panel.clientWidth;
+    const settingsGutter = contentRight - state.settings.right;
+    assert.ok(settingsGutter >= 0 && settingsGutter <= 10, 'settings sits inside the usable right edge');
     if (phone) assert.ok(state.settings.width >= 44 && state.speed.height >= 44, 'phone controls retain touch targets');
     const favorites = await session.evaluate(`window.measurePicker(${anchorTop}, '${preferred}', ${phone}, true, true)`);
     assert.ok(favorites.models.clientHeight >= 36, JSON.stringify(favorites));

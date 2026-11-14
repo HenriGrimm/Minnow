@@ -108,7 +108,7 @@
   grid-column: 2;
   order: 2;
   align-self: stretch;
-  gap: 2px;
+  gap: 8px;
   padding: 8px 8px 8px 2px;
 }
 
@@ -151,7 +151,7 @@
 .input-inset-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 
 .input-bar .input-inset-actions:not(:empty)::before {
@@ -164,7 +164,7 @@
 }
 
 .input-inset-btn {
-  --input-inset-btn-size: 30px;
+  --input-inset-btn-size: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -658,7 +658,6 @@
 }
 
 @media (pointer: coarse) {
-  .input-bar .input-bar-send-stack,
   .input-bar .input-inset-actions { gap: 4px; }
   .input-bar :is(.input-inset-btn, .send-btn, .permission-pill, .composer-overflow-btn, .thinking-toggle-btn, .context-usage-ring) {
     min-width: 44px;
@@ -666,8 +665,30 @@
     width: 44px;
     height: 44px;
   }
-  .input-bar :is(.composer-model-trigger, .composer-run-target-btn, #modeSelectorDropdown) {
+  .input-bar :is(.composer-run-target-btn, #modeSelectorDropdown),
+  .input-bar .composer-controls .composer-model-trigger {
+    min-width: var(--touch-min);
     min-height: 44px;
+  }
+
+  /* Keep full touch targets in narrow columns, including when Undo is visible.
+     Secondary controls and prompt actions get separate rows rather than overlap. */
+  @container composer (max-width: 380px) {
+    .input-bar .input-bar-composer > .composer-controls {
+      grid-column: 1 / -1;
+      padding-inline-end: 10px;
+    }
+
+    .input-bar .input-bar-send-stack {
+      grid-column: 1 / -1;
+      order: 3;
+      justify-self: end;
+      padding-top: 0;
+    }
+
+    .input-bar .input-inset-actions::before {
+      display: none;
+    }
   }
 }
 

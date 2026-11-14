@@ -6,13 +6,13 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { discoverBrowser, launchBrowser } from '../../server/browser-driver/index.js';
 
-test('Graphite aligns the thread and keeps user bubbles snug with message actions', { timeout: 30_000 }, async t => {
+test('Code and Automations lay out their chat transcripts', { timeout: 30_000 }, async t => {
   const browser = await discoverBrowser();
   if (!browser.available) return t.skip(browser.detail);
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-layout-'));
   const styles = await Promise.all([
     'tokens', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
-    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar', 'sub-agent-drawer', 'mobile-app',
+    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar', 'sub-agent-drawer', 'mobile-app', 'automations',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -20,7 +20,6 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
       * { box-sizing: border-box; } body { margin: 0; }
       #mainColumn { display: flex; flex-direction: column; width: calc(100vw - 300px); margin-left: 292px; }
       #workspaceSplit[data-side-open] > #mainColumn { width: calc(100vw - 740px); }
-      .chat-thread { display: flex; flex-direction: column; }
     </style><main id="workspaceSplit">
       <header id="graphiteThreadHeader"></header>
       <section id="mainColumn" class="main-column">
@@ -262,4 +261,57 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
       hit: card.contains(document.elementFromPoint(left + 1, top + 1)) };
   })()`);
   assert.deepEqual(corner, { hovered: true, overflow: 'clip', topRadius: 14, hit: false });
+
+  await session.evaluate(`(() => {
+    document.getElementById('workspaceSplit').remove();
+    document.body.insertAdjacentHTML('beforeend', '<section class="auto-root" style="height: 860px"><div class="auto-job">' +
+      '<header class="auto-job__bar">Build check</header><div class="auto-job__body">' +
+      '<aside class="auto-job__list">Runs</aside><div class="auto-job__run"><div class="auto-transcript">' +
+      '<div class="auto-transcript__body chat-thread chat-thread--bubble-prompts" data-chat-view="compact">' +
+      '<div class="msg user"><div class="msg-bubble">Check the build</div></div>' +
+      '<button class="chat-work" aria-expanded="true">Worked</button>' +
+      '<div class="tool-call-msg chat-step"><details class="tool-call-details"><summary class="tool-call-summary">Run</summary></details></div>' +
+      '<div class="msg assistant"><div class="msg-bubble msg-bubble--md"><p>Build passed.</p></div></div>' +
+      '<div class="chat-reply-foot"><button class="chat-reply-foot__btn">Copy</button></div>' +
+      '</div></div><footer class="auto-runfoot">Done<button class="auto-btn">Continue in Code</button></footer>' +
+      '</div><aside class="auto-job__rail">Settings</aside></div></div></section>');
+  })()`);
+  for (const width of [1024, 390]) {
+    await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
+    const { gaps, prompt, thread, toolBorder, lead } = await session.evaluate(`(() => {
+      const body = document.querySelector('.auto-transcript__body');
+      const prompt = body.querySelector('.msg.user .msg-bubble');
+      const rows = [...body.children].map(row => row.getBoundingClientRect());
+      return {
+        gaps: rows.slice(1).map((row, i) => row.top - rows[i].bottom),
+        prompt: prompt.getBoundingClientRect().toJSON(),
+        thread: body.getBoundingClientRect().toJSON(),
+        toolBorder: getComputedStyle(body.querySelector('.tool-call-details')).borderTopColor,
+        lead: getComputedStyle(prompt, '::before').content,
+      };
+    })()`);
+    assert.ok(gaps.every(gap => gap >= 8), `Automation rows should have room at ${width}px: ${gaps}`);
+    assert.equal(prompt.right, thread.right);
+    assert.ok(prompt.width < thread.width / 2);
+    assert.equal(lead, 'none');
+    assert.equal(toolBorder, 'rgba(0, 0, 0, 0)');
+  }
+
+  await session.client.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, mobile: false, deviceScaleFactor: 1 });
+  for (const long of [false, true]) {
+    const { footerGap, scrolls, rootScrolls } = await session.evaluate(`(() => {
+      const root = document.querySelector('.auto-root');
+      const transcript = root.querySelector('.auto-transcript');
+      const footer = root.querySelector('.auto-runfoot');
+      if (${long}) transcript.querySelector('.msg.assistant p').textContent = 'Build passed. '.repeat(1000);
+      return {
+        footerGap: root.getBoundingClientRect().bottom - footer.getBoundingClientRect().bottom,
+        scrolls: transcript.scrollHeight > transcript.clientHeight,
+        rootScrolls: root.scrollHeight > root.clientHeight,
+      };
+    })()`);
+    assert.equal(footerGap, 0);
+    assert.equal(scrolls, long);
+    assert.equal(rootScrolls, false);
+  }
 });

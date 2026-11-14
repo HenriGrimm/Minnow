@@ -33,6 +33,17 @@
   text-align: left;
 }
 
+.welcome-page__heading:has(.welcome-page__back) {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  margin-bottom: var(--mn-space-2);
+}
+
+.welcome-page__heading:has(.welcome-page__back) .welcome-page__title {
+  margin-bottom: 0;
+}
+
 .welcome-page__banner {
   margin: 20px 0 0;
   padding: 10px 14px;

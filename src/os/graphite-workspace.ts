@@ -21,6 +21,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   const html = document.documentElement;
   const body = document.getElementById('appBody');
   const sidebar = document.getElementById('chatSidebar');
+  const sidebarResizer = document.getElementById('chatSidebarResizer');
   const stage = document.getElementById('osStage');
   const nav = rail.querySelector<HTMLElement>('.mn-os-app-rail__nav');
   if (!body || !sidebar || !nav) return () => {};
@@ -60,6 +61,13 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
 
   const search = menubar.querySelector<HTMLElement>('.mn-os-mb-search');
   const sidebarToggle = menubar.querySelector<HTMLButtonElement>('.mn-os-mb-chat-toggle');
+  const navigation = menubar.querySelector<HTMLElement>('.mn-os-mb-left');
+  const shell = menubar.parentElement;
+  const syncNavigationWidth = (): void => {
+    if (navigation && shell) shell.style.setProperty('--mn-titlebar-measured-navigation-width', `${navigation.getBoundingClientRect().width}px`);
+  };
+  const navigationObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncNavigationWidth);
+  if (navigation) navigationObserver?.observe(navigation);
   const menubarActions = menubar.querySelector<HTMLElement>('.mn-os-mb-right');
   const workspaceActions = menubar.querySelector<HTMLElement>('.mn-os-workspace-actions');
   const modelsTrigger = workspaceActions?.querySelector<HTMLButtonElement>('[aria-controls="modelsSystemPopover"]');
@@ -290,6 +298,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     auxiliary.hidden = !canShow;
     if (desktop) move(sidebar, rail, auxiliary);
     else move(sidebar, body, body.firstElementChild);
+    if (sidebarResizer) move(sidebarResizer, desktop ? rail : sidebar, desktop ? auxiliary : null);
     const threadViews = document.getElementById('chatListViews');
     if (threadViews) {
       const target = canShow ? footer : document.getElementById('chatSidebarMain');
@@ -304,6 +313,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     }
     syncWorkspaceMenubarPlacement();
     if (desktopChanged || visibilityChanged) window.dispatchEvent(new window.Event('minnow:graphite-workspace-changed'));
+    syncNavigationWidth();
     if (animate) {
       const transition = stage?.getAnimations?.().find(animation =>
         'transitionProperty' in animation && ['margin-inline-start', 'margin-left'].includes(String(animation.transitionProperty)));
@@ -341,6 +351,8 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
 
   return () => {
     document.removeEventListener('keydown', onNewThreadKeydown);
+    navigationObserver?.disconnect();
+    shell?.style.removeProperty('--mn-titlebar-measured-navigation-width');
     unsubscribe();
     breakpoint?.removeEventListener?.('change', onLayoutChange);
     window.removeEventListener(CHAT_SIDEBAR_CHANGED_EVENT, onSidebarChange);
@@ -357,6 +369,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     rail.removeAttribute('inert');
     html.classList.remove('mn-graphite-workspace', 'mn-graphite-sidebar-open');
     move(sidebar, body, body.firstElementChild);
+    if (sidebarResizer) move(sidebarResizer, sidebar);
     const threadViews = document.getElementById('chatListViews');
     const sidebarMain = document.getElementById('chatSidebarMain');
     if (threadViews && sidebarMain) move(threadViews, sidebarMain);

@@ -62,7 +62,7 @@ export function createBoardsScreen(deps: { openBoard(boardId: string): void }): 
   let filter: BoardFilter = 'active';
   let loaded = false;
 
-  const header = screenHeader({ title: 'Boards', large: true });
+  const header = screenHeader({ title: 'Boards', large: true, back: true });
   const filters = segmented<BoardFilter>(
     'Board filter',
     [

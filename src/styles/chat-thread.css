@@ -307,6 +307,55 @@
 .chat-thread > .msg.user.msg--has-actions .msg-bubble { padding-right: 40px; }
 .chat-thread > .msg.user .message-actions__trigger { left: auto; right: 6px; top: calc(7px + var(--mn-density-step)); }
 
+/* Code and embedded chats can share the same right-aligned prompt bubbles. */
+:is(#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript), .chat-thread--bubble-prompts).chat-thread {
+  & > .msg.user {
+    align-items: flex-end;
+    margin-top: var(--mn-space-1);
+
+    & .msg-bubble::before { content: none; }
+
+    & > .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map) {
+      grid-area: 1 / 2;
+      width: fit-content;
+      min-width: 0;
+      max-width: 100%;
+      padding: var(--mn-space-2-5) var(--mn-space-3-5);
+      border-color: var(--mn-graphite-line, var(--mn-border));
+      border-radius: 12px 12px 4px 12px;
+      background: var(--mn-bubble, var(--mn-surface-2));
+      font-size: var(--mn-type-base);
+      overflow-wrap: anywhere;
+    }
+
+    /* Keep the action lane beside the bubble and within the transcript column. */
+    &:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) fit-content(min(85%, calc(100% - var(--msg-actions-lane, 0px))));
+      column-gap: 0;
+      align-items: start;
+      justify-items: end;
+
+      & > :is(.msg-goal-achieved-chip, .branch-picker__trigger) { grid-column: 1 / -1; }
+
+      & > .message-actions__trigger {
+        grid-area: 1 / 2;
+        inset-inline: auto calc(100% + var(--mn-space-1));
+      }
+
+      & > .message-actions__menu {
+        grid-area: 1 / 2;
+        inset-inline-end: max(var(--mn-space-1), calc(100% - var(--msg-actions-menu-min-width)));
+      }
+    }
+  }
+
+  & > .msg.assistant > .msg-bubble {
+    font-size: var(--mn-type-base);
+    line-height: 1.65;
+  }
+}
+
 /* ── Reply footer: copy · remake · speed under the latest answer ── */
 .chat-thread > .chat-reply-foot {
   display: flex;

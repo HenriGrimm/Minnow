@@ -28,6 +28,7 @@
 
   flex: 1 1 auto;
   min-height: 0;
+  container: automations / inline-size;
   overflow: auto;
   background: var(--auto-bg);
   color: var(--auto-text);
@@ -546,18 +547,25 @@
 .auto-job__body { display: flex; flex-wrap: wrap; flex: 1; min-height: 0; }
 .auto-job__list {
   flex: 0 0 272px;
-  max-height: calc(100vh - 160px);
   overflow: auto;
   padding: 6px 6px 24px;
   border-right: 1px solid var(--auto-line);
   scrollbar-width: thin;
 }
-.auto-job__run { display: flex; flex: 999 1 480px; flex-direction: column; min-width: 0; max-height: calc(100vh - 160px); }
+.auto-job__run { display: flex; flex: 999 1 480px; flex-direction: column; min-width: 0; }
 .auto-job__rail {
   flex: 1 1 260px;
   max-width: 320px;
   padding: 18px 20px;
   border-left: 1px solid var(--auto-line);
+}
+
+/* When all three panes fit, size them to the app below the job bar. */
+@container automations (min-width: 1012px) {
+  .auto-job { height: 100%; }
+  .auto-job__body { flex-wrap: nowrap; }
+  .auto-job__rail { overflow: auto; }
+  .auto-transcript { min-height: 0; }
 }
 
 .auto-list__head { display: flex; justify-content: space-between; padding: 14px 10px 5px; color: var(--auto-subtle); font-size: 11.5px; }
@@ -633,7 +641,12 @@ button.auto-qi:hover { background: var(--auto-hover); color: var(--auto-text); }
 
 .auto-transcript { flex: 1; min-height: 240px; overflow: auto; padding: 18px 32px 12px; scrollbar-width: thin; }
 .auto-transcript__meta { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 auto 14px; max-width: 820px; color: var(--auto-subtle); font: 11.5px var(--auto-mono); }
-.auto-transcript__body { max-width: 820px; margin: 0 auto; }
+.auto-transcript__body {
+  display: flex;
+  flex-direction: column;
+  max-width: 820px;
+  margin: 0 auto;
+}
 .auto-transcript__empty {
   display: flex;
   flex-direction: column;
@@ -649,6 +662,7 @@ button.auto-qi:hover { background: var(--auto-hover); color: var(--auto-text); }
 
 .auto-runfoot {
   display: flex;
+  flex-shrink: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
@@ -929,8 +943,7 @@ input.auto-input--text { width: 100%; color: var(--auto-text); font: 13.5px var(
 
 @media (max-width: 760px) {
   .auto-hub, .auto-setup__layout { padding-inline: 16px; }
-  .auto-job__list, .auto-job__rail { flex-basis: 100%; max-width: none; max-height: none; border: 0; border-bottom: 1px solid var(--auto-line); }
-  .auto-job__run { max-height: none; }
+  .auto-job__list, .auto-job__rail { flex-basis: 100%; max-width: none; border: 0; border-bottom: 1px solid var(--auto-line); }
   .auto-transcript, .auto-runhead, .auto-reviewers, .auto-runfoot { padding-inline: 16px; }
   .auto-setup__footer-inner { padding-inline: 16px; }
   .auto-setup__aside { position: static; }

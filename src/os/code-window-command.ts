@@ -23,7 +23,11 @@ export async function routeCodeWindowCommand(command: CodeWindowCommand): Promis
 async function applyCommand(command: CodeWindowCommand): Promise<void> {
   const { ensureCodeWorkspaceModules } = await import('../boot/code-workspace-modules');
   await ensureCodeWorkspaceModules();
-  const { launchApp } = await import('./router');
+  const { launchApp, returnToChat } = await import('./router');
+  if (command.kind === 'chat' && !command.chatId && !command.boardGroupId) {
+    await returnToChat();
+    return;
+  }
   launchApp('code', { codeSection: 'chat' });
   if (command.kind === 'seed') {
     const { applyCodeLaunchOptions } = await import('./code-launch');

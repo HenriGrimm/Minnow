@@ -18,7 +18,8 @@ const SERVICES = [
     id: 'supabase', name: 'Supabase', purpose: 'Projects, migrations, and Edge Functions.', skill: '/supabase-cli',
     docs: 'https://supabase.com/docs/guides/local-development/cli/getting-started',
     install: {
-      win32: 'scoop bucket add supabase https://github.com/supabase/scoop-bucket.git; scoop install supabase',
+      // Scoop is not included with Windows. Use the guide rather than assume it exists.
+      win32: '',
       darwin: 'brew install supabase/tap/supabase',
       linux: '',
     },
@@ -78,8 +79,6 @@ function setupCommand(service: Service, platform: string, profile?: ShellProfile
     else command = `${bin} auth login`;
   } else if (service.id === 'clerk' && powershell) {
     command = command.replace(/^npm /, 'npm.cmd ');
-  } else if (service.id === 'supabase' && cmd) {
-    command = command.replace('; ', ' & ');
   }
   // Account operations should resolve commands and vendor config outside the repository.
   if (powershell) return `& { Set-Location -LiteralPath $env:USERPROFILE -ErrorAction Stop; ${command} }`;

@@ -61,9 +61,9 @@ A board completes when required tasks are merged and final verification passes. 
 
 ## Inspect work
 
-Click a task to inspect its specification, attempts, commands, reports and file changes. The integration branch contains the assembled result; task worktrees isolate ongoing edits.
+Click a task to open its details over the board. **Spec** shows the Build, Test, and Accept instructions and offers **Edit spec** when the task is editable. **Activity** lists attempts and opens each agent's transcript. A task with an active agent opens directly to its live transcript. **Files** shows planned files or merged changes. Press **Escape** to return to the task card.
 
-Use **Retry**, **Reset**, **Rewind**, **Skip**, or **Merge and skip** only when you deliberately want to override normal recovery. Reset discards the selected unmerged task's runtime work. Rewind restores integration to an earlier point and resets affected later work. Skip records a waiver; it does not verify the omitted requirement.
+**Start** or **Retry** appears in the header when available. Open **More task actions** for actions such as **Reset**, **Rewind**, **Skip**, or **Merge and skip**. Reset discards the selected unmerged task's runtime work. Rewind restores integration to an earlier point and resets affected later work. Skip records a waiver for the omitted requirement.
 
 ## Limits and models
 

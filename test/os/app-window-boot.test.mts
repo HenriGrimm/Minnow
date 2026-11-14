@@ -55,4 +55,22 @@ describe('app-window boot', { concurrency: false }, () => {
     assert.ok(!document.documentElement.dataset.appWindow);
     assert.equal(window.location.hash, '#/workspaces');
   });
+
+  test('Back to chat sends the return to the workspace window', async () => {
+    setupDom();
+    window.location.hash = '#/app/issues';
+    const commands: unknown[] = [];
+    (window as Window & { minnow?: unknown }).minnow = {
+      viewContext: { workspacePath: '/repo', viewId: 'issues-1', hosted: false, appId: 'issues' },
+      window: { sendCodeCommand: async (command: unknown) => {
+        commands.push(command);
+        return { ok: true };
+      } },
+    };
+
+    const { returnToChat } = await import('../../src/os/router.ts');
+    await returnToChat();
+    assert.deepEqual(commands, [{ kind: 'chat', workspacePath: '/repo' }]);
+    assert.equal(window.location.hash, '#/app/issues');
+  });
 });

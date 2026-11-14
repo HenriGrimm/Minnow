@@ -158,7 +158,7 @@ html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-win
   #osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar)::before {
   content: '';
   position: absolute;
-  inset: 0 calc(var(--mn-titlebar-end-inset, 0px) + var(--mn-titlebar-actions-width, 0px)) 0 0;
+  inset: 0 calc(var(--mn-titlebar-end-inset, 0px) + var(--mn-titlebar-actions-width, 0px)) 0 var(--mn-titlebar-start-inset, 0px);
   pointer-events: none;
   -webkit-app-region: drag;
 }
@@ -207,7 +207,7 @@ html.is-electron-shell :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app
 
 .mn-graphite-workspace:not(.mn-graphite-sidebar-open, .os-workspace-gate-open)
   .mn-os:has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar)) {
-  --mn-titlebar-navigation-width: calc(var(--os-window-btn-size) + 9rem + var(--mn-space-5));
+  --mn-titlebar-navigation-width: var(--mn-titlebar-measured-navigation-width, calc(var(--os-window-btn-size) + 9rem + var(--mn-space-5)));
   --mn-titlebar-start-inset: calc(var(--mn-titlebar-navigation-width) + var(--mn-menubar-inline-padding));
   --mn-titlebar-actions-width: calc(7 * var(--os-window-btn-size) + 7 * var(--mn-space-1));
   > #osMenubar[data-view='app'] {
@@ -255,13 +255,11 @@ html.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='tru
 }
 
 :is(.sp-stage-header, .orchestrate-plan-stage-header) {
-  display: none;
-}
-
-.mn-graphite-workspace :is(.sp-stage-header, .orchestrate-plan-stage-header) {
   display: flex;
   flex-shrink: 0;
   align-items: center;
+  gap: var(--mn-space-2);
+  padding: var(--mn-space-1) var(--mn-space-3);
   font-size: var(--mn-type-md);
   font-weight: var(--mn-weight-medium);
   border-bottom: 1px solid var(--mn-border);
@@ -363,9 +361,9 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
   overflow: visible;
 }
 
-.mn-graphite-workspace #osAppRail .sidebar-resizer--chat {
+.mn-graphite-workspace #osAppRail > .sidebar-resizer--chat {
   /* Keep the full drag target in the rail gutter, clear of the app sheet. */
-  right: calc(-1 * var(--mn-graphite-rail-gutter));
+  right: 0;
   width: var(--mn-graphite-rail-gutter);
   background: transparent;
   outline: none;
@@ -408,6 +406,10 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
+}
+
+.mn-graphite-workspace #osAppRail .chat-item-row + .chat-list-section-head {
+  margin-top: 8px;
 }
 
 .mn-graphite-workspace #osAppRail .chat-sidebar-title {

@@ -211,7 +211,7 @@ export function renderJobView(options: JobViewOptions): JobViewHandle {
   reviewers.setAttribute('aria-label', 'Reviewers');
   const scroller = el('div', 'auto-transcript');
   const transcriptMeta = el('div', 'auto-transcript__meta');
-  const transcriptBody = el('div', 'auto-transcript__body chat-thread');
+  const transcriptBody = el('div', 'auto-transcript__body chat-thread chat-thread--bubble-prompts');
   const transcriptEmpty = el('div', 'auto-transcript__empty');
   scroller.append(transcriptMeta, transcriptBody, transcriptEmpty);
   const footer = el('div', 'auto-runfoot');

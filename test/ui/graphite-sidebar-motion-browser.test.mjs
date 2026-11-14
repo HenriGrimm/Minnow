@@ -9,7 +9,7 @@ import { discoverBrowser, launchBrowser } from '../../server/browser-driver/inde
 test('the Graphite stage covers the sidebar as it grows and Windows controls stay at the right edge', { timeout: 30_000 }, async t => {
   const browser = await discoverBrowser();
   if (!browser.available) return t.skip(browser.detail);
-  const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'graphite-workspace', 'thread-card',
+  const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'sidebar', 'graphite-workspace', 'thread-card',
     'settings-page', 'source-control-center', 'models-page', 'brain-page', 'brain-graph', 'scheduler-page',
     'issues', 'dev-server-screen', 'orchestrator-boards', 'product-wiki', 'graphite-apps'].map(name =>
     readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
@@ -34,7 +34,12 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
           </div>
         </header>
         <div id="osWorkspace" class="mn-os-workspace">
-          <nav id="osAppRail">Workspace navigation</nav>
+          <nav id="osAppRail">
+            <div class="mn-os-app-rail__nav" style="height: 190px">Workspace navigation</div>
+            <aside class="chat-sidebar"><div class="chat-sidebar-main">Threads</div></aside>
+            <div id="chatSidebarResizer" class="sidebar-resizer sidebar-resizer--chat" tabindex="0"></div>
+            <div class="mn-graphite-auxiliary" style="height: 40px">Sidebar footer</div>
+          </nav>
           <main id="osStage" class="mn-os-stage is-in-app">
             <div id="osAppsLayer" class="mn-os-apps-layer">
               <div class="mn-os-app-layer is-active" id="code">
@@ -135,11 +140,39 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
   });
 
+  const grip = await session.evaluate(`(() => {
+    const rail = document.getElementById('osAppRail').getBoundingClientRect();
+    const resizer = document.getElementById('chatSidebarResizer');
+    const target = resizer.getBoundingClientRect();
+    resizer.classList.add('dragging');
+    const style = getComputedStyle(resizer, '::after');
+    const gripY = target.top + parseFloat(style.top) + parseFloat(style.marginTop) + parseFloat(style.height) / 2;
+    resizer.classList.remove('dragging');
+    const targetX = target.left + target.width / 2;
+    const toggle = document.getElementById('sidebarToggle');
+    const toggleBounds = toggle.getBoundingClientRect();
+    return {
+      gripY, sidebarMidpoint: (rail.top + rail.bottom) / 2,
+      targetRight: target.right, sidebarRight: rail.right,
+      gripDraggable: document.elementFromPoint(targetX, (rail.top + rail.bottom) / 2) === resizer,
+      toggleClickable: toggle.contains(document.elementFromPoint(
+        toggleBounds.left + toggleBounds.width / 2,
+        toggleBounds.top + toggleBounds.height / 2,
+      )),
+    };
+  })()`);
+  assert.ok(Math.abs(grip.gripY - grip.sidebarMidpoint) < 1, 'resize grip should align with the full sidebar midpoint');
+  assert.equal(grip.targetRight, grip.sidebarRight);
+  assert.ok(grip.gripDraggable);
+  assert.ok(grip.toggleClickable);
+
   const { start, during, end, withoutThread, appHeaders } = await session.evaluate(`(() => {
     const stage = document.getElementById('osStage');
     const rail = document.getElementById('osAppRail');
     const bounds = selector => document.querySelector(selector).getBoundingClientRect();
     const measure = () => {
+      // Mirror the shell's ResizeObserver measurement in this CSS-only fixture.
+      document.querySelector('.mn-os').style.setProperty('--mn-titlebar-measured-navigation-width', bounds('.mn-os-mb-left').width + 'px');
       const { left, right, top } = stage.getBoundingClientRect();
       const controls = bounds('.mn-os-mb-window-controls');
       const divider = getComputedStyle(document.querySelector('.mn-os-mb-window-controls'), '::before');
@@ -157,10 +190,12 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
         minimizeLeft: bounds('.mn-os-mb-window-controls button').left,
         closeClickable: document.elementFromPoint(close.left + close.width / 2, close.top + close.height / 2)?.id === 'close',
         sidebarToggle: bounds('#sidebarToggle').toJSON(),
+        threadTitleLeft: bounds('.graphite-thread-title').left,
         sidebarToggleRegion: getComputedStyle(document.getElementById('sidebarToggle')).getPropertyValue('app-region'),
         gapDraggable: titlebarHit === menubar && getComputedStyle(menubar).getPropertyValue('app-region') === 'drag',
         threadActionRight: bounds('#threadAction').right, settingsRight: bounds('#settings').right,
         dragStripRegion: dragStrip.getPropertyValue('app-region'),
+        dragStripLeft: bounds('#graphiteThreadHeader').left + parseFloat(dragStrip.left),
         dragStripRight: bounds('#graphiteThreadHeader').right - parseFloat(dragStrip.right),
         threadActionsPosition: threadActions.position,
         threadActionsRegion: threadActions.getPropertyValue('app-region'),
@@ -203,6 +238,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
         firstShellAction: bounds('.mn-os-mb-right button').left,
         topStrip: getComputedStyle(document.getElementById('osWorkspace'), '::before').content,
         dragRegion: getComputedStyle(header, '::before').getPropertyValue('app-region'),
+        dragLeft: headerRect.left + parseFloat(getComputedStyle(header, '::before').left),
         actionRegion: getComputedStyle(action).getPropertyValue('app-region') };
       app.classList.toggle(id === 'wiki' ? 'hidden' : 'is-active', id === 'wiki');
       return snapshot;
@@ -220,6 +256,8 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     assert.ok(frame.bottomToggleClickable);
   }
   assert.equal(end.dragStripRegion, 'drag');
+  assert.ok(end.dragStripLeft >= end.sidebarToggle.right, 'collapsed navigation must stay outside the native drag region');
+  assert.ok(end.threadTitleLeft - end.sidebarToggle.right <= 28, 'collapsed thread title should follow the visible navigation without a reserved label-width gap');
   assert.equal(end.railRight, 0);
   assert.equal(end.left, 8);
   assert.equal(end.top, start.top);
@@ -248,6 +286,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     assert.equal(frame.headerColor, frame.stageColor);
     if (frame.sidebarOpen) assert.deepEqual(frame.sidebarToggle, start.sidebarToggle);
     else {
+      assert.ok(frame.dragLeft >= frame.sidebarToggle.right, frame.id + ' drag region overlaps collapsed navigation');
       assert.ok(frame.sidebarToggle.right < frame.action.left);
       assert.ok(frame.action.right < frame.firstShellAction);
     }

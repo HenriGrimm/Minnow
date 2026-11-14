@@ -37,7 +37,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-reduce-motion]) .graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"]) {
+  :root:not([data-reduce-motion]) .graphite-surfaces:not(.graphite-surfaces--phone, [data-surface-max="side"], [data-surface-max="bottom"], :has(> .main-column--orchestrator-boards)) {
     transition:
       --mn-graphite-side-reveal var(--mn-graphite-side-motion, 0s) var(--ease-out),
       --mn-graphite-bottom-reveal var(--mn-graphite-bottom-motion, 0s) var(--ease-out);

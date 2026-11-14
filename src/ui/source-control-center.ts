@@ -23,7 +23,8 @@ import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { appPrompt, isAppDialogOpen } from './app-dialog';
 import { createIcon, type IconName } from './icon';
-import { launchApp } from '../os/router';
+import { launchApp, returnToChat } from '../os/router';
+import { createBackToChatButton } from './back-to-chat';
 import { getForegroundAppId } from '../os/instances';
 import { showToast } from './toast';
 import { revealInTabStrip } from './mobile-layout';
@@ -230,7 +231,7 @@ function buildHeader(): HTMLElement {
   const identity = el('div', 'scc-head__identity');
 
   repoNameEl = el('span', 'scc-head__repo');
-  identity.appendChild(repoNameEl);
+  identity.append(createBackToChatButton(closeSourceControlCenter), repoNameEl);
 
   branchBtn = button({
     icon: 'gitBranch',
@@ -304,15 +305,7 @@ function buildHeader(): HTMLElement {
   paletteBtn.setAttribute('aria-label', 'Commands');
   paletteBtn.appendChild(el('kbd', 'scc-head__kbd', modKeyLabel('K')));
 
-  const closeBtn = button({
-    icon: 'close',
-    title: 'Close source control',
-    variant: 'ghost',
-    className: 'scc-head__close',
-    onClick: () => closeSourceControlCenter(),
-  });
-
-  actions.append(paletteBtn, closeBtn);
+  actions.append(paletteBtn);
 
   header.append(identity, sync, actions);
   return header;
@@ -1061,7 +1054,7 @@ export async function mountSourceControlCenter(): Promise<void> {
 /** Return to Code without replacing or rebuilding the chat transcript. */
 export function closeSourceControlCenter(): void {
   gitStatePoll.cancel();
-  if (isSourceControlCenterOpen()) launchApp('code');
+  if (isSourceControlCenterOpen()) void returnToChat();
 }
 
 /** Toggle the center from the sidebar button. */

@@ -64,12 +64,6 @@
   --ob-read-col: 790px;
 }
 
-/* Task detail covers the whole Boards shell (rail + pane), not only the
- * scrollport — the pane alone is often short when other chrome shares the column. */
-.ov2.is-detail-open {
-  overflow: hidden;
-}
-
 .ov2__board-body {
   display: flex;
   flex-direction: column;
@@ -129,82 +123,6 @@
   background: var(--mn-graphite-raised, var(--mn-surface-1));
 }
 
-.ov2.is-graphite-overview.is-inspector-inline {
-  grid-template-columns: 232px minmax(0, 1fr) 340px;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-.ov2.is-inspector-inline .ov2__list {
-  grid-area: 1 / 1 / -1;
-}
-
-.ov2.is-inspector-inline .ov2__board {
-  display: contents;
-}
-
-.ov2.is-inspector-inline .ov2__board > .board-header {
-  grid-area: 1 / 2 / 2 / -1;
-  margin: 0;
-  padding: 12px 24px;
-}
-
-.ov2.is-inspector-inline .ov2__board-body {
-  grid-area: 2 / 2;
-  min-width: 0;
-  min-height: 0;
-  padding: 16px 24px 24px;
-  overflow-y: auto;
-}
-
-.ov2.is-inspector-inline .ov2-detail-overlay {
-  position: relative;
-  inset: auto;
-  z-index: auto;
-  grid-area: 2 / 3;
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  border-inline-start: 1px solid var(--mn-graphite-line, var(--mn-border));
-  background: transparent;
-}
-
-.ov2.is-inspector-inline .ov2-detail {
-  width: 100%;
-  padding: 12px 16px 8px;
-  border: 0;
-  border-radius: 0;
-  background: var(--mn-graphite-sheet, var(--mn-bg));
-  box-shadow: none;
-}
-
-.ov2.is-inspector-inline .ov2-detail__title {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.ov2.is-inspector-inline .ov2-detail__toolbar {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ov2.is-inspector-inline .ov2-detail__actions {
-  justify-content: flex-start;
-}
-
-.ov2.is-inspector-inline .ov2-detail__panes {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, auto) minmax(120px, 1fr);
-  gap: 12px;
-  overflow: auto;
-}
-
-.ov2.is-inspector-inline .ov2-detail__rail {
-  gap: 12px;
-  max-height: 260px;
-  padding-block-end: 0;
-}
-
 /* ── The list ──────────────────────────────────────────────────────────── */
 
 .ov2__list {
@@ -250,24 +168,14 @@
   border-bottom: 1px solid var(--mn-border);
 }
 
+.ov2__stage-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+}
+
 .mn-graphite-workspace .ov2 .ov2__list-head {
   display: none;
-}
-
-.mn-graphite-workspace .ov2.is-inspector-inline {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.mn-graphite-workspace .ov2.is-inspector-inline .ov2__list {
-  grid-row: 2 / -1;
-}
-
-.mn-graphite-workspace .ov2.is-inspector-inline .ov2__board > .board-header {
-  grid-row: 2;
-}
-
-.mn-graphite-workspace .ov2.is-inspector-inline :is(.ov2__board-body, .ov2-detail-overlay) {
-  grid-row: 3;
 }
 
 @container ov2 (max-width: 720px) {
@@ -1075,10 +983,6 @@
   padding-bottom: 0;
 }
 
-.ov2.is-graphite-overview.is-inspector-inline .ov2__board > .board-header {
-  padding-bottom: 0;
-}
-
 .ov2__view-tabs {
   display: flex;
   align-items: center;
@@ -1599,57 +1503,52 @@
   border-radius: var(--mn-radius-sm);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
- * Task detail
- *
- * Four bands down one column: status, files, attempts, spec. The rhythm is
- * deliberately uneven — alerts sit tight under the head because they belong to
- * it, sections breathe at 22px, and the spec is pushed away by a rule. Equal
- * gaps everywhere would read as a form.
- *
- * Type runs 17 / 13 / 11 / 10, so every step clears the 1.25 ratio and the
- * title is unmistakably the title at a squint. Mono is reserved for things that
- * are literally code: shas, paths, tool names, counts.
- * ══════════════════════════════════════════════════════════════════════ */
+/* ── Task detail ──────────────────────────────────────────────────────── */
 
 .ov2-detail-overlay {
   position: absolute;
   inset: 0;
   z-index: 40;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  padding: 20px 24px;
+  display: grid;
+  place-items: center;
+  padding: var(--mn-space-5);
   background: var(--mn-overlay);
 }
 
 .ov2-detail {
+  --ov2-detail-gutter: var(--mn-space-6);
   display: flex;
   flex-direction: column;
-  width: min(1360px, 100%);
-  height: 100%;
+  width: min(960px, 100%);
+  height: min(740px, 100%);
   min-height: 0;
-  max-width: 100%;
-  padding: 18px 22px 4px;
-  background: var(--mn-surface-0);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md, 10px);
+  min-width: 0;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-lg);
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
   box-shadow: var(--shadow-popover-tall);
   outline: none;
 }
 
-/* ── Head ──────────────────────────────────────────────────────────────── */
-
 .ov2-detail__head {
-  flex: 0 0 auto;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--mn-border);
+  flex: 0 1 auto;
+  padding: var(--mn-space-5) var(--ov2-detail-gutter) var(--mn-space-3);
 }
 
-.ov2-detail__top {
+.ov2-detail__top,
+.ov2-detail__eyebrow {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  justify-content: space-between;
+  gap: var(--mn-space-3);
+}
+
+.ov2-detail__eyebrow {
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--mn-space-2);
+  margin-bottom: var(--mn-space-2);
 }
 
 .ov2-detail__ident {
@@ -1658,54 +1557,47 @@
 }
 
 .ov2-detail__id {
-  display: block;
-  margin-bottom: 3px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--mn-fg-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--mn-type-sm);
+  overflow-wrap: anywhere;
 }
 
 .ov2-detail__title {
   margin: 0;
-  font-size: var(--mn-type-xl);
+  color: var(--mn-fg);
+  font-size: var(--mn-type-3xl);
   font-weight: 600;
   line-height: 1.25;
-  letter-spacing: -0.02em;
-  /* Titles are one plan line, so they wrap rather than truncate. */
+  letter-spacing: var(--mn-tracking-title);
   overflow-wrap: anywhere;
 }
 
-.ov2-detail__top .ov2-pill {
-  margin-top: 2px;
+.ov2-detail__actions {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: var(--mn-space-1);
+}
+
+.ov2-detail__actions .ov2-btn,
+.ov2-spec__edit {
+  min-height: var(--mn-control-h-md);
+  padding-inline: var(--mn-space-3);
+  border-radius: var(--mn-radius-sm);
 }
 
 .ov2-detail__close {
-  position: relative;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin: -3px -6px 0 0;
+  display: grid;
+  place-items: center;
+  width: var(--mn-control-h-md);
+  height: var(--mn-control-h-md);
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   color: var(--mn-fg-muted);
   cursor: pointer;
-  transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out);
-}
-
-/* The 28px square is the visual size; the hit area is the 44px minimum. */
-.ov2-detail__close::after {
-  content: '';
-  position: absolute;
-  inset: -8px;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1715,122 +1607,168 @@
   }
 }
 
-.ov2-detail__close:focus-visible {
-  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
-  outline-offset: 1px;
+.ov2-detail :is(.ov2-btn, .ov2-detail__close):focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: 2px;
 }
 
-.ov2-detail__toolbar {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 10px 20px;
-  margin-top: 12px;
-}
-
-.ov2-detail__actions {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.ov2-detail__actions .ov2-btn {
-  min-height: 32px;
-  padding: 6px 12px;
-}
-
-/* One quiet line of facts. A definition list because that is what it is. */
 .ov2-facts {
   display: flex;
-  flex: 1 1 auto;
   flex-wrap: wrap;
+  gap: var(--mn-space-1) var(--mn-space-4);
+  margin: var(--mn-space-3) 0 0;
+  max-height: 5em;
+  overflow-y: auto;
+  font-size: var(--mn-type-sm);
+}
+
+.ov2-facts__item {
+  display: flex;
   align-items: baseline;
-  gap: 3px 6px;
+  gap: var(--mn-space-1-5);
   min-width: 0;
-  margin: 0;
-  font-size: 11.5px;
 }
 
 .ov2-facts__label {
   color: var(--mn-fg-muted);
+  flex: 0 0 auto;
 }
 
 .ov2-facts__value {
   margin: 0;
-  color: var(--mn-fg-muted);
   font-variant-numeric: tabular-nums;
-}
-
-/* Every value but the last gets the separator, so no empty trailing dot. */
-.ov2-facts__value:not(:last-child)::after {
-  content: '·';
-  margin-left: 6px;
-  color: var(--mn-border-strong);
+  overflow-wrap: anywhere;
 }
 
 .ov2-facts__value--mono {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
 }
 
-/* ── Body ──────────────────────────────────────────────────────────────── */
-
-/*
- * Two panes. The left is what the task is; the right is what an agent did about
- * it. They scroll independently because reading a thread and checking a file
- * list are different jobs, and one should not drag the other out of view.
- */
-.ov2-detail__panes {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: 0 24px;
-  padding-top: 14px;
-}
-
-.ov2-detail__rail {
-  min-width: 0;
-  min-height: 0;
+.ov2-detail__alerts {
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 2px 2px 20px 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  gap: var(--mn-space-1);
+  min-height: 0;
+  max-height: 100px;
+  overflow: auto;
+  padding: 0 var(--ov2-detail-gutter) var(--mn-space-2);
+}
+
+.ov2-detail__alerts:empty {
+  display: none;
+}
+
+.ov2-detail__tabs {
+  container: ov2-task-detail / inline-size;
+  flex: 1 1 0;
+}
+
+.ov2-detail__tabs > .mn-tabs__list {
+  flex: 0 0 auto;
+  padding-inline: calc(var(--ov2-detail-gutter) - var(--mn-space-2));
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+}
+
+.ov2-detail__tabs > .mn-tabs__list .mn-tabs__tab {
+  padding-inline: var(--mn-space-2);
+  margin-inline-end: var(--mn-space-2);
+}
+
+.ov2-detail__tabs > .mn-tabs__list .mn-tabs__tab::after {
+  inset-inline: 0;
+  bottom: 0;
+}
+
+.ov2-detail__tabs > .mn-tabs__panel {
+  flex: 1 1 auto;
+}
+
+.ov2-detail__page {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--mn-space-5) var(--ov2-detail-gutter) var(--mn-space-6);
   scrollbar-gutter: stable;
 }
 
-/* Alerts are one group, so they sit tighter than the 22px section rhythm. */
-.ov2-detail__rail > .ov2-alert + .ov2-alert {
-  margin-top: -14px;
+.ov2-detail__spec > [data-spec-panel],
+.ov2-detail__files > .ov2-panel {
+  width: min(100%, 700px);
+  margin-inline: auto;
 }
 
-/* Narrow: the thread goes under the rail rather than into a 300px column. */
-@container ov2 (max-width: 900px) {
-  .ov2-detail__panes {
+.ov2-detail__activity {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+.ov2-detail__work {
+  padding: var(--mn-space-4);
+  background: var(--mn-surface-1);
+  border-inline-end: 1px solid var(--mn-border);
+  border-end-start-radius: var(--mn-radius-lg);
+}
+
+@container ov2-task-detail (max-width: 760px) {
+  .ov2-detail__activity {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, auto) minmax(220px, 1fr);
-    gap: 18px;
+    grid-template-rows: fit-content(min(34%, 170px)) minmax(0, 1fr);
   }
 
-  .ov2-detail__rail {
-    max-height: 46%;
+  .ov2-detail__work {
+    padding-block: var(--mn-space-2);
+    border-inline-end: 0;
+    border-end-start-radius: 0;
+    border-block-end: 1px solid var(--mn-border);
   }
 }
 
-/*
- * Why the card is not green. Background tint carries the tone; there is no
- * colored edge stripe, which is decoration pretending to be a signal.
- */
+@container ov2 (max-width: 560px) {
+  .ov2-detail-overlay {
+    padding: var(--mn-space-2);
+  }
+
+  .ov2-detail {
+    --ov2-detail-gutter: var(--mn-space-3);
+  }
+
+  .ov2-detail__head {
+    padding-block: var(--mn-space-3);
+  }
+
+  .ov2-detail__top {
+    flex-wrap: wrap;
+    gap: var(--mn-space-2);
+  }
+
+  .ov2-detail__ident {
+    flex: 1 1 160px;
+  }
+
+  .ov2-detail__actions {
+    margin-inline-start: auto;
+  }
+}
+
+@media (pointer: coarse) {
+  .ov2-detail__actions :is(.ov2-btn, .ov2-detail__close),
+  .ov2-spec__edit {
+    min-height: var(--touch-min);
+  }
+
+  .ov2-detail__close {
+    width: var(--touch-min);
+  }
+}
+
 .ov2-alert {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 8px;
+  margin: 0;
   padding: 9px 12px;
   border-radius: 8px;
   background: var(--mn-surface-1);
@@ -1860,7 +1798,7 @@
 
 .ov2-alert--warn {
   background: var(--mn-warning-soft);
-  color: var(--mn-warning);
+  color: var(--mn-warning-ink);
 }
 
 
@@ -1884,11 +1822,9 @@
 
 .ov2-panel__title {
   margin: 0;
-  color: var(--mn-fg-muted);
-  font-size: 10px;
+  color: var(--mn-fg);
+  font-size: var(--mn-type-md);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
 }
 
 .ov2-panel__meta {
@@ -1902,6 +1838,7 @@
 
 .ov2-panel__count {
   color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
 }
 
 .ov2-panel__sep {
@@ -1916,55 +1853,6 @@
 }
 
 /* ── Files panel (collapsible) ───────────────────────────────────────── */
-
-.ov2-files-panel__summary {
-  cursor: pointer;
-  list-style: none;
-}
-
-.ov2-files-panel__summary::-webkit-details-marker {
-  display: none;
-}
-
-.ov2-files-panel__summary:focus-visible {
-  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
-  outline-offset: 3px;
-  border-radius: 4px;
-}
-
-.ov2-files-panel__lead {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-
-.ov2-files-panel__chevron {
-  flex-shrink: 0;
-  color: var(--mn-fg-muted);
-  transition: transform 160ms var(--ease-out);
-}
-
-.ov2-files-panel[open] .ov2-files-panel__chevron {
-  transform: rotate(90deg);
-}
-
-.ov2-files-panel__badge {
-  flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--mn-fg) 8%, transparent);
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.4;
-}
-
-.ov2-files-panel:not([open]) .ov2-panel__meta {
-  display: none;
-}
 
 .ov2-files-panel__body {
   display: flex;
@@ -2146,9 +2034,11 @@
 .ov2-work__header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--mn-space-1-5);
+  flex-wrap: wrap;
   width: 100%;
-  padding: 9px 6px;
+  min-height: var(--mn-control-h-lg);
+  padding: var(--mn-space-1-5) var(--mn-space-2);
   border: 0;
   border-radius: 6px;
   background: none;
@@ -2160,13 +2050,17 @@
 
 .ov2-work__header--static {
   cursor: default;
-  opacity: 0.66;
+  color: var(--mn-fg-muted);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .ov2-work__header:not(.ov2-work__header--static):hover {
-    background: var(--mn-surface-1);
+    background: var(--mn-surface-2);
   }
+}
+
+.ov2-work__item.is-open .ov2-work__header {
+  background: var(--mn-accent-soft);
 }
 
 .ov2-work__header:focus-visible {
@@ -2176,8 +2070,7 @@
 
 .ov2-work__index {
   flex: 0 0 auto;
-  min-width: 14px;
-  color: var(--mn-fg-subtle);
+  color: var(--mn-fg-muted);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -2199,7 +2092,7 @@
 }
 
 .ov2-work__seed {
-  color: var(--mn-fg-subtle);
+  color: var(--mn-fg-muted);
   font-size: 11px;
 }
 
@@ -2229,17 +2122,6 @@
 .ov2-work__chevron {
   flex: 0 0 auto;
   color: var(--mn-fg-subtle);
-  transition: transform 160ms var(--ease-out);
-}
-
-.ov2-work__item.is-open .ov2-work__chevron {
-  transform: rotate(90deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ov2-work__chevron {
-    transition: none;
-  }
 }
 
 .ov2-work__scan {
@@ -2301,9 +2183,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  padding-bottom: 12px;
-  border-left: 1px solid var(--mn-border);
-  padding-left: 24px;
+  overflow: auto;
 }
 
 .ov2-attempt-model {
@@ -2394,7 +2274,8 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
-  padding: 2px 2px 10px;
+  flex-wrap: wrap;
+  padding: var(--mn-space-3) var(--mn-space-4);
   border-bottom: 1px solid var(--mn-border);
 }
 
@@ -2404,11 +2285,9 @@
 
 .ov2-thread__title {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--mn-type-md);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--mn-fg-muted);
+  color: var(--mn-fg);
 }
 
 .ov2-thread__head .ov2-pill,
@@ -2421,10 +2300,11 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 14px 4px 0 0;
+  padding: var(--mn-space-4);
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .ov2-thread__body.chat-thread > * {
@@ -2441,7 +2321,6 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
   padding: 24px;
   text-align: center;
 }
@@ -2451,14 +2330,6 @@
   color: var(--mn-fg-muted);
   font-size: 13px;
   font-weight: 550;
-}
-
-.ov2-thread__blank-body {
-  margin: 0;
-  max-width: 34ch;
-  color: var(--mn-fg-subtle);
-  font-size: 12px;
-  line-height: 1.55;
 }
 
 /* The outcome badge carries status; the write-up reads like a chat answer. */
@@ -2497,43 +2368,12 @@
 
 /* ── Spec ──────────────────────────────────────────────────────────────── */
 
-.ov2-spec {
-  margin-top: 2px;
-  padding-top: 20px;
-  border-top: 1px solid var(--mn-border);
-}
-
-.ov2-spec__summary {
+.ov2-spec__header {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 2px 0;
-  border-radius: 6px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.ov2-spec__summary::-webkit-details-marker {
-  display: none;
-}
-
-.ov2-spec__summary:focus-visible {
-  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
-  outline-offset: 3px;
-}
-
-.ov2-spec__chevron {
-  color: var(--mn-fg-muted);
-  transition: transform 160ms var(--ease-out);
-}
-
-.ov2-spec[open] .ov2-spec__chevron {
-  transform: rotate(90deg);
-}
-
-.ov2-spec__hint {
-  color: var(--mn-fg-muted);
-  font-size: 11px;
+  flex-wrap: wrap;
+  gap: var(--mn-space-2);
+  min-height: var(--mn-control-h-md);
 }
 
 .ov2-spec__edited {
@@ -2545,9 +2385,10 @@
 }
 
 .ov2-spec__edit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-space-1-5);
   margin-left: auto;
-  padding: 2px 8px;
-  font-size: 11px;
 }
 
 .ov2-spec__touches {
@@ -2562,9 +2403,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 2px;
-  padding-top: 20px;
-  border-top: 1px solid var(--mn-border);
 }
 
 .ov2-spec-edit__note,
@@ -2594,17 +2432,20 @@
 .ov2-spec__body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 14px 0 4px;
+  gap: var(--mn-space-5);
+  padding-block-start: var(--mn-space-5);
 }
 
 .ov2-spec__label {
-  margin: 0 0 5px;
-  color: var(--mn-fg-muted);
-  font-size: 10px;
+  margin: 0 0 var(--mn-space-2);
+  color: var(--mn-fg);
+  font-size: var(--mn-type-md);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+}
+
+.ov2-spec__block + .ov2-spec__block {
+  border-block-start: 1px solid var(--mn-border);
+  padding-block-start: var(--mn-space-5);
 }
 
 /*
@@ -2613,8 +2454,8 @@
  * from the thread; the spec gets its own measure and its own density.
  */
 .ov2-spec__prose {
-  max-width: 74ch;
-  font-size: 13px;
+  max-width: 70ch;
+  font-size: var(--mn-type-md);
   line-height: 1.6;
   color: var(--mn-fg);
   overflow-wrap: anywhere;
@@ -4599,20 +4440,6 @@ select.ov2-create__input {
   /* 4 -> 2 lanes, from the twin-shape brief. */
   .ov2-kanban {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ov2-detail {
-    padding: 14px 14px 12px;
-  }
-
-  .ov2-detail__toolbar {
-    align-items: flex-start;
-    flex-direction: column-reverse;
-  }
-
-  .ov2-detail__actions {
-    justify-content: flex-start;
-    width: 100%;
   }
 
   .ov2-file__diff {

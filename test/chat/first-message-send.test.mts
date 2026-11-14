@@ -11,6 +11,7 @@ import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { appendBubble, createChatStreamingRow, renderChatFromHistory } from '../../src/ui/messages.ts';
 import { syncComposerFromStreamingState } from '../../src/ui/composer-send.ts';
 import { applyComposerDraftForChat, handleComposerDraftInput, persistComposerDraftForChatId } from '../../src/ui/composer-draft.ts';
+import { mountGraphiteThreadHeader } from '../../src/ui/thread-card.ts';
 
 const originalFetch = globalThis.fetch;
 Object.assign(globalThis, { sessionStorage: window.sessionStorage });
@@ -25,6 +26,26 @@ function setup(canonical = false) {
   input.value = 'Review the build';
   chat.composerDraft = input.value;
   return { chat, input, button: document.getElementById('sendBtn') as HTMLButtonElement };
+}
+
+function setupGraphite(canonical = false) {
+  const { chat, input, button } = setup(canonical);
+  window.location.hash = '#/app/code/chat';
+  const column = document.createElement('section');
+  column.id = 'mainColumn';
+  const viewport = document.createElement('div');
+  viewport.className = 'chat-viewport';
+  viewport.append(document.getElementById('chatArea')!);
+  const composer = document.createElement('div');
+  composer.className = 'input-bar';
+  composer.append(input, button);
+  column.append(viewport, composer);
+  document.body.innerHTML = '<header id="graphiteThreadHeader"></header>';
+  document.body.append(column);
+  mountGraphiteThreadHeader();
+  renderChatFromHistory(chat);
+  assert.ok(column.classList.contains('graphite-new-thread'));
+  return { chat, input, button, column, composer };
 }
 
 function deferred<T>() {
@@ -46,7 +67,7 @@ afterEach(async () => {
 });
 
 test('first message paints before delayed promotion, prevents duplicate sends and preserves a newer draft', async t => {
-  const { chat, input, button } = setup();
+  const { chat, input, button, column, composer } = setupGraphite();
   const image = { id: 'original-image', name: 'screen.png', kind: 'image' as const, size: 4, mimeType: 'image/png', dataUrl: 'data:image/png;base64,YWJjZA==' };
   pushAttachment(image);
   // Recover an in-flight promotion without using the live session store.
@@ -68,6 +89,10 @@ test('first message paints before delayed promotion, prevents duplicate sends an
   const status = document.querySelector('.msg--sending-status > .stream-status');
   try {
     assert.match(document.querySelector('.msg.user.msg--sending')?.textContent ?? '', /Review the build/);
+    assert.equal(column.classList.contains('graphite-new-thread'), false, 'the transcript is visible before server routing');
+    assert.equal(column.querySelector('.graphite-new-thread__intro')?.hasAttribute('hidden'), true);
+    assert.equal(column.querySelector('.graphite-new-thread__context')?.hasAttribute('hidden'), true);
+    assert.equal(column.querySelector(':scope > .input-bar'), composer, 'the wired composer stays mounted');
     assert.equal(input.value, '', 'the pending bubble and composer must never display the same text');
     assert.equal(chat.composerDraft, 'Review the build', 'retain the recoverable draft until acknowledgement');
     t.diagnostic(`First sending DOM: ${(performance.now() - started).toFixed(1)} ms, with promotion still unresolved`);
@@ -99,6 +124,7 @@ test('first message paints before delayed promotion, prevents duplicate sends an
   assert.equal(getPendingAttachments()[0]?.id, 'new-file');
   assert.equal(input.value, 'A newer draft');
   assert.equal(chat.composerDraft, 'A newer draft');
+  assert.equal(column.classList.contains('graphite-new-thread'), false, 'the receipt keeps the transcript visible');
   assert.equal(document.querySelectorAll('.msg.user').length, 1, 'the local echo survives until canonical history arrives');
   assert.ok(document.querySelector('.stream-status') === status, 'the receipt keeps the status mounted');
   chat.pendingMessageQueue = [{ id: 'accepted-first', text: 'Review the build', createdAt: 1,
@@ -156,7 +182,7 @@ test('a renderer-owned first turn keeps the pending status as it commits the use
 });
 
 test('a rejected first send removes the pending bubble and leaves the draft retryable', async () => {
-  const { chat, input, button } = setup(true);
+  const { chat, input, button, column } = setupGraphite(true);
   pushAttachment({ id: 'note', name: 'note.txt', kind: 'text', text: 'Details', size: 7, mimeType: 'text/plain' });
   const command = deferred<Response>();
   const dispatched = deferred<void>();
@@ -167,6 +193,7 @@ test('a rejected first send removes the pending bubble and leaves the draft retr
   const sending = sendMessageWithTools();
   try {
     assert.ok(document.querySelector('.msg--sending'));
+    assert.equal(column.classList.contains('graphite-new-thread'), false);
     assert.equal(input.value, '', 'clear before the command acknowledgement');
     handleComposerDraftInput();
     persistComposerDraftForChatId(chat.id);
@@ -180,6 +207,7 @@ test('a rejected first send removes the pending bubble and leaves the draft retr
     await sending;
   }
   assert.equal(document.querySelector('.msg--sending'), null);
+  assert.equal(column.classList.contains('graphite-new-thread'), true, 'a rejected send restores the start screen');
   assert.equal(input.value, 'Review the build');
   assert.equal(chat.composerDraft, input.value);
   assert.equal(chat.history.length, 0);

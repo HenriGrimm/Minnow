@@ -9,6 +9,13 @@ interface Submission {
 
 // Presentation only: admission and the runner remain the sole transcript writers.
 const submissions = new WeakMap<Chat, Submission>();
+const listeners = new Set<(chat: Chat) => void>();
+
+/** Keep the conversation's landing view in sync with the local first-message echo. */
+export function subscribeFirstMessageSubmission(listener: (chat: Chat) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 export function isFirstMessageSubmissionPending(chat: Chat): boolean {
   return submissions.get(chat)?.active === true;
@@ -16,6 +23,7 @@ export function isFirstMessageSubmissionPending(chat: Chat): boolean {
 
 export function beginFirstMessageSubmission(chat: Chat, message: QueuedComposerMessage): void {
   submissions.set(chat, { id: message.id, message, active: true, accepted: false });
+  for (const listener of listeners) listener(chat);
 }
 
 export function acceptFirstMessageSubmission(chat: Chat, submissionId: string | undefined, commandId: string, state: string): void {
@@ -36,6 +44,7 @@ export function finishFirstMessageSubmission(chat: Chat, submissionId?: string):
   if (!submission || submissionId !== undefined && submission.id !== submissionId) return;
   submission.active = false;
   if (!submission.accepted) submissions.delete(chat);
+  for (const listener of listeners) listener(chat);
 }
 
 export function getFirstMessageSubmission(chat: Chat): QueuedComposerMessage | undefined {

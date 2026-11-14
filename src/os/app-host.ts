@@ -13,6 +13,7 @@ import type { AppId, BuiltinAppId, LaunchOptions } from './types';
 import type { SettingsSectionId } from '../ui/settings-page-types';
 import { shouldSuppressDesktopChrome } from './shell-chrome';
 import { mountOsMobileDrawerBackdrops } from '../ui/mobile-drawer-portal';
+import { createBackToChatButton } from '../ui/back-to-chat';
 
 // ── Layers ───────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,10 @@ function mountAppLayers(): void {
       el.dataset.osApp = appId;
       appsLayer.appendChild(el);
     }
+  }
+
+  for (const header of appsLayer.querySelectorAll('[data-back-to-chat-header]')) {
+    if (!header.querySelector('.back-to-chat')) header.prepend(createBackToChatButton());
   }
 }
 

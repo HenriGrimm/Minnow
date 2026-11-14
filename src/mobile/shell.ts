@@ -234,7 +234,7 @@ export function mountMobileShell(): void {
     };
     for (const id of ['boards', 'issues', 'files'] as const) {
       const screen = roots[id];
-      screen.el.querySelector('.m-header')?.prepend(iconButton('fi-rr-menu-burger', 'Open menu', openDrawer));
+      screen.el.querySelector('.m-header__actions')?.append(iconButton('fi-rr-menu-burger', 'Open menu', openDrawer));
       registerTab(id, hosts.get(id)!, screen);
     }
   }

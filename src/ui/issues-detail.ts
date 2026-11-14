@@ -117,6 +117,8 @@ import {
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { isLocalServerAvailable } from '../tools/config';
 import { createIcon } from './icon';
+import { createBackToChatButton } from './back-to-chat';
+import { returnToChat } from '../os/router';
 import {
   createDetailIconButton,
   createDetailRow,
@@ -652,6 +654,14 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
     const header = document.createElement('header');
     header.className = 'issues-detail__header';
+    if (!options) {
+      const back = createBackToChatButton(() => {
+        closeIssueDetail();
+        void returnToChat();
+      });
+      back.classList.add('issues-detail__back-to-chat');
+      header.append(back);
+    }
 
     // The id is the thing people paste into a commit or a chat; make it one click.
     const idEl = document.createElement('button');

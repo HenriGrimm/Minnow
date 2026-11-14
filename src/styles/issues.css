@@ -111,6 +111,10 @@
   background: var(--mn-surface-1, var(--mn-bg));
 }
 
+.issues-page--embedded .issues-app-back {
+  display: none;
+}
+
 .issues-header__brand {
   display: flex;
   align-items: center;
@@ -2429,6 +2433,14 @@
   gap: 8px;
   min-width: 0;
   flex-wrap: wrap;
+}
+
+.issues-detail__back-to-chat {
+  display: none;
+}
+
+.issues-shell.is-detail-expanded:not(.is-detail-inline) .issues-detail__back-to-chat {
+  display: inline-flex;
 }
 
 .issues-detail__header-actions {

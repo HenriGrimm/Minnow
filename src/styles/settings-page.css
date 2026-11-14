@@ -1983,6 +1983,7 @@ label.settings-action-btn {
 }
 
 .settings-phone-bar__title {
+  flex: 1;
   min-width: 0;
   font-size: 15px;
   font-weight: 600;
@@ -1990,6 +1991,28 @@ label.settings-action-btn {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-phone-bar__back {
+  order: -1;
+}
+
+.settings-phone-bar__back-label {
+  display: none;
+}
+
+.settings-page:not(.m-native-app-page) .settings-phone-bar__back {
+  order: 0;
+  width: auto;
+  padding-inline: var(--mn-space-2);
+}
+
+.settings-page:not(.m-native-app-page) .settings-phone-bar__back .icon-svg {
+  display: none;
+}
+
+.settings-page:not(.m-native-app-page) .settings-phone-bar__back-label {
+  display: inline;
 }
 
 /* Phone (see ui/mobile-layout.ts — includes landscape phones, which are wide
@@ -2099,7 +2122,7 @@ html.mn-phone .settings-page--in-os-window .settings-page-header {
 }
 
 .settings-page--os-embedded:not(.settings-page--in-os-window) .settings-page-header {
-  grid-template-columns: minmax(0, 40rem) 1fr;
+  grid-template-columns: auto minmax(0, 40rem) 1fr;
   padding: 0 12px;
 }
 

@@ -914,12 +914,14 @@
 
 .chat-item-logo > svg {
   display: block;
-  width: 13px;
-  height: 13px;
+  /* Even dimensions keep the mark on the same pixel grid as its 16px host
+     and 22px working ring, rather than softening it on half pixels. */
+  width: 14px;
+  height: 14px;
 }
 
 .chat-item-logo > .icon-svg {
-  --mn-icon-size: 13px;
+  --mn-icon-size: 14px;
 }
 
 .chat-item-row.active .chat-item-logo {

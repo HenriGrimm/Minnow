@@ -90,7 +90,7 @@ export function createDirScreen(path: string, deps: FilesDeps): MobileScreen {
   const header = screenHeader({
     title: isRoot ? 'Files' : baseName(path),
     subtitle: isRoot ? getWorkspaceLabel() : dirName(path) || getWorkspaceLabel(),
-    back: !isRoot,
+    back: true,
     large: isRoot,
   });
   const list = el('div', { className: 'm-list', attrs: { role: 'list' } });

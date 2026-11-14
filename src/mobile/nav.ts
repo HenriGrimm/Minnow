@@ -193,6 +193,18 @@ export function popToRoot(tab: MobileTabId = activeTab): void {
   }
 }
 
+/** Reveal the most recent thread on the Chats tab, or its list when no thread is open. */
+export function returnToMobileChat(): void {
+  const stack = stacks.get('chats');
+  if (!stack) return;
+  let destination = stack.screens.length - 1;
+  while (destination > 0 && !stack.screens[destination].key.startsWith('chat:')) destination--;
+  // App pages can be pushed on any tab. Close that page before changing tabs.
+  if (activeTab !== 'chats' && top(activeTab)?.key.startsWith('app:')) popScreen();
+  selectTab('chats', { popToRoot: false });
+  while (stack.screens.length > destination + 1) popScreen();
+}
+
 /** The screen currently on top of the active tab. */
 export function getTopScreen(): MobileScreen | undefined {
   return top(activeTab);

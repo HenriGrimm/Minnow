@@ -109,6 +109,30 @@ describe('composer model trigger', () => {
       assert.equal(panel.style.bottom, 'auto');
       closeComposerModelMenu();
 
+      const { encodeModelSelectKey } = await import('../../src/lib/model-select-key.ts');
+      const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+      Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: win.localStorage });
+      localStorage.setItem('minnow.routers:global-v2', JSON.stringify({ revision: 0, defaultRouterId: null, routers: [
+        { id: 'composer-pool', name: 'Work', enabled: true, policy: 'evaluate', entries: [] },
+      ] }));
+      chat.providerId = 'minnow-router'; chat.modelId = 'composer-pool';
+      chat.agentExecution = { executionId: 'execution', state: 'completed',
+        modelSelection: { providerId: 'minnow-router', modelId: 'composer-pool' },
+        resolvedModel: { providerId: 'openai', modelId: 'chosen-model' } };
+      sel.innerHTML = `<option value="${encodeModelSelectKey('minnow-router', 'composer-pool')}">Work</option>`;
+      syncComposerModelTriggers();
+      assert.match(label!.textContent!, /chosen-model/);
+      assert.match(trigger!.getAttribute('aria-label')!, /chosen-model/);
+      const { getRouterConfigSync } = await import('../../src/models/routers.ts');
+      getRouterConfigSync().routers[0].policy = 'priority';
+      syncComposerModelTriggers();
+      assert.match(label!.textContent!, /Model pool.*chosen-model/);
+      chat.agentExecution.modelSelection!.modelId = 'another-pool';
+      syncComposerModelTriggers();
+      assert.doesNotMatch(label!.textContent!, /chosen-model/, 'previous pool execution must not leak');
+      delete chat.agentExecution;
+      if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage);
+      else Reflect.deleteProperty(globalThis, 'localStorage');
       sel.innerHTML = '<option value="">Loading models…</option>';
       syncComposerModelTriggers();
       assert.equal(spinner?.dataset.loadState, 'loading');

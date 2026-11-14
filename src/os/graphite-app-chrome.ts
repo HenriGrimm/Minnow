@@ -30,6 +30,7 @@ const SETTINGS_ICONS: Partial<Record<string, IconName | 'githubMark'>> = {
   terminal: 'terminal',
   lsp: 'fileCode',
   browser: 'browser',
+  'external-connections': 'link',
   github: 'githubMark',
   issues: 'appIssues',
   models: 'appModels',
@@ -102,7 +103,9 @@ export function initGraphiteAppChrome(): () => void {
       else searchHome.insertBefore(search, searchNext ?? null);
     }
     if (desktop) {
-      settingsHeader?.prepend(settingsTitle);
+      const back = settingsHeader?.querySelector('#btnSettingsPageBack');
+      if (back) back.after(settingsTitle);
+      else settingsHeader?.prepend(settingsTitle);
       if (settingsInput) settingsInput.placeholder = 'Search settings';
       originalDetails = new Map(details.map((entry) => [entry, entry.open]));
       for (const entry of details) entry.open = true;

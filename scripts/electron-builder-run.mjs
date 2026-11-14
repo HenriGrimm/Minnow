@@ -10,6 +10,13 @@ import { prepareReleaseOutput } from './clean-release.mjs';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputDir = 'release/pkg';
 
+// Refresh Windows and tray assets on every packaging host, not just Windows installs.
+const syncIcon = spawnSync(process.execPath, ['scripts/sync-app-icon.mjs'], {
+  cwd: repoRoot,
+  stdio: 'inherit',
+});
+if (syncIcon.status !== 0) process.exit(syncIcon.status ?? 1);
+
 // Fail before asar packing if server imports a src/ file not listed in build.files.
 
 const validate = spawnSync('node', ['scripts/validate-packaged-runtime-files.mjs'], {

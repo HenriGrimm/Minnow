@@ -86,7 +86,7 @@ test('Graphite moves Updates with the workspace actions and leaves the titlebar 
   const win = new Window({ width: 1440, height: 900 });
   installHappyDomGlobals(win);
   win.document.body.innerHTML = `
-    <div id="appBody"><aside id="chatSidebar" class="collapsed"></aside></div>
+    <div id="appBody"><aside id="chatSidebar" class="collapsed"><div id="chatSidebarResizer"></div></aside></div>
     <div id="osStage"></div>
     <nav id="osAppRail"><div class="mn-os-app-rail__nav"></div></nav>
     <div id="osMenubar">
@@ -102,6 +102,7 @@ test('Graphite moves Updates with the workspace actions and leaves the titlebar 
   );
   const slot = document.getElementById('osMenubarUpdateSlot')!;
   const sidebar = document.getElementById('chatSidebar')!;
+  const resizer = document.getElementById('chatSidebarResizer')!;
   const toggle = (open: boolean) => {
     sidebar.classList.toggle('collapsed', !open);
     window.dispatchEvent(new window.Event(CHAT_SIDEBAR_CHANGED_EVENT));
@@ -111,11 +112,13 @@ test('Graphite moves Updates with the workspace actions and leaves the titlebar 
     assert.ok(slot.closest('.mn-os-mb-right'));
     toggle(true);
     assert.ok(slot.closest('.mn-graphite-sidebar-footer'));
+    assert.equal(resizer.parentElement, document.getElementById('osAppRail'));
     assert.equal(document.querySelector('.mn-os-mb-left')?.children.length, 2);
     toggle(false);
     assert.ok(slot.closest('.mn-os-mb-right'));
   } finally {
     dispose();
+    assert.equal(resizer.parentElement, sidebar);
     resetInstancesForTests();
     await win.happyDOM.abort();
     win.close();

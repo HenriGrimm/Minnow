@@ -320,7 +320,7 @@ export function initCodeBrainMap(): void {
     const target = ev.target;
     if (!(target instanceof Element)) return;
     if (target.closest('#btnCodeBrainMapBack')) {
-      closeCodeBrainMap();
+      void import('../os/router').then((m) => m.returnToChat());
     }
   });
 

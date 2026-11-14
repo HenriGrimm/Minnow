@@ -167,6 +167,26 @@ afterEach(async () => {
   resetMobileNavForTests();
 });
 
+test('the phone Back to chat arrow returns from another app to the open thread', async () => {
+  const nav = await import('../../src/mobile/nav.ts');
+  const { screenHeader } = await import('../../src/mobile/chrome.ts');
+  const host = () => win.document.createElement('div') as unknown as HTMLElement;
+  const log: Log = [];
+  nav.registerTab('chats', host(), await screen('chats', log));
+  nav.registerTab('issues', host(), await screen('issues', log));
+  nav.pushScreen(await screen('chat:original', log));
+  nav.pushScreen(await screen('issue:1', log), 'issues');
+  nav.pushScreen(await screen('app:settings', log));
+
+  const back = screenHeader({ title: 'Settings', back: true }).el.firstElementChild as HTMLButtonElement;
+  assert.equal(back.getAttribute('aria-label'), 'Back to chat');
+  back.click();
+  assert.equal(nav.getTopScreen()?.key, 'chat:original');
+  assert.ok(log.includes('dispose:app:settings'));
+  nav.selectTab('issues', { popToRoot: false });
+  assert.equal(nav.getTopScreen()?.key, 'issue:1');
+});
+
 test('each tab keeps its own stack; re-selecting a tab pops it to the root', async () => {
   const nav = await import('../../src/mobile/nav.ts');
   const log: Log = [];

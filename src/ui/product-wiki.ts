@@ -11,6 +11,7 @@ import { iconHtml } from './icon';
 import { compareProductWikiEntries } from '../product-wiki/nav-order.mjs';
 import { renderProductWikiMarkdown } from './product-wiki-markdown';
 import { closeShellOverlays, isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { createBackToChatButton } from './back-to-chat';
 
 const DEFAULT_PAGE_PATH = 'documentation/manual/README.md';
 const REPOSITORY_EDIT_BASE =
@@ -175,6 +176,7 @@ function ensureProductWikiRoot(): HTMLElement {
       </main>
     </div>
   `;
+  root.querySelector('.product-wiki__identity')?.prepend(createBackToChatButton());
   (document.getElementById('osStage') ?? document.body).appendChild(root);
   bindProductWiki(root);
   return root;

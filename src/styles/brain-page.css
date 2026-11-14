@@ -126,9 +126,13 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   box-shadow: var(--shadow-card);
 }
 
-.brain-page-header__back {
+.brain-page-header__navigation {
   flex-shrink: 0;
   align-self: center;
+}
+
+.brain-page.is-graph-canvas-bg .brain-page-header__navigation {
+  display: none;
 }
 
 .brain-page-header__main {

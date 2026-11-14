@@ -9,6 +9,8 @@ export interface RouterRouteLabelInput {
   poolName: string;
   route?: RouterRouteState;
   scopeKey?: string;
+  /** Canonical execution model when no renderer-side evaluator decision arrived. */
+  modelLabel?: string;
 }
 
 interface RouteMotion {
@@ -142,12 +144,12 @@ export function renderRouterRouteLabel(host: HTMLElement, input: RouterRouteLabe
   parts.root.classList.toggle('is-deciding', deciding);
   parts.root.setAttribute('aria-busy', String(deciding));
   const level = deciding && !route?.decision ? 'Evaluating' : routerDecisionLevelLabel(route?.decision);
-  const model = route?.decision?.modelLabel || poolName;
+  const model = input.modelLabel || route?.decision?.modelLabel || poolName;
   if (parts.level.textContent !== level) parts.level.textContent = level;
   if (parts.model.textContent !== model) parts.model.textContent = model;
   if (finishing && !reducedMotion) {
     animatePart(motion!, parts.level, [{ opacity: .35, transform: 'translateY(3px)' }, { opacity: 1, transform: 'none' }], 240);
     animatePart(motion!, parts.model, [{ opacity: .35, transform: 'translateY(3px)' }, { opacity: 1, transform: 'none' }], 300);
   }
-  host.title = routerDecisionTitle(route, poolName);
+  host.title = input.modelLabel ? `${poolName} · ${input.modelLabel}` : routerDecisionTitle(route, poolName);
 }

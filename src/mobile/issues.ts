@@ -191,6 +191,7 @@ export function createIssuesScreen(deps: { openIssue(issueId: string): void }): 
   const header = screenHeader({
     title: 'Issues',
     large: true,
+    back: true,
     actions: [
       el('button', {
         className: 'm-btn m-btn--primary',

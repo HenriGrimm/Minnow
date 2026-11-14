@@ -865,25 +865,24 @@ describe('renderTaskDetail', () => {
     ]);
   }
 
-  test('opens as a modal overlay with the facts strip above the scroll body', () => {
+  test('opens the task spec with a pinned heading and three detail tabs', () => {
     setupDom();
     const state = unrunBoard();
     const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    assert.equal(node.className, 'ov2-detail-overlay');
     const dialog = node.querySelector('.ov2-detail')!;
     assert.equal(dialog.getAttribute('role'), 'dialog');
     assert.equal(dialog.getAttribute('aria-modal'), 'true');
-    assert.ok(node.querySelector('.ov2-facts'), 'status facts live in the pinned head');
-    assert.match(node.querySelector('.ov2-facts')!.textContent!, /StatusPlanned/);
-    assert.doesNotMatch(node.querySelector('.ov2-facts')!.textContent!, /Column/);
-    assert.ok(node.querySelector('.ov2-detail__actions'), 'task actions share the header toolbar');
-    assert.ok(node.querySelector('.ov2-detail__rail'));
-    assert.ok(node.querySelector('.ov2-thread'), 'the thread gets its own pane');
-    // The head is not part of either scrolling pane, so the title stays put.
-    assert.equal(node.querySelector('.ov2-detail__panes .ov2-detail__title'), null);
+    assert.match(dialog.querySelector('.ov2-detail__eyebrow')!.textContent!, /Planned/);
+    assert.match(dialog.querySelector('.ov2-facts')!.textContent!, /Wave1/);
+    const tabs = [...dialog.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    assert.deepEqual(tabs.map(tab => tab.textContent), ['Spec', 'Activity', 'Files']);
+    assert.equal(tabs[0].getAttribute('aria-selected'), 'true');
+    assert.match(dialog.querySelector('[role="tabpanel"]:not([hidden])')!.textContent!, /Create package.json/);
+    assert.equal(dialog.querySelector('[data-task-action="start:W1-A"]')?.textContent, 'Start');
+    assert.equal(dialog.querySelector('[role="tabpanel"] .ov2-detail__title'), null);
   });
 
-  test('the detail header exposes the same task actions as the card menu', () => {
+  test('puts secondary actions and unavailable Start in the shared task menu', () => {
     setupDom();
     const state = board();
     const task = state.tasks.get('W1-B')!;
@@ -893,20 +892,15 @@ describe('renderTaskDetail', () => {
       abandonTask: (taskId) => abandoned.push(taskId),
     };
     const node = renderTaskDetail(state, task, actions, OPTIONS);
-    const detailIds = [...node.querySelectorAll<HTMLElement>('[data-task-action]')].map(
-      (control) => control.dataset.taskAction,
-    );
-    const menuIds = buildTaskCardMenuItems(state, task, actions, OPTIONS).map((item) =>
-      'id' in item ? item.id : undefined,
-    );
-    assert.deepEqual(detailIds, menuIds);
-    assert.deepEqual(detailIds, ['start:W1-B', 'abandon:W1-B', 'skip:W1-B', 'reset:W1-B']);
-    assert.equal(
-      node.querySelector<HTMLButtonElement>('[data-task-action="start:W1-B"]')!.disabled,
-      true,
-      'Start stays visible but explains that the task is already running',
-    );
-    node.querySelector<HTMLButtonElement>('[data-task-action="abandon:W1-B"]')!.click();
+    document.body.appendChild(node);
+    assert.equal(node.querySelector('[data-task-action]'), null);
+    node.querySelector<HTMLButtonElement>('[data-focus-key="detail-menu"]')!.click();
+    const menu = node.querySelector('[role="menu"]')!;
+    const menuIds = [...menu.querySelectorAll<HTMLElement>('[data-id]')].map(control => control.dataset.id);
+    const cardMenuIds = buildTaskCardMenuItems(state, task, actions, OPTIONS).map(item => item.id);
+    assert.deepEqual(menuIds, cardMenuIds);
+    assert.equal(menu.querySelector<HTMLButtonElement>('[data-id="start:W1-B"]')!.disabled, true);
+    menu.querySelector<HTMLButtonElement>('[data-id="abandon:W1-B"]')!.click();
     assert.deepEqual(abandoned, ['W1-B']);
   });
 
@@ -916,45 +910,33 @@ describe('renderTaskDetail', () => {
     assert.equal(runningAgentAttempt(state.tasks.get('W1-A')!), null, 'merged work is not live');
   });
 
-  test('leads with the run and keeps the spec last', () => {
+  test('opens live work on Activity and keeps the selected tab through a repaint', () => {
     setupDom();
-    const state = unrunBoard();
-    const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    const railText = node.querySelector('.ov2-detail__rail')!.textContent!;
-    const filesAt = railText.indexOf('Files');
-    const workAt = railText.indexOf('Work');
-    const specAt = railText.indexOf('Spec');
-    assert.ok(filesAt >= 0 && workAt > filesAt, 'Files precede Work');
-    assert.ok(specAt > workAt, 'the spec is last, not the first screen');
+    const state = board();
+    const task = state.tasks.get('W1-B')!;
+    const node = renderTaskDetail(state, task, NO_ACTIONS, OPTIONS);
+    document.body.appendChild(node);
+    const activePage = () => node.querySelector('[role="tabpanel"]:not([hidden])');
+    assert.ok(activePage()!.classList.contains('ov2-detail__activity'));
+    node.querySelector<HTMLButtonElement>('[data-tab-id="spec"]')!.click();
+    syncTaskDetailOverlay(node, state, task, NO_ACTIONS, OPTIONS);
+    assert.ok(activePage()!.classList.contains('ov2-detail__spec'));
   });
 
-  test('opens the spec for a task that has not run, and folds it once it has', () => {
-    setupDom();
-    const unrun = unrunBoard();
-    const fresh = renderTaskDetail(unrun, unrun.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    assert.equal(fresh.querySelector<HTMLDetailsElement>('.ov2-spec')!.open, true);
-
-    setupDom();
-    const ran = board();
-    const after = renderTaskDetail(ran, ran.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    const spec = after.querySelector<HTMLDetailsElement>('.ov2-spec');
-    if (spec) assert.equal(spec.open, false, 'a task with attempts folds its spec away');
-  });
-
-  test('Close and scrim both dismiss via select(null)', () => {
+  test('Close and a click beginning on the scrim dismiss via select(null)', () => {
     setupDom();
     const state = board();
     const calls: Array<string | null> = [];
-    const actions: BoardActions = {
-      ...NO_ACTIONS,
-      select: (id) => calls.push(id),
-    };
+    const actions: BoardActions = { ...NO_ACTIONS, select: (id) => calls.push(id) };
     const node = renderTaskDetail(state, state.tasks.get('W1-A')!, actions, OPTIONS);
     node.querySelector<HTMLButtonElement>('[data-focus-key="detail-close"]')!.click();
     assert.deepEqual(calls, [null]);
-    calls.length = 0;
+    node.querySelector('.ov2-detail')!.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
     node.click();
-    assert.deepEqual(calls, [null]);
+    assert.deepEqual(calls, [null], 'dragging from the content to the scrim does not dismiss');
+    node.dispatchEvent(new window.Event('pointerdown'));
+    node.click();
+    assert.deepEqual(calls, [null, null]);
   });
 
   test('an agent row opens its thread, and engine steps have none to open', () => {
@@ -988,16 +970,15 @@ describe('renderTaskDetail', () => {
     }
   });
 
-  test('Work counts agents, not engine steps', () => {
+  test('Attempts counts the agent and engine rows together', () => {
     setupDom();
     const state = board();
     const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
     const panels = [...node.querySelectorAll('.ov2-panel')];
-    const work = panels.find((p) => p.querySelector('.ov2-panel__title')?.textContent === 'Work')!;
-    assert.ok(work, 'the section is called Work');
-    // Two rows — builder and merge — but only the builder is an agent.
+    const work = panels.find((p) => p.querySelector('.ov2-panel__title')?.textContent === 'Attempts')!;
+    assert.ok(work, 'the section is called Attempts');
     assert.equal(work.querySelectorAll('.ov2-work__item').length, 2);
-    assert.equal(work.querySelector('.ov2-panel__count')!.textContent, '1 agent');
+    assert.equal(work.querySelector('.ov2-panel__count')!.textContent, '2');
   });
 
   test('Work list leads with a scent and hides the rest of a long write-up', () => {
@@ -1011,7 +992,7 @@ describe('renderTaskDetail', () => {
     builder.evidence = { blockers: ['psql refused'], files: ['a.ts'] };
     const node = renderTaskDetail(state, task, NO_ACTIONS, OPTIONS);
     const work = [...node.querySelectorAll('.ov2-panel')].find(
-      (panel) => panel.querySelector('.ov2-panel__title')?.textContent === 'Work',
+      (panel) => panel.querySelector('.ov2-panel__title')?.textContent === 'Attempts',
     )!;
     assert.match(work.textContent!, /W3-B complete\./);
     assert.match(work.textContent!, /psql refused/);
@@ -1023,17 +1004,15 @@ describe('renderTaskDetail', () => {
     assert.match(work.textContent!, /UNIQUE_WORK_TOKEN/);
   });
 
-  test('Files panel defaults collapsed with a file-count badge', () => {
+  test('Files opens its own tab with the planned file count', () => {
     setupDom();
     const state = unrunBoard();
     const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
-    assert.ok(panel);
-    assert.equal(panel.open, false);
-    assert.equal(panel.querySelector('.ov2-files-panel__badge')!.textContent, '1');
-    panel.open = true;
-    panel.dispatchEvent(new window.Event('toggle'));
-    assert.ok(panel.querySelector('.ov2-files--planned'));
+    const panel = node.querySelector<HTMLElement>('.ov2-detail__files')!;
+    assert.equal(panel.hidden, true);
+    node.querySelector<HTMLButtonElement>('[data-tab-id="files"]')!.click();
+    assert.equal(panel.hidden, false);
+    assert.equal(panel.querySelector('.ov2-panel__count')!.textContent, '1 file');
     assert.match(panel.textContent!, /a\.ts/);
   });
 
@@ -1041,7 +1020,7 @@ describe('renderTaskDetail', () => {
     setupDom();
     const state = unrunBoard();
     const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
+    const panel = node.querySelector<HTMLElement>('.ov2-files-panel')!;
     panel.open = true;
     panel.dispatchEvent(new window.Event('toggle'));
     assert.ok(panel.querySelector('.ov2-files--planned'));
@@ -1068,10 +1047,7 @@ describe('renderTaskDetail', () => {
         expanded: new Set<string>(),
       },
     });
-    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
-    panel.open = true;
-    panel.dispatchEvent(new window.Event('toggle'));
-    assert.equal(panel.querySelector('.ov2-files-panel__badge')!.textContent, '1');
+    const panel = node.querySelector<HTMLElement>('.ov2-files-panel')!;
     assert.match(panel.querySelector('.ov2-panel__meta')!.textContent!, /1 file/);
     assert.equal(panel.querySelector('.ov2-stat--add')!.textContent, '+12');
     // Directory and filename are separate so the filename never gets truncated.
@@ -1102,9 +1078,7 @@ describe('renderTaskDetail', () => {
         },
       },
     );
-    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
-    panel.open = true;
-    panel.dispatchEvent(new window.Event('toggle'));
+    const panel = node.querySelector<HTMLElement>('.ov2-files-panel')!;
     panel.querySelector<HTMLButtonElement>('[data-focus-key="file-toggle:src/a.ts"]')!.click();
     assert.deepEqual(asked, ['src/a.ts']);
   });
@@ -1377,7 +1351,7 @@ describe('renderTaskDetail', () => {
     setupDom();
     const state = board();
     const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    assert.match(node.querySelector('.ov2-thread__blank')!.textContent!, /Pick a Builder or Tester/);
+    assert.match(node.querySelector('.ov2-thread__blank')!.textContent!, /Select an attempt/);
   });
 
   test('says outright that a skipped task did not fail, above everything else', () => {
@@ -1390,8 +1364,9 @@ describe('renderTaskDetail', () => {
     const alert = node.querySelector('.ov2-alert--warn')!;
     assert.match(alert.textContent!, /did not fail itself/);
     // Alerts come before every section, because they are why the card was opened.
-    const rail = node.querySelector('.ov2-detail__rail')!;
-    assert.ok(rail.firstElementChild!.classList.contains('ov2-alert'));
+    const alerts = node.querySelector('.ov2-detail__alerts')!;
+    assert.equal(alerts.firstElementChild, alert);
+    assert.equal(alerts.nextElementSibling?.classList.contains('ov2-detail__tabs'), true);
   });
 
   test('footprint noise never becomes an alert', () => {
@@ -1569,7 +1544,7 @@ for (const reason of ['paused', 'user', 'quota'] as const) {
     const inactiveTask = inactive.tasks.get('W1-B')!;
     syncTaskDetailOverlay(overlay, inactive, inactiveTask, NO_ACTIONS, options);
     assert.equal(overlay.querySelector('.ov2-thread')?.getAttribute('data-run-state'), label);
-    assert.match(overlay.querySelector('.ov2-detail__top')!.textContent!, new RegExp(label));
+    assert.match(overlay.querySelector('.ov2-detail__top')!.textContent!, new RegExp(label, 'i'));
     assert.equal(overlay.querySelector('.ov2-work__running'), null);
     assert.match(overlay.querySelector('.ov2-thread__head')!.textContent!, new RegExp(label));
     assert.equal(overlay.querySelector('.tool-call-spinner'), null);

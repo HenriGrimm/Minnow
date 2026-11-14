@@ -105,6 +105,10 @@ export function usePhonePresentation(): boolean {
   return Boolean(mobilePortal || document.documentElement.classList.contains('mn-mobile-app') || isPhoneLayout());
 }
 
+function isBoardsStageOpen(): boolean {
+  return !mobilePortal && Boolean(stage?.querySelector('#orchestratorBoardsRoot'));
+}
+
 function syncChat(chat: Chat): void {
   const next = preferenceKey(chat);
   if (activeKey === next) return;
@@ -202,18 +206,19 @@ function placePanel(panel: SurfaceDock, root: HTMLElement, open: boolean, docked
 function renderPlacement(animateClose?: SurfaceDock): void {
   if (!stage) return;
   const isPhone = usePhonePresentation();
-  const side = isPhone ? mobileShown === 'side' : isPanelVisible(state, 'side');
-  const bottom = isPhone ? mobileShown === 'bottom' : isPanelVisible(state, 'bottom');
+  const showPanels = !isBoardsStageOpen();
+  const side = showPanels && (isPhone ? mobileShown === 'side' : isPanelVisible(state, 'side'));
+  const bottom = showPanels && (isPhone ? mobileShown === 'bottom' : isPanelVisible(state, 'bottom'));
   stage.dataset.surfaceSide = String(side);
   stage.dataset.surfaceBottom = String(bottom);
-  stage.dataset.surfaceMax = isPhone ? '' : state.maximized ?? '';
+  stage.dataset.surfaceMax = showPanels && !isPhone ? state.maximized ?? '' : '';
   stage.classList.toggle('graphite-surfaces--phone', isPhone);
   mobileBackdrop.hidden = !(isPhone && (side || bottom));
   document.getElementById('mainColumn')?.toggleAttribute('inert', isPhone && (side || bottom));
   for (const panel of SURFACE_DOCKS) {
     const open = panel === 'side' ? side : bottom;
     const root = mounted.get(panel)?.root;
-    if (root) placePanel(panel, root, open, !isPhone && !state.maximized, animateClose === panel);
+    if (root) placePanel(panel, root, open, showPanels && !isPhone && !state.maximized, animateClose === panel);
     if (isPhone && open) {
       root?.setAttribute('role', 'dialog');
       root?.setAttribute('aria-modal', 'true');
@@ -1144,7 +1149,7 @@ function handleLegacyRequest(id: LauncherSurfaceId, action: 'show' | 'hide' | 't
 
 function onShortcut(event: KeyboardEvent): void {
   const host = mobilePortal?.host ?? stage;
-  if (event.defaultPrevented || event.isComposing || !host?.getClientRects().length) return;
+  if (event.defaultPrevented || event.isComposing || !host?.getClientRects().length || isBoardsStageOpen()) return;
   const foreground = document.querySelector('.mn-os-app-layer.is-active');
   if (foreground && !mobilePortal && !foreground.contains(host)) return;
   const target = event.target instanceof HTMLElement ? event.target : null;

@@ -11,7 +11,6 @@ import {
   getForegroundAppId,
   getInstanceSnapshot,
   resetInstancesForTests,
-  subscribeInstances,
 } from '../../src/os/instances.ts';
 import { initOsPageBridge, resetOsPageBridgeForTests } from '../../src/os/page-bridge.ts';
 import {
@@ -22,11 +21,13 @@ import {
   navigateToCodeOverview,
   navigateToDesktop,
   parseOsHash,
+  returnToChat,
   resetOsRouterForTests,
   resolveLegacyHash,
   syncOsRouteFromHashForTests,
 } from '../../src/os/router.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
+import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { installHappyDomGlobals } from './dom-helpers.mts';
 
 const CHATS_WS = '/home/user/.minnow/chats';
@@ -205,6 +206,8 @@ describe('os router navigation', () => {
     resetOsPageBridgeForTests();
     resetAppHostForTests();
     resetAppPreferencesForTests();
+    resetWorkspaceStateForTests();
+    setSessionStateForTests(null);
   });
 
   test('getCurrentRoute reflects legacy desktop hash as workspaces', () => {
@@ -222,39 +225,32 @@ describe('os router navigation', () => {
     assert.equal(route.appId, 'code');
   });
 
-  test('Code stage routes replace the menubar logo with Back to chat', { timeout: 5000 }, async () => {
-    const { renderMenubar } = await import('../../src/os/menubar.ts');
-    const menubar = document.createElement('header');
-    document.body.append(menubar);
-    const cleanup = renderMenubar(menubar);
-    try {
-      const logo = menubar.querySelector<HTMLElement>('.mn-os-mb-logo')!;
-      const back = menubar.querySelector<HTMLButtonElement>('button[aria-label="Back to chat"]')!;
-      assert.equal(logo.hidden, false);
-      assert.equal(back.hidden, true);
+  test('Back to chat retains the originating conversation across app and page changes', async () => {
+    const workspace = '/repo';
+    const original = createEmptyChatObject('test-model', workspace);
+    const other = createEmptyChatObject('test-model', workspace);
+    const state = {
+      version: 5 as const, activeId: original.id, sidebarCollapsed: false,
+      lastActiveChatIdByWorkspace: {}, lastActiveChatIdByApp: {}, chats: [original, other],
+    };
+    setWorkspaceFromServer({ path: workspace, label: 'repo', isDefault: false });
+    setSessionStateForTests(state);
+    launchApp('code');
+    launchApp('code', { codeSection: 'boards' });
+    setSessionStateForTests({ ...state, activeId: other.id });
+    launchApp('models', { modelsSection: 'providers' });
+    launchApp('settings', { settingsSection: 'general' });
 
-      for (const section of ['map', 'orchestrate', 'boards', 'dev-server']) {
-        window.location.hash = `#/app/code/${section}`;
-        syncOsRouteFromHashForTests();
-        assert.equal(logo.hidden, true, section);
-        assert.equal(back.hidden, false, section);
-      }
+    await returnToChat();
+    assert.equal(getForegroundAppId(), 'code');
+    assert.equal(getCurrentRoute().chatId, original.id);
 
-      const returned = new Promise<void>((resolve) => {
-        const unsubscribe = subscribeInstances(() => {
-          if (window.location.hash !== '#/app/code/chat') return;
-          unsubscribe();
-          resolve();
-        });
-      });
-      back.click();
-      await returned;
-      assert.equal(logo.hidden, false);
-      assert.equal(back.hidden, true);
-    } finally {
-      cleanup();
-      menubar.remove();
-    }
+    // A removed conversation falls back to the workspace chat entry point.
+    launchApp('code');
+    launchApp('brain');
+    setSessionStateForTests({ ...state, activeId: other.id, chats: [other] });
+    await returnToChat();
+    assert.equal(window.location.hash, '#/app/code/chat');
   });
 
   test('explicit #/app/code/chat wins over leftover overview pending', () => {

@@ -272,6 +272,12 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     : undefined;
   // Auto pools own their reasoning and model label; plain writes would reset it.
   const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) ? router : undefined;
+  const chat = getActiveChat();
+  const selection = chat?.agentExecution?.modelSelection;
+  const resolved = !isMenubarStyleVariant(trigger.variant) && router &&
+    selection?.providerId === 'minnow-router' && canonicalRouterBinding(selection).modelId === modelId
+    ? chat.agentExecution?.resolvedModel : undefined;
+  const resolvedLabel = resolved?.modelId && resolved.providerId !== 'minnow-router' ? resolved.modelId : undefined;
 
   if (!autoPool) clearRouterRouteLabel(trigger.labelEl);
   if (autoPool) {
@@ -323,12 +329,13 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
       poolName: autoPool.name,
       scopeKey: JSON.stringify([getActiveChat()?.id, autoPool.id]),
       route: routerRouteState(getActiveChat()?.id || '', autoPool.id),
+      modelLabel: resolvedLabel,
     });
     trigger.trigger.setAttribute('aria-label', `Active Auto model: ${trigger.labelEl.textContent}`);
     trigger.trigger.title = trigger.labelEl.title;
   } else {
     if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
-      const assignment = !isMenubarStyleVariant(trigger.variant) ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
+      const assignment = resolvedLabel || (!isMenubarStyleVariant(trigger.variant) ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '');
       trigger.labelEl.textContent = `${router?.name || modelId} · ${router?.policy === 'evaluate' ? 'Auto model pool' : 'Model pool'}${assignment ? ` → ${assignment}` : ''}`;
     }
     if (!isMenubarStyleVariant(trigger.variant)) {

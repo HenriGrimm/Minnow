@@ -14,6 +14,10 @@ import { osOnAppClose, osOnAppOpen } from './page-bridge';
 import { getAppWindowId, isHashInAppWindow, resolveAppWindowBootHash } from './app-window';
 import { CODE_SECTION_IDS, type AppId, type CodeSectionId, type LaunchOptions, type OsRoute } from './types';
 import { chatIdFromLink, chatLink } from '../state/chat-relationships';
+import { findChatById, sessionState } from '../state/sessions';
+import { getCurrentWorkspaceInfo } from '../state/workspace';
+import { workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +38,8 @@ let initialized = false;
 let applyingRoute = false;
 let lastForegroundApp: AppId | null = null;
 let lastRecordedSurface: AppId | null = null;
+let wasOnCodeChat = false;
+let chatReturnTarget: { chatId: string; workspacePath: string } | undefined;
 let pendingSettingsSection: string | undefined;
 let pendingModelsSection: string | undefined;
 let pendingCodeSection: CodeSectionId | undefined;
@@ -244,7 +250,19 @@ function syncForegroundLifecycle(nextApp: AppId | null): void {
 
 // ── Apply route ──────────────────────────────────────────────────────────────
 
+function trackCodeChatVisit(onChat: boolean): void {
+  if (wasOnCodeChat && !onChat) {
+    const workspacePath = getCurrentWorkspaceInfo().path;
+    const chat = findChatById(sessionState?.activeId ?? '');
+    chatReturnTarget = chat && !isGraphiteSideChat(chat) && workspacePathsEqual(chat.workspacePath ?? '', workspacePath)
+      ? { chatId: chat.id, workspacePath }
+      : undefined;
+  }
+  wasOnCodeChat = onChat;
+}
+
 function applyRoute(route: OsRoute, options?: LaunchOptions): void {
+  trackCodeChatVisit(route.appId === 'code' && route.codeSection === 'chat');
   if (route.appId !== 'settings') shellOverlayClosed('settings');
   if (route.view === 'workspaces') {
     syncForegroundLifecycle(null);
@@ -298,6 +316,7 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
 function applyRouteFromHash(): void {
   if (applyingRoute) return;
   if (window.location.hash === '#/wiki' || window.location.hash.startsWith('#/wiki/')) {
+    trackCodeChatVisit(false);
     void import('../ui/product-wiki').then((module) => module.initProductWiki());
     return;
   }
@@ -442,6 +461,8 @@ export function resetOsRouterForTests(): void {
   applyingRoute = false;
   lastForegroundApp = null;
   lastRecordedSurface = null;
+  wasOnCodeChat = false;
+  chatReturnTarget = undefined;
   pendingSettingsSection = undefined;
   pendingModelsSection = undefined;
   pendingCodeSection = undefined;
@@ -482,6 +503,28 @@ export function navigateToCodeOverview(): void {
 /** Navigate to the Code app chat workspace. */
 export function navigateToCodeChat(): void {
   navigateToCodeSection('chat');
+}
+
+/** Return to the conversation that was selected before leaving the chat workspace. */
+export async function returnToChat(): Promise<void> {
+  const workspacePath = getCurrentWorkspaceInfo().path;
+  if (getAppWindowId()) {
+    try {
+      const { routeCodeWindowCommand } = await import('./code-window-command');
+      await routeCodeWindowCommand({ kind: 'chat', workspacePath });
+    } catch (error) {
+      const { showToast } = await import('../ui/toast');
+      showToast(error instanceof Error ? error.message : 'Could not open Code window', 'error');
+    }
+    return;
+  }
+
+  const target = chatReturnTarget;
+  const chat = !wasOnCodeChat && target && workspacePathsEqual(target.workspacePath, workspacePath)
+    ? findChatById(target.chatId) : undefined;
+  const chatId = chat && workspacePathsEqual(chat.workspacePath ?? '', workspacePath) ? chat.id : undefined;
+  // The ordinary Code foreground path preserves the mounted transcript and draft.
+  launchApp('code', chatId && chatId !== sessionState?.activeId ? { chatId } : undefined);
 }
 
 /** Navigate to the Code app Dev Servers screen. */

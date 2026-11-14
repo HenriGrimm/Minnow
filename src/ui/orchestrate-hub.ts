@@ -36,6 +36,7 @@ import { teardownHub } from './hub';
 import { closeBoardChatEmbedForTeardown } from './orchestrate-board-chat';
 import { teardownOrchestratePlanScreen } from './orchestrate-plan-screen';
 import { openOrchestratePlanScreen } from './orchestrate-plan-screen';
+import { createBackToChatButton } from './back-to-chat';
 import {
   buildOrchestratePageShell,
   disposeOrchestratePageShell,
@@ -260,6 +261,10 @@ function buildOrchestrateHubDom(): HTMLElement {
   const pane = document.createElement('div');
   pane.className = 'ob-pane--ask';
 
+  const header = document.createElement('header');
+  header.className = 'orchestrate-hub__header';
+  header.append(createBackToChatButton());
+
   const ask = document.createElement('div');
   ask.className = 'ob-ask';
 
@@ -371,7 +376,7 @@ function buildOrchestrateHubDom(): HTMLElement {
   workflow.append(sec, field, hint, previewSection);
   ask.append(eyebrow, heading, lede, workspaceLine, workflow);
   pane.appendChild(ask);
-  main.appendChild(pane);
+  main.append(header, pane);
 
   const chat = getActiveChat();
 

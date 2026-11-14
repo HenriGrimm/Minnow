@@ -1,14 +1,14 @@
 /** Shared screen chrome: headers, segmented filters, pull-to-refresh. */
 
 import { el, icon, iconButton } from './dom';
-import { popScreen } from './nav';
+import { popScreen, returnToMobileChat } from './nav';
 
 export interface HeaderOptions {
   title: string;
   subtitle?: string;
   leading?: HTMLElement;
-  /** Show a back button that pops the stack. */
-  back?: boolean;
+  /** Show Back to chat, or pop the stack on the chat thread itself. */
+  back?: boolean | 'previous';
   actions?: HTMLElement[];
   /** Root screens use a large title row. */
   large?: boolean;
@@ -29,8 +29,8 @@ export function screenHeader(options: HeaderOptions): ScreenHeader {
         'button',
         {
           className: 'm-header__back',
-          attrs: { type: 'button', 'aria-label': 'Back' },
-          on: { click: () => popScreen() },
+          attrs: { type: 'button', 'aria-label': options.back === 'previous' ? 'Back' : 'Back to chat' },
+          on: { click: options.back === 'previous' ? () => popScreen() : returnToMobileChat },
         },
         icon('fi-rr-angle-small-left', 26),
       )

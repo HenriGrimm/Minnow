@@ -11,7 +11,8 @@ import { isPageReload } from '../boot/page-navigation';
 import { loadWorkspaceFromServer } from '../state/workspace';
 import { isOsShellEnabled } from './page-bridge';
 import { getOsView, subscribeInstances } from './instances';
-import { launchApp } from './router';
+import { launchApp, returnToChat } from './router';
+import { createBackToChatButton } from '../ui/back-to-chat';
 import { hasViewWorkspace } from '../state/view-workspace';
 import { getAppWindowId, isAppWindowRenderer } from './app-window';
 import { openShellOverlay, shellOverlayClosed } from '../ui/shell-overlay-state';
@@ -76,6 +77,8 @@ export function isHoldingWorkspaceGateForAppReady(): boolean {
 
 function setGateOpening(opening: boolean): void {
   getGateRoot()?.classList.toggle('workspace-gate--opening', opening);
+  const back = getGateRoot()?.querySelector<HTMLButtonElement>('.welcome-page__back');
+  if (back) back.disabled = opening;
 }
 
 function setHoldingGateCover(holding: boolean): void {
@@ -164,6 +167,7 @@ function hideGateElement(): void {
     gate.hidden = true;
     unmarkPreviewOccluder(gate);
   }
+  gate?.querySelector('.welcome-page__back')?.remove();
   welcome?.classList.remove('is-open', 'welcome-page--os-overlay');
   if (welcome) welcome.hidden = true;
   document.documentElement.classList.remove('os-workspace-gate-open');
@@ -190,6 +194,15 @@ export function openWorkspaceGate(options?: { switch?: boolean; opener?: HTMLEle
   if (switchingWorkspace) {
     const gate = getGateRoot();
     if (gate) {
+      const header = gate.querySelector('.welcome-page__heading');
+      if (header && !header.querySelector('.welcome-page__back')) {
+        const back = createBackToChatButton(() => {
+          closeWorkspaceGate();
+          void returnToChat();
+        });
+        back.classList.add('welcome-page__back');
+        header.prepend(back);
+      }
       gate.setAttribute('role', 'dialog');
       gate.setAttribute('aria-modal', 'true');
       gate.setAttribute('aria-label', 'Choose a workspace');

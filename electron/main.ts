@@ -1852,6 +1852,8 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    // BrowserWindow's icon does not set the macOS Dock icon, especially in dev.
+    if (process.platform === 'darwin') app.dock?.setIcon(appIconPath());
     bootstrap()
       .then(() => restoreShellWindows())
       .catch(failBootstrap);

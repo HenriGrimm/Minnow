@@ -347,56 +347,6 @@ html.is-electron-shell .graphite-thread-header__actions {
 #workspaceSplit :is(#chatArea, .managed-chat-requests--docked) .managed-chat-request--approval[data-state='pending']::before { display: none; }
 #workspaceSplit :is(#chatArea, .managed-chat-requests--docked) .managed-chat-request__detail { background: var(--mn-graphite-sheet, var(--mn-surface-0)); }
 
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user {
-  align-items: flex-end;
-  margin-top: 4px;
-}
-
-/* Keep the action lane beside the bubble and within the transcript column. */
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) fit-content(min(85%, calc(100% - var(--msg-actions-lane, 0px))));
-  column-gap: 0;
-  align-items: start;
-  justify-items: end;
-}
-
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user > .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map) {
-  grid-area: 1 / 2;
-  width: fit-content;
-  min-width: 0;
-  max-width: 100%;
-  padding: 10px 14px;
-  border-color: var(--mn-graphite-line, var(--mn-border));
-  border-radius: 12px 12px 4px 12px;
-  background: var(--mn-bubble, var(--mn-surface-2));
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user .msg-bubble::before {
-  content: none;
-}
-
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) > :is(.msg-goal-achieved-chip, .branch-picker__trigger) {
-  grid-column: 1 / -1;
-}
-
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) > .message-actions__trigger {
-  grid-area: 1 / 2;
-  inset-inline: auto calc(100% + var(--mn-space-1));
-}
-
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) > .message-actions__menu {
-  grid-area: 1 / 2;
-  inset-inline-end: max(var(--mn-space-1), calc(100% - var(--msg-actions-menu-min-width)));
-}
-
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.assistant > .msg-bubble {
-  font-size: 14px;
-  line-height: 1.65;
-}
-
 #chatArea.chat-thread > .msg.assistant > .graphite-turn-recovery {
   display: flex;
   align-items: flex-start;

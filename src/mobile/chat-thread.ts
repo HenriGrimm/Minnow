@@ -42,7 +42,7 @@ export function createChatThreadScreen(chatId: string, deps: {
   initialPrompt?: string;
   focus?: boolean;
 }): MobileScreen {
-  const header = screenHeader({ title: titleOf(findChat(chatId)), back: true });
+  const header = screenHeader({ title: titleOf(findChat(chatId)), back: 'previous' });
   const statusText = el('span', { className: 'm-thread__status' });
   const subtitleRow = el('div', { className: 'm-thread__meta' }, statusText);
   header.el.querySelector('.m-header__titles')?.append(subtitleRow);
