@@ -1,89 +1,99 @@
 {
   "runs": 10,
-  "completed": 10,
-  "failed": 0,
+  "completed": 0,
+  "failed": 10,
   "retries": 0,
   "abandonments": 0,
   "perRun": [
     {
       "n": 1,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 700
+      "ms": 40284,
+      "error": "timed out waiting for rel1-8 to finish"
     },
     {
       "n": 2,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 1065
+      "ms": 40240,
+      "error": "timed out waiting for rel2-9 to finish"
     },
     {
       "n": 3,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 853
+      "ms": 40653,
+      "error": "timed out waiting for rel3-10 to finish"
     },
     {
       "n": 4,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 830
+      "ms": 40264,
+      "error": "timed out waiting for rel4-11 to finish"
     },
     {
       "n": 5,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 584
+      "ms": 18563,
+      "error": "fetch failed"
     },
     {
       "n": 6,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 680
+      "ms": 1,
+      "error": "fetch failed"
     },
     {
       "n": 7,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 551
+      "ms": 2,
+      "error": "fetch failed"
     },
     {
       "n": 8,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 643
+      "ms": 2,
+      "error": "fetch failed"
     },
     {
       "n": 9,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 511
+      "ms": 1,
+      "error": "fetch failed"
     },
     {
       "n": 10,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 647
+      "ms": 1,
+      "error": "fetch failed"
     }
   ],
   "recordedAt": "2026-08-29",

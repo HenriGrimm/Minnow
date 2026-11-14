@@ -36,6 +36,8 @@ function rejectUnavailableApp(appId: AppId): boolean {
 
 let initialized = false;
 let applyingRoute = false;
+/** Hash Settings just stamped itself; its async hashchange is not a navigation. */
+let selfStampedSettingsHash: string | null = null;
 let lastForegroundApp: AppId | null = null;
 let lastRecordedSurface: AppId | null = null;
 let wasOnCodeChat = false;
@@ -315,6 +317,11 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
 
 function applyRouteFromHash(): void {
   if (applyingRoute) return;
+  if (selfStampedSettingsHash !== null) {
+    const stamped = selfStampedSettingsHash;
+    selfStampedSettingsHash = null;
+    if (window.location.hash === stamped) return;
+  }
   if (window.location.hash === '#/wiki' || window.location.hash.startsWith('#/wiki/')) {
     trackCodeChatVisit(false);
     void import('../ui/product-wiki').then((module) => module.initProductWiki());
@@ -565,6 +572,24 @@ export function syncCodeSectionHash(section: CodeSectionId): void {
   pendingCodeSection = section;
   const next = hashForCodeSection(section);
   if (window.location.hash === next) return;
+  applyingRoute = true;
+  try {
+    window.location.hash = next;
+  } finally {
+    applyingRoute = false;
+  }
+}
+
+/**
+ * Stamp the open Settings section onto the hash so it can be bookmarked,
+ * reloaded and reached with Back. Same guard as syncCodeSectionHash.
+ */
+export function syncSettingsSectionHash(section: string): void {
+  if (!initialized) return;
+  pendingSettingsSection = section;
+  const next = `#/app/settings/${section}`;
+  if (window.location.hash === next) return;
+  selfStampedSettingsHash = next;
   applyingRoute = true;
   try {
     window.location.hash = next;

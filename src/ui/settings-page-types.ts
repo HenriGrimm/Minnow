@@ -27,6 +27,8 @@ export type SettingsSectionId =
   | 'terminal'
   | 'backups'
   | 'access'
+  | 'privacy'
+  | 'shortcuts'
   | 'data'
   | 'updates'
   | 'notifications'
@@ -77,13 +79,15 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   data: 'Data & privacy',
   backups: 'Backups',
   access: 'Access',
+  privacy: 'Privacy',
+  shortcuts: 'Keyboard shortcuts',
   updates: 'Updates',
   notifications: 'Notifications',
   devices: 'Devices',
   plugins: 'Plugins',
   issues: 'Issues',
   github: 'GitHub',
-  'external-connections': 'External Connections',
+  'external-connections': 'External connections',
   appearance: 'Appearance',
   audio: 'Audio',
   providers: 'Providers',
@@ -136,7 +140,7 @@ export type SettingsNavGroup = {
 
 /** Sidebar groups and nav order (must match index.html section order). */
 export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
-  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio', 'devices', 'updates'] },
+  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio', 'devices', 'updates', 'shortcuts'] },
   { id: 'apps', label: 'Code and workspace', sections: ['editor', 'terminal', 'lsp', 'browser', 'external-connections', 'issues'] },
   {
     id: 'agents',
@@ -146,6 +150,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       'injection',
       'rules',
       'tools',
+      'search',
       'autopilot',
       'watchdog',
     ],
@@ -155,12 +160,12 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     label: 'Extensions',
     // 'deep-research' is omitted while the Research app is hidden: its config
     // has no other consumer, so the panel would configure nothing.
-    sections: ['plugins', 'skills', 'skills-library', 'agent-packs', 'search', 'mcp', 'mcp-hub', 'servers', 'webhooks'],
+    sections: ['plugins', 'skills', 'skills-library', 'agent-packs', 'mcp', 'mcp-hub', 'servers', 'webhooks'],
   },
-  { id: 'data', label: 'Data and privacy', sections: ['backups', 'access'] },
+  { id: 'data', label: 'Data and privacy', sections: ['privacy', 'backups', 'access'] },
   {
     id: 'advanced',
-    label: 'About',
+    label: 'System',
     sections: ['about', 'diagnostics'],
   },
 ];

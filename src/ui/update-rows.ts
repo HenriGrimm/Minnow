@@ -47,7 +47,9 @@ export function updateSummary(center: UpdateCenter): string {
   if (cliError || center.state.appError || app?.state === 'error') return 'Some updates could not be checked';
   if (cliRestricted) return 'Updates are managed on the computer running Minnow';
   if (cli?.items.some(row => row.state === 'unavailable')) return 'Some CLI versions could not be checked';
-  if ((app?.state === 'idle' && app.lastCheckedAt) || cli?.items.length) return 'You’re up to date';
+  if (app?.state === 'idle' && app.lastCheckedAt) return 'You’re up to date';
+  // Without a checked desktop app (browser session, dev build) only the CLIs were checked.
+  if (cli?.items.length) return 'CLI providers are up to date';
   if (cli) return 'No CLI updates to show';
   return 'Waiting for first check';
 }

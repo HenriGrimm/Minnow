@@ -538,7 +538,9 @@ export async function renderServersSettingsSection(mount: HTMLElement): Promise<
 
     const catalog = await fetchManagedServers();
     // Inference runtimes are managed from Models → Engine.
-    const servers = catalog?.filter((s) => !MODELS_ENGINE_SERVER_IDS.has(s.id)) ?? null;
+    // MTPLX is Apple Silicon only; listing it elsewhere offers an install that cannot work.
+    const isMac = /mac/i.test(navigator.platform || navigator.userAgent);
+    const servers = catalog?.filter((s) => !MODELS_ENGINE_SERVER_IDS.has(s.id) && (isMac || s.id !== 'mtplx')) ?? null;
     if (servers === null) {
       list.appendChild(el('p', 'settings-servers-empty', 'Could not load servers.'));
       return;

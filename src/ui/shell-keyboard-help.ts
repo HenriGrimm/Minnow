@@ -30,6 +30,13 @@ const SHELL_SHORTCUTS: ShortcutDoc[] = [
   { section: 'Shell', keys: 'Tab / Shift+Tab', label: 'Move focus through dock, menubar, and app chrome' },
 ];
 
+const SETTINGS_SHORTCUTS: ShortcutDoc[] = [
+  { section: 'Settings', keys: 'Ctrl/Cmd + K', label: 'Find a setting (while Settings is open)' },
+  { section: 'Settings', keys: '↑ / ↓ / Home / End', label: 'Move through the Settings sidebar' },
+  { section: 'Settings', keys: 'Enter', label: 'Open the focused page and move into it' },
+  { section: 'Settings', keys: 'Escape', label: 'Close search results, then clear the search' },
+];
+
 const CHAT_SHORTCUTS: ShortcutDoc[] = [
   { section: 'Chat', keys: 'Ctrl + ↑ / ↓', label: 'Open the previous or next chat in the sidebar' },
   { section: 'Chat', keys: 'Ctrl/Cmd + N', label: 'Start a new chat' },
@@ -84,6 +91,7 @@ const ISSUES_SHORTCUTS: ShortcutDoc[] = [
 
 const ALL_KEYBOARD_SHORTCUTS: ShortcutDoc[] = [
   ...SHELL_SHORTCUTS,
+  ...SETTINGS_SHORTCUTS,
   ...CHAT_SHORTCUTS,
   ...CODE_SHORTCUTS,
   ...BOARD_SHORTCUTS,
@@ -181,7 +189,7 @@ function renderKeyChips(keys: string): HTMLElement {
 }
 
 /** Render grouped shortcut sections (each section owns its own definition list). */
-function renderShortcutSections(shortcuts: ShortcutDoc[], graphite: boolean): DocumentFragment {
+export function renderShortcutSections(shortcuts: ShortcutDoc[], graphite: boolean): DocumentFragment {
   const fragment = document.createDocumentFragment();
   const groups = new Map<string, ShortcutDoc[]>();
 

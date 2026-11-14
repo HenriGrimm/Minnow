@@ -76,7 +76,7 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
   const behaviorGroup = appendSettingsGroup(
     content,
     'Navigation & tabs',
-    'browser_navigate only opens URLs matching your allowlist. Localhost dev hosts are included by default.',
+    'Whether agents may open a website follows your permission level. Local dev servers (localhost) are allowed by default.',
     'integrations.browser',
     { emphasis: true },
   );

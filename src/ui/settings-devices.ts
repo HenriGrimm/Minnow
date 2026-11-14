@@ -32,9 +32,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
-function actionButton(label: string, primary = false): HTMLButtonElement {
+function actionButton(label: string, primary = false, ariaLabel?: string): HTMLButtonElement {
   const node = el('button', primary ? 'settings-action-btn settings-action-btn--primary' : 'settings-action-btn', label);
   node.type = 'button';
+  if (ariaLabel) node.setAttribute('aria-label', ariaLabel);
   return node;
 }
 
@@ -50,6 +51,8 @@ function card(title: string, icon: 'externalLink' | 'link') {
 
   const controls = el('div', 'settings-actions');
   const status = el('span', 'devices-pill');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-label', `${title} status`);
   const actions = el('div', 'devices-card__actions');
   controls.append(status, actions);
   root.append(label, controls);
@@ -87,6 +90,7 @@ function renderLan(
       item.append(el('code', 'devices-address__url', url));
       const copy = el('button', 'settings-inline-btn', 'Copy');
       copy.type = 'button';
+      copy.setAttribute('aria-label', `Copy ${url}`);
       copy.addEventListener('click', () => {
         void navigator.clipboard.writeText(url).then(() => showToast('Address copied'), () => showToast('Could not copy the address', 'error'));
       });
@@ -97,7 +101,7 @@ function renderLan(
       list,
       el('p', 'devices-card__copy', 'Phones on this Wi-Fi can open Minnow. Only devices you connect can use it.'),
     );
-    const off = actionButton('Turn off');
+    const off = actionButton('Turn off', false, 'Turn off home network access');
     toggle(false, off);
     actions.append(off);
   } else if (lan.state === 'error') {
@@ -107,19 +111,24 @@ function renderLan(
         'p',
         'devices-card__copy',
         lan.error?.code === 'port-in-use'
-          ? `Port ${lan.port} is in use by another program. Quit that program, then try again.`
-          : lan.error?.message ?? 'Home network access could not start.',
+          ? `Another program is already using the network port Minnow needs (${lan.port}). Quit that program and try again, or start Minnow with MINNOW_LAN_PORT set to a free port.`
+          : 'Home network access could not start. Try again; if it keeps failing, Health and diagnostics has the details.',
       ),
     );
-    const retry = actionButton('Try again', true);
+    if (lan.error?.message && lan.error.code !== 'port-in-use') {
+      const details = el('details', 'settings-error-details');
+      details.append(el('summary', '', 'Details'), el('code', '', lan.error.message));
+      body.append(details);
+    }
+    const retry = actionButton('Try again', false, 'Retry home network access');
     toggle(true, retry);
-    const off = actionButton('Turn off');
+    const off = actionButton('Turn off', false, 'Turn off home network access');
     toggle(false, off);
     actions.append(retry, off);
   } else {
     setPill(pill, 'Off', 'off');
     body.append(el('p', 'devices-card__copy', 'Phones on your Wi-Fi connect with nothing to install or sign in to.'));
-    const on = actionButton('Turn on');
+    const on = actionButton('Turn on', false, 'Turn on home network access');
     toggle(true, on);
     actions.append(on);
   }
@@ -175,6 +184,7 @@ function renderDeviceRow(device: CompanionDevice, refresh: () => void): HTMLLIEl
   const actions = el('div', 'settings-actions devices-row__actions');
   const rename = el('button', 'settings-inline-btn', 'Rename');
   rename.type = 'button';
+  rename.setAttribute('aria-label', `Rename ${device.name}`);
   rename.addEventListener('click', () => {
     void appPrompt('Name this device', device.name, { title: 'Rename device', confirmLabel: 'Save' }).then((value) => {
       const next = value?.trim();
@@ -184,6 +194,7 @@ function renderDeviceRow(device: CompanionDevice, refresh: () => void): HTMLLIEl
   });
   const disconnect = el('button', 'settings-inline-btn settings-inline-btn--danger', 'Disconnect');
   disconnect.type = 'button';
+  disconnect.setAttribute('aria-label', `Disconnect ${device.name}`);
   disconnect.addEventListener('click', () => {
     void appConfirm(`${device.name} loses access right away, including its Home Screen app.`, {
       title: `Disconnect ${device.name}?`,

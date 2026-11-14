@@ -349,8 +349,8 @@ function renderGroupToolbar(
 }
 
 /** Render user rules controls into a settings content mount. */
-/** Prior-turn reasoning replay. */
-async function renderReasoningReplaySection(
+/** Prior-turn reasoning replay (rendered in Chat context). */
+export async function renderReasoningReplaySection(
   mount: HTMLElement,
   setStatus: StatusFn,
 ): Promise<void> {
@@ -404,7 +404,6 @@ export async function renderRulesSettingsSection(
 
   let settings = normalizeUserRules(await loadUserRules());
 
-  await renderReasoningReplaySection(mount, setStatus);
 
   const group = appendSettingsGroup(
     mount,

@@ -51,7 +51,15 @@ export async function renderPermissionSettings(
   const items = [...list.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
   for (const item of items) item.setAttribute('role', 'radio');
 
+  const warning = document.createElement('p');
+  warning.className = 'settings-permissions__warning';
+  warning.setAttribute('role', 'note');
+  warning.textContent =
+    'Full access is on: agents can change any file, run any command and use the internet without asking. Switch to Auto unless you are watching closely.';
+
   const syncSelection = (level: PermissionLevel): void => {
+    section.classList.toggle('settings-permissions--full', level === 'full');
+    warning.hidden = level !== 'full';
     for (const item of items) {
       const checked = item.dataset.level === level;
       item.setAttribute('aria-checked', String(checked));
@@ -70,6 +78,7 @@ export async function renderPermissionSettings(
     next.click();
   });
   section.appendChild(list);
+  section.appendChild(warning);
 
   if (options.showRules !== false) {
     const rules = document.createElement('ul');

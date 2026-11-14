@@ -366,7 +366,7 @@ function createLspSettingsRow(
   if (bundle) {
     const sizeLabel = formatBundleSize(bundle.sizeBytes, bundle.sizeEstimateMb);
     if (bundle.installed && bundle.version) {
-      headMeta.append(el('span', 'settings-lsp-bundle-tag', `v${bundle.version}`));
+      headMeta.append(el('span', 'settings-lsp-bundle-tag', `v${String(bundle.version).replace(/^v/i, '')}`));
     } else if (sizeLabel) {
       headMeta.append(el('span', 'settings-lsp-bundle-tag', sizeLabel));
     }
@@ -395,7 +395,8 @@ function createLspSettingsRow(
     onChange: (enabled) => onToggle(server.id, enabled),
   });
   const toggle = el('div', 'settings-lsp-mini-toggle');
-  toggle.append(el('span', 'settings-lsp-mini-toggle__label', 'Enabled'), enableSwitch);
+  // One state per row: the switch label says what the switch is, not a second status.
+  toggle.append(el('span', 'settings-lsp-mini-toggle__label', canEnable && !server.disabled ? 'On' : 'Off'), enableSwitch);
   headMeta.append(toggle);
   head.append(identity, headMeta);
   row.append(head);
@@ -405,8 +406,13 @@ function createLspSettingsRow(
     detailBits.push(server.extensions.join(' '));
   }
   const reqHint = formatRequirementsHint(server.requirements);
-  if (server.disabledReason) {
-    detailBits.push(server.disabledReason);
+  // "Disabled in settings" repeats the switch beside it.
+  const disabledReason = server.disabledReason
+    ?.split(' · ')
+    .filter((part) => part !== 'Disabled in settings')
+    .join(' · ');
+  if (disabledReason) {
+    detailBits.push(disabledReason);
   } else if (reqHint) {
     detailBits.push(reqHint);
   }
@@ -542,8 +548,12 @@ function buildCustomServerForm(onAdded: () => void): HTMLFormElement {
 
   const idRow = el('div', 'field-row');
   const idField = el('div', 'field');
-  idField.append(el('label', '', 'Server id'));
+  const idLabel = el('label', '', 'Server id');
+  idLabel.htmlFor = 'settingsLspCustomId';
+  idField.append(idLabel);
   const idInput = document.createElement('input');
+  idInput.id = 'settingsLspCustomId';
+  idInput.setAttribute('aria-describedby', 'settingsLspCustomIdHint');
   idInput.type = 'text';
   idInput.name = 'id';
   idInput.required = true;
@@ -554,13 +564,16 @@ function buildCustomServerForm(onAdded: () => void): HTMLFormElement {
   idInput.title = 'Lowercase letters, numbers, dots, hyphens, underscores';
   idField.append(
     idInput,
-    el('p', 'field-hint', 'Lowercase letters, numbers, dots, hyphens, underscores.'),
+    Object.assign(el('p', 'field-hint', 'Lowercase letters, numbers, dots, hyphens, underscores.'), { id: 'settingsLspCustomIdHint' }),
   );
   idRow.append(idField);
 
   const labelField = el('div', 'field');
-  labelField.append(el('label', '', 'Display name'));
+  const nameLabel = el('label', '', 'Display name');
+  nameLabel.htmlFor = 'settingsLspCustomLabel';
+  labelField.append(nameLabel);
   const labelInput = document.createElement('input');
+  labelInput.id = 'settingsLspCustomLabel';
   labelInput.type = 'text';
   labelInput.name = 'label';
   labelInput.autocomplete = 'off';
@@ -570,8 +583,12 @@ function buildCustomServerForm(onAdded: () => void): HTMLFormElement {
   form.append(idRow);
 
   const cmdField = el('div', 'field');
-  cmdField.append(el('label', '', 'Command'));
+  const cmdLabel = el('label', '', 'Command');
+  cmdLabel.htmlFor = 'settingsLspCustomCommand';
+  cmdField.append(cmdLabel);
   const cmdInput = document.createElement('input');
+  cmdInput.id = 'settingsLspCustomCommand';
+  cmdInput.setAttribute('aria-describedby', 'settingsLspCustomCommandHint');
   cmdInput.type = 'text';
   cmdInput.name = 'command';
   cmdInput.required = true;
@@ -580,20 +597,27 @@ function buildCustomServerForm(onAdded: () => void): HTMLFormElement {
   cmdInput.placeholder = 'my-lsp-server --stdio';
   cmdField.append(
     cmdInput,
-    el('p', 'field-hint', 'One shell token per word; stdio transport is typical.'),
+    Object.assign(
+      el('p', 'field-hint', 'The program and its arguments, split on spaces (no shell quoting). Most servers need --stdio.'),
+      { id: 'settingsLspCustomCommandHint' },
+    ),
   );
   form.append(cmdField);
 
   const extField = el('div', 'field');
-  extField.append(el('label', '', 'File extensions'));
+  const extLabel = el('label', '', 'File extensions');
+  extLabel.htmlFor = 'settingsLspCustomExtensions';
+  extField.append(extLabel);
   const extInput = document.createElement('input');
+  extInput.id = 'settingsLspCustomExtensions';
+  extInput.setAttribute('aria-describedby', 'settingsLspCustomExtensionsHint');
   extInput.type = 'text';
   extInput.name = 'extensions';
   extInput.required = true;
   extInput.placeholder = '.foo, .bar';
   extField.append(
     extInput,
-    el('p', 'field-hint', 'Comma-separated; leading dots are optional.'),
+    Object.assign(el('p', 'field-hint', 'Comma-separated; leading dots are optional.'), { id: 'settingsLspCustomExtensionsHint' }),
   );
   form.append(extField);
 

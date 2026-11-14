@@ -64,7 +64,21 @@ function renderResults(entries: SettingsSearchEntry[]): void {
     const empty = document.createElement('div');
     empty.className = 'settings-search-empty';
     empty.setAttribute('role', 'status');
-    empty.textContent = 'No settings found. Try “model”, “sounds”, or “backups”.';
+    const query = input.value.trim();
+    empty.append(
+      document.createTextNode(`No settings match “${query}”. `),
+      document.createTextNode('Models, providers and sampling live in the Models app.'),
+    );
+    const modelsBtn = document.createElement('button');
+    modelsBtn.type = 'button';
+    modelsBtn.className = 'settings-search-empty__action';
+    modelsBtn.textContent = 'Open the Models app';
+    modelsBtn.addEventListener('mousedown', (event) => event.preventDefault());
+    modelsBtn.addEventListener('click', () => {
+      closeResults();
+      void import('./models-page').then(({ openModels }) => openModels('providers'));
+    });
+    empty.append(modelsBtn);
     list.appendChild(empty);
     list.hidden = false;
     getFinderRoot()?.classList.add('is-open');
@@ -198,8 +212,16 @@ export function initSettingsSearchFinder(options?: {
     }
     if (event.key === 'Escape') {
       event.preventDefault();
-      closeResults();
-      input.blur();
+      // First Escape closes the list, the next clears the query. Focus stays in
+      // the field either way; dropping it to <body> lost the user's place.
+      if (!getResultsList()?.hidden) {
+        closeResults();
+        return;
+      }
+      if (input.value) {
+        input.value = '';
+        finderOptions.onQueryChange?.('');
+      }
     }
   });
 

@@ -2,7 +2,10 @@ import { isPhoneLayout, onPhoneLayoutChange } from './mobile-layout';
 import { createBackToChatButton } from './back-to-chat';
 
 const SECTION_OPEN_CLASS = 'settings-page--phone-section';
+const NARROW_CLASS = 'settings-page--narrow';
 const BAR_ID = 'settingsPhoneBar';
+/** Below this Settings width the sidebar and page no longer fit side by side. */
+const NARROW_MAX_PX = 600;
 
 let installed = false;
 
@@ -16,6 +19,29 @@ function activeSectionLabel(): string {
     '.settings-nav__item.is-active, .settings-nav__item[aria-current="page"]',
   );
   return active?.querySelector('.settings-nav__item-label')?.textContent?.trim() || 'Settings';
+}
+
+/** Phone, or a desktop Settings window too narrow for sidebar + page. */
+function isDrillDownLayout(): boolean {
+  return isPhoneLayout() || Boolean(getRoot()?.classList.contains(NARROW_CLASS));
+}
+
+/*
+ * App surfaces live inside OS windows, so viewport media queries never see their
+ * width. Watch the Settings root itself and switch to the list → page drill-down.
+ */
+function watchNarrowWidth(root: HTMLElement): void {
+  if (typeof ResizeObserver !== 'function') return;
+  const observer = new ResizeObserver((entries) => {
+    const width = entries[0]?.contentRect.width ?? root.clientWidth;
+    const narrow = width > 0 && width <= NARROW_MAX_PX;
+    if (narrow === root.classList.contains(NARROW_CLASS)) return;
+    root.classList.toggle(NARROW_CLASS, narrow);
+    // Entering narrow mode keeps the page you were on; leaving it drops the drill-down.
+    if (narrow) openSection();
+    else if (!isPhoneLayout()) openSettingsPhoneList();
+  });
+  observer.observe(root);
 }
 
 /** Return the embedded Settings page to its section list. */
@@ -37,7 +63,7 @@ function openSection(): void {
  * on a phone they should land on it rather than on the section list.
  */
 export function openSettingsPhoneSection(): void {
-  if (!isPhoneLayout()) return;
+  if (!isDrillDownLayout()) return;
   openSection();
 }
 
@@ -84,15 +110,16 @@ export function initSettingsMobileNav(): void {
     return;
   }
   installed = true;
+  watchNarrowWidth(root);
 
   root.addEventListener('click', (event) => {
-    if (!isPhoneLayout()) return;
+    if (!isDrillDownLayout()) return;
     const target = event.target as HTMLElement | null;
     if (!target?.closest('[data-area-jump], [data-hub-jump]')) return;
     openSection();
   });
 
   onPhoneLayoutChange((phone) => {
-    if (!phone) openSettingsPhoneList();
+    if (!phone && !root.classList.contains(NARROW_CLASS)) openSettingsPhoneList();
   });
 }

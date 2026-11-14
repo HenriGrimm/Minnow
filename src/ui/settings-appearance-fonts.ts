@@ -80,6 +80,7 @@ function appendFontRow(
   input.type = 'file';
   input.accept = '.woff2,.woff,.ttf,.otf,font/woff2,font/woff';
   input.hidden = true;
+  input.setAttribute('aria-label', `Choose a ${label.toLowerCase()} file`);
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
     input.value = '';
@@ -190,7 +191,7 @@ export function appendAppearanceFonts(mount: HTMLElement): void {
   );
   controls.appendChild(hint);
 
-  const resetBtn = el('button', 'settings-action-btn', 'Reset fonts to default');
+  const resetBtn = el('button', 'settings-action-btn settings-action-btn--fit', 'Reset fonts to default');
   resetBtn.type = 'button';
   resetBtn.addEventListener('click', () => {
     setAppearanceFonts(DEFAULT_APPEARANCE_FONTS);

@@ -1,3 +1,4 @@
+import { formatLastChecked } from '../electron/updater-client';
 import { showToast } from './toast';
 import { appConfirm } from './app-dialog';
 /**
@@ -66,10 +67,8 @@ function formatDiagnosticTime(iso?: string): string {
   if (!iso) return '';
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) return iso;
-  return new Date(parsed).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'medium',
-  });
+  // Same "Today at 12:18 PM" / "Nov 14 at 12:18 PM" style as Updates.
+  return formatLastChecked(parsed);
 }
 
 /** Load grouped errors for the viewer. */

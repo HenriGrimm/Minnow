@@ -11,7 +11,7 @@ function setupCodeSettingsDom(doc: Document): void {
     </div>
     <div id="appBody"></div>
     <main id="settingsView" class="settings-page mn-os-app-layer" data-os-app="settings">
-      <button type="button" id="btnSettingsPageBack" aria-label="Back to Code">Back</button>
+      <header class="settings-page-header" data-app-titlebar></header>
     </main>
   `;
 }
@@ -222,6 +222,7 @@ describe('code app settings (MIN-417)', () => {
 
     const back = document.getElementById('btnSettingsPageBack');
     assert.ok(back);
+    assert.ok(back.matches('.settings-page-header > .back-to-chat.mn-btn--ghost'));
     back.click();
     syncOsRouteFromHashForTests();
     syncAppHostForTests();

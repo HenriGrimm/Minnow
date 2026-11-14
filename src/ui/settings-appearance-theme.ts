@@ -138,7 +138,7 @@ export function appendAppearanceThemePresets(mount: HTMLElement): () => void {
   const sampleStatus = el('span', 'graphite-appearance-preview__grow');
   setActivityShimmerText(sampleStatus, 'Running the engine suite…');
   activity.append(sampleStatus, stop);
-  example.append(heading, el('p', '', 'Wired the renderer gate to decidePermission. Running the engine suite next.'), activity);
+  example.append(heading, el('p', '', 'Resized the hero image and exported three sizes. Checking them on a phone next.'), activity);
   preview.append(example);
 
   mount.append(card, preview);

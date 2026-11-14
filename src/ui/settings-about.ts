@@ -82,21 +82,21 @@ export async function renderAboutSettingsSection(): Promise<void> {
 
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
+  const loading = el('p', 'settings-field-hint', 'Reading version details…');
+  loading.setAttribute('role', 'status');
+  content.appendChild(loading);
 
   const serverUp = (await detectConfigServer()) === 'server';
   const health = serverUp ? await fetchDiagnosticsHealth() : null;
+  loading.remove();
 
   const hero = el('div', 'about-build__hero');
   const mark = el('span', 'about-build__mark', 'm');
   mark.setAttribute('aria-hidden', 'true');
   const name = el('div', 'about-build__name');
+  // Platform and runtime versions are listed once, under "This install".
   name.append(
     el('span', 'about-build__title', health?.version ? `Minnow ${health.version}` : 'Minnow'),
-    el('span', 'about-build__caption', [
-      health?.platform,
-      health?.electronVersion ? `Electron ${health.electronVersion}` : formatElectronVersion(health),
-      health?.nodeVersion ? `Node ${health.nodeVersion}` : null,
-    ].filter(Boolean).join(' · ')),
   );
   const releases = el('a', 'settings-inline-btn', 'Release notes');
   releases.href = 'https://github.com/henrigrimm/minnow/releases';

@@ -176,7 +176,7 @@ describe('backup settings', () => {
       [...mount.querySelectorAll('.backup-checklist__size')].map((cell) => cell.textContent),
       ['2.0 KB', '512 B', '5.0 MB', '3.0 GB'],
     );
-    assert.match(mount.querySelector('.backup-total')!.textContent!, /About 5\.0 MB before compression/);
+    assert.match(mount.querySelector('.backup-total')!.textContent!, /About 5\.0 MB for the \d+ selected items?, before compression/);
     assert.match(mount.textContent!, /Needs a passphrase/);
   });
 

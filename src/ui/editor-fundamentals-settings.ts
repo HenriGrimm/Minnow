@@ -25,13 +25,14 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
   const group = appendSettingsGroup(
     mount,
     'Code editing',
-    'CodeMirror defaults for the file viewer: wrap, indentation, and whitespace guides.',
+    'How files look in the Files panel editor: wrapping, indentation and whitespace.',
     'integrations.editor',
     { emphasis: true },
   );
 
   const { row: wrapRow } = createSettingsToggleRow('Word wrap', {
     checked: settings.wordWrap,
+    searchKey: 'integrations.editor.wordWrap',
     ariaLabel: 'Wrap long lines in the file editor',
     onChange: async (wordWrap) => {
       await saveEditorSettings({ wordWrap });
@@ -49,7 +50,9 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
   group.append(wsRow);
 
   const grid = el('dl', 'settings-kv settings-editor-fundamentals');
-  grid.append(el('dt', 'settings-kv__term', 'Font size'));
+  const fontTerm = el('dt', 'settings-kv__term', 'Font size');
+  fontTerm.dataset.settingsSearchKey = 'integrations.editor.fontSize';
+  grid.append(fontTerm);
   const fontDd = el('dd', 'settings-kv__value');
   const fontInput = document.createElement('input');
   fontInput.type = 'number';
@@ -70,7 +73,9 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
   fontDd.append(fontInput, el('span', 'settings-kv-suffix', 'px'));
   grid.append(fontDd);
 
-  grid.append(el('dt', 'settings-kv__term', 'Tab size'));
+  const tabTerm = el('dt', 'settings-kv__term', 'Tab size');
+  tabTerm.dataset.settingsSearchKey = 'integrations.editor.tabSize';
+  grid.append(tabTerm);
   const tabDd = el('dd', 'settings-kv__value');
   const tabInput = document.createElement('input');
   tabInput.type = 'number';
@@ -96,7 +101,7 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
   const hint = el(
     'p',
     'settings-group__lead settings-editor-fundamentals__hint',
-    'Find (Ctrl/Cmd+F), replace, folding, and multi-cursor use CodeMirror defaults. Reopen a file to apply font and tab changes.',
+    'Find (Ctrl/Cmd+F), replace, folding and multiple cursors work as in most code editors. Reopen a file to apply font and tab changes.',
   );
   group.append(hint);
 }

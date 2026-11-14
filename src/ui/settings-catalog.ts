@@ -21,7 +21,12 @@ export interface SettingsFieldEntry {
   area: SettingsSectionId;
   keywords?: string[];
   description?: string;
+  /** When a change takes effect; drives the row badge (settings-apply-badges.ts). */
+  applies?: SettingsApplies;
 }
+
+/** When a settings change takes effect. */
+export type SettingsApplies = 'now' | 'next-turn' | 'reopen' | 'restart' | 'workspace';
 
 /** Sidebar labels for settings categories. */
 export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
@@ -50,7 +55,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsCategoryId,
   SettingsSectionId[]
 > = {
-  general: ['general', 'terminal', 'backups', 'access', 'updates', 'notifications', 'audio', 'devices', 'about'],
+  general: ['general', 'terminal', 'privacy', 'backups', 'access', 'updates', 'notifications', 'audio', 'devices', 'shortcuts', 'about'],
   apps: ['plugins', 'external-connections', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
@@ -177,7 +182,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     },
   ),
   field('general.desktop.zoom', 'Interface zoom', 'appearance', 'appearance', {
-    keywords: ['zoom', 'scale', 'size', 'magnify', 'desktop', 'ui'],
+    keywords: ['zoom', 'scale', 'size', 'magnify', 'desktop', 'ui', 'interface size', 'text size', 'font size', 'bigger text', 'accessibility'],
     description: 'Scale the Minnow desktop window (Electron shell only).',
   }),
   field('general.desktop.launchAtStartup', 'Launch Minnow at startup', 'general', 'general', {
@@ -211,12 +216,12 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: [
       'phone', 'tablet', 'iphone', 'ipad', 'android', 'mobile', 'remote', 'companion',
       'lan', 'wifi', 'local network', 'network access', 'home network', 'tailscale', 'anywhere',
-      'qr', 'pair', 'connect', 'home screen',
+      'qr', 'pair', 'connect', 'home screen', 'tailnet', 'funnel', 'public url',
     ],
     description: 'Use Minnow from your phone or tablet, on your Wi-Fi or from anywhere.',
   }),
   field('general.network', 'Home network access', 'general', 'devices', {
-    keywords: ['lan', 'wifi', 'local network', 'network access', 'phone', 'tablet', '0.0.0.0'],
+    keywords: ['lan', 'wifi', 'local network', 'network access', 'phone', 'tablet', '0.0.0.0', '9480', 'port', 'minnow_lan_port'],
     description: 'Let phones and tablets on your Wi-Fi connect to Minnow. Applies immediately.',
   }),
   field('general.permissions', 'Permissions', 'general', 'general', {
@@ -228,11 +233,11 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     description: 'Choose the default parent folder for new projects without moving existing projects.',
   }),
   field('general.shellSandbox', 'Agent shell sandbox', 'general', 'general', {
-    keywords: ['sandbox', 'shell', 'seatbelt', 'landlock', 'execute_command', 'containment'],
+    keywords: ['sandbox', 'shell', 'seatbelt', 'landlock', 'execute_command', 'containment', 'wsl', 'wsl2'],
     description: 'Contain agent one-shot shells with OS filesystem sandboxing.',
   }),
   field('general.backup', 'Backup and restore', 'general', 'general', {
-    keywords: ['backup', 'restore', 'export', 'import', 'migrate', 'new computer', 'snapshot', 'recover', 'mnbak'],
+    keywords: ['backup', 'restore', 'export', 'import', 'migrate', 'new computer', 'snapshot', 'recover', 'mnbak', 'secrets', 'encryption', 'passphrase', 'credentials'],
     description: 'Save chats, Brain, settings and credentials to one file, and restore them here or on another computer.',
   }),
   field('general.backup.contents', 'What a backup includes', 'general', 'general', {
@@ -258,7 +263,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('general.chat.terminal', 'Terminal behavior', 'general', 'general', {
     keywords: ['shell', 'background command'],
   }),
-  field('general.toolCalls.constrained', 'Constrained tool calls', 'general', 'general', {
+  field('general.toolCalls.constrained', 'Constrained tool calls', 'integrations', 'tools', {
     keywords: ['json schema', 'structured output'],
     description: 'Validate tool arguments with JSON Schema when the provider supports structured output.',
   }),
@@ -313,10 +318,10 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('appearance.density', 'Density', 'appearance', 'appearance'),
   field('appearance.reduceMotion', 'Reduce motion', 'appearance', 'appearance', {
-    keywords: ['accessibility', 'animation'],
+    keywords: ['accessibility', 'animation', 'animations', 'reduced motion', 'motion', 'a11y'],
   }),
   field('appearance.fonts', 'Fonts', 'appearance', 'appearance', {
-    keywords: ['typography', 'mono', 'ui font'],
+    keywords: ['typography', 'mono', 'ui font', 'font', 'typeface', 'font size', 'text size', 'dyslexia', 'legible'],
   }),
   field('appearance.customColors', 'Advanced colors', 'appearance', 'appearance', {
     keywords: ['custom colors', 'tokens', 'override', 'palette'],
@@ -367,7 +372,11 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['agent', 'prompts', 'system prompt', 'sub-agents', 'skills', 'plan', 'ask', 'debug'],
   }),
   field('agents.permissions', 'Permission level', 'agents', 'agent-center', {
-    keywords: ['manual', 'auto', 'full access', 'approval', 'tool permission'],
+    keywords: ['manual', 'auto', 'full access', 'approval', 'tool permission', 'permission mode', 'yolo', 'ask before'],
+  }),
+  field('agents.contextPolicy', 'Context policy', 'agents', 'injection', {
+    keywords: ['ctx', 'n_ctx', 'context window', 'context length', 'context size', 'compaction', 'compact', 'compaction tuning', 'long chats', 'history'],
+    description: 'How a long chat is kept inside the model’s context window.',
   }),
   field('agents.localModelGuidance', 'Local model guidance', 'agents', 'agent-center', {
     keywords: ['local', 'lm studio', 'llama', 'small model', 'appendix'],
@@ -402,7 +411,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.watchdog', 'Watchdog', 'agents', 'watchdog', {
     keywords: ['timeout', 'generation', 'streaming', 'idle'],
     description:
-      'Idle and max-duration limits while streaming from the model. Sub-agent wall-clock lives under Sub-agents.',
+      'Idle and max-duration limits while streaming from the model. Sub-agent run time is under Sub-agent limits in Agents and permissions.',
   }),
   field('agents.watchdog.generation', 'Generation timeouts', 'agents', 'watchdog', {
     keywords: ['idle timeout', 'max duration', 'streaming', 'upstream'],
@@ -477,10 +486,10 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.injection.contextDocuments.default', 'Inject context documents by default', 'agents', 'injection'),
   field('agents.injection.contextDocuments.presets', 'Context document presets', 'agents', 'injection'),
   field('agents.injection.contextDocuments.custom', 'Custom context document paths', 'agents', 'injection'),
-  field('agents.rules.reasoningReplay', 'Prior reasoning replay', 'agents', 'rules', {
+  field('agents.rules.reasoningReplay', 'Prior reasoning replay', 'agents', 'injection', {
     keywords: ['thinking', 'reasoning', 'chain of thought', 'replay', 'context'],
   }),
-  field('agents.rules.reasoningReplay.enabled', 'Replay prior reasoning', 'agents', 'rules', {
+  field('agents.rules.reasoningReplay.enabled', 'Replay prior reasoning', 'agents', 'injection', {
     keywords: ['thinking', 'reasoning', 'replay'],
   }),
 
@@ -511,17 +520,26 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['truncation', 'max chars', 'output cap'],
   }),
   field('integrations.mcp', 'MCP servers', 'integrations', 'mcp', {
-    keywords: ['model context protocol', 'context7'],
+    keywords: ['mcp', 'model context protocol', 'context7', 'mcp.json', 'oauth'],
   }),
   field('integrations.mcp-hub', 'MCP hub', 'integrations', 'mcp-hub', {
     keywords: ['external agents', 'issues', 'brain', 'connect', 'stdio', 'http', 'read only', 'model context protocol'],
     description: 'Connect other agents to Minnow’s Issues, Brain, and manual.',
   }),
   field('integrations.lsp', 'Language servers', 'integrations', 'lsp', {
-    keywords: ['diagnostics', 'typescript', 'lsp.json'],
+    keywords: ['lsp', 'diagnostics', 'typescript', 'lsp.json', 'clangd', 'gopls', 'rust-analyzer', 'pyright'],
   }),
   field('integrations.editor', 'Editor copilot', 'integrations', 'editor', {
-    keywords: ['ghost text', 'inline completion', 'codemirror'],
+    keywords: ['ghost text', 'inline completion', 'codemirror', 'code editing'],
+  }),
+  field('integrations.editor.fontSize', 'Editor font size', 'integrations', 'editor', {
+    keywords: ['font size', 'text size', 'code font', 'editor font'],
+  }),
+  field('integrations.editor.tabSize', 'Tab size', 'integrations', 'editor', {
+    keywords: ['indent', 'indentation', 'spaces', 'tab width'],
+  }),
+  field('integrations.editor.wordWrap', 'Word wrap', 'integrations', 'editor', {
+    keywords: ['wrap', 'long lines', 'soft wrap'],
   }),
   field('integrations.skills', 'Skills', 'integrations', 'skills', {
     keywords: ['slash command', 'skill pack'],
@@ -539,7 +557,6 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('integrations.browser.allowNavigate', 'Allow browser navigation', 'integrations', 'browser'),
   field('integrations.browser.restoreTabs', 'Restore browser tabs', 'integrations', 'browser'),
   field('integrations.browser.nativeAgentTabs', 'Use native browser for new agent tabs', 'integrations', 'browser'),
-  field('integrations.browser.patterns', 'Allowed origin patterns', 'integrations', 'browser'),
   field('integrations.browser.devtoolsDock', 'DevTools dock', 'integrations', 'browser'),
 
   field('advanced.diagnostics', 'Health and diagnostics', 'advanced', 'diagnostics', {
@@ -610,6 +627,16 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     description: 'V1 JSONL invariant checking is retired. Use the journal under ~/.minnow/boards/.',
   }),
 
+  field('privacy.local', 'What stays on this computer', 'general', 'privacy', {
+    keywords: ['privacy', 'private', 'local', 'offline', 'telemetry', 'analytics', 'tracking', 'crash reports', 'data', 'where is my data', 'delete my data', 'cloud'],
+    description: 'Chats, notes and keys stay on this computer; Minnow collects no usage analytics.',
+  }),
+  field('privacy.online', 'What goes online', 'general', 'privacy', {
+    keywords: ['internet', 'network', 'online', 'cloud', 'third party', 'upload', 'send data'],
+  }),
+  field('general.shortcuts', 'Keyboard shortcuts', 'general', 'shortcuts', {
+    keywords: ['shortcut', 'shortcuts', 'keybinding', 'keybindings', 'hotkey', 'hotkeys', 'keyboard', 'keys'],
+  }),
   field('about.info', 'Build info', 'general', 'about', {
     keywords: ['version', 'platform', 'node', 'electron'],
   }),
@@ -618,6 +645,28 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['startup', 'boot', 'shell ready', 'interactive', 'page load'],
   }),
 ];
+
+/*
+ * Only settings whose timing is known from their implementation are listed;
+ * an unlisted row shows no badge rather than a guessed one.
+ */
+const FIELD_APPLIES: Record<string, SettingsApplies> = {
+  'general.desktop.hardwareAcceleration': 'restart',
+  'general.network': 'now',
+  'appearance.theme.mode': 'now',
+  'appearance.theme.accent': 'now',
+  'appearance.density': 'now',
+  'appearance.reduceMotion': 'now',
+  'integrations.editor.fontSize': 'reopen',
+  'integrations.editor.tabSize': 'reopen',
+  'agents.permissions': 'next-turn',
+  'agents.watchdog.generation': 'next-turn',
+  'integrations.tools.lazyLoading': 'next-turn',
+};
+for (const entry of SETTINGS_FIELD_CATALOG_ALL) {
+  const applies = FIELD_APPLIES[entry.key];
+  if (applies) entry.applies = applies;
+}
 
 /** Searchable catalog rows (release-gated apps, internal diagnostics omitted). */
 export const SETTINGS_FIELD_CATALOG: SettingsFieldEntry[] = filterSettingsCatalogEntries(

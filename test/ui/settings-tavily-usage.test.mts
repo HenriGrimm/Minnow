@@ -29,7 +29,7 @@ test('Missing key and offline states do not fetch; usage distinguishes key and a
   await tick();
   assert.match(content.textContent!, /Saved key usage15 \/ 100 credits/);
   assert.match(content.textContent!, /Account plan usage80 \/ 1,000 credits/);
-  assert.match(content.textContent!, /Unavailable/);
+  assert.match(content.textContent!, /Not reported/);
   assert.match(content.textContent!, /outside Minnow/);
   assert.match(content.textContent!, /Last refreshed/);
   const offline = appendTavilyUsageSettings(content, false);

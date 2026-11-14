@@ -68,7 +68,7 @@
   flex: 1;
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--mn-type-md);
 }
 
 /* ── Notes ─────────────────────────────────────────────────────────────────── */
@@ -157,7 +157,7 @@
 }
 
 .backup-checklist__desc {
-  font-size: 12.5px;
+  font-size: var(--mn-type-md);
   line-height: 1.45;
   color: var(--mn-fg-muted);
 }
@@ -186,7 +186,7 @@
 
 .backup-total {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--mn-type-md);
   color: var(--mn-fg-muted);
 }
 
@@ -253,7 +253,7 @@
 
 .backup-snapshot-status {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--mn-type-md);
   color: var(--mn-fg-muted);
 }
 
@@ -315,7 +315,7 @@
 }
 
 .backup-restore__when {
-  font-size: 13.5px;
+  font-size: var(--mn-type-base);
   font-weight: 600;
 }
 

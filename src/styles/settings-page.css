@@ -33,9 +33,8 @@
   background: var(--mn-surface-0);
 }
 
-.settings-page-header > .icon-btn {
+.settings-page-header > .back-to-chat {
   justify-self: start;
-  margin: 6px 0 6px 8px;
 }
 
 .settings-search-finder-slot {
@@ -2083,12 +2082,6 @@ html.mn-phone .settings-page-header {
   padding: 0 var(--mn-phone-pad-right, 14px) 0 4px;
 }
 
-html.mn-phone .settings-page-header > .icon-btn {
-  margin-left: 0;
-  min-width: var(--touch-min);
-  min-height: var(--touch-min);
-}
-
 /* The window sheet already frames the app; a second inset card just eats
    70px of a 812px screen before the first setting. */
 html.mn-phone .settings-page--os-embedded.settings-page--in-os-window {
@@ -2740,7 +2733,27 @@ html.mn-phone .settings-page-body > .settings-nav {
 }
 .settings-advanced { margin-top: 24px; border-top: 1px solid var(--mn-border); }
 .settings-advanced > summary { padding: 16px 0; cursor: pointer; font-weight: 600; }
-.settings-search-empty { padding: 16px; color: var(--mn-fg-muted); }
+.settings-search-empty { padding: 16px; color: var(--mn-fg-muted); font-size: var(--mn-type-md); line-height: 1.5; }
+.settings-search-empty__action {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  color: var(--mn-accent);
+  cursor: pointer;
+}
+.settings-search-empty__action:hover { text-decoration: underline; }
+/* Where a search result or cross-link landed. */
+.settings-search-target-flash {
+  border-radius: var(--mn-radius-sm);
+  box-shadow: 0 0 0 2px var(--mn-accent);
+  background-color: color-mix(in srgb, var(--mn-accent) 10%, transparent);
+  transition: box-shadow 0.4s ease, background-color 0.4s ease;
+}
+:root[data-reduce-motion] .settings-search-target-flash { transition: none; }
 .settings-search-finder__option { align-items: flex-start; flex-direction: column; gap: 2px; }
 .settings-search-finder__option-hint { white-space: normal; }
 .settings-quick-links { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 16px 0 28px; }
@@ -2751,3 +2764,193 @@ html.mn-phone .settings-page-body > .settings-nav {
 .settings-preference-filter > span { color: var(--mn-fg-muted); }
 .settings-preference-filter label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .settings-preference-reset { margin-left: 8px; flex-shrink: 0; }
+
+/* ---------- narrow window: list screen → section screen ----------
+   settings-mobile-nav.ts sets .settings-page--narrow from the Settings root's own
+   width, so a narrow OS window gets the phone drill-down instead of two stacked
+   scrollers (viewport media queries never see an app window's width). */
+.settings-page--narrow .settings-page-body {
+  flex-direction: column;
+}
+
+.settings-page--narrow .settings-nav {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px 12px 24px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.settings-page--narrow .settings-nav-group {
+  flex: none;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+.settings-page--narrow .settings-nav__item {
+  width: 100%;
+  flex: none;
+  padding: 10px 12px;
+  font-size: var(--mn-type-base);
+}
+
+.settings-page--narrow:not(.settings-page--phone-section) .settings-content { display: none; }
+.settings-page--narrow.settings-page--phone-section .settings-nav { display: none; }
+.settings-page--narrow.settings-page--phone-section .settings-phone-bar { display: flex; }
+.settings-page--narrow .settings-phone-bar .back-to-chat { display: none; }
+
+.settings-page--narrow .settings-content {
+  flex: 1;
+  --settings-content-pad-x: 16px;
+  padding: 0 16px 32px;
+}
+
+/* ---------- skip link ---------- */
+.settings-skip-link {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  left: 8px;
+  padding: 8px 12px;
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-accent);
+  color: var(--mn-fg-on-accent);
+  font-size: var(--mn-type-md);
+  font-weight: 500;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+.settings-skip-link:focus-visible { transform: none; }
+.settings-page-body { position: relative; }
+.settings-content:focus { outline: none; }
+.settings-area > h2:focus { outline: none; }
+.settings-area > h2:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+
+.settings-nav__external {
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--mn-fg-muted);
+}
+
+/* ---------- Privacy ---------- */
+.settings-privacy__list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-privacy__item {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mn-border);
+}
+.settings-privacy__item:last-child { border-bottom: 0; }
+.settings-privacy__title { font-size: var(--mn-type-base); font-weight: 500; color: var(--mn-fg); }
+.settings-privacy__body { font-size: var(--mn-type-md); line-height: 1.5; color: var(--mn-fg-muted); }
+.settings-privacy__item .settings-inline-link { margin-top: 4px; }
+
+/* ---------- Access: security summary ---------- */
+.settings-security {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-md);
+}
+.settings-security__row {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mn-border);
+  border-left: 3px solid transparent;
+}
+.settings-security__row:last-child { border-bottom: 0; }
+.settings-security__row[data-tone='notice'] { border-left-color: var(--mn-warning); }
+.settings-security__row[data-tone='warn'] { border-left-color: var(--mn-danger); }
+.settings-security__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  width: 100%;
+}
+.settings-security__label { font-size: var(--mn-type-base); font-weight: 500; color: var(--mn-fg); }
+.settings-security__value { font-size: var(--mn-type-md); font-weight: 500; color: var(--mn-fg); }
+.settings-security__row[data-tone='warn'] .settings-security__value { color: var(--mn-danger); }
+.settings-security__detail { margin: 0; font-size: var(--mn-type-md); line-height: 1.5; color: var(--mn-fg-muted); }
+
+/* ---------- Full access warning ---------- */
+.settings-permissions__warning {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--mn-danger) 45%, transparent);
+  border-radius: var(--mn-radius-sm);
+  background: color-mix(in srgb, var(--mn-danger) 10%, transparent);
+  color: var(--mn-fg);
+  font-size: var(--mn-type-md);
+  line-height: 1.5;
+}
+.settings-permissions--full [data-level='full'][aria-checked='true'] {
+  border-color: var(--mn-danger);
+}
+
+/* ---------- raw error details ---------- */
+.settings-error-details { margin-top: 4px; font-size: var(--mn-type-sm); color: var(--mn-fg-muted); }
+.settings-error-details > summary { cursor: pointer; min-height: 24px; display: inline-flex; align-items: center; }
+.settings-error-details code { display: block; margin-top: 4px; overflow-wrap: anywhere; font-family: var(--font-mono); }
+
+/* ---------- Devices: public-address notice ---------- */
+.devices-card__copy--notice {
+  padding: 8px 10px;
+  border-left: 3px solid var(--mn-warning);
+  background: color-mix(in srgb, var(--mn-fg) 4%, transparent);
+}
+
+/* ---------- Skills filter ---------- */
+.settings-skills-toolbar { align-items: center; }
+.settings-skills-filter { flex: 1 1 220px; max-width: 320px; }
+
+/* ---------- target sizes: disclosure summaries and inline links ≥ 24px ---------- */
+#settingsView :is(.settings-skill-card__edit-toggle, .settings-inline-link, .settings-inline-btn) {
+  min-height: 24px;
+}
+#settingsView .settings-skill-card__edit-toggle { display: inline-flex; align-items: center; }
+
+/* Native controls that remain take the accent instead of the browser default. */
+#settingsView :is(input[type='checkbox'], input[type='radio'], input[type='range']) {
+  accent-color: var(--mn-accent);
+}
+
+/* ---------- Keyboard shortcuts page ---------- */
+.settings-shortcuts__list { display: grid; gap: 16px; }
+.settings-shortcuts > .mn-btn { justify-self: start; }
+
+/* ---------- apply-timing badge and MCP facts ---------- */
+.settings-apply-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-pill);
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-xs);
+  font-weight: 500;
+  line-height: 18px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.settings-apply-badge--restart { border-color: color-mix(in srgb, var(--mn-warning) 55%, transparent); }
+.settings-mcp-meta { margin: 4px 0 0; color: var(--mn-fg-muted); font-size: var(--mn-type-sm); overflow-wrap: anywhere; }

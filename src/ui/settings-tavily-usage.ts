@@ -1,3 +1,4 @@
+import { formatLastChecked } from '../electron/updater-client';
 import { appendSettingsGroup } from './settings-layout';
 import { createSettingsActionsRow } from './settings-controls';
 
@@ -6,11 +7,19 @@ type TavilyUsage = { key: UsageMetrics; account: UsageMetrics; fetchedAt: string
 
 function count(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? value.toLocaleString() : 'Unavailable';
+    ? value.toLocaleString() : 'Not reported';
 }
 
+function known(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** "55 / 1,000 credits", or "55 credits used" when Tavily reports no limit. */
 function pair(used: unknown, limit: unknown): string {
-  return `${count(used)} / ${count(limit)} credits`;
+  if (known(used) && known(limit)) return `${count(used)} / ${count(limit)} credits`;
+  if (known(used)) return `${count(used)} credits used`;
+  if (known(limit)) return `${count(limit)} credits available`;
+  return 'Not reported';
 }
 
 /** Refreshes only while this Settings section is mounted and the saved key is stable. */
@@ -53,7 +62,7 @@ export function appendTavilyUsageSettings(content: HTMLElement, serverUp: boolea
 
   function render(data: TavilyUsage): void {
     metrics.replaceChildren();
-    metric('Plan', typeof data.account.current_plan === 'string' ? data.account.current_plan : 'Unavailable');
+    metric('Plan', typeof data.account.current_plan === 'string' ? data.account.current_plan : 'Not reported');
     metric('Account plan usage', pair(data.account.plan_usage, data.account.plan_limit));
     metric('Saved key usage', pair(data.key.usage, data.key.limit));
     if (data.account.paygo_usage !== null || data.account.paygo_limit !== null) {
@@ -84,7 +93,7 @@ export function appendTavilyUsageSettings(content: HTMLElement, serverUp: boolea
     details.hidden = false;
     const timestamp = new Date(data.fetchedAt);
     updated.textContent = Number.isFinite(timestamp.getTime())
-      ? `Last refreshed ${timestamp.toLocaleString()}` : 'Refresh time unavailable';
+      ? `Last refreshed ${formatLastChecked(timestamp.getTime()).replace(/^Just now$/, 'just now')}` : 'Refresh time unavailable';
   }
 
   async function refresh(force = false): Promise<void> {

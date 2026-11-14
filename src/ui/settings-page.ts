@@ -4,6 +4,7 @@ import '../styles/settings-graphite.css';
 
 import { isPairedDevice } from '../api/session-token';
 import { detectLocalServer } from '../tools/client';
+import { createBackToChatButton } from './back-to-chat';
 import { refreshSettingsSection } from './settings-sections';
 import { closeProviderEditor } from './settings-providers';
 import { disposeAppUpdatesSettings } from './settings-updates';
@@ -31,6 +32,7 @@ import { restoreReparentedSettingsSections } from './models/settings-reparent';
 import {
   activateIntegrationsHub,
   flashSettingsSearchTarget,
+  focusSettingsSectionHeading,
   resolveSettingsSearchDomTarget,
   scrollSettingsTargetIntoView,
   scrollToSettingsArea,
@@ -95,7 +97,12 @@ function isSettingsCategoryId(value: string): value is SettingsCategoryId {
 
 /** Write area hash unless OS-embedded (no hash mutation). */
 function writeSettingsHash(slug: string): void {
-  if (isOsEmbedded()) return;
+  if (isOsEmbedded()) {
+    // Phone hosts drive their own routes; the desktop OS shell keeps the section in the URL.
+    if (getSettingsRoot()?.closest('.m-native-app-host')) return;
+    void import('../os/router').then(({ syncSettingsSectionHash }) => syncSettingsSectionHash(slug));
+    return;
+  }
   const nextHash = `#/settings/${slug}`;
   if (window.location.hash !== nextHash) {
     window.location.hash = nextHash;
@@ -309,6 +316,28 @@ function syncDevOnlySettingsNav(): void {
     });
 }
 
+/** Up/Down/Home/End move between visible nav rows (group headers and pages). */
+function bindSettingsNavKeyboard(): void {
+  const nav = document.querySelector<HTMLElement>('.settings-nav');
+  if (!nav) return;
+  nav.addEventListener('keydown', (event) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const rows = [...nav.querySelectorAll<HTMLElement>('summary, .settings-nav__item')].filter((row) => {
+      if (row.hidden || row.closest('[hidden]')) return false;
+      const group = row.closest('details');
+      return row.tagName === 'SUMMARY' || !group || group.open;
+    });
+    const index = rows.indexOf(document.activeElement as HTMLElement);
+    if (index < 0) return;
+    event.preventDefault();
+    const next =
+      event.key === 'Home' ? rows[0]
+        : event.key === 'End' ? rows[rows.length - 1]
+          : rows[(index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length];
+    next?.focus();
+  });
+}
+
 function bindStaticSections(): void {
   if (staticBindingsDone) return;
   staticBindingsDone = true;
@@ -324,9 +353,15 @@ function bindStaticSections(): void {
       const area = (link as HTMLElement).dataset.areaJump as
         | SettingsSectionId
         | undefined;
-      if (area) setActiveArea(area);
+      if (!area) return;
+      setActiveArea(area);
+      // Keyboard activation (detail 0) moves into the page; a mouse click leaves focus in the nav.
+      if ((event as MouseEvent).detail === 0) {
+        window.setTimeout(() => focusSettingsSectionHeading(area), 0);
+      }
     });
   });
+  bindSettingsNavKeyboard();
 
   document.querySelectorAll('[data-hub-jump]').forEach((link) => {
     link.addEventListener('click', (event) => {
@@ -584,6 +619,12 @@ export function initSettingsPage(): void {
   pageInitialized = true;
 
   const root = getSettingsRoot();
+  const header = root?.querySelector('.settings-page-header');
+  if (header) {
+    const back = createBackToChatButton(backToChatFromSettings);
+    back.id = 'btnSettingsPageBack';
+    header.prepend(back);
+  }
   if (root) initGraphiteSettingsPresentation(root);
   if (root && isOsEmbedded()) {
     root.classList.add('settings-page--os-embedded');
@@ -598,10 +639,6 @@ export function initSettingsPage(): void {
       if (!query.trim()) clearSettingsPageFilter();
     },
   });
-
-  document
-    .getElementById('btnSettingsPageBack')
-    ?.addEventListener('click', backToChatFromSettings);
 
   initSettingsMobileNav();
   document.addEventListener('keydown', (event) => {

@@ -1,4 +1,4 @@
-import { refreshMcpToolCache } from '../tools/client';
+import { detectLocalServer, refreshMcpToolCache } from '../tools/client';
 import { appAlert, appConfirm } from './app-dialog';
 /**
  * Populate full settings page sections from Step 02–18 APIs (no placeholder stubs).
@@ -18,7 +18,6 @@ import { renderUsageSettingsSection } from './settings-usage';
 import { renderAudioSettingsSection } from './settings-audio';
 import { renderNotificationsSettingsSection } from './settings-notifications';
 import { renderDesktopShellSettings } from './settings-desktop-shell';
-import { renderPermissionSettings } from './settings-filesystem';
 import { renderProjectLocationSettings } from './settings-project-location';
 import { renderShellSandboxSettings } from './settings-shell-sandbox';
 import { renderAppUpdatesSettings } from './settings-updates';
@@ -321,9 +320,9 @@ async function appendToolCallDefaults(mount: HTMLElement): Promise<void> {
       'When your provider supports structured output, Minnow validates tool arguments with JSON Schema. If local models return malformed tool calls, enable structured-output probing under Providers.',
     ),
   );
-  const probeLink = linkToSettingsSection('Open Providers →', 'providers');
+  const probeLink = linkToSettingsSection('Models → Providers', 'providers');
   const probeWrap = el('p', 'settings-field-hint');
-  probeWrap.append('Configure probes under ', probeLink, '.');
+  probeWrap.append('Turn on structured-output probing in ', probeLink, '.');
   mount.appendChild(probeWrap);
 
   constrainedCb.addEventListener('change', () => {
@@ -395,14 +394,14 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
   if (area === 'general') appendGeneralSectionLead(shell);
-  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', backups: 'Back up your data and restore it on this or another computer.', access: 'Control how agents access files and run commands on this computer.' }[area]));
+  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', backups: 'Back up your data and restore it on this or another computer.', access: 'See what agents and other devices can reach, and contain agent commands.' }[area]));
   if (area === 'general') {
     const links = el('nav', 'settings-quick-links');
     links.setAttribute('aria-label', 'Common settings');
     links.append(
       linkToModelsSection('Connect a model', 'providers'),
       linkToSettingsSection('Change appearance', 'appearance'),
-      linkToSettingsSection('Agent permissions', 'tools'),
+      linkToSettingsSection('Agent permissions', 'agent-center'),
       linkToSettingsSection('Back up your data', 'backups'),
     );
     shell.appendChild(links);
@@ -469,15 +468,19 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
   }
 
   if (area === 'access') {
-    const permissions = appendSettingsGroup(
+    // The permission picker lives in Agents and permissions; this page summarises
+    // everything that decides what can reach this computer, in one place.
+    const summary = appendSettingsGroup(
       shell,
-      'Permissions',
-      'One level for every chat, agent, tool, MCP server, plugin and website. The composer’s permission icon and Shift+Tab change the same setting.',
-      'general.permissions',
+      'Security summary',
+      'What agents and other devices can reach right now. Each line links to the setting that changes it.',
+      'general.securitySummary',
       { emphasis: true },
     );
-    permissions.id = 'settingsPermissions';
-    await renderPermissionSettings(permissions);
+    summary.id = 'settingsPermissions';
+    const { renderSecuritySummary } = await import('./settings-security-summary');
+    if (isAsyncSectionRenderStale(area, generation)) return;
+    await renderSecuritySummary(summary);
     if (isAsyncSectionRenderStale(area, generation)) return;
 
     const shellSandbox = appendSettingsGroup(
@@ -508,7 +511,6 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
       [
         {
           label: 'Run setup again',
-          variant: 'primary',
           onClick: () => {
             void import('../onboarding').then((m) => m.rerunOnboardingFromSettings());
           },
@@ -820,7 +822,7 @@ async function renderToolsSection(): Promise<void> {
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.textContent = 'Configure tool loading, caching, and result size. Agent actions follow the global permission mode.';
+  lead.textContent = 'Configure tool loading, caching, and result size. What agents may do without asking follows the permission level.';
   shell.appendChild(lead);
 
   appendSettingsOfflineHint(shell, 'Some tools need Minnow running locally. Open or restart the app.', {
@@ -931,7 +933,7 @@ async function renderToolsSection(): Promise<void> {
     el(
       'p',
       'settings-field-hint',
-      'Caps how much text each file read, search, or shell command returns to the model. This does not compress chat history — that is Settings → Agents → Context policy.',
+      'Caps how much text each file read, search, or shell command returns to the model. This does not compress chat history — that is Context policy in Chat context.',
     ),
   );
 
@@ -966,13 +968,14 @@ async function renderToolsSection(): Promise<void> {
   maxCharsInput.disabled = !toolOutput.enabled;
   loadToolConfigIntoDrawer();
 
-  document.getElementById('settingsToolsServerBanner')?.classList.toggle(
-    'hidden',
-    isLocalServerAvailable(),
-  );
+  // Probe first: the cached flag is false until the first check, which showed
+  // "needs Minnow running" while the server was up.
+  const toolsBanner = document.getElementById('settingsToolsServerBanner');
+  toolsBanner?.classList.toggle('hidden', true);
+  void detectLocalServer().then((up) => toolsBanner?.classList.toggle('hidden', up));
 
   appendSettingsCrosslinks(content, [
-    { label: 'Global permission mode', sectionId: 'access' },
+    { label: 'Permission level', sectionId: 'agent-center' },
     { label: 'MCP servers', sectionId: 'mcp' },
     { label: 'Browser automation', sectionId: 'browser' },
     { label: 'Skills catalog', sectionId: 'skills' },
@@ -1066,6 +1069,16 @@ function createMcpSettingsRow(
   statusText.textContent = server.connected ? 'Connected' : 'Not connected';
   status.append(statusDot, statusText);
   detail.append(status);
+  const facts = [
+    server.transport === 'stdio' ? 'Local command' : server.transport ? `${server.transport.toUpperCase()} server` : '',
+    server.endpoint ?? '',
+    typeof server.toolCount === 'number' ? `${server.toolCount} ${server.toolCount === 1 ? 'tool' : 'tools'}` : '',
+  ].filter(Boolean);
+  if (facts.length > 0) {
+    const meta = el('p', 'settings-mcp-meta');
+    meta.textContent = facts.join(' · ');
+    detail.append(meta);
+  }
   if (server.authorizationUrl) {
     const signIn = document.createElement('a');
     signIn.href = server.authorizationUrl;
@@ -1082,13 +1095,19 @@ function createMcpSettingsRow(
     detail.append(signIn);
     statusText.textContent = 'Sign-in required';
   } else if (server.error) {
-    detail.append(el('p', 'field-hint', server.error));
+    detail.append(el('p', 'field-hint', describeMcpError(server.error)));
+    if (describeMcpError(server.error) !== server.error) {
+      const raw = el('details', 'settings-error-details');
+      raw.append(el('summary', '', 'Details'), el('code', '', server.error));
+      detail.append(raw);
+    }
   }
   if (server.enabled) {
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'settings-inline-btn';
     retry.textContent = server.connected ? 'Refresh tools' : 'Refresh connection';
+    retry.setAttribute('aria-label', `${retry.textContent} for ${server.label ?? server.id}`);
     retry.addEventListener('click', async () => {
       retry.disabled = true;
       const refreshed = await refreshMcpConnection(server.id);
@@ -1317,6 +1336,23 @@ function bindMcpAddForm(): void {
   });
 }
 
+/** Plain-language MCP connection errors; the raw text stays one click away. */
+function describeMcpError(raw: string): string {
+  if (/listen EACCES|EADDRINUSE|address already in use/i.test(raw)) {
+    return 'Minnow couldn’t open the local port this server uses for sign-in. On Windows that port may be reserved by the system; restarting the computer or choosing another port in mcp.json usually fixes it.';
+  }
+  if (/ENOENT|not found|is not recognized/i.test(raw)) {
+    return 'The command for this server wasn’t found. Install it, or check the command in mcp.json.';
+  }
+  if (/ECONNREFUSED|fetch failed|ETIMEDOUT|ENOTFOUND/i.test(raw)) {
+    return 'Couldn’t reach this server. Check that it is running and the address is right.';
+  }
+  if (/401|403|unauthori[sz]ed|forbidden/i.test(raw)) {
+    return 'The server refused the connection. Sign in again or check its key.';
+  }
+  return raw;
+}
+
 async function renderMcpSection(): Promise<void> {
   const mount = document.getElementById('settingsMcpBody');
   if (!mount) return;
@@ -1425,10 +1461,10 @@ async function renderAgentPacksSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Install collections of work agents. Enabled agents appear in ',
-    linkToSettingsSection('Agents', 'agent-center'),
-    '. Choose their models in ',
-    linkToSettingsSection('Routing', 'model-routing'),
+    'Install collections of work agents. Enabled agents join the agent cards in ',
+    linkToSettingsSection('Agents and permissions', 'agent-center'),
+    '; choose their models in ',
+    linkToSettingsSection('Models → Routing', 'model-routing'),
     '.',
   );
   shell.appendChild(lead);
@@ -1526,8 +1562,8 @@ async function renderRulesSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Standing instructions added to every parent chat send, after the built-in system prompt. Does not apply to sub-agents. Mode and agent prompts live under ',
-    linkToSettingsSection('Agents', 'agent-center'),
+    'Standing instructions added to every chat message you send, after the built-in system prompt. Sub-agents don’t get them. The agent’s own prompts are in ',
+    linkToSettingsSection('Agents and permissions', 'agent-center'),
     '.',
   );
   shell.appendChild(lead);
@@ -1567,6 +1603,14 @@ async function renderIssuesSettingsPanel(): Promise<void> {
 
 /** Load or refresh one settings section from live APIs. */
 export async function refreshSettingsSection(
+  section: SettingsSectionId,
+): Promise<void> {
+  await refreshSettingsSectionBody(section);
+  const { decorateSettingsApplyBadges } = await import('./settings-apply-badges');
+  decorateSettingsApplyBadges(document.getElementById(`settingsSection-${section}`));
+}
+
+async function refreshSettingsSectionBody(
   section: SettingsSectionId,
 ): Promise<void> {
   switch (section) {
@@ -1614,6 +1658,22 @@ export async function refreshSettingsSection(
     case 'about':
       await renderAboutSettingsSection();
       break;
+    case 'privacy': {
+      const mount = document.getElementById('settingsPrivacyBody');
+      if (mount) {
+        const { renderPrivacySettings } = await import('./settings-privacy');
+        renderPrivacySettings(mount);
+      }
+      break;
+    }
+    case 'shortcuts': {
+      const mount = document.getElementById('settingsShortcutsBody');
+      if (mount) {
+        const { renderShortcutSettings } = await import('./settings-shortcuts');
+        renderShortcutSettings(mount);
+      }
+      break;
+    }
     case 'diagnostics':
       await renderDiagnosticsSettingsSection();
       break;

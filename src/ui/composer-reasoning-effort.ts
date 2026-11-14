@@ -15,6 +15,7 @@ import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
 import {
   getActiveChat,
   scheduleSaveSessions,
+  sessionState,
   touchChat,
 } from '../state/sessions';
 import type { ReasoningEffortOption as EffortOption } from '../types';
@@ -289,7 +290,8 @@ export function initComposerReasoningEffort(): void {
   selectEl?.addEventListener('change', onSelectChange);
   segmentsEl?.addEventListener('click', onSegmentClick);
   ensureCursorFastButton();
-  syncComposerReasoningEffortFromActiveChat();
+  // Session state syncs this again once chats load; never fail boot over it.
+  if (sessionState) syncComposerReasoningEffortFromActiveChat();
 }
 
 /** Refresh dropdown options, visibility, and disabled state. */

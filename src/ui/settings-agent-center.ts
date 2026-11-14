@@ -296,7 +296,7 @@ function renderCardButton(card: AgentCenterCard): HTMLButtonElement {
 
   const head = el('div', 'settings-agent-card__head');
   head.appendChild(createIcon(card.icon, { className: 'settings-agent-card__icon' }));
-  head.appendChild(el('h3', 'settings-agent-card__title', card.title));
+  head.appendChild(el('h4', 'settings-agent-card__title', card.title));
   head.appendChild(createIcon('chevronRight', { className: 'settings-agent-card__chevron' }));
   btn.appendChild(head);
   btn.appendChild(el('p', 'settings-agent-card__desc', card.description));
@@ -324,7 +324,7 @@ const AGENT_CENTER_CARD_SECTIONS: {
   {
     id: 'skills',
     title: 'Workflow skills',
-    hint: 'Slash commands that replace the old modes. /ask and /plan also restrict what the turn may change.',
+    hint: 'Slash commands that set how a turn works. /ask and /plan also restrict what the turn may change.',
     searchKey: 'agents.skills',
   },
   {
@@ -338,7 +338,7 @@ const AGENT_CENTER_CARD_SECTIONS: {
 // ── Global ───────────────────────────────────────────────────────────────────
 
 /** Mount global context policy default for all agents. */
-async function mountGlobalContextPolicy(mount: HTMLElement): Promise<void> {
+export async function mountGlobalContextPolicy(mount: HTMLElement): Promise<void> {
   const config = await loadSubAgentConfig();
   const groupBody = appendSettingsGroup(
     mount,
@@ -489,15 +489,15 @@ export async function renderAgentCenterPanel(
   const permissions = appendSettingsGroup(content, 'Permission level', undefined, 'agents.permissions');
   const permissionCards = el('div');
   permissions.appendChild(permissionCards);
-  void renderPermissionSettings(permissionCards, { searchKey: 'agents.permissions', showRules: false });
+  void renderPermissionSettings(permissionCards, { searchKey: 'agents.permissions', showRules: true });
   const safeguards = el('div', 'settings-permissions__safeguards');
   const safeguardsText = el('span');
   safeguardsText.append(
-    'The same level covers chats, boards and Scheduler runs. ',
+    'The same level covers chats, boards and Automations runs. ',
     el('code', '', '~/.minnow/.key'),
     ' and secret stores stay protected at every level.',
   );
-  const accessLink = linkToSettingsSection('How access and safeguards work', 'access');
+  const accessLink = linkToSettingsSection('See everything that can reach this computer', 'access');
   accessLink.classList.add('settings-permissions__help');
   safeguardsText.append(' ', accessLink);
   safeguards.append(createIcon('lock', { size: 14 }), safeguardsText);
@@ -525,7 +525,6 @@ export async function renderAgentCenterPanel(
   }
 
   await mountGlobalSubAgentLimits(content);
-  await mountGlobalContextPolicy(content);
   attachAgentCenterBasePromptPanel(content);
 
   return content;

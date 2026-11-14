@@ -115,6 +115,7 @@ function ensureShell(): void {
 
   messageEl = document.createElement('p');
   messageEl.className = 'app-dialog-panel__message';
+  messageEl.id = 'appDialogMessage';
 
   bodyEl = document.createElement('div');
   bodyEl.className = 'app-dialog-panel__body';
@@ -124,6 +125,8 @@ function ensureShell(): void {
   inputEl.type = 'text';
   inputEl.className = 'app-dialog-panel__input';
   inputEl.hidden = true;
+  // The prompt's message is its label; without this the field had no accessible name.
+  inputEl.setAttribute('aria-labelledby', 'appDialogMessage');
 
   footerEl = document.createElement('div');
   footerEl.className = 'app-dialog-panel__footer';

@@ -14,6 +14,12 @@ export type McpServerSummary = {
   connected: boolean;
   authorizationUrl?: string;
   error?: string;
+  /** stdio | http | sse — from mcp.json. */
+  transport?: string;
+  /** Program name (stdio) or URL without query (HTTP); never arguments or secrets. */
+  endpoint?: string;
+  /** Tools listed by a connected server. */
+  toolCount?: number;
 };
 
 export async function importMcpServers(payload: unknown): Promise<{ ok: true } | { ok: false; error: string }> {

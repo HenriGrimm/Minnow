@@ -157,7 +157,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
       select: isoSelect,
       searchKey: 'agents.autopilot.isolation',
       description:
-        'Separate parallel tasks into git worktrees. To restrict file access for commands, use Data & privacy → Agent shell sandbox.',
+        'Separate parallel tasks into git worktrees. To restrict file access for commands, use the Agent shell sandbox in Data and privacy → Access.',
     }).row,
   );
 
@@ -287,7 +287,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
   const selfHealBody = appendSettingsGroup(
     content,
     'Self-heal & provisioning',
-    'Legacy task-chat provisioning controls. Current boards use the recovery limits above and preserve work while waiting for prerequisites.',
+    'Advanced. Older boards use these when a task needs infrastructure first; new boards use the recovery limits above.',
     'agents.autopilot.selfHeal',
     { emphasis: true },
   );

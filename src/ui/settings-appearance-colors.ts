@@ -113,6 +113,7 @@ export function appendAppearanceCustomColors(mount: HTMLElement): () => void {
     file.type = 'file';
     file.accept = '.json,application/json';
     file.hidden = true;
+    file.setAttribute('aria-label', 'Import a color theme file');
     const fileStatus = element('p', 'appearance-color-panel__file-status');
     fileStatus.setAttribute('role', 'status');
     file.addEventListener('change', async () => {

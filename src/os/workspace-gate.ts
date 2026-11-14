@@ -323,7 +323,15 @@ export function shouldBlockBootOnWorkspaceGate(): boolean {
   if (isMobileShell()) return false;
   if (isPageReload()) return false;
   if (hasViewWorkspace()) return false;
+  // Settings is almost entirely global: a deep link opens it straight away and
+  // boots with the last workspace, the same as a reload does.
+  if (isSettingsDeepLink()) return false;
   return true;
+}
+
+/** True when the window was opened on a Settings route. */
+export function isSettingsDeepLink(hash: string = typeof window === 'undefined' ? '' : window.location.hash): boolean {
+  return hash === '#/app/settings' || hash.startsWith('#/app/settings/');
 }
 
 /**

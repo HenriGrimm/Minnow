@@ -388,7 +388,7 @@
 }
 
 .devices-choice__detail {
-  font-size: 12.5px;
+  font-size: var(--mn-type-md);
   line-height: 1.45;
   color: var(--mn-fg-muted);
 }

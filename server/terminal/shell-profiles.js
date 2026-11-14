@@ -130,6 +130,10 @@ function resolveOnPath(candidates) {
  * @param {boolean} isDefault
  * @returns {ShellProfile}
  */
+function isInternalWslDistro(name) {
+  return /^docker-desktop(-data)?$/i.test(String(name).trim());
+}
+
 function wslDistroProfile(distro, isDefault) {
   const suffix = isDefault ? ' (default)' : '';
   return {
@@ -197,13 +201,21 @@ export function resolveProfiles(platform, options = {}) {
       });
     }
 
-    const catalog =
+    const rawCatalog =
       options.wslDistros != null
         ? {
             distros: options.wslDistros,
             defaultDistro: options.wslDefaultDistro ?? options.wslDistros[0] ?? null,
           }
         : getWslCatalog(options);
+    // Docker Desktop's internal distros are not usable dev shells.
+    const usable = rawCatalog.distros.filter((name) => !isInternalWslDistro(name));
+    const catalog = {
+      distros: usable,
+      defaultDistro: rawCatalog.defaultDistro && !isInternalWslDistro(rawCatalog.defaultDistro)
+        ? rawCatalog.defaultDistro
+        : usable[0] ?? null,
+    };
 
     if (catalog.distros.length > 0) {
       for (const distro of catalog.distros) {

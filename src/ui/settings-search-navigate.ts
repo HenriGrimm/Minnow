@@ -394,30 +394,80 @@ export async function navigateToSettingsSearchEntry(
   openSettings(resolved.sectionId, { searchKey: resolved.searchKey });
 
   await refreshSettingsSection(resolved.sectionId);
-
-  await new Promise<void>((resolve) => {
-
-    requestAnimationFrame(() => {
-
-      requestAnimationFrame(() => resolve());
-
-    });
-
-  });
-
+  await nextLayout();
   const target = resolveSettingsSearchDomTarget(
-
     entry.sectionId,
-
     entry.searchKey,
-
   );
-
   if (!target) return;
-
-  scrollSettingsTargetIntoView(target, { block: 'center', behavior: 'smooth' });
-
+  scrollSettingsTargetIntoView(target, { block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   flashSettingsSearchTarget(target);
-
+  focusSettingsTarget(target);
+  announceSettings(`Opened ${entry.label} in ${SETTINGS_SECTION_LABELS[resolved.sectionId] ?? 'Settings'}`);
 }
 
+/*
+ * Two frames for layout, with a timer fallback: a background or hidden window
+ * throttles requestAnimationFrame, which left search results unscrolled.
+ */
+function nextLayout(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    requestAnimationFrame(() => requestAnimationFrame(finish));
+    window.setTimeout(finish, 120);
+  });
+}
+
+function prefersReducedMotion(): boolean {
+  return document.documentElement.hasAttribute('data-reduce-motion') ||
+    (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+const FOCUSABLE_SELECTOR =
+  'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [role="radio"][tabindex="0"], summary';
+
+/** Move keyboard focus to the control a search or cross-link landed on. */
+export function focusSettingsTarget(target: HTMLElement): void {
+  // A label/value pair (<dt>/<dd>) keeps its control in the next sibling.
+  const scope = target.matches('dt') && target.nextElementSibling instanceof HTMLElement
+    ? target.nextElementSibling
+    : target;
+  const control = scope.matches(FOCUSABLE_SELECTOR)
+    ? scope
+    : scope.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+  const node = control ?? target;
+  if (!control && !node.hasAttribute('tabindex')) node.setAttribute('tabindex', '-1');
+  node.focus({ preventScroll: true });
+}
+
+/** Focus the heading of a section after switching to it (nav click or cross-link). */
+export function focusSettingsSectionHeading(sectionId: SettingsSectionId): void {
+  const root = getSectionRoot(resolveSettingsSectionNavigation(sectionId).sectionId);
+  const heading = root?.querySelector<HTMLElement>('h2') ?? root;
+  if (!heading) return;
+  if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+  heading.focus({ preventScroll: true });
+}
+
+/** Polite screen-reader announcement for settings navigation. */
+export function announceSettings(message: string): void {
+  let region = document.getElementById('settingsAnnouncer');
+  if (!region) {
+    region = document.createElement('div');
+    region.id = 'settingsAnnouncer';
+    region.className = 'visually-hidden';
+    region.setAttribute('role', 'status');
+    region.setAttribute('aria-live', 'polite');
+    document.body.appendChild(region);
+  }
+  region.textContent = '';
+  const node = region;
+  window.setTimeout(() => {
+    node.textContent = message;
+  }, 30);
+}

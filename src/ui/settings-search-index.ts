@@ -21,10 +21,12 @@ const SECTION_SEARCH_ALIASES: Partial<
   Record<SettingsSectionId, string[]>
 > = {
   general: ['startup', 'setup', 'onboarding', 'tray', 'login'],
-  terminal: ['shell', 'powershell', 'bash', 'command', 'console'],
-  backups: ['backup', 'restore', 'export', 'import'],
-  access: ['privacy', 'filesystem', 'disk access', 'shell sandbox', 'permissions', 'let agents edit files', 'allow file editing', 'approval'],
-  devices: ['phone', 'tablet', 'iphone', 'ipad', 'android', 'network', 'lan', 'wifi', 'remote', 'tailscale', 'anywhere', 'qr', 'pair'],
+  terminal: ['shell', 'powershell', 'bash', 'command', 'console', 'wsl', 'zsh', 'default shell'],
+  backups: ['backup', 'restore', 'export', 'import', 'secrets', 'encryption', 'passphrase'],
+  privacy: ['privacy', 'telemetry', 'offline', 'tracking', 'analytics', 'local only'],
+  shortcuts: ['shortcut', 'keybinding', 'hotkey', 'keyboard'],
+  access: ['filesystem', 'security', 'disk access', 'shell sandbox', 'permissions', 'let agents edit files', 'allow file editing', 'approval'],
+  devices: ['phone', 'tablet', 'iphone', 'ipad', 'android', 'network', 'lan', 'wifi', 'remote', 'tailscale', 'tailnet', 'funnel', 'anywhere', 'qr', 'pair', '9480'],
   updates: ['update', 'version', 'upgrade', 'restart'],
   notifications: ['notifications', 'bell', 'sound', 'alert', 'background chat', 'menubar'],
   diagnostics: ['health', 'errors', 'logs', 'crash', 'report', 'subsystem', 'issues', 'auto-file'],
@@ -34,12 +36,13 @@ const SECTION_SEARCH_ALIASES: Partial<
   rules: ['user rules', 'cursor rules', 'rule'],
   'model-routing': ['models', 'routing', 'bindings'],
   providers: ['api', 'lm studio', 'openai'],
+  editor: ['editor', 'font size', 'tab size', 'word wrap', 'codemirror', 'ghost text'],
+  mcp: ['mcp', 'model context protocol'],
+  lsp: ['lsp', 'language server', 'typescript server'],
   search: ['web search', 'brave', 'tavily', 'searxng', 'duckduckgo', 'ddg', 'tavily usage', 'credits', 'map', 'extract'],
   servers: ['searxng', 'managed server', 'local search', 'metasearch', 'install searxng'],
   tools: ['tool cache', 'tool loading', 'tool result size', 'schemas'],
-  mcp: ['model context protocol'],
   webhooks: ['outgoing webhook', 'hmac', 'automation', 'signed events'],
-  lsp: ['language server', 'typescript server'],
   audio: ['microphone', 'speaker', 'devices', 'dictation', 'echo', 'gain'],
 };
 
@@ -63,7 +66,7 @@ const MODELS_VOICE_SEARCH: SettingsSearchEntry = {
     'speech to text',
     'models voice',
   ],
-  hint: 'Models app',
+  hint: 'Models app › Voice',
 };
 
 /** llama.cpp / MLX runtimes (and llama.cpp forks) route to Models → Engine. */
@@ -87,7 +90,7 @@ const MODELS_ENGINE_SEARCH: SettingsSearchEntry = {
     'install llama',
     'cuda build',
   ],
-  hint: 'Models app',
+  hint: 'Models app › Engine',
 };
 
 /** Memory settings moved to the Brain app. */
@@ -243,9 +246,24 @@ function catalogFieldEntries(): SettingsSearchEntry[] {
         ...(field.keywords ?? []),
         ...(field.description ? [field.description.toLowerCase()] : []),
       ],
-      hint: modelsSection ? 'Models app' : SETTINGS_CATEGORY_LABELS[field.category],
+      hint: modelsSection ? `Models app › ${titleCase(modelsSection)}` : SETTINGS_CATEGORY_LABELS[field.category],
     };
   });
+}
+
+function titleCase(id: string): string {
+  const words = id.replace(/[-_]+/g, ' ').trim();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : id;
+}
+
+/** Desktop-shell rows (tray, launch at login, GPU) only exist inside Electron. */
+function isDesktopOnlyEntry(entry: SettingsSearchEntry): boolean {
+  const key = entry.searchKey ?? '';
+  return key.startsWith('general.desktop') && key !== 'general.desktop.zoom';
+}
+
+function isElectronSession(): boolean {
+  return typeof window !== 'undefined' && window.minnow?.app?.isElectron === true;
 }
 
 // ── Index ────────────────────────────────────────────────────────────────────
@@ -255,7 +273,7 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
   const sections = SETTINGS_SECTIONS.map(sectionEntry);
   return [
     ...sections,
-    { id: 'models:setup', label: 'Models & connections', sectionId: 'providers', kind: 'models-section', modelsSection: 'providers', keywords: ['change model', 'connect model', 'setup model', 'lm studio', 'api key', 'provider'], hint: 'Models app' },
+    { id: 'models:setup', label: 'Models and connections', sectionId: 'providers', kind: 'models-section', modelsSection: 'providers', keywords: ['change model', 'connect model', 'setup model', 'lm studio', 'api key', 'provider', 'openai key', 'anthropic key', 'openai', 'anthropic', 'token', 'password', 'base url', 'endpoint', 'proxy', 'ollama', 'llama.cpp', 'default model'], hint: 'Models app › Providers' },
     { id: 'task:mute', label: 'Play notification sounds', sectionId: 'notifications', kind: 'field', searchKey: 'general.notifications.sound', keywords: ['stop sounds', 'mute', 'silence', 'sound off', 'disable sounds', 'turn off sounds'] },
     MODELS_VOICE_SEARCH,
     MODELS_ENGINE_SEARCH,
@@ -266,9 +284,9 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
     ...expertEntries(),
     ...workAgentEntries(),
     ...subAgentEntries(),
-  ].map((entry) => {
+  ].filter((entry) => isElectronSession() || !isDesktopOnlyEntry(entry as SettingsSearchEntry)).map((entry) => {
     const result = entry as SettingsSearchEntry;
-    if (result.kind === 'models-section' || result.kind === 'brain-section') return result;
+    if (result.kind === 'models-section' || result.kind === 'brain-section' || result.kind === 'nav-group') return result;
     const group = SETTINGS_NAV_GROUPS.find((g) => g.sections.includes(result.sectionId));
     return { ...result, hint: group ? `${group.label} › ${SETTINGS_SECTION_LABELS[result.sectionId]}` : result.hint };
   });

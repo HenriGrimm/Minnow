@@ -41,7 +41,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 function sourceBadgeLabel(source: SkillSource): string {
-  return source === 'user' ? 'Custom' : 'Built-In';
+  return source === 'user' ? 'Custom' : 'Built-in';
 }
 
 // ── Editor ───────────────────────────────────────────────────────────────────
@@ -143,6 +143,7 @@ function buildSkillRow(
   const summary = document.createElement('summary');
   summary.className = 'settings-skill-card__edit-toggle';
   summary.textContent = 'Edit SKILL.md';
+  summary.setAttribute('aria-label', `Edit /${skill.id} SKILL.md`);
   details.appendChild(summary);
 
   const editorBody = el('div', 'settings-entity-editor-body');
@@ -239,8 +240,31 @@ export async function renderSkillsSettingsSection(mount: HTMLElement): Promise<v
   toolbar.appendChild(addBtn);
   mount.appendChild(toolbar);
 
+  const filter = document.createElement('input');
+  filter.type = 'search';
+  filter.className = 'settings-select settings-skills-filter';
+  filter.placeholder = 'Filter skills…';
+  filter.setAttribute('aria-label', 'Filter skills by name');
+  filter.setAttribute('aria-controls', 'settingsSkillsList');
+  toolbar.prepend(filter);
+
   const list = el('ul', 'settings-skills-list');
+  list.id = 'settingsSkillsList';
   mount.appendChild(list);
+  const filterCount = el('p', 'visually-hidden');
+  filterCount.setAttribute('role', 'status');
+  mount.appendChild(filterCount);
+  const applyFilter = () => {
+    const query = filter.value.trim().toLowerCase();
+    let shown = 0;
+    for (const card of list.querySelectorAll<HTMLElement>('[data-skill-id]')) {
+      const match = !query || (card.textContent ?? '').toLowerCase().includes(query);
+      card.hidden = !match;
+      if (match) shown += 1;
+    }
+    filterCount.textContent = query ? `${shown} skills shown` : '';
+  };
+  filter.addEventListener('input', applyFilter);
 
   const redrawList = async (): Promise<void> => {
     await refreshSkillCatalog();
@@ -253,6 +277,7 @@ export async function renderSkillsSettingsSection(mount: HTMLElement): Promise<v
     for (const skill of skills) {
       list.appendChild(buildSkillRow(skill, () => void redrawList()));
     }
+    applyFilter();
   };
 
   addBtn.addEventListener('click', () => {

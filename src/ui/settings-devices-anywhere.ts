@@ -30,9 +30,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
-function actionButton(label: string, primary = false): HTMLButtonElement {
+function actionButton(label: string, primary = false, ariaLabel?: string): HTMLButtonElement {
   const node = el('button', primary ? 'settings-action-btn settings-action-btn--primary' : 'settings-action-btn', label);
   node.type = 'button';
+  if (ariaLabel) node.setAttribute('aria-label', ariaLabel);
   return node;
 }
 
@@ -76,10 +77,22 @@ export function renderAnywhereState(
       if (import.meta.env?.DEV) copy('Developers: run npm run tailnet:build, then reopen this page.');
       break;
     case 'off': {
-      copy('Reach Minnow from your phone at home, at work, or on mobile data. Uses a free Tailscale account; your phone needs nothing installed.');
-      const start = actionButton('Make it work anywhere', true);
+      copy('Reach Minnow from your phone at home, at work, or on mobile data, using a free Tailscale account.');
+      const exposure = el('p', 'devices-card__copy devices-card__copy--notice');
+      exposure.append(
+        el('strong', '', 'Public address. '),
+        document.createTextNode(
+          'By default this gives Minnow an internet address through Tailscale Funnel, so your phone needs nothing installed. '
+          + 'Only devices you pair can sign in, but anyone with the address can reach the sign-in page. '
+          + 'Choose “Only my Tailscale devices” to keep it private; each phone then needs the Tailscale app.',
+        ),
+      );
+      mount.append(exposure);
+      const start = actionButton('Make it work anywhere', true, 'Turn on Anywhere access with a public address');
       run(start, () => setAnywhere(true));
-      actions.append(start);
+      const privateOnly = actionButton('Only my Tailscale devices', false, 'Turn on Anywhere access for Tailscale devices only');
+      run(privateOnly, () => setAnywhere(true, { funnel: false }));
+      actions.append(start, privateOnly);
       break;
     }
     case 'starting': {
@@ -131,6 +144,7 @@ export function renderAnywhereState(
       address.append(el('code', 'devices-address__url', status.url ?? ''));
       const copyBtn = el('button', 'settings-inline-btn', 'Copy');
       copyBtn.type = 'button';
+      copyBtn.setAttribute('aria-label', 'Copy the Anywhere address');
       copyBtn.addEventListener('click', () => {
         void navigator.clipboard.writeText(status.url ?? '').then(
           () => showToast('Address copied'),
@@ -141,8 +155,8 @@ export function renderAnywhereState(
       mount.append(address);
       copy(
         status.funnel === false
-          ? 'Works anywhere for devices signed in to the Tailscale app.'
-          : 'Works anywhere. Your phone needs nothing installed — only devices you connect can use Minnow.',
+          ? 'Private address: works anywhere for devices signed in to the Tailscale app.'
+          : 'Public address (Tailscale Funnel): works anywhere and your phone needs nothing installed. Only devices you connect can sign in.',
       );
       accountHint();
 
@@ -162,7 +176,7 @@ export function renderAnywhereState(
       });
       mount.append(privateRow);
 
-      const off = actionButton('Turn off');
+      const off = actionButton('Turn off', false, 'Turn off Anywhere access');
       run(off, () => setAnywhere(false));
       const signOut = actionButton('Sign out of Tailscale');
       signOut.addEventListener('click', () => {
@@ -181,18 +195,22 @@ export function renderAnywhereState(
     }
     case 'error': {
       copy(status.message || 'Tailscale reported a problem.');
-      const retry = actionButton('Try again', true);
+      const retry = actionButton('Try again', true, 'Retry Anywhere access');
       run(retry, async () => {
         await setAnywhere(false);
         return setAnywhere(true);
       });
-      const off = actionButton('Turn off');
+      const off = actionButton('Turn off', false, 'Turn off Anywhere access');
       run(off, () => setAnywhere(false));
       actions.append(retry, switchAccount(), off);
       break;
     }
   }
   if (actionMount) {
+    // On the Devices page "Connect a phone" is the page's one primary action.
+    for (const button of actions.querySelectorAll('.settings-action-btn--primary')) {
+      button.classList.remove('settings-action-btn--primary');
+    }
     actionMount.replaceChildren(...actions.children);
   } else if (actions.childElementCount) {
     mount.append(actions);

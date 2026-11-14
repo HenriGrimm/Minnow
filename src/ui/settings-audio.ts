@@ -11,7 +11,17 @@ import { createSettingsToggleRow } from './settings-switch';
 
 type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
-/** Request mic permission so device labels are populated. */
+/** True when the browser already lets Minnow use the microphone (no prompt needed). */
+async function hasMicrophonePermission(): Promise<boolean> {
+  try {
+    const result = await navigator.permissions?.query({ name: 'microphone' as PermissionName });
+    return result?.state === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/** Request mic permission so device labels are populated. Only on an explicit click. */
 async function primeAudioDeviceLabels(): Promise<void> {
   if (!navigator.mediaDevices?.getUserMedia) return;
   try {
@@ -176,7 +186,7 @@ export async function renderAudioSettingsSection(
   const actions = createSettingsActionsRow(
     [
       {
-        label: 'Refresh devices',
+        label: 'Show device names',
         disabled: !serverUp,
         onClick: () => {
           void runSettingsAction(actions.querySelector('button'), 'Refreshing devices…', async () => {
@@ -191,10 +201,20 @@ export async function renderAudioSettingsSection(
     { searchKey: 'audio.devices' },
   );
   mount.appendChild(actions);
+  const permissionHint = document.createElement('p');
+  permissionHint.className = 'settings-field-hint';
+  permissionHint.textContent =
+    'Your system only shares device names after you allow microphone access. Minnow asks when you click Show device names, not before.';
+  mount.appendChild(permissionHint);
 
   if (!serverUp) return;
 
-  await primeAudioDeviceLabels();
+  // Opening this page never prompts for the microphone; names fill in once access exists.
+  if (await hasMicrophonePermission()) {
+    permissionHint.hidden = true;
+    const button = actions.querySelector('button');
+    if (button) button.textContent = 'Refresh devices';
+  }
   const config = await loadVoiceMeta();
   await populateDeviceSelect(inputSelect, 'audioinput', config.audio.inputDeviceId);
   await populateDeviceSelect(outputSelect, 'audiooutput', config.audio.outputDeviceId);

@@ -37,7 +37,7 @@ export async function renderInjectionSettingsSection(
   const lead = document.createElement('p');
   lead.className = 'settings-section-lead';
   lead.textContent =
-    'Choose which optional project context is added to the first message by default. Each source can still be overridden per chat from the composer.';
+    'What the model sees: optional project context added to the first message, how long chats are kept inside its context window, and whether earlier reasoning is replayed.';
   shell.appendChild(lead);
 
   const content = document.createElement('div');
@@ -106,4 +106,10 @@ export async function renderInjectionSettingsSection(
   defaults.appendChild(codeMapRow);
 
   await renderContextDocumentsInjectionSection(content, setStatus);
+
+  // What the model keeps from earlier turns lives with what it is given up front.
+  const { mountGlobalContextPolicy } = await import('./settings-agent-center');
+  await mountGlobalContextPolicy(content);
+  const { renderReasoningReplaySection } = await import('./settings-rules');
+  await renderReasoningReplaySection(content, setStatus);
 }

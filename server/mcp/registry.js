@@ -172,6 +172,25 @@ function createFixtureClient() {
  * @param {string} serverId
  * @param {Array<{ name: string }>} tools
  */
+/**
+ * Transport kind plus a display-safe endpoint for Settings: the program name for
+ * stdio (never its arguments or env, which can carry keys) and the URL without
+ * credentials, query or fragment for HTTP.
+ */
+function describeTransport(transportCfg) {
+  if (!transportCfg) return {};
+  if (transportCfg.url) {
+    try {
+      const url = new URL(transportCfg.url);
+      return { transport: transportCfg.type === 'sse' ? 'sse' : 'http', endpoint: `${url.protocol}//${url.host}${url.pathname}` };
+    } catch {
+      return { transport: 'http' };
+    }
+  }
+  const program = transportCfg.command ? path.basename(String(transportCfg.command)) : undefined;
+  return { transport: 'stdio', endpoint: program };
+}
+
 function rememberTools(serverId, tools) {
   const map = new Map();
   for (const tool of tools ?? []) {
@@ -388,11 +407,14 @@ export async function listServers() {
     let label = id;
     let description = '';
     let builtin = false;
+    let transport;
+    let endpoint;
     try {
       const config = await loadServerConfig(id);
       label = config.label ?? id;
       description = config.description ?? '';
       builtin = config.builtin === true;
+      ({ transport, endpoint } = describeTransport(config.transport));
     } catch {
       /* config file missing — index entry only */
     }
@@ -405,6 +427,9 @@ export async function listServers() {
       connected: clients.has(id),
       authorizationUrl: authProviders.get(id)?.authorizationUrl,
       error: connectionErrors.get(id),
+      transport,
+      endpoint,
+      toolCount: clients.has(id) ? toolMaps.get(id)?.size ?? 0 : undefined,
     });
   }
   return out;

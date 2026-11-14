@@ -310,7 +310,10 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
       return;
     }
     const bytes = sizes.filter((row) => selected.has(row.id)).reduce((sum, row) => sum + row.bytes, 0);
-    total.textContent = `About ${formatBackupBytes(bytes)} before compression.`;
+    const count = sizes.filter((row) => selected.has(row.id)).length;
+    total.textContent = count === 0
+      ? 'Nothing selected yet.'
+      : `About ${formatBackupBytes(bytes)} for the ${count} selected ${count === 1 ? 'item' : 'items'}, before compression.`;
   }
   renderTotal();
   void fetchBackupSizes().then(

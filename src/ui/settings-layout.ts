@@ -119,9 +119,15 @@ function openSettingsSection(
     navHandlersForTests.openSettings(resolved.sectionId);
     return;
   }
-  void import('./settings-page').then((m) =>
-    m.openSettings(resolved.sectionId, { searchKey: resolved.searchKey }),
-  );
+  void import('./settings-page').then((m) => {
+    m.openSettings(resolved.sectionId, { searchKey: resolved.searchKey });
+    // A cross-link moves the reader to another page: put focus there too, not on <body>.
+    if (!resolved.searchKey) {
+      void import('./settings-search-navigate').then((nav) => {
+        window.setTimeout(() => nav.focusSettingsSectionHeading(resolved.sectionId), 0);
+      });
+    }
+  });
 }
 
 function openModelsSection(sectionId: ModelsSectionId): void {
@@ -198,6 +204,10 @@ export function linkToModelsSection(
   btn.type = 'button';
   btn.className = 'settings-inline-link';
   btn.textContent = label;
+  const where = document.createElement('span');
+  where.className = 'visually-hidden';
+  where.textContent = ' (opens the Models app)';
+  btn.append(where);
   btn.addEventListener('click', () => {
     void import('./models-page').then((m) => m.openModels(sectionId));
   });

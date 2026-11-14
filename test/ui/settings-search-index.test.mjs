@@ -24,6 +24,28 @@ describe('settings-search-index', () => {
       assert.ok(matches[0]?.hint);
     }
   });
+  test('reviewer queries land on the page that holds the setting', async () => {
+    const { rankSettingsSearch } = await import('../../src/ui/settings-search-rank.ts');
+    for (const [query, area] of [
+      ['font size', 'appearance'], ['tab size', 'editor'], ['context window', 'injection'],
+      ['compaction', 'injection'], ['ctx', 'injection'], ['base url', 'providers'],
+      ['openai key', 'providers'], ['lan', 'devices'], ['tailnet', 'devices'], ['constrained', 'tools'],
+      ['reduced motion', 'appearance'], ['wsl', 'terminal'], ['lsp', 'lsp'], ['encryption', 'backups'],
+    ]) {
+      const matches = rankSettingsSearch(query, buildSettingsSearchIndex());
+      assert.ok(matches.some((m) => m.sectionId === area), `${query} → ${area}; got ${matches.map((m) => m.sectionId).join(',')}`);
+    }
+  });
+  test('short queries match whole words and results are deduplicated', async () => {
+    const { rankSettingsSearch } = await import('../../src/ui/settings-search-rank.ts');
+    const index = buildSettingsSearchIndex();
+    assert.equal(rankSettingsSearch('gh', index).some((m) => m.label === 'Theme mode'), false);
+    assert.equal(rankSettingsSearch('lan', index)[0]?.sectionId, 'devices');
+    for (const query of ['mcp', 'lsp', 'notifications', 'tailscale']) {
+      const labels = rankSettingsSearch(query, index).map((m) => `${m.modelsSection ?? m.sectionId}|${m.label.toLowerCase()}`);
+      assert.equal(new Set(labels).size, labels.length, `${query} has duplicates: ${labels.join(', ')}`);
+    }
+  });
   test('section entries derive from SETTINGS_SECTIONS inventory', () => {
     const index = buildSettingsSearchIndex();
     const sectionEntries = index.filter((e) => e.kind === 'section');
@@ -109,7 +131,7 @@ describe('settings-search-index', () => {
     assert.ok(providers);
     assert.equal(providers.kind, 'models-section');
     assert.equal(providers.modelsSection, 'providers');
-    assert.equal(providers.hint, 'Models app');
+    assert.equal(providers.hint, 'Models app › Providers');
 
     const routing = index.find((e) => e.id === 'field:models.routing');
     assert.ok(routing);

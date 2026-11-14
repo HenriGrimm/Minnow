@@ -1,101 +1,111 @@
 {
   "runs": 10,
   "concurrency": 2,
-  "completed": 10,
-  "failed": 0,
+  "completed": 0,
+  "failed": 10,
   "retries": 0,
   "abandonments": 0,
   "overflowEvents": 0,
   "perRun": [
     {
       "n": 1,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 653
+      "ms": 40319,
+      "error": "timed out waiting for rel1-6 to finish"
     },
     {
       "n": 2,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 641
+      "ms": 40425,
+      "error": "timed out waiting for rel2-7 to finish"
     },
     {
       "n": 3,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 827
+      "ms": 40291,
+      "error": "timed out waiting for rel3-8 to finish"
     },
     {
       "n": 4,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 744
+      "ms": 40336,
+      "error": "timed out waiting for rel4-9 to finish"
     },
     {
       "n": 5,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 656
+      "ms": 18633,
+      "error": "fetch failed"
     },
     {
       "n": 6,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 910
+      "ms": 1,
+      "error": "fetch failed"
     },
     {
       "n": 7,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 593
+      "ms": 1,
+      "error": "fetch failed"
     },
     {
       "n": 8,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 1145
+      "ms": 1,
+      "error": "fetch failed"
     },
     {
       "n": 9,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 858
+      "ms": 0,
+      "error": "fetch failed"
     },
     {
       "n": 10,
-      "finished": true,
-      "merged": 3,
+      "finished": false,
+      "merged": 0,
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 722
+      "ms": 0,
+      "error": "fetch failed"
     }
   ],
   "recordedAt": "2026-08-29",
@@ -103,7 +113,7 @@
   "baseline": {
     "path": "test/orchestrator/p2g-reliability.json",
     "concurrency": 1,
-    "completed": 10,
+    "completed": 0,
     "retries": 0,
     "abandonments": 0
   },

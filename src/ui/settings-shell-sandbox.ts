@@ -78,7 +78,7 @@ export async function renderShellSandboxSettings(mount: HTMLElement): Promise<vo
     const winNote = el(
       'p',
       'settings-field-hint settings-filesystem-hint',
-      'Require is not available on Windows (sandboxed commands run in WSL). Use Prefer or Off; Prefer asks before running unsandboxed when the sandbox cannot apply.',
+      'On Windows sandboxed commands run in WSL, so Require isn’t offered. Prefer asks before running a command unsandboxed when the sandbox can’t apply.',
     );
     section.appendChild(winNote);
   }
@@ -105,7 +105,7 @@ export async function renderShellSandboxSettings(mount: HTMLElement): Promise<vo
   const hintOff = el(
     'p',
     'settings-field-hint settings-filesystem-hint',
-    'Agent one-shot shells run with the same filesystem authority as Minnow (today’s default).',
+    'Off (the default): agent commands can read and write anything Minnow can.',
   );
   const hintPrefer = el(
     'p',

@@ -276,6 +276,11 @@ export async function initApp(): Promise<void> {
       detectLocalServer({ refreshTools: false }),
     ]);
     bootPrerequisitesLoaded = true;
+  } else {
+    // No-op when sessions are already in memory. A hot-replaced sessions module
+    // (or a second initApp after the flag was set) starts with no state, and every
+    // composer init below reads it synchronously.
+    await loadSessionsFromStorage();
   }
   refreshConfigStorageBanner();
   const migrated = await runMigrationIfNeeded();
@@ -632,7 +637,7 @@ async function startApp(): Promise<void> {
         hash === '#' ||
         hash === '#/' ||
         hash === '#/desktop' ||
-        hash.startsWith('#/app/'));
+        (hash.startsWith('#/app/') && !hash.startsWith('#/app/settings')));
     if (bootToWorkspacePicker) {
       // Phones follow the computer's current workspace instead of picking one.
       window.location.replace(isMobileShell() ? '#/app/code/chat' : '#/workspaces');

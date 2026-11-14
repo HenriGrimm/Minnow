@@ -271,6 +271,7 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
   const uploadInput = document.createElement('input');
   uploadInput.type = 'file';
   uploadInput.accept = '.zip,application/zip';
+  uploadInput.setAttribute('aria-label', 'Choose an agent pack .zip file');
   uploadInput.className = 'settings-agent-packs-upload-input';
   uploadInput.setAttribute('aria-hidden', 'true');
   uploadInput.tabIndex = -1;

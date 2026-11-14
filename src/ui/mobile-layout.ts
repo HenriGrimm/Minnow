@@ -1,4 +1,9 @@
-export const PHONE_MQ = '(max-width: 640px), (max-width: 1024px) and (max-height: 540px)';
+/*
+ * The short-viewport clause covers landscape phones only. Without the coarse-pointer
+ * test, a zoomed desktop window (1366×768 at 150% ≈ 910×512) became the phone app.
+ */
+export const PHONE_MQ =
+  '(max-width: 640px), (max-width: 1024px) and (max-height: 540px) and (pointer: coarse)';
 export const TABLET_MQ =
   '(min-width: 641px) and (max-width: 1024px) and (min-height: 541px) and (pointer: coarse)';
 /** Touch-first input; true on tablets and touchscreen laptops as well as phones. */

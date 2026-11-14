@@ -30,7 +30,7 @@ export async function renderAgentSupervisionSection(
     el(
       'p',
       undefined,
-      'Set how long each sub-agent can run in Sub-agents. When an attempt times out, Minnow can retry it with the work already completed.',
+      'How long each sub-agent may run is set in Sub-agent limits. When an attempt times out, Minnow can retry it with the work already completed.',
     ),
   );
   explain.appendChild(
@@ -44,8 +44,8 @@ export async function renderAgentSupervisionSection(
 
   const recovery = el('p', 'settings-field-hint');
   recovery.append(
-    'Change sub-agent concurrency and timeouts under ',
-    linkToSettingsSection('Sub-agents', 'sub-agents'),
+    'Change sub-agent concurrency and run time in ',
+    linkToSettingsSection('Agents and permissions → Sub-agent limits', 'sub-agents'),
     '.',
   );
   notes.appendChild(recovery);

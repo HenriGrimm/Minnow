@@ -65,7 +65,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: backgroundRow } = createSettingsToggleRow('Background job notifications', {
     checked: prefs.backgroundEnabled,
-    description: 'Scheduler reminders and memory or skill proposals.',
+    description: 'Automations reminders and memory or skill proposals.',
     searchKey: 'general.notifications.background',
     onChange: (next) => saveNotificationPref('backgroundEnabled', next),
   });

@@ -141,7 +141,7 @@ export const BACKUP_CATEGORIES = [
   {
     id: 'scheduler',
     label: 'Scheduled jobs',
-    description: 'Scheduler jobs and their run history. Job prompts are encrypted, so they travel with credentials.',
+    description: 'Automations jobs and their run history. Job prompts are encrypted, so they travel with credentials.',
     defaultOn: true,
     roots: [
       { path: 'scheduler.json', secrets: true },
