@@ -41,10 +41,20 @@ test('Settings shares progress, restart, release notes and manual check for inst
   assert.ok(calls.includes('check'));
   assert.ok(calls.includes('/api/models/agent-clis/updates?refresh=1'));
 
-  listener(status = { ...status, state: 'downloading', pendingVersion: '1.3.0', progressPercent: 41 });
-  assert.equal(mount.querySelector('progress')!.value, 41);
-  listener(status = { ...status, state: 'ready', releaseNotes: '### Changes\n- Reliability fixes' });
-  assert.match(mount.querySelector('details')!.textContent!, /Reliability fixes/);
+  listener(status = { ...status, state: 'downloading', pendingVersion: '1.3.0', progressPercent: 41,
+    releaseNotes: '### Changes\n- Reliability fixes' });
+  const progress = mount.querySelector('progress')!;
+  const notes = mount.querySelector('details')!;
+  assert.equal(progress.value, 41);
+  assert.equal(progress.getAttribute('aria-label'), 'Minnow download progress');
+  notes.open = true;
+  listener(status = { ...status, progressPercent: 72 });
+  assert.equal(progress.value, 72);
+  assert.equal(mount.querySelector('.updates-download__percent')!.textContent, '72%');
+  listener(status = { ...status, state: 'ready' });
+  assert.ok(progress.closest('[hidden]'));
+  assert.equal(notes.open, true);
+  assert.match(notes.textContent!, /Reliability fixes/);
   await center.restart();
   assert.match(mount.textContent!, /Could not restart Minnow/);
   const beta = mount.querySelector<HTMLInputElement>('[name="settings-update-channel"][value="beta"]')!;

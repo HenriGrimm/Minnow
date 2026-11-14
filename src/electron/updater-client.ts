@@ -129,7 +129,7 @@ export function releaseNotesExcerpt(notes: string | null, maxLines = 3): string[
     const line = rawLine.trim();
     if (!line || /^#{1,6}\s+/u.test(line) || /^[-*_]{3,}$/u.test(line)) continue;
     const text = releaseNoteLineToText(line);
-    if (!text || /^(?:full changelog|install(?:ation)?):?$/iu.test(text)) continue;
+    if (!text || /^full changelog(?:\s*:|$)/iu.test(text) || /^install(?:ation)?:?$/iu.test(text)) continue;
     result.push(text);
     if (result.length >= maxLines) break;
   }

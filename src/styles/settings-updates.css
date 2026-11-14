@@ -72,32 +72,80 @@
 }
 
 .updates-row__mark svg { width: 16px; height: 16px; }
-.updates-row__main { flex: 1 1 100px; min-width: 0; }
-.updates-row__title { margin: 0; font-size: var(--mn-type-md); font-weight: 650; }
+.updates-row__title {
+  flex: 1 1 0;
+  margin: 0;
+  font-size: var(--mn-type-md);
+  font-weight: 650;
+}
 .updates-row__versions {
-  margin: 2px 0 0;
+  margin: 4px 0 0;
   font: var(--mn-type-sm)/1.45 var(--font-mono);
   color: var(--mn-fg-muted);
   overflow-wrap: anywhere;
 }
 
 .updates-row__actions:has(> :only-child[hidden]) { display: none; }
-.updates-row__status { margin-top: 6px; }
+.updates-row__actions { margin-inline-start: auto; }
+.updates-row__status { margin-top: 4px; }
+.updates-row__versions,
 .updates-row__status,
 .updates-row__extra { margin-inline-start: 42px; }
 .updates-row[data-tone='ready'] .updates-row__status { color: var(--mn-accent-ink); }
 .updates-row[data-tone='warn'] .updates-row__hint { color: var(--mn-warning); }
 .updates-row__hint:not([hidden]) { margin-top: 4px; }
 
-.updates-row__progress:not([hidden]) {
-  display: block;
-  width: 100%;
-  height: 6px;
-  margin-top: 8px;
-  accent-color: var(--mn-accent);
+.updates-download:not([hidden]) {
+  display: grid;
+  gap: var(--mn-space-1-5);
+  margin-top: var(--mn-space-2);
 }
 
-.updates-notes { margin-top: 7px; font-size: var(--mn-type-sm); }
+.updates-download__label {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--mn-space-2);
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
+  line-height: 1.5;
+}
+
+.updates-download__percent {
+  color: var(--mn-fg);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.updates-row__progress {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: var(--mn-space-1-5);
+  border: 0;
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-border-strong);
+}
+
+.updates-row__progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: var(--mn-border-strong);
+}
+
+.updates-row__progress::-webkit-progress-value {
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-accent);
+}
+
+.updates-row__progress::-moz-progress-bar {
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-accent);
+}
+
+@media (forced-colors: active) {
+  .updates-row__progress { appearance: auto; }
+}
+
+.updates-notes { margin-top: var(--mn-space-2); font-size: var(--mn-type-sm); }
 .updates-notes__summary { cursor: pointer; width: fit-content; color: var(--mn-fg); }
 .updates-notes__body {
   max-height: 240px;

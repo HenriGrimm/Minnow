@@ -25,16 +25,14 @@ function createRow(title: string, logo: string) {
   const mark = el('span', 'updates-row__mark');
   mark.setAttribute('aria-hidden', 'true');
   mark.innerHTML = logo;
-  const main = el('div', 'updates-row__main');
   const titleEl = el('h3', 'updates-row__title', title);
   const versions = el('p', 'updates-row__versions');
   const actions = el('div', 'updates-row__actions');
   const status = el('p', 'updates-row__status');
   status.setAttribute('role', 'status');
   const extra = el('div', 'updates-row__extra');
-  main.append(titleEl, versions);
-  header.append(mark, main, actions);
-  root.append(header, status, extra);
+  header.append(mark, titleEl, actions);
+  root.append(header, versions, status, extra);
   return { root, versions, actions, status, extra };
 }
 
@@ -57,16 +55,22 @@ export function createUpdateRows(center: UpdateCenter, surface: 'settings' | 'po
   const root = el('div', 'updates-list');
   const app = createRow('Minnow', MINNOW_GLYPH_HEADER_HTML);
   const restart = updateButton('Restart to update', () => { void center.restart(); }, true);
+  const download = el('div', 'updates-download');
+  const downloadLabel = el('div', 'updates-download__label');
+  const percent = el('span', 'updates-download__percent');
+  downloadLabel.setAttribute('aria-hidden', 'true');
+  downloadLabel.append(el('span', '', 'Downloading update'), percent);
   const progress = el('progress', 'updates-row__progress');
   progress.max = 100;
   progress.setAttribute('aria-label', 'Minnow download progress');
   const notes = el('details', 'updates-notes');
-  const notesSummary = el('summary', 'updates-notes__summary', 'Release notes');
+  download.append(downloadLabel, progress);
+  const notesSummary = el('summary', 'updates-notes__summary', 'What’s new');
   const notesBody = el('div', 'updates-notes__body');
   notes.append(notesSummary, notesBody);
   const restartHint = el('p', 'updates-row__hint', 'Minnow will close and reopen. Save your work before restarting.');
   app.actions.append(restart);
-  app.extra.append(progress, restartHint, notes);
+  app.extra.append(download, restartHint, notes);
   const appGroup = el('section', 'updates-group');
   appGroup.setAttribute('aria-label', 'Minnow desktop');
   appGroup.append(app.root);
@@ -98,19 +102,22 @@ export function createUpdateRows(center: UpdateCenter, surface: 'settings' | 'po
       : ready ? 'Ready to restart'
       : appText?.label ?? (api ? 'Reading update status…' : 'Desktop updates are available in the installed Minnow app.'));
     app.root.dataset.tone = state.appError ? 'warn' : ready ? 'ready' : appText?.tone ?? 'muted';
+    app.status.hidden = downloading && !state.appError;
     restart.hidden = !ready;
     restart.disabled = state.restarting || center.isInstallingCli();
     restartHint.textContent = center.isInstallingCli() ? 'Restart is available when CLI updates finish.'
       : 'Minnow will close and reopen. Save your work before restarting.';
     restartHint.hidden = !ready;
-    progress.hidden = !downloading;
-    if (downloading) progress.value = status.progressPercent ?? 0;
+    download.hidden = !downloading;
+    if (downloading) {
+      progress.value = status.progressPercent ?? 0;
+      percent.textContent = `${progress.value}%`;
+    }
     const nextNotes = activeVersion ? status.releaseNotes : null;
     notes.hidden = !nextNotes;
     if (nextNotes !== renderedNotes) {
       notes.open = false;
       if (nextNotes) {
-        notesSummary.textContent = `What’s new in ${activeVersion}`;
         if (surface === 'settings') renderReleaseNotesMarkdown(notesBody, nextNotes);
         else {
           const list = el('ul');
