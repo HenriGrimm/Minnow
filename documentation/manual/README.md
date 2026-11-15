@@ -13,6 +13,7 @@
 | Find a thread, file, command, or setting | [Find your way around Minnow](apps/overview.md) |
 | Edit a file, run a check, or open a local preview | [Work in Code](apps/code.md) |
 | Inspect a diff and commit my changes | [Source Control](apps/code.md#source-control-center) |
+| Work on a frontend and a backend repository together | [Workspaces with several repositories](concepts/multi-repo-workspaces.md) |
 | Choose what an agent can do or answer an approval | [Tools and permissions](concepts/tools-and-permissions.md) |
 | Give an agent more context, steer it, or recover a turn | [Work in a thread](chat/chatting.md) |
 | Capture a bug and give it to an agent | [Issues](apps/issues.md) |
