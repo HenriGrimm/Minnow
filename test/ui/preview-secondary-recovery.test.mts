@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Window } from 'happy-dom';
-import { teardownHappyDomAsync } from '../os/dom-helpers.mts';
 
 test('secondary preview validates the live guest before reusing a saved URL', async () => {
   const win = new Window({ url: 'http://localhost' });
@@ -59,6 +58,6 @@ test('secondary preview validates the live guest before reusing a saved URL', as
     resetPreviewInstanceHostsForTests();
     resetPreviewTabStoreForTests();
     resetFilePanelStateForTests();
-    await teardownHappyDomAsync(win);
+    await win.happyDOM.close();
   }
 });

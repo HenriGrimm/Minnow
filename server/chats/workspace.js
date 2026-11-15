@@ -8,7 +8,7 @@ import { createChatWorkspaceRepository } from './workspace-repository.js';
 import { getAgentConversationsFeature } from './feature.js';
 import { getChatWorktreePath } from '../worktree/paths.js';
 import { createChatWorktree } from '../worktree/worktree-ops.js';
-import { ensureDependencyDirs } from '../worktree/dep-symlinks.js';
+import { prepareWorktreeDependencies } from '../worktree/prepare-dependencies.js';
 import { runWorktreeSetupProcess } from '../worktree/setup-process.js';
 import { pathAccessStore } from '../runtime/path-access.js';
 
@@ -64,9 +64,9 @@ export function createChatWorkspaceAdapters(overrides = {}) {
     async create({ slotId, source, branch, baseSha, signal }) {
       const parent = pathAccessStore.getStore();
       return pathAccessStore.run({ ...parent, workspaceRootOverride: source, abortSignal: signal }, () =>
-        createChatWorktree({ chatId: slotId, branch, baseRef: baseSha, requireNewBranch: true, signal }));
+        createChatWorktree({ chatId: slotId, branch, baseRef: baseSha, requireNewBranch: true, signal, prepareDependencies: false }));
     },
-    prepareDependencies: (source, target, { signal } = {}) => ensureDependencyDirs(source, target, { signal }),
+    prepareDependencies: (source, target, { signal } = {}) => prepareWorktreeDependencies(source, target, { signal }),
     ...overrides,
   };
 }
@@ -178,10 +178,11 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
             fail(created?.error || created?.output || 'The requested new checkout was not created');
           }
           createdNow = true;
-          dependencies = created.deps ?? await adapters.prepareDependencies(binding.sourceCanonicalPath, binding.targetPath, { signal });
           const verified = await verify(binding, await adapters.loadProject(source.scope.canonicalKey), signal, true);
           binding = workspaceRepository.update(binding.allocationId, { targetWorkspaceId: verified.scope.workspaceId,
-            targetCanonicalPath: verified.scope.canonicalKey, dependencies: dependencies ?? null }, { expectedRevision: binding.revision, ownerId });
+            targetCanonicalPath: verified.scope.canonicalKey, dependencies: created.deps ?? null }, { expectedRevision: binding.revision, ownerId });
+          // Retain the verified allocation even if environment/dependency setup fails.
+          dependencies = created.deps ?? await adapters.prepareDependencies(binding.sourceCanonicalPath, binding.targetPath, { signal });
         }
         if (dependencies?.ok === false) throw new ChatContractError('capability_unavailable', 'Checkout dependency setup failed; the owned checkout was retained');
       }

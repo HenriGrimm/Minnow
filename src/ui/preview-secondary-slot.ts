@@ -367,15 +367,13 @@ async function loadSecondaryElectron(
     setPreviewInstanceVisible(WORKSPACE_PREVIEW_SECONDARY_INSTANCE, true);
   }
 
-  let existing = true;
   let reusable = true;
   if (api.tabs?.create) {
     const listed = await api.tabs.list(WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
     if (options?.isCurrent?.() === false) return;
     const guest = listed.find((t) => t.id === tabId);
-    existing = Boolean(guest);
     reusable = Boolean(guest && (guest.loading || (guest.url && guest.url !== 'about:blank')));
-    if (!existing) {
+    if (!guest) {
       await api.tabs.create(tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
     }
   }

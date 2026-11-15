@@ -8,7 +8,9 @@ import { invalidateRegisteredWorktreeCache } from './allowlist.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
 import { expandGitmojiShortcodes } from '../../src/lib/gitmoji-shortcodes.mjs';
 import { refreshDependencies } from './dep-install.js';
-import { ECOSYSTEM_ENTRIES, ensureDependencyDirs, hasBrokenDepDir } from './dep-symlinks.js';
+import { ECOSYSTEM_ENTRIES, hasBrokenDepDir } from './dep-symlinks.js';
+import { prepareWorktreeDependencies } from './prepare-dependencies.js';
+import { prepareWorktreeEnvironment } from './local-environment.js';
 import {
   getBoardWorktreesDir,
   getChatWorktreePath,
@@ -42,9 +44,9 @@ const depFailureOutput = (deps) => deps.failed.map((f) => f.reason).join('; ');
 async function seedTaskWorktreeDeps(wtPath, intPath) {
   const workspace = getEffectiveWorkspaceRoot();
   const preferred = (await pathExists(intPath)) ? intPath : workspace;
-  let deps = await ensureDependencyDirs(preferred, wtPath);
-  if (!deps.ok && preferred !== workspace) {
-    deps = await ensureDependencyDirs(workspace, wtPath);
+  let deps = await prepareWorktreeDependencies(preferred, wtPath);
+  if (!deps.ok && !deps.environment && preferred !== workspace) {
+    deps = await prepareWorktreeDependencies(workspace, wtPath);
   }
   if (!deps.ok || await hasBrokenDepDir(wtPath)) {
     return {
@@ -295,14 +297,14 @@ export async function ensureIntegration({ boardId, branch, baseRef }) {
         error: `Board integration folder is not a valid Git worktree: ${intPath}. Preserve any work in this folder, then repair or move it before retrying.`,
       };
     }
-    const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
+    const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath);
     if (!deps.ok) return { ok: false, stage: 'deps', path: intPath, deps, output: depFailureOutput(deps) };
     return { ok: true, path: intPath, branch, created: false, deps };
   }
   await fs.mkdir(path.dirname(intPath), { recursive: true });
   const w = await git(['worktree', 'add', intPath, branch]);
   if (!ok(w)) return { ok: false, stage: 'worktree', path: intPath, output: out(w) };
-  const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
+  const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath);
   if (!deps.ok) return { ok: false, stage: 'deps', path: intPath, deps, output: depFailureOutput(deps) };
   return { ok: true, path: intPath, branch, created: true, deps };
 }
@@ -341,6 +343,17 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
   }
 
   if (exists) {
+    // Validate/copy against the final base's ignore rules, not the old branch.
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
+    if (!synced.ok) {
+      return {
+        ok: false,
+        conflict: synced.conflict,
+        path: wtPath,
+        branch,
+        output: synced.output,
+      };
+    }
     const seeded = await seedTaskWorktreeDeps(wtPath, intPath);
     if (!seeded.ok) {
       return {
@@ -351,16 +364,6 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
         created: false,
         deps: seeded.deps,
         output: seeded.output,
-      };
-    }
-    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
-    if (!synced.ok) {
-      return {
-        ok: false,
-        conflict: synced.conflict,
-        path: wtPath,
-        branch,
-        output: synced.output,
       };
     }
     return { ok: true, path: wtPath, branch, created: false, synced: syncBase, deps: seeded.deps };
@@ -375,6 +378,16 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
   if (await branchExists(branch)) {
     const w = await git(['worktree', 'add', wtPath, branch]);
     if (!ok(w)) return { ok: false, path: wtPath, branch, output: out(w) };
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
+    if (!synced.ok) {
+      return {
+        ok: false,
+        conflict: synced.conflict,
+        path: wtPath,
+        branch,
+        output: synced.output,
+      };
+    }
     const seeded = await seedTaskWorktreeDeps(wtPath, intPath);
     if (!seeded.ok) {
       return {
@@ -385,16 +398,6 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
         created: true,
         deps: seeded.deps,
         output: seeded.output,
-      };
-    }
-    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
-    if (!synced.ok) {
-      return {
-        ok: false,
-        conflict: synced.conflict,
-        path: wtPath,
-        branch,
-        output: synced.output,
       };
     }
     return { ok: true, path: wtPath, branch, created: true, deps: seeded.deps };
@@ -1327,6 +1330,9 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
     // Canonical chats durably bind the allocated checkout before installers run.
     await onCheckout?.({ path: wtPath, branch });
     signal?.throwIfAborted();
+    const environment = await prepareWorktreeEnvironment(getEffectiveWorkspaceRoot(), wtPath, { signal });
+    if (!environment.ok) return { ok: false, path: wtPath, branch, environment,
+      error: `Worktree kept. Local environment setup failed: ${environment.failed.map(item => item.reason).join(' ')} Retry setup after repair.` };
     const preparation = await refreshDependencies(wtPath, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]), { signal });
     signal?.throwIfAborted();
     if (preparation.failed.length) {
@@ -1369,6 +1375,11 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
     if (!(await isWorktreeCheckout(wtPath))) return { ok: false, error: 'The managed worktree folder is not a valid checkout. Inspect it in Source Control.' };
     const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath);
     if (!ok(head)) return { ok: false, error: 'The existing worktree has a detached HEAD.' };
+    if (prepareDependencies) {
+      const environment = await prepareWorktreeEnvironment(depSource, wtPath, { signal });
+      if (!environment.ok) return { ok: false, path: wtPath, branch: head.stdout.trim(), environment,
+        error: `Worktree kept. ${environment.failed.map(item => item.reason).join(' ')}` };
+    }
     return { ok: true, path: wtPath, branch: head.stdout.trim(), created: false };
   }
 
@@ -1390,14 +1401,15 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
         output: added.error,
       };
     }
-    const deps = prepareDependencies ? await ensureDependencyDirs(depSource, wtPath, { signal }) : undefined;
+    const deps = prepareDependencies ? await prepareWorktreeDependencies(depSource, wtPath, { signal }) : undefined;
     invalidateRegisteredWorktreeCache();
     return {
-      ok: true,
+      ok: deps?.ok !== false,
       path: wtPath,
       branch: added.branch ?? branchName,
       created: true,
       deps,
+      ...(deps?.ok === false ? { error: `Worktree kept. Setup failed: ${depFailureOutput(deps)}` } : {}),
     };
   }
 
@@ -1411,18 +1423,20 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
   if (!requireNewBranch && await branchExists(branchName)) {
     const w = await git(['worktree', 'add', wtPath, branchName], depSource, { signal });
     if (!ok(w)) return { ok: false, path: wtPath, branch: branchName, output: out(w) };
-    const deps = prepareDependencies ? await ensureDependencyDirs(depSource, wtPath, { signal }) : undefined;
+    const deps = prepareDependencies ? await prepareWorktreeDependencies(depSource, wtPath, { signal }) : undefined;
     invalidateRegisteredWorktreeCache();
-    return { ok: true, path: wtPath, branch: branchName, created: true, deps };
+    return { ok: deps?.ok !== false, path: wtPath, branch: branchName, created: true, deps,
+      ...(deps?.ok === false ? { error: `Worktree kept. Setup failed: ${depFailureOutput(deps)}` } : {}) };
   }
 
   const r = await git(['worktree', 'add', '-b', branchName, wtPath, baseSha], depSource, { signal });
   if (!ok(r)) return { ok: false, path: wtPath, branch: branchName, output: out(r) };
   signal?.throwIfAborted();
-  const deps = prepareDependencies ? await ensureDependencyDirs(depSource, wtPath, { signal }) : undefined;
+  const deps = prepareDependencies ? await prepareWorktreeDependencies(depSource, wtPath, { signal }) : undefined;
   signal?.throwIfAborted();
   invalidateRegisteredWorktreeCache();
-  return { ok: true, path: wtPath, branch: branchName, created: true, deps };
+  return { ok: deps?.ok !== false, path: wtPath, branch: branchName, created: true, deps,
+    ...(deps?.ok === false ? { error: `Worktree kept. Setup failed: ${depFailureOutput(deps)}` } : {}) };
 }
 
 /**
@@ -1469,6 +1483,9 @@ export async function refreshIntegrationDeps({ boardId, sinceSha }) {
     .split(/\r?\n/)
     .map((s) => s.trim())
     .filter(Boolean);
+  const environment = await prepareWorktreeEnvironment(getEffectiveWorkspaceRoot(), intPath);
+  if (!environment.ok) return { ok: false, error: 'environment', environment,
+    output: environment.failed.map(item => item.reason).join(' ') };
   const { ran, failed } = await refreshDependencies(intPath, changedFiles);
   return { ok: true, ran, failed };
 }

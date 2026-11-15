@@ -11,6 +11,14 @@ Start in an open workspace and choose a thread or **New thread**. The thread hea
 
 If completions, formatting, or **Go to definition** are missing, open **Settings**, search for **Language servers**, and check the language for that file. Mixed projects may need a server for each language.
 
+## Local environments in worktrees
+
+Minnow automatically copies Git-ignored local development and test dotenv files into new worktrees before preparing dependencies. This includes `.env`, `.env.local`, `.env.development`, `.env.dev`, `.env.test`, `.env.testing`, their `.local` variants, and files in nested packages. No confirmation or configuration is needed. Existing worktree files are preserved when setup is retried; later edits in one checkout do not update another.
+
+Production, staging, signing, template files, dependency folders and build outputs are not copied. Linked source files are not followed. A destination must also ignore a copied file; if that or another safety check fails, setup reports an error and keeps the checkout for repair and retry. Environment file contents are not shown in setup messages.
+
+Environment copies can still point to shared databases or services. Use the project's isolated test resources before running migrations, seeding data or destructive integration tests. Minnow does not create separate databases or rewrite connection strings.
+
 ## Terminal
 
 Open **Terminal** from the panel launcher or use **Ctrl+`**. Before running a command that writes files, check the working directory with `pwd` in a Unix shell or `Get-Location` in PowerShell. A thread on a worktree uses a different checkout from the main folder. To change shells, search **Default shell** in Settings. Interrupt a running command with **Ctrl+C**.

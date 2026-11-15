@@ -4,7 +4,7 @@ import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { subscribeFirstMessageSubmission } from '../chat/first-message-submission';
 import { findIncompleteToolBatchAtTail } from '../chat/incomplete-tool-batch';
 import { getPendingTranscriptMessages } from '../chat/message-queue';
-import { getCurrentRoute } from '../os/router';
+import { getCurrentRoute, navigateToCodeDevServers } from '../os/router';
 import { isChatArchived } from '../state/chat-archive';
 import { isChatPinned, setChatPinned } from '../state/chat-groups';
 import { resolveChatWorktreeRoot } from '../state/chat-worktree';
@@ -273,6 +273,7 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
     const goal = getActiveGoal(chat);
     const devServer = rowButton('terminal', 'Dev servers', undefined, () => {
       const panel = showSubview('Dev servers', () => devServer);
+      panel.toolbar.append(button('Open full page', action(navigateToCodeDevServers)));
       void import('./thread-dev-servers').then(({ mountThreadDevServers }) => {
         if (!panel.signal.aborted && isCurrent()) {
           mountThreadDevServers({

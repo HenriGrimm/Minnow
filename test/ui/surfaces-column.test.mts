@@ -264,7 +264,14 @@ test('Graphite panels open before the first message and restore each thread', as
     }
     assert.match(cleanMenu.textContent ?? '', /feature\/new-thread.*No changed files/);
     assert.deepEqual(actionLabels(cleanMenu), ['Open PR']);
-    branch.click();
+    const servers = Array.from(cleanMenu.querySelectorAll('button')).find(control => control.textContent === 'Dev servers');
+    assert.ok(servers);
+    servers.click();
+    const fullPage = Array.from(cleanMenu.querySelectorAll('button')).find(control => control.textContent === 'Open full page');
+    assert.ok(fullPage, 'Dev servers exposes the full page even without configured servers');
+    fullPage.click();
+    assert.equal(cleanMenu.isConnected, false, 'Navigation dismisses the thread menu');
+    assert.equal(win.location.hash, '#/app/code/dev-server');
   } finally {
     globalThis.fetch = fetchBefore;
     setLocalServerAvailableForTests(serverBefore);

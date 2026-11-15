@@ -81,6 +81,8 @@ async function fixture(t, options = {}) {
 
 test('durable intent precedes allocation; concurrent sends share one verified final checkout', async t => {
   const f = await fixture(t);
+  await fs.writeFile(path.join(f.repo, '.git', 'info', 'exclude'), '.env\n');
+  await fs.writeFile(path.join(f.repo, '.env'), 'FIXTURE=canonical-local\n');
   await fs.writeFile(path.join(f.repo, 'file.txt'), 'user edits');
   const first = await f.admit(), second = await f.admit();
   const intent = f.repository.getCommand(first.commandId).captured.workspacePreparation;
@@ -97,6 +99,7 @@ test('durable intent precedes allocation; concurrent sends share one verified fi
   assert.ok(one.execution.captured.policy.workspaceIds.includes(one.target.scope.workspaceId));
   assert.equal(one.execution.captured.policy.toolPermissions.save_file, 'full');
   assert.equal(await fs.readFile(path.join(intent.slotPath, 'file.txt'), 'utf8'), 'committed');
+  assert.equal(await fs.readFile(path.join(intent.slotPath, '.env'), 'utf8'), 'FIXTURE=canonical-local\n');
   assert.equal(await fs.readFile(path.join(f.repo, 'file.txt'), 'utf8'), 'user edits');
   // The first model turn can commit without changing its execution checkout.
   await fs.writeFile(path.join(intent.slotPath, 'turn-one.txt'), 'first turn result');

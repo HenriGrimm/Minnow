@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { runProcess } from '../process-runner.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
 import { invalidateRegisteredWorktreeCache } from '../worktree/allowlist.js';
+import { prepareWorktreeEnvironment } from '../worktree/local-environment.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import {
   gitRefFolderName,
@@ -1212,6 +1213,9 @@ export async function worktreeAdd({
   }
 
   invalidateRegisteredWorktreeCache();
+  const environment = await prepareWorktreeEnvironment(repoRoot, path.resolve(repo.cwd, targetPath));
+  if (!environment.ok) return { ok: false, path: targetPath, branch: checkoutName, environment,
+    error: `Worktree kept. Local environment setup failed: ${environment.failed.map(item => item.reason).join(' ')}` };
   return { ok: true, path: targetPath, branch: checkoutName };
 }
 

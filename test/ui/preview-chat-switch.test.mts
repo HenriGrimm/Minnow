@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { Window } from 'happy-dom';
-import { teardownHappyDomAsync } from '../os/dom-helpers.mts';
 
 test('chat switching restores a live browser page without reloading it', async () => {
   const win = new Window({ url: 'http://localhost' });
@@ -17,7 +16,7 @@ test('chat switching restores a live browser page without reloading it', async (
   const markup = new win.DOMParser().parseFromString(
     readFileSync(new URL('../../index.html', import.meta.url), 'utf8'), 'text/html',
   );
-  const stage = document.importNode(markup.getElementById('workspaceSplit')!, true) as HTMLElement;
+  const stage = document.importNode(markup.getElementById('workspaceSplit')! as unknown as Node, true) as HTMLElement;
   const app = document.createElement('div');
   app.id = 'appBody';
   app.append(stage);
@@ -103,6 +102,6 @@ test('chat switching restores a live browser page without reloading it', async (
   } finally {
     resetPreviewGuestVisibilityForTests();
     setSessionStateForTests(null);
-    await teardownHappyDomAsync(win);
+    await win.happyDOM.close();
   }
 });

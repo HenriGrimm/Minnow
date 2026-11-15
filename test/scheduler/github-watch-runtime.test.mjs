@@ -39,6 +39,8 @@ async function setup({ losePrResponse = false } = {}) {
   await git(['init', '-b', 'main']);
   await git(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-m', 'Initial']);
   await git(['remote', 'add', 'origin', 'https://github.com/owner/repo.git']);
+  await fs.writeFile(path.join(cwd, '.git', 'info', 'exclude'), '.env\n');
+  await fs.writeFile(path.join(cwd, '.env'), 'FIXTURE=automation-environment\n');
   const job = { id: 'watch', workspacePath: cwd, githubWatch: { repository: 'owner/repo' }, prompt: '', providerId: 'test', modelId: 'model' };
   const calls = [];
   const comments = [];
@@ -81,6 +83,7 @@ async function setup({ losePrResponse = false } = {}) {
       planningRuns++;
       assert.equal(options.modeId, 'plan');
       assert.notEqual(options.workspacePath, cwd);
+      assert.equal(await fs.readFile(path.join(options.workspacePath, '.env'), 'utf8'), 'FIXTURE=automation-environment\n');
       const planDir = path.join(options.workspacePath, 'documentation', 'plans');
       await fs.mkdir(planDir, { recursive: true });
       await fs.writeFile(path.join(planDir, 'github-issue.md'), PLAN_EXAMPLE);

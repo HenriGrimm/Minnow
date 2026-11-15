@@ -10,7 +10,7 @@ import { integrationBranchName } from './core/plan.js';
 import { decide, wantsSameWorktree } from './core/policy.js';
 import { sanitizePathSegment } from '../../src/lib/sanitize-path-segment.mjs';
 import { getBoardWorktreesDir, getWorktreeSlotPath } from '../worktree/paths.js';
-import { ensureDependencyDirs } from '../worktree/dep-symlinks.js';
+import { prepareWorktreeDependencies } from '../worktree/prepare-dependencies.js';
 import {
   checkWorktreeDirty,
   commitWorktree,
@@ -340,7 +340,7 @@ export async function ensureBoardIntegration(boardId) {
     const intPath = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
     try {
       if (!(await isWorktreeCheckout(intPath))) throw new Error('integration checkout is no longer valid');
-      const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
+      const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath);
       if (!deps.ok) return { ok: false, path: intPath, error: 'deps', output: deps.failed.map(failure => failure.reason).join('; '), deps };
       return {
         ok: true,

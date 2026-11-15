@@ -122,6 +122,8 @@ test('a worktree parent keeps child chats in its project window across checkout 
 test('new checkout pins parent commit, excludes dirty/untracked files and coalesces durable retries', async () => {
   await fixture(async f => {
     const head = (await f.git(['rev-parse', 'HEAD'])).stdout.trim();
+    await fs.writeFile(path.join(f.repo, '.git', 'info', 'exclude'), '.env\n');
+    await fs.writeFile(path.join(f.repo, '.env'), 'FIXTURE=child-environment\n');
     await fs.writeFile(path.join(f.repo, 'README.md'), 'uncommitted parent edit');
     await fs.writeFile(path.join(f.repo, 'untracked.txt'), 'parent-only');
     const input = { ...f.base, strategy: 'new_worktree' };
@@ -130,6 +132,7 @@ test('new checkout pins parent commit, excludes dirty/untracked files and coales
     assert.equal(f.creates(), 1); assert.equal(one.binding.baseSha, head); assert.equal(one.binding.sourceDirty, true);
     assert.equal(one.binding.uncommittedParentEditsExcluded, true);
     assert.equal(await fs.readFile(path.join(one.scope.canonicalKey, 'README.md'), 'utf8'), 'committed base');
+    assert.equal(await fs.readFile(path.join(one.scope.canonicalKey, '.env'), 'utf8'), 'FIXTURE=child-environment\n');
     await assert.rejects(fs.access(path.join(one.scope.canonicalKey, 'untracked.txt')));
     assert.equal((await f.git(['rev-parse', 'HEAD'], one.scope.canonicalKey)).stdout.trim(), head);
     assert.equal(await fs.readFile(path.join(f.repo, 'README.md'), 'utf8'), 'uncommitted parent edit');
@@ -259,6 +262,25 @@ test('dependency failure retains an identified checkout and explicit retry prese
     assert.equal(result.binding.setupState, 'ready');
     assert.equal(await fs.readFile(path.join(result.scope.canonicalKey, 'README.md'), 'utf8'), 'retained child work');
     assert.equal(f.creates(), 1);
+  });
+});
+
+test('real environment failure retains a verified child allocation and retries without recreating it', async () => {
+  await fixture(async f => {
+    await fs.writeFile(path.join(f.repo, '.git', 'info', 'exclude'), '.env\n');
+    await fs.writeFile(path.join(f.repo, '.env'), Buffer.alloc(1024 * 1024 + 1, 65));
+    const input = { ...f.base, strategy: 'new_worktree' };
+    await assert.rejects(f.resolver.resolve(input), error => error.binding?.setupState === 'failed');
+    const failed = f.allocations.getByAllocation(input.allocationId);
+    assert.ok(failed.targetCanonicalPath); assert.ok(failed.targetWorkspaceId);
+    assert.equal(failed.dependencies.ok, false);
+    assert.match(failed.dependencies.failed[0].reason, /1 MiB/);
+    await fs.writeFile(path.join(f.repo, '.env'), 'FIXTURE=repaired-child\n');
+    const ready = await f.resolver.resolve({ ...input, retrySetup: true });
+    assert.equal(ready.binding.setupState, 'ready');
+    assert.equal(ready.scope.canonicalKey, failed.targetCanonicalPath);
+    assert.equal(f.creates(), 1);
+    assert.equal(await fs.readFile(path.join(ready.scope.canonicalKey, '.env'), 'utf8'), 'FIXTURE=repaired-child\n');
   });
 });
 

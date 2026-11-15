@@ -8,6 +8,7 @@ import { githubRepositoryFromRemote } from './github-watch-runtime.js';
 import { pollPrReview } from './pr-review.js';
 import { setLiveRunHeadline } from './live-runs.js';
 import { recordActivity } from './activity.js';
+import { requireWorktreeEnvironment } from '../worktree/local-environment.js';
 
 /**
  * @param {{ job: any; runId: string; runReviewer: (input: { role: string; roleLabel: string; prompt: string; workspacePath: string }) => Promise<any>; isCancelled?: () => boolean; gh?: typeof runGh; processRun?: typeof runProcess }} input
@@ -73,6 +74,7 @@ export async function runPrReview({ job, runId, runReviewer, isCancelled, gh = r
       } catch {
         await git(['worktree', 'add', '--detach', '--force', workspacePath, head]);
       }
+      await requireWorktreeEnvironment(cwd, workspacePath);
       return { workspacePath, baseRef: `refs/minnow/pr-review/base-${pull.number}` };
     },
     cleanupWorktree: async (workspacePath) => {
