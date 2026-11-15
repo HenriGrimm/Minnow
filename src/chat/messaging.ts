@@ -475,7 +475,9 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     if (chat.chatCommandVersion !== 1) flushComposerDraftSessionSave();
     try { await ensureOrdinaryChatRoute(chat); }
     catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); return; }
-    if (sessionState?.activeId !== chat.id) return;
+    // Server admission belongs to the captured conversation, not its mounted
+    // composer. Navigating during promotion must not silently abandon Send.
+    if (!sessionState?.chats.includes(chat) || sessionState.activeId !== chat.id && chat.chatCommandVersion !== 1) return;
   }
   if (chat.chatCommandVersion === 1 && !isPairedDevice() && isPluginSlashCommand(rawTextEarly)) {
     try {
@@ -524,7 +526,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
         chat.pinnedSkill = context.nextPinned;
         touchChat(chat);
         scheduleSaveSessions();
-        syncComposerPinnedSkillFromActiveChat();
+        if (sessionState?.activeId === chat.id) syncComposerPinnedSkillFromActiveChat();
       }
       // Remove only the sent files; anything added during delivery is a new draft.
       if (pendingDraft && getActiveChat().id === chat.id && getAttachmentEpoch() === remoteAttachmentEpoch) {
@@ -535,6 +537,11 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
         if (getAttachmentEpoch() === remoteAttachmentEpoch) clearAttachments();
       }
       pendingDraft?.accept();
+      if (!pendingDraft && sessionState?.activeId !== chat.id &&
+          chat.composerDraft === withComposerChatReferences(rawTextEarly, attachmentsAtSend)) {
+        clearComposerDraftOnChat(chat);
+        scheduleSaveSessions({ chatId: chat.id });
+      }
     } catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); }
     finally { pendingDraft?.restore(); }
     return;

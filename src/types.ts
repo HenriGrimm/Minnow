@@ -336,7 +336,13 @@ export interface CodeChangeStats {
   diffLines?: CodeChangeDiffLine[];
   diffTruncated?: boolean;
   commitSha?: string;
-  files?: Array<{ path: string; additions: number; deletions: number }>;
+  files?: Array<{
+    path: string;
+    additions: number;
+    deletions: number;
+    diffLines?: CodeChangeDiffLine[];
+    diffTruncated?: boolean;
+  }>;
   /** Checkout and branch when this mutation was recorded. Absent on legacy rows. */
   workspacePath?: string;
   gitBranch?: string;

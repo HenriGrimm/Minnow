@@ -97,7 +97,7 @@
     --chat-todo-outer-inset: clamp(var(--mn-space-8), 3cqi, 5rem);
     --chat-todo-min-rail-width: calc(12rem + var(--chat-todo-outer-inset));
     --chat-todo-column-gap: clamp(var(--mn-space-8), 3cqi, 4rem);
-    grid-template: auto minmax(0, 1fr) /
+    grid-template: minmax(0, 1fr) auto /
       minmax(var(--chat-todo-min-rail-width), 1fr)
       minmax(0, var(--chat-composer-max))
       minmax(var(--chat-todo-min-rail-width), 1fr);
@@ -105,12 +105,13 @@
   }
 
   .chat-viewport:has(> .chat-todo-panel) > .chat-viewport-dock {
-    grid-area: 2 / 2;
+    /* Match the full-width scrollport; the reading column is centered between equal rails. */
+    grid-area: 1 / 1 / 2 / -1;
   }
 
   .chat-viewport:has(> .chat-todo-panel) > .chat-area {
     /* The scrollport spans the panel. Keep the reading column inside the checklist rails. */
-    grid-area: 2 / 1 / 3 / -1;
+    grid-area: 1 / 1 / 2 / -1;
     scrollbar-gutter: stable both-edges;
     --chat-todo-transcript-padding-inline: max(
       0px,
@@ -120,7 +121,7 @@
   }
 
   .chat-viewport > .chat-todo-panel {
-    grid-area: 2 / 1;
+    grid-area: 1 / 1;
     z-index: 1;
     width: min(22rem, calc(100% - var(--chat-todo-outer-inset)));
     min-width: 0;
@@ -129,7 +130,8 @@
   }
 
   .chat-viewport:has(> .chat-todo-panel) > .composer-notices {
-    grid-area: 1 / 1 / 2 / -1;
+    /* Questions and approvals stay below the scrollport, not above the conversation. */
+    grid-area: 2 / 1 / 3 / -1;
   }
 }
 
@@ -141,9 +143,10 @@
 /* Bottom-center overlay: jump chip stacked above the code-change strip. */
 .chat-viewport-dock {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
   bottom: var(--chat-float-gap, 12px);
-  transform: translateX(-50%);
   z-index: 12;
   display: flex;
   flex-direction: column;

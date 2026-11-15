@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 
@@ -18,6 +19,20 @@ afterEach(() => {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('toast', () => {
+  test('notifications move left only while a desktop browser or diff surface is visible', () => {
+    const css = readFileSync(new URL('../../src/styles/toast.css', import.meta.url), 'utf8');
+    // happy-dom cannot evaluate the nested :has/:is rule reliably; guard the
+    // visibility selectors here and check computed positioning in Chromium.
+    const [, selector, declarations] = css.match(/(html:not\(\.mn-mobile-app\)[\s\S]*?\.mn-toast-stack)\s*\{([^}]+)\}/);
+    assert.match(declarations, /right:\s*auto/);
+    assert.match(declarations, /left:\s*max\(1rem, env\(safe-area-inset-left\)\)/);
+    assert.match(declarations, /align-items:\s*flex-start/);
+    assert.ok(selector.startsWith('html:not(.mn-mobile-app)'));
+    assert.ok(selector.includes('.graphite-surface-panel:not([hidden]) :is(#graphitePanel-changes, #graphitePanel-review):not([hidden])'));
+    assert.ok(selector.includes('#appBody:not(.hidden) #rightPaneColumn:not(.hidden) .file-viewer-pane--commit-diff:not(.hidden)'));
+    assert.ok(selector.includes('#desktopPreviewMount.is-active'));
+  });
+
   test('phone toasts mount in the phone shell', () => {
     const shell = document.createElement('div');
     shell.id = 'mobileShell';

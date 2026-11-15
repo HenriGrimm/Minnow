@@ -8,6 +8,8 @@ import { DEFAULT_MODE_ID } from '../chat/modes/types';
 import { normalizePersistedModeId } from './session-schema.mjs';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
+import { getFirstMessageSubmission } from '../chat/first-message-submission';
+import { hasUnsettledAgentWork } from './chat-relationships';
 import type { Chat, SessionState } from '../types';
 
 // ── Visibility ───────────────────────────────────────────────────────────────
@@ -47,6 +49,8 @@ export function chatHasListableContent(chat: Chat): boolean {
   if (chat.chatCommandVersion === 1 && (chat.historyRewriteRevision ?? 0) > 0) return true;
   if (isChatArchived(chat)) return true;
   if (hasComposerDraft(chat)) return true;
+  // Admission clears the draft before the first transcript reaches background viewers.
+  if (getFirstMessageSubmission(chat) || hasUnsettledAgentWork(chat)) return true;
   // A Super Plan chat is the home of a server-side run and never has a
   // transcript of its own; it belongs in the sidebar from the run's start.
   if (chat.superPlanView || chat.superPlanRunId?.trim()) return true;
@@ -58,13 +62,13 @@ export function chatHasListableContent(chat: Chat): boolean {
   return false;
 }
 
-/** Empty chat with no committed history and no unsent draft (hidden from sidebar lists). */
+/** Empty chat with no history, draft or pending work (hidden from sidebar lists). */
 export function isEphemeralEmptyChat(chat: Chat): boolean {
   return !chatHasListableContent(chat);
 }
 
 /**
- * Chats that belong in sidebar session rails: committed turns and/or an unsent draft.
+ * Chats that belong in sidebar session rails: committed turns, drafts or pending work.
  * Ephemeral empty chats stay out until the user types or sends.
  */
 export function isSidebarListedChat(chat: Chat): boolean {

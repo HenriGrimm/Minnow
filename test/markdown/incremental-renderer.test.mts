@@ -19,7 +19,7 @@ type DomGlobals = typeof globalThis & {
 let win: Window;
 
 function installWindow(): void {
-  win = new Window();
+  win = new Window({ url: 'http://localhost:9473/' });
   const g = globalThis as DomGlobals;
   g.document = win.document;
   g.window = win as unknown as Window & typeof globalThis.window;
@@ -194,6 +194,89 @@ describe('incremental assistant markdown render', () => {
       streamCursor: cursor,
     });
     assert.ok(bubble.querySelector('h1') || bubble.textContent?.includes('Title'));
+  });
+
+  it('authenticates screenshot images during streaming, final flush and history restore without changing source', async () => {
+    installWindow();
+    const { setAssistantBubbleContent, renderMarkdownSourceBlocks } = await import('../../src/markdown/renderer.ts');
+    globalThis.window.__MINNOW_SESSION_TOKEN__ = 'test-display-token';
+    const message = { content: '![Updated Diff card](/api/browser/screenshot/mwgyxdv12649c89b)' };
+    const saved = JSON.stringify(message);
+    const bubble = win.document.createElement('div');
+    const check = () => {
+      const image = bubble.querySelector('img')!;
+      const url = new URL(image.getAttribute('src')!, win.location.href);
+      assert.equal(url.pathname, '/api/browser/screenshot/mwgyxdv12649c89b');
+      assert.equal(url.searchParams.get('token'), globalThis.window.__MINNOW_SESSION_TOKEN__);
+      assert.equal(url.searchParams.getAll('token').length, 1);
+      assert.equal(image.getAttribute('referrerpolicy'), 'no-referrer');
+      assert.equal(JSON.stringify(message), saved);
+    };
+    setAssistantBubbleContent(bubble, message.content, { streaming: true });
+    check();
+    const stableImage = bubble.querySelector('img');
+    setAssistantBubbleContent(bubble, message.content + '\n\nMore prose', { streaming: true });
+    check();
+    assert.equal(bubble.querySelector('img'), stableImage);
+    setAssistantBubbleContent(bubble, message.content);
+    check();
+    // Restoring after a new boot must use the current credential, not the previous render's.
+    globalThis.window.__MINNOW_SESSION_TOKEN__ = 'test-next-boot-token';
+    setAssistantBubbleContent(bubble, JSON.parse(saved).content);
+    check();
+    const blocks = renderMarkdownSourceBlocks(bubble, message.content);
+    check();
+    assert.equal(message.content.slice(blocks[0]!.start, blocks[0]!.end), message.content);
+  });
+
+  it('authenticates only exact same-origin screenshot routes in both render paths', async () => {
+    installWindow();
+    const { setAssistantBubbleContent } = await import('../../src/markdown/renderer.ts');
+    globalThis.window.__MINNOW_SESSION_TOKEN__ = 'test-private-token';
+    const trusted = [
+      '/api/browser/screenshot/shot-1.png?token=stale&workspace=wrong',
+      'http://localhost:9473/api/browser/screenshot/shot_2',
+      '//localhost:9473/api/browser/screenshot/shot3',
+    ];
+    const untrusted = [
+      'https://external.example/api/browser/screenshot/shot',
+      '//external.example/api/browser/screenshot/shot',
+      'http://localhost:9474/api/browser/screenshot/shot',
+      'http://localhost:9473.external.example/api/browser/screenshot/shot',
+      'http://user:pass@localhost:9473/api/browser/screenshot/shot',
+      '/api/browser/screenshot/shot/extra',
+      '/api/browser/screenshot/',
+      '/api/browser/screenshot/%2e%2e/secrets',
+      '/api/other/shot',
+      'images/local.png',
+      'data:image/png;base64,iVBORw0KGgo=',
+    ];
+    const raw = [...trusted, ...untrusted].map((url) => `![image](${url})`).join('\n\n');
+    for (const streaming of [true, false]) {
+      const bubble = win.document.createElement('div');
+      setAssistantBubbleContent(bubble, raw, { streaming });
+      const images = [...bubble.querySelectorAll('img')];
+      assert.equal(images.length, trusted.length + untrusted.length);
+      for (const image of images.slice(0, trusted.length)) {
+        const url = new URL(image.getAttribute('src')!, win.location.href);
+        assert.equal(url.searchParams.get('token'), 'test-private-token');
+        assert.equal(url.searchParams.has('workspace'), false);
+        assert.equal(url.origin, win.location.origin);
+      }
+      assert.deepEqual(images.slice(trusted.length).map((img) => img.getAttribute('src')), untrusted);
+    }
+    assert.ok(!raw.includes('test-private-token'));
+  });
+
+  it('leaves screenshot loading credential-free on cookie-authenticated devices', async () => {
+    installWindow();
+    const { setAssistantBubbleContent } = await import('../../src/markdown/renderer.ts');
+    delete globalThis.window.__MINNOW_SESSION_TOKEN__;
+    const bubble = win.document.createElement('div');
+    for (const streaming of [true, false]) {
+      setAssistantBubbleContent(bubble, '![shot](/api/browser/screenshot/shot?token=old)', { streaming });
+      assert.equal(bubble.querySelector('img')?.getAttribute('src'), '/api/browser/screenshot/shot');
+    }
   });
 
   it('paints during continuous fast chunks (throttle, not trailing debounce)', async () => {

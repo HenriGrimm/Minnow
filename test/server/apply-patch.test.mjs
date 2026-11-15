@@ -40,6 +40,12 @@ test('one patch adds, edits with CRLF, moves, deletes, and reports all changed p
   assert.equal(result.codeChange.additions, 3);
   assert.equal(result.codeChange.deletions, 3);
   assert.deepEqual(result.codeChange.paths, ['nested/new.txt', 'edit.txt', 'old.txt', 'renamed.txt', 'delete.txt']);
+  assert.deepEqual(result.codeChange.files.map(f => [f.path, f.additions, f.deletions]), [
+    ['nested/new.txt', 1, 0], ['edit.txt', 1, 1], ['renamed.txt', 1, 1], ['delete.txt', 0, 1],
+  ]);
+  assert.deepEqual(result.codeChange.files[1].diffLines.filter(l => l.type !== 'unchanged'), [
+    { type: 'remove', text: 'two' }, { type: 'add', text: 'TWO' },
+  ]);
 }));
 
 test('late mismatch and outside paths do not apply earlier valid edits', t => workspace(t, async root => {

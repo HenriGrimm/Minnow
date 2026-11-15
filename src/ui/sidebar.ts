@@ -9,6 +9,7 @@ import { decodeModelSelectKey } from '../lib/model-select-key';
 import { routerChatModelLabel, getRouterConfigSync, saveRouterConfig } from '../models/routers';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import { isChatStreaming } from '../chat/streaming-state';
+import { subscribeFirstMessageSubmission } from '../chat/first-message-submission';
 import { isChatArchived, setChatArchived } from '../state/chat-archive';
 import { stopGeneration } from '../chat/stop-generation';
 import {
@@ -2105,6 +2106,8 @@ function refreshSessionListUIs(): void {
   renderSidebar();
   void import('./chat-app').then((m) => m.refreshChatAppSessionRail());
 }
+
+subscribeFirstMessageSubmission(() => refreshSessionListUIs());
 
 /** Refresh sidebar and main chat UI after removeChatById. */
 function onChatRemoved(result: RemoveChatResult): void {

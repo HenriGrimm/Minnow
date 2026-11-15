@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parsePatch, patchText } from '../../src/lib/apply-patch.mjs';
 import { getEffectiveWorkspaceRoot, resolveSafePath } from '../runtime/path-access.js';
-import { codeChangeFromDiff } from './line-diff-stats.js';
+import { codeChangeFromDiff, MAX_CODE_CHANGE_DIFF_LINES } from './line-diff-stats.js';
 import { withFileWriteLocks } from '../workspace/file-write-lock.js';
 
 // Refuse symlink traversal even when a lexical path is inside the workspace.
@@ -93,12 +93,19 @@ async function applyLockedPatch(files) {
     throw new Error(`${error.message}${failures.length ? `; rollback errors: ${failures.join('; ')}` : ''}`);
   }
   const stats = plans.map(p => codeChangeFromDiff(p.before ?? '', p.after ?? '', p.file.move ?? p.file.path)).filter(Boolean);
+  let budget = MAX_CODE_CHANGE_DIFF_LINES;
+  for (const file of stats) {
+    file.diffTruncated ||= file.diffLines.length > budget;
+    file.diffLines = file.diffLines.slice(0, budget);
+    budget -= file.diffLines.length;
+  }
   return {
     result: `Applied patch:\n${plans.map(p => `${p.file.kind}: ${p.file.path}${p.file.move ? ` -> ${p.file.move}` : ''}`).join('\n')}`,
     codeChange: {
       source: 'file-tool', paths: [...new Set(files.flatMap(f => f.move ? [f.path, f.move] : [f.path]))],
       additions: stats.reduce((n, s) => n + s.additions, 0),
       deletions: stats.reduce((n, s) => n + s.deletions, 0),
+      files: stats,
     },
   };
 }

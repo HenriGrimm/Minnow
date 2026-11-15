@@ -11,6 +11,7 @@ import {
 import { isEphemeralEmptyChat, pruneEphemeralEmptyChats } from '../../src/state/session-workspace-scope.ts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { createChatWithMode, renderSidebar } from '../../src/ui/sidebar.ts';
+import { beginFirstMessageSubmission, acceptFirstMessageSubmission, finishFirstMessageSubmission } from '../../src/chat/first-message-submission.ts';
 import type { Chat } from '../../src/types.ts';
 
 const WS = 'C:/workspace/archive';
@@ -63,6 +64,46 @@ afterEach(async () => {
   setSessionStateForTests(null);
   resetWorkspaceStateForTests();
   globalThis.fetch = originalFetch;
+});
+
+test('a new chat stays in the list when left before acknowledgement or the first response', () => {
+  const other = chat('other');
+  const sending = createEmptyChatObject('model', WS);
+  sending.id = 'sending';
+  sending.chatCommandVersion = 1;
+  const list = setup([other, sending]);
+  assert.equal(ids(list).includes(sending.id), false);
+
+  sessionState!.activeId = sending.id;
+  beginFirstMessageSubmission(sending, { id: 'submission', text: 'First message', createdAt: 1 });
+  assert.ok(ids(list).includes(sending.id), 'submission refreshes the list immediately');
+  sessionState!.activeId = other.id;
+  renderSidebar();
+  pruneEphemeralEmptyChats(sessionState!, other.id);
+  assert.ok(ids(list).includes(sending.id), 'navigation keeps the sending row');
+  assert.ok(sessionState!.chats.includes(sending));
+
+  acceptFirstMessageSubmission(sending, 'submission', 'command', 'running');
+  finishFirstMessageSubmission(sending, 'submission');
+  assert.ok(ids(list).includes(sending.id), 'acknowledgement does not hide the row');
+  sending.agentExecution = { executionId: 'execution', commandId: 'command', status: 'running' };
+  renderSidebar();
+  assert.ok(ids(list).includes(sending.id), 'background activity needs no transcript');
+  sending.history.push({ role: 'user', content: 'First message', commandId: 'command' });
+  sending.agentExecution.status = 'completed';
+  renderSidebar();
+  assert.ok(ids(list).includes(sending.id), 'the transcript keeps the settled row');
+});
+
+test('a rejected attachment-only first send removes its temporary list row', () => {
+  const other = chat('other');
+  const sending = createEmptyChatObject('model', WS);
+  const list = setup([other, sending]);
+  beginFirstMessageSubmission(sending, { id: 'submission', text: '', createdAt: 1,
+    images: [{ name: 'screen.png', dataUrl: 'data:image/png;base64,YQ==' }] });
+  assert.ok(ids(list).includes(sending.id));
+  finishFirstMessageSubmission(sending, 'submission');
+  assert.equal(ids(list).includes(sending.id), false);
 });
 
 test('bottom views count the current workspace and Unassigned, excluding boards and other folders', () => {

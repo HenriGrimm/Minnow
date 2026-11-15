@@ -22,3 +22,21 @@ test('same path edited on different branches or checkouts never merges provenanc
   assert.equal(files.length, 3);
   assert.deepEqual(files.map(f => [f.workspacePath, f.gitBranch, f.additions]), [['/slot', 'one', 4], ['/repo', 'two', 3], ['/repo', 'one', 2]]);
 });
+
+test('multi-file command and patch diffs survive reload and stay attached to their own file and chat', () => {
+  const change: CodeChangeStats = {
+    additions: 2, deletions: 1, paths: ['a.ts', 'b.ts'], source: 'command-snapshot', files: [
+      { path: 'a.ts', additions: 1, deletions: 1, diffLines: [{ type: 'remove', text: 'old A' }, { type: 'add', text: 'new A' }], diffTruncated: false },
+      { path: 'b.ts', additions: 1, deletions: 0, diffLines: [{ type: 'add', text: 'new B' }], diffTruncated: true },
+    ],
+  };
+  const normalized = normalizeCodeChangePayload(JSON.parse(JSON.stringify(change)));
+  assert.deepEqual(normalized, change);
+  const a = { history: [{ role: 'tool', tool_call_id: 'a', content: '', codeChange: normalized }] } as Chat;
+  const b = { history: [{ role: 'tool', tool_call_id: 'b', content: '', codeChange: { additions: 1, deletions: 0, path: 'other.ts' } }] } as Chat;
+  const files = getPerFileChangeSummary(a);
+  assert.deepEqual(files.map(f => [f.path, f.additions, f.deletions]), [['a.ts', 1, 1], ['b.ts', 1, 0]]);
+  assert.deepEqual(files[0].diffChunks, [{ lines: change.files![0].diffLines, truncated: false }]);
+  assert.deepEqual(files[1].diffChunks, [{ lines: change.files![1].diffLines, truncated: true }]);
+  assert.deepEqual(getPerFileChangeSummary(b).map(f => f.path), ['other.ts']);
+});

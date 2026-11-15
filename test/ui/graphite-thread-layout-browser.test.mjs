@@ -45,6 +45,7 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
             <button class="message-actions__trigger" aria-label="Message actions">⋮</button>
           </div>
         </div>
+        <div class="chat-viewport-dock"><button class="chat-jump-latest">Jump to latest</button></div>
         <div class="composer-notices">
           <div class="composer-run-status" hidden>Working</div>
           <section class="managed-chat-requests managed-chat-requests--docked" hidden>Waiting for interrupted work to stop…</section>
@@ -87,11 +88,12 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
 
   for (const [viewport, sideOpen, expected] of [[1440, false, 660], [1728, false, 821], [1440, true, 628], [1100, true, 328]]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width: viewport, height: 900, mobile: false, deviceScaleFactor: 1 });
-    const { composer, transcript, metrics, group, summary, cards } = await session.evaluate(`(() => {
+    const { composer, transcript, metrics, group, summary, cards, jump } = await session.evaluate(`(() => {
       document.getElementById('workspaceSplit').toggleAttribute('data-side-open', ${sideOpen});
       const measure = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
       return {
         composer: measure('.input-bar'), transcript: measure('.msg'), metrics: measure('.graphite-metrics-trigger'),
+        jump: measure('.chat-jump-latest'),
         group: measure('.sub-agent-group'), summary: measure('.sub-agent-group__summary'),
         cards: [...document.querySelectorAll('.sub-agent-card__panel')].map(card => card.getBoundingClientRect().toJSON()),
       };
@@ -99,6 +101,7 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
     assert.ok(Math.abs(composer.width - expected) < 1, JSON.stringify(composer));
     assert.equal(composer.width, transcript.width);
     assert.equal(composer.left, transcript.left);
+    assert.ok(Math.abs((jump.left + jump.right) - (composer.left + composer.right)) <= 1, 'jump is centered on the composer');
     assert.equal(group.left, transcript.left, `sub-agent group aligns with messages at ${viewport}px`);
     assert.equal(group.right, transcript.right);
     assert.equal(summary.left, transcript.left);
@@ -278,13 +281,14 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
     const area = document.querySelector('#chatArea');
     return { panel: rect('.chat-todo-panel'), composer: rect('#mainColumn > .input-bar'),
       status: rect('.composer-run-status'), scrollport: rect('#chatArea'), message: rect('#chatArea > .msg'),
-      column: rect('#mainColumn'), overflowing: area.scrollHeight > area.clientHeight };
+      column: rect('#mainColumn'), jump: rect('.chat-jump-latest'), overflowing: area.scrollHeight > area.clientHeight };
   })()`);
   for (const width of [1440, 1100]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
     for (const running of [false, true]) {
       await session.evaluate(`document.querySelector('.composer-run-status').hidden = ${!running}`);
-      const { panel, composer, status, scrollport, column, overflowing } = await measureChecklist();
+      const { panel, composer, status, scrollport, column, jump, overflowing } = await measureChecklist();
+      assert.ok(Math.abs((jump.left + jump.right) - (composer.left + composer.right)) <= 1, 'jump stays centered with bottom checklist');
       assert.ok(overflowing);
       assert.equal(scrollport.right, column.right);
       assert.ok(Math.abs(panel.bottom - composer.top) <= 1, 'checklist touches the composer');
@@ -298,7 +302,7 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
   const collapsed = await measureChecklist();
   assert.ok(Math.abs(collapsed.panel.bottom - collapsed.composer.top) <= 1);
   await session.evaluate("document.querySelector('.chat-todo-panel').open = true");
-  for (const [width, mobile] of [[1100, false], [1920, false], [390, true]]) {
+  for (const [width, mobile] of [[1100, false], [1579, false], [1580, false], [1920, false], [390, true]]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
     await session.evaluate(`(() => {
       const column = document.getElementById('mainColumn');
@@ -308,15 +312,20 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
       column.style.marginInlineStart = ${mobile} ? '0' : '';
     })()`);
     for (const selector of ['.managed-chat-requests', '#toolApprovalHost', '#questionHost']) {
-      const ordered = await session.evaluate(`(() => {
+      const { visible, belowTranscript, aboveChecklist, wide } = await session.evaluate(`(() => {
         const notice = document.querySelector(${JSON.stringify(selector)});
         notice.hidden = false;
         const panel = document.querySelector('.chat-todo-panel').getBoundingClientRect();
         const rect = notice.getBoundingClientRect();
+        const transcript = document.querySelector('#chatArea').getBoundingClientRect();
+        const wide = document.getElementById('mainColumn').clientWidth >= 1280;
         notice.hidden = true;
-        return rect.height > 0 && panel.height > 0 && rect.bottom <= panel.top;
+        return { visible: rect.height > 0 && panel.height > 0,
+          belowTranscript: rect.top >= transcript.bottom, aboveChecklist: rect.bottom <= panel.top, wide };
       })()`);
-      assert.ok(ordered, `${selector} stays above the checklist at ${width}px`);
+      assert.ok(visible, `${selector} and checklist are visible at ${width}px`);
+      assert.ok(belowTranscript, `${selector} stays below the transcript with a checklist at ${width}px`);
+      if (!wide) assert.ok(aboveChecklist, `${selector} stays above the bottom checklist at ${width}px`);
     }
   }
   await session.evaluate(`(() => {
@@ -333,7 +342,8 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
   for (const width of [1580, 2200, 3840]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
     const wide = await measureChecklist();
-    const { panel, scrollport, message, composer, column, overflowing } = wide;
+    const { panel, scrollport, message, composer, column, jump, overflowing } = wide;
+    assert.ok(Math.abs((jump.left + jump.right) - (composer.left + composer.right)) <= 1, `jump stays centered with checklist rail: ${JSON.stringify(wide)}`);
     assert.ok(overflowing);
     assert.equal(scrollport.right, column.right);
     assert.ok(panel.width >= 191 && panel.width <= 352, JSON.stringify(wide));

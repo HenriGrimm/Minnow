@@ -230,10 +230,12 @@ export function getPerFileChangeSummaryForMessages(messages: readonly unknown[],
       row.countsKnown = (row.countsKnown ?? true) && Boolean(counts);
       row.additions += counts?.additions ?? 0;
       row.deletions += counts?.deletions ?? 0;
-      if (codeChange.diffLines?.length) {
+      // Multi-file mutations must not copy one file's diff into every row.
+      const diff = counts;
+      if (diff?.diffLines?.length) {
         row.diffChunks.push({
-          lines: codeChange.diffLines,
-          truncated: Boolean(codeChange.diffTruncated),
+          lines: diff.diffLines,
+          truncated: Boolean(diff.diffTruncated),
         });
       }
     }

@@ -42,7 +42,10 @@ export function normalizeCodeChangePayload(raw: unknown): CodeChangeStats | unde
     out.files = row.files.flatMap((file) => {
       if (!file || typeof file.path !== 'string' || !file.path.trim() ||
         !Number.isFinite(file.additions) || !Number.isFinite(file.deletions)) return [];
-      return [{ path: file.path, additions: file.additions, deletions: file.deletions }];
+      const diffLines = normalizeDiffLines(file.diffLines);
+      return [{ path: file.path, additions: file.additions, deletions: file.deletions,
+        ...(diffLines ? { diffLines, diffTruncated: Boolean(file.diffTruncated) } : {}),
+      }];
     });
   }
 

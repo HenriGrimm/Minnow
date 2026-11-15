@@ -32,11 +32,13 @@
   overflow-y: auto;
   pointer-events: none;
 }
-/* Keep notifications away from the browser while either preview slot is visible. */
+/* Keep notifications away from visible browser and diff surfaces. */
 html:not(.mn-mobile-app) body:is(
   :has(#appBody:not(.hidden) #rightPaneColumn:not(.hidden) .preview-pane:not(.hidden)),
   :has(.graphite-surface-panel:not([hidden]) .graphite-surface-pane:not([hidden]) .graphite-browser-host:not([hidden])),
-  :has(#desktopPreviewMount.is-active)
+  :has(#desktopPreviewMount.is-active),
+  :has(.graphite-surface-panel:not([hidden]) :is(#graphitePanel-changes, #graphitePanel-review):not([hidden])),
+  :has(#appBody:not(.hidden) #rightPaneColumn:not(.hidden) .file-viewer-pane--commit-diff:not(.hidden))
 ) .mn-toast-stack {
   right: auto;
   left: max(1rem, env(safe-area-inset-left));

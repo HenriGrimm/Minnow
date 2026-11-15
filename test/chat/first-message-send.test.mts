@@ -216,30 +216,50 @@ test('a rejected first send removes the pending bubble and leaves the draft retr
   assert.equal(button.getAttribute('aria-busy'), 'false');
 });
 
-test('leaving a new chat during promotion cannot send from the other composer', async () => {
+for (const [existing, rejected] of [[false, false], [false, true], [true, false], [true, true]]) {
+test(`leaving ${existing ? 'an existing' : 'a new'} chat during promotion ${rejected ? 'retains a rejected draft' : 'still sends to the original chat'}`, async () => {
   const { chat, input } = setup();
+  if (existing) chat.history = [{ role: 'user', content: 'Earlier message' }];
+  const image = { id: 'original-image', name: 'screen.png', kind: 'image' as const, size: 4, mimeType: 'image/png', dataUrl: 'data:image/png;base64,YWJjZA==' };
+  pushAttachment(image);
   sessionStorage.setItem(`minnow.ordinaryPromotion.${chat.id}`, JSON.stringify({ id: 'promotion', revision: 7 }));
   const promotion = deferred<Response>();
-  let commands = 0;
-  globalThis.fetch = async url => {
+  const commands: any[] = [];
+  globalThis.fetch = async (url, init) => {
     if (String(url).endsWith('/ordinary-routing')) return promotion.promise;
-    if (String(url).endsWith('/commands')) commands++;
+    if (String(url).endsWith('/commands')) {
+      assert.equal(String(url), `/api/chats/${chat.id}/commands`);
+      commands.push(JSON.parse(String(init?.body)));
+      return rejected ? Response.json({ error: { message: 'Model unavailable' } }, { status: 400 })
+        : Response.json({ receipt: { chatId: chat.id, commandId: 'accepted-background', revision: 9, state: 'accepted' } });
+    }
     return Response.json({});
   };
   const sending = sendMessageWithTools();
   const other = createEmptyChatObject('model', 'C:/project');
+  other.composerDraft = 'Other chat draft';
   setSessionStateForTests({ version: 6, activeId: other.id, sidebarCollapsed: false, chats: [chat, other] });
-  input.value = 'Other chat draft';
+  applyComposerDraftForChat(other);
+  clearAttachments();
+  pushAttachment({ id: 'other-file', name: 'next.txt', kind: 'text', text: 'Other attachment', size: 16, mimeType: 'text/plain' });
   renderChatFromHistory(other);
   promotion.resolve(Response.json({ receipt: { chatId: chat.id, revision: 8, disposition: 'promoted' },
     frame: { chatId: chat.id, fields: { chatCommandVersion: 1 } } }));
   await sending;
-  assert.equal(commands, 0);
+  assert.equal(commands.length, 1);
+  assert.match(commands[0].text, /^Review the build/);
+  assert.equal(commands[0].text.includes('Other'), false);
+  assert.deepEqual(commands[0].images, [{ name: image.name, dataUrl: image.dataUrl }]);
   assert.equal(input.value, 'Other chat draft');
-  assert.equal(chat.composerDraft, 'Review the build');
-  renderChatFromHistory(chat);
-  assert.equal(document.querySelector('.msg--sending'), null);
+  assert.equal(other.composerDraft, 'Other chat draft');
+  assert.equal(getPendingAttachments()[0]?.id, 'other-file');
+  assert.equal(chat.composerDraft, rejected ? 'Review the build' : undefined);
+  assert.equal(document.querySelector('.msg--sending'), null, 'background admission cannot paint in the other chat');
+  setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat, other] });
+  applyComposerDraftForChat(chat);
+  assert.equal(input.value, rejected ? 'Review the build' : '');
 });
+}
 
 test('routing rejection restores the composer that was cleared for the Sending bubble', async () => {
   const { chat, input } = setup();

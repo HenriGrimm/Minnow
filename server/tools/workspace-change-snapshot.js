@@ -1,9 +1,10 @@
 /**
- * Workspace change detection for execute_command via git numstat snapshots
+ * Workspace change detection for execute_command via isolated Git tree snapshots
  * and best-effort single-file heuristics (sed, redirects, patch).
  */
 
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 import { runProcess } from '../process-runner.js';
@@ -11,65 +12,90 @@ import {
   buildCodeChangePayload,
   codeChangeFromDiff,
   countLineChangeStats,
+  MAX_CODE_CHANGE_DIFF_LINES,
 } from './line-diff-stats.js';
-import { gitWorkingTreeNumstat, isGitRepository, parseGitNumstat } from './git-change-stats.js';
+import { parseGitNumstat } from './git-change-stats.js';
 
 /**
- * @typedef {{ additions: number; deletions: number; paths: string[] }} NumstatTotals
+ * @typedef {{ treeSha: string }} WorkspaceSnapshot
  */
 
 /**
- * Capture git working-tree numstat when available.
+ * Capture actual content, including untracked files, without touching the user's
+ * index. The caller holds the checkout mutation boundary across pre/tool/post;
+ * a turn-wide baseline would also include other chats' intervening edits.
  * @param {string} cwd
- * @returns {Promise<NumstatTotals | null>}
+ * @returns {Promise<WorkspaceSnapshot | null>}
  */
 export async function captureWorkspaceSnapshot(cwd) {
-  if (!(await isGitRepository(cwd))) return null;
-  return gitWorkingTreeNumstat(cwd);
-}
-
-/**
- * Delta between two numstat snapshots (paths union, stats subtracted per path best-effort).
- * @param {NumstatTotals | null} before
- * @param {NumstatTotals | null} after
- * @returns {NumstatTotals}
- */
-export function diffNumstatSnapshots(before, after) {
-  const afterPaths = new Set(after?.paths ?? []);
-  const beforePaths = new Set(before?.paths ?? []);
-  const allPaths = new Set([...afterPaths, ...beforePaths]);
-  let additions = 0;
-  let deletions = 0;
-  const paths = [];
-
-  const afterAdd = (after?.additions ?? 0) - (before?.additions ?? 0);
-  const afterDel = (after?.deletions ?? 0) - (before?.deletions ?? 0);
-
-  if (afterAdd > 0 || afterDel > 0) {
-    additions = Math.max(0, afterAdd);
-    deletions = Math.max(0, afterDel);
-    for (const p of allPaths) paths.push(p);
+  let temp;
+  try {
+    const index = await runProcess('git', ['rev-parse', '--git-path', 'index'], { cwd });
+    if (index.code !== 0) return null;
+    temp = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-command-diff-'));
+    const env = { GIT_INDEX_FILE: path.join(temp, 'index') };
+    try { await fs.copyFile(path.resolve(cwd, index.stdout.trim()), env.GIT_INDEX_FILE); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      const empty = await runProcess('git', ['read-tree', '--empty'], { cwd, env });
+      if (empty.code !== 0) return null;
+    }
+    const add = await runProcess('git', ['add', '-A'], { cwd, env });
+    if (add.code !== 0) return null;
+    const tree = await runProcess('git', ['write-tree'], { cwd, env });
+    const treeSha = tree.stdout.trim();
+    return tree.code === 0 && /^[a-f0-9]{40,64}$/i.test(treeSha) ? { treeSha } : null;
+  } catch {
+    return null;
+  } finally {
+    if (temp) await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
   }
-
-  return { additions, deletions, paths };
 }
 
 /**
- * After command: compute workspace codeChange from git snapshot delta.
+ * After command: diff immutable content, not totals relative to HEAD. Equal-size
+ * replacements, reverts and commits cannot be detected by subtracting numstats.
  * @param {string} cwd
- * @param {NumstatTotals | null} before
+ * @param {WorkspaceSnapshot | null} before
  */
 export async function codeChangeFromCommandSnapshot(cwd, before) {
+  if (!before?.treeSha) return undefined;
   const after = await captureWorkspaceSnapshot(cwd);
-  if (!after) return undefined;
-  const delta = diffNumstatSnapshots(before, after);
-  if (delta.additions === 0 && delta.deletions === 0) return undefined;
-  return buildCodeChangePayload({
-    additions: delta.additions,
-    deletions: delta.deletions,
-    paths: delta.paths.length ? delta.paths : after.paths,
+  if (!after || before.treeSha === after.treeSha) return undefined;
+  const args = ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--relative', before.treeSha, after.treeSha];
+  const result = await runProcess('git', [...args, '--numstat', '-z', '--', '.'], { cwd });
+  if (result.code !== 0 || result.accumulationTruncated) return undefined;
+  const files = result.stdout.split('\0').flatMap(row => {
+    const [add, del, ...name] = row.split('\t');
+    const file = name.join('\t');
+    if (!file || !/^\d+$/.test(add) || !/^\d+$/.test(del)) return [];
+    return [{ path: file, additions: Number(add), deletions: Number(del) }];
+  });
+  const payload = buildCodeChangePayload({
+    additions: files.reduce((n, file) => n + file.additions, 0),
+    deletions: files.reduce((n, file) => n + file.deletions, 0),
+    paths: files.map(file => file.path),
     source: 'command-snapshot',
   });
+  if (!payload) return undefined;
+  let budget = MAX_CODE_CHANGE_DIFF_LINES;
+  for (const file of files) {
+    file.diffTruncated = true;
+    if (!budget) continue;
+    const patch = await runProcess('git', ['--literal-pathspecs', ...args, '--unified=3', '--', file.path], { cwd });
+    if (patch.code !== 0) continue;
+    let inHunk = false;
+    const lines = [];
+    for (const line of patch.stdout.split('\n')) {
+      if (line.startsWith('@@ ')) { inHunk = true; continue; }
+      if (!inHunk || !/^[ +\-]/.test(line)) continue;
+      lines.push({ type: line[0] === '+' ? 'add' : line[0] === '-' ? 'remove' : 'unchanged', text: line.slice(1) });
+    }
+    file.diffLines = lines.slice(0, budget);
+    file.diffTruncated = Boolean(patch.accumulationTruncated) || lines.length > budget;
+    budget -= file.diffLines.length;
+  }
+  return { ...payload, files };
 }
 
 /** Resolve a single relative path from command string heuristics. */
@@ -138,7 +164,7 @@ export async function readHeuristicFileSnapshot(cwd, relPath) {
  * @param {object} params
  * @param {string} params.cwd
  * @param {string} params.command
- * @param {NumstatTotals | null} params.beforeSnapshot
+ * @param {WorkspaceSnapshot | null} params.beforeSnapshot
  * @param {Map<string, string>} [params.beforeFileContents]
  */
 export async function resolveExecuteCommandCodeChange({
@@ -151,7 +177,7 @@ export async function resolveExecuteCommandCodeChange({
   if (fromGit) return fromGit;
 
   const rel = extractHeuristicTargetPath(command);
-  if (!rel || !beforeFileContents) return undefined;
+  if (!rel || !beforeFileContents?.has(rel)) return undefined;
   return codeChangeFromCommandHeuristic(cwd, command, beforeFileContents);
 }
 

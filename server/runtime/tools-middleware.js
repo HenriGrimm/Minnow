@@ -1670,12 +1670,18 @@ export async function executeServerTool(name, args, options = {}) {
         const unsupported = unsupportedSearchOptions(args ?? {}, name);
         if (unsupported) return { result: unsupported };
       }
+      const execute = async () => {
+        const out = await handler(args ?? {}, options);
+        // Record provenance before releasing the boundary: a queued chat can
+        // switch branches as soon as the mutation completes.
+        if (out?.codeChange) {
+          out.codeChange = await withCodeChangeCheckout(out.codeChange, getEffectiveWorkspaceRoot());
+        }
+        return out;
+      };
       const out = CHECKOUT_MUTATING_TOOLS.has(name)
-        ? await withCoordinatedWorktreeMutation(getEffectiveWorkspaceRoot(), () => handler(args ?? {}, options), { signal: options.abortSignal })
-        : await handler(args ?? {}, options);
-      if (out?.codeChange) {
-        out.codeChange = await withCodeChangeCheckout(out.codeChange, getEffectiveWorkspaceRoot());
-      }
+        ? await withCoordinatedWorktreeMutation(getEffectiveWorkspaceRoot(), execute, { signal: options.abortSignal })
+        : await execute();
       if (out?.codeChange?.source === 'file-tool' && (options.agentActivity || options.runtimeOwner)) {
         try {
           const { recordCodeActivity } = await import('../activity/store.js');

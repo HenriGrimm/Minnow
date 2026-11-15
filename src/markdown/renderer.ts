@@ -9,6 +9,7 @@
 
 import DOMPurify from 'dompurify';
 import { marked, type Token } from 'marked';
+import { withSessionToken } from '../api/session-token';
 import { highlightCodeElement } from './highlighter';
 import { applyMarkdownHeadingIds, decorateRenderedMarkdown, hardenMarkdownAnchors, initMarkdownLinkRouting } from './links';
 import { ASSISTANT_RENDER_DEBOUNCE_MS } from '../constants';
@@ -218,7 +219,25 @@ function resetIncrementalState(bubble: HTMLElement): void {
 
 // ── Incremental ──────────────────────────────────────────────────────────────
 
-/** One-shot full render (non-streaming / final flush) — same cost as the pre-Phase-5 path. */
+/** Authenticate only our screenshot endpoint, on detached display DOM, never source Markdown. */
+function authenticateScreenshotImages(root: ParentNode): void {
+  const origin = window.location.origin;
+  if (!/^https?:\/\//i.test(origin)) return;
+  root.querySelectorAll<HTMLImageElement>('img[src]').forEach((image) => {
+    try {
+      const url = new URL(image.getAttribute('src') ?? '', `${origin}/`);
+      if (url.origin !== origin || url.username || url.password ||
+          !/^\/api\/browser\/screenshot\/[a-zA-Z0-9_-]+(?:\.png)?$/.test(url.pathname)) return;
+      // Rebuild from the path so old credentials/queries cannot override this view's scope.
+      image.setAttribute('src', withSessionToken(url.pathname));
+      image.setAttribute('referrerpolicy', 'no-referrer');
+    } catch {
+      // Malformed and non-HTTP sources remain as sanitized by DOMPurify.
+    }
+  });
+}
+
+/** One-shot full render (non-streaming / final flush). */
 function renderFull(
   bubble: HTMLElement,
   raw: string,
@@ -238,7 +257,10 @@ function renderFull(
   }
 
   const clean = DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
-  bubble.innerHTML = clean;
+  const template = document.createElement('template');
+  template.innerHTML = clean;
+  authenticateScreenshotImages(template.content);
+  bubble.replaceChildren(template.content);
   applyDataLangAttributes(bubble);
   highlightCodeBlocks(bubble);
   decorateRenderedMarkdown(bubble);
@@ -318,6 +340,7 @@ function renderIncremental(
     template.innerHTML = cleanWrapped;
     const wrapEl = template.content.querySelector('[data-mn-md-wrap]');
     const sourceRoot: ParentNode = wrapEl ?? template.content;
+    authenticateScreenshotImages(sourceRoot);
     state.headingBases.push(applyMarkdownHeadingIds(sourceRoot, state.headingCounts));
     hardenMarkdownAnchors(sourceRoot);
     const children = Array.from(sourceRoot.childNodes).filter((n) => {
@@ -404,6 +427,7 @@ export function renderMarkdownSourceBlocks(
       USE_PROFILES: { html: true },
     });
     const sourceRoot: ParentNode = template.content.querySelector('[data-mn-md-wrap]') ?? template.content;
+    authenticateScreenshotImages(sourceRoot);
     const index = located ? blocks.length : -1;
     if (located) blocks.push({ type: token.type, start: at, end: at + tokenRaw.length });
     for (const child of Array.from(sourceRoot.childNodes)) {

@@ -66,6 +66,23 @@ describe('chat sidebar listing', () => {
     assert.equal(getSidebarListedChatsForWorkspace(WS, state).length, 1);
   });
 
+  test('managed work stays listed and survives pruning before its first transcript arrives', () => {
+    const keep = createEmptyChatObject('', WS);
+    const running = createEmptyChatObject('', WS);
+    running.chatCommandVersion = 1;
+    running.historyLoaded = false;
+    running.messageCount = 0;
+    for (const status of ['queued', 'running', 'waiting_for_host', 'waiting_for_approval']) {
+      running.agentExecution = { executionId: 'first-turn', status };
+      const state = stateWithChats(keep, running);
+      assert.deepEqual(getSidebarListedChatsForWorkspace(WS, state), [running], status);
+      pruneEphemeralEmptyChats(state, keep.id);
+      assert.ok(state.chats.includes(running), status);
+    }
+    running.agentExecution = { executionId: 'first-turn', status: 'completed' };
+    assert.equal(isSidebarListedChat(running), false, 'no phantom work after settlement');
+  });
+
   test('lazy-unloaded chats with messageCount 0 stay hidden', () => {
     const unloadedEmpty = createEmptyChatObject('', WS);
     unloadedEmpty.historyLoaded = false;
