@@ -10,6 +10,21 @@ The **Who** column says which personas hit each issue independently: M = Maya, J
 
 Effort: **S** = under half a day, **M** = 1–2 days, **L** = multi-day.
 
+
+## Status (2026-11-14)
+
+Done: #1–#12, #14–#30, #33–#36, #39–#41, #43, #44. #44 was not a bug: the total already sums the selected items, and the copy now says so.
+
+Partly done:
+- **#13:** Context policy, Prior reasoning replay and Web search moved, and "About / About" became "System". Not moved: Default project folder (no better home yet). Not merged: Skills and Skills Library.
+- **#31 / #32:** Primary buttons now use the accent, Settings buttons have the `.mn-btn` look, and stray native controls use the accent colour. Not done: retiring the `settings-action-btn` / `settings-switch` classes in favour of `createButton` / `.mn-switch`; that is a refactor across many files. Multi-select checklists (Chat context, Issues) deliberately stay checkboxes.
+- **#36:** Badges cover only the settings whose timing is known from code.
+
+Not done (each needs its own design):
+- **#37:** per-field reset to default (needs a default for every field).
+- **#38:** export/import of preferences.
+- **#42:** a UI text-size control separate from zoom.
+
 ---
 
 ## P0 — Broken or blocking
