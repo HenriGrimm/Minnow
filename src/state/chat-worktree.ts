@@ -283,7 +283,7 @@ export function deferredChatWorktreeChoice(chat: Chat): { kind: 'automatic' } | 
 
 /** Retry/Local are canonical commands, never /api/worktree mutations or local
  * session metadata edits. A missing server capability fails closed. */
-async function applyManagedRunTarget(chat: Chat, kind: 'automatic' | 'local'): Promise<{ ok: boolean; error?: string }> {
+async function applyManagedRunTarget(chat: Chat, kind: 'automatic' | 'local', retainedPath?: string): Promise<{ ok: boolean; error?: string }> {
   const endpoint = `/api/chats/${encodeURIComponent(chat.id)}`;
   const currentResponse = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
   const current = await currentResponse.json();
@@ -291,6 +291,9 @@ async function applyManagedRunTarget(chat: Chat, kind: 'automatic' | 'local'): P
     return { ok: false, error: current.error?.message || 'The server could not read this conversation. No run target was changed.' };
   }
   const intentId = current.chat.workspacePreparation?.intent?.id;
+  if (retainedPath && !worktreePathsEqual(retainedPath, current.chat.workspacePreparation?.binding?.path ?? '')) {
+    return { ok: false, error: 'This server-owned conversation can only return to its saved worktree. No checkout was changed.' };
+  }
   if (typeof intentId !== 'string' || !intentId) {
     return { ok: false, error: 'This server has no saved worktree setup intent. Send your message to start setup, or update Minnow.' };
   }
@@ -362,6 +365,10 @@ async function applyRunTarget(
   choice: ChatRunTargetChoice,
 ): Promise<{ ok: boolean; error?: string }> {
   if (chat.chatCommandVersion === 1) {
+    if (choice.kind === 'attach') {
+      const local = worktreePathsEqual(choice.path, chat.workspacePath?.trim() || composerGitRepoRoot());
+      return applyManagedRunTarget(chat, local ? 'local' : 'automatic', local ? undefined : choice.path);
+    }
     if (choice.kind !== 'automatic' && choice.kind !== 'local') {
       return { ok: false, error: 'Server-owned conversations use automatic setup or explicit Local. No checkout was changed.' };
     }

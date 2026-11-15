@@ -211,6 +211,56 @@ test('Local is explicit, refuses active ownership, cancels unstarted automatic i
   assert.equal(await f.adapter.capture(await f.context.resolveTarget('ordinary')), null);
 });
 
+test('Local can return to its verified ready worktree after reload without replay or setup', async t => {
+  const f = await fixture(t);
+  const input = f.reserve(await f.admit());
+  await f.adapter.prepare(input);
+  const state = f.adapter.read('ordinary');
+  await fs.writeFile(path.join(state.binding.path, 'keep.txt'), 'retained edits');
+  await f.git(['add', 'keep.txt'], state.binding.path);
+  await f.git(['commit', '-m', 'later work'], state.binding.path);
+  f.release(input, 'completed');
+  f.adapter.chooseLocal({ chatId: 'ordinary', expectedIntentId: state.intent.id });
+  const adapter = f.reload();
+  const localInput = f.reserve(await f.admit());
+  await assert.rejects(adapter.retry({ chatId: 'ordinary', expectedIntentId: state.intent.id }),
+    error => error.code === 'ownership_conflict');
+  f.release(localInput, 'completed');
+  const restored = await adapter.retry({ chatId: 'ordinary', expectedIntentId: state.intent.id });
+  assert.equal(restored.worktreeRoot, state.binding.path);
+  assert.equal(restored.workspacePreparation.status, 'ready');
+  assert.equal(f.setupCalls(), 1);
+  assert.equal(f.repository.getCommand(input.command.commandId).state, 'settled');
+  assert.equal(await fs.readFile(path.join(state.binding.path, 'keep.txt'), 'utf8'), 'retained edits');
+  adapter.chooseLocal({ chatId: 'ordinary', expectedIntentId: state.intent.id });
+  // Conversations detached before retainedReady shipped recover from their
+  // already-rebound execution, not an assumption that every binding is ready.
+  f.db.prepare("UPDATE chat_conversation_state SET meta_json=json_remove(meta_json, '$.workspacePreparation.retainedReady') WHERE chat_id=?").run('ordinary');
+  assert.equal((await f.reload().retry({ chatId: 'ordinary', expectedIntentId: state.intent.id })).worktreeRoot, state.binding.path);
+  adapter.chooseLocal({ chatId: 'ordinary', expectedIntentId: state.intent.id });
+  await f.git(['checkout', '-b', 'changed-branch'], state.binding.path);
+  await assert.rejects(adapter.retry({ chatId: 'ordinary', expectedIntentId: state.intent.id }),
+    error => error.code === 'workspace_denied');
+  assert.equal(f.repository.getChat('ordinary').worktreeRoot, '');
+  assert.equal(adapter.read('ordinary').status, 'local');
+});
+
+test('Local cannot reattach a retained allocation whose dependencies never finished', async t => {
+  const f = await fixture(t, { enableWorktree: async args => {
+    const result = await enableChatWorktree(args);
+    return { ...result, ok: false, error: 'unfinished dependencies' };
+  } });
+  const input = f.reserve(await f.admit());
+  await assert.rejects(f.adapter.prepare(input), /unfinished dependencies/);
+  f.release(input);
+  const state = f.adapter.read('ordinary');
+  f.adapter.chooseLocal({ chatId: 'ordinary', expectedIntentId: state.intent.id });
+  await assert.rejects(f.reload().retry({ chatId: 'ordinary', expectedIntentId: state.intent.id }),
+    error => error.code === 'recovery_required');
+  assert.equal(f.repository.getChat('ordinary').worktreeRoot, '');
+  assert.equal(f.setupCalls(), 1);
+});
+
 test('stale execution fences cannot bind a completed setup or change a later Local choice', async t => {
   const f = await fixture(t);
   const input = f.reserve(await f.admit());

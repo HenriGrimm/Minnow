@@ -12,6 +12,8 @@ export interface ChatWorkspaceIntent {
 export interface ChatWorkspaceState {
   intent: ChatWorkspaceIntent; status: 'pending' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'local';
   binding: CheckoutBinding | null; error?: string | null;
+  /** Local retained a checkout whose dependency preparation completed. */
+  retainedReady?: boolean;
 }
 export interface WorkspacePreparationInput {
   command: ChatCommand; execution: ExecutionRecord; fence: ExecutionFence; signal?: AbortSignal;

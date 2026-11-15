@@ -1113,7 +1113,13 @@ export async function activatePreviewTabGuest(
     if (api.tabs?.create) {
       const listed = await api.tabs.list();
       if (options?.isCurrent?.() === false) return;
-      if (!listed.some((t) => t.id === tabId)) {
+      const guest = listed.find((t) => t.id === tabId);
+      // Hidden native instances can be evicted while this renderer still
+      // remembers them as loaded. Layout may already have recreated a blank tab.
+      if (!guest || (!guest.loading && (!guest.url || guest.url === 'about:blank'))) {
+        clearLoadedTabGuest(tabId);
+      }
+      if (!guest) {
         await api.tabs.create(tabId);
       }
     }

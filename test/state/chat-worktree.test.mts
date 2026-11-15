@@ -46,7 +46,28 @@ describe('chat-worktree helpers', () => {
       assert.deepEqual(calls.filter(call => call.body).map(call => call.body.action), ['retry', 'local']);
       assert.ok(calls.every(call => call.url.startsWith('/api/chats/managed')));
       assert.equal((await applyChatRunTargetChoice(chat, { kind: 'attach', path: '/unsafe' })).ok, false);
-      assert.equal(calls.length, 4, 'unsupported canonical attach has no filesystem request');
+      assert.equal(calls.length, 5, 'canonical attach reads the saved target but never mutates an arbitrary worktree');
+    } finally { globalThis.fetch = previousFetch; }
+  });
+
+  test('managed attach returns to the saved worktree using server Retry, ignoring the supplied branch', async () => {
+    const previousFetch = globalThis.fetch, actions: any[] = [];
+    const chat = { id: 'retained', workspacePath: '/repo', chatCommandVersion: 1 } as any;
+    globalThis.fetch = (async (_url, init) => {
+      if (!init?.body) return Response.json({ chat: { id: chat.id,
+        workspacePreparation: { status: 'local', intent: { id: 'saved' }, binding: { path: '/retained' } } } });
+      actions.push(JSON.parse(String(init.body)));
+      return Response.json({ chat: { id: chat.id, worktreeRoot: '/retained', gitBranch: 'verified',
+        workspacePreparation: { status: 'ready' }, chatWorktreeManaged: true } });
+    }) as typeof fetch;
+    try {
+      assert.equal((await applyChatRunTargetChoice(chat, { kind: 'attach', path: '/other' })).ok, false);
+      assert.equal(actions.length, 0);
+      assert.equal((await applyChatRunTargetChoice(chat, { kind: 'attach', path: '/retained', branch: 'untrusted' })).ok, true);
+      assert.equal(chat.worktreeRoot, '/retained');
+      assert.equal(chat.gitBranch, 'verified');
+      assert.equal(actions[0].action, 'retry');
+      assert.equal(actions[0].expectedIntentId, 'saved');
     } finally { globalThis.fetch = previousFetch; }
   });
 

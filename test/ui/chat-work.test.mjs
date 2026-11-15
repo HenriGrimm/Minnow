@@ -59,6 +59,21 @@ afterEach(() => {
   win.close();
 });
 
+test('sending another message does not reopen the finished turn before its user row arrives', () => {
+  chat.history[0].commandId = 'old-command';
+  chat.history[0].workStatus = 'completed';
+  renderChatFromHistory(chat);
+  chat.agentPendingCommand = { commandId: 'new-command' };
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work').getAttribute('aria-expanded'), 'false');
+  assert.ok(mount.querySelector('.tool-call-msg').classList.contains('chat-work-hidden'));
+  assert.ok(mount.querySelector('.chat-turn-final'));
+  chat.history.push({ role: 'user', content: 'Next request', commandId: 'new-command' });
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work').getAttribute('aria-expanded'), 'false');
+});
+
 test('compact history keeps the final answer visible and groups tools and thoughts without replacing nodes', () => {
   renderChatFromHistory(chat);
   const work = mount.querySelector('.chat-work');

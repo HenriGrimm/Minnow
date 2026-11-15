@@ -243,7 +243,8 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
           { state: 'cancelled', result: { disposition: 'worktree_detached' } });
       }
       db.prepare("UPDATE chats SET worktree_root='',git_branch='' WHERE id=?").run(chatId);
-      write(chatId, { ...current, status: 'local', error: null },
+      write(chatId, { ...current, status: 'local', error: null,
+        retainedReady: current.status === 'ready' || current.status === 'local' && current.retainedReady === true },
         { worktreeEnabled: false, worktreeSetupRequired: false, chatWorktreeManaged: false });
       return repository.getChat(chatId);
     });
@@ -262,6 +263,32 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
     const promise = (async () => {
       let input, renewal;
+      const retained = read(chatId);
+      if (retained?.intent?.id === expectedIntentId && retained.status === 'local' && retained.binding) {
+        // Older Local projections lack retainedReady. A rebound execution is
+        // durable proof that this exact allocation finished preparation.
+        const prepared = retained.retainedReady === true || db.prepare(`SELECT 1 FROM chat_executions
+          WHERE chat_id=? AND json_extract(captured_json, '$.workspacePreparation.id')=?
+          AND json_extract(captured_json, '$.checkoutIdentity')=?
+          AND json_extract(captured_json, '$.workspacePolicyBinding.workspaceId') IS NOT NULL LIMIT 1`)
+          .get(chatId, expectedIntentId, retained.binding.checkoutIdentity);
+        if (!prepared) fail('recovery_required', 'The retained worktree did not finish setup. No checkout was changed.');
+        const verified = await verifiedSlot(retained.intent, retained.binding, { ready: true });
+        combined.throwIfAborted();
+        const result = repository.atomic(() => {
+          if (!same(read(chatId), retained)) fail('stale_revision', 'Workspace setup changed. Refresh before retrying.');
+          if (repository.getLease(chatId)?.state === 'active' ||
+              repository.listCommands({ chatId, states: pendingStates, limit: 1 }).length) {
+            fail('ownership_conflict', 'Finish the current chat activity before changing checkouts');
+          }
+          db.prepare('UPDATE chats SET worktree_root=?,git_branch=? WHERE id=?').run(verified.binding.path, verified.binding.branch, chatId);
+          write(chatId, { ...retained, status: 'ready', binding: verified.binding, error: null },
+            { worktreeEnabled: false, worktreeSetupRequired: false, chatWorktreeManaged: true });
+          return repository.getChat(chatId);
+        });
+        changed(chatId);
+        return result;
+      }
       repository.atomic(() => {
         const state = read(chatId);
         if (state?.intent?.id !== expectedIntentId || state.status === 'local') fail('stale_revision', 'Workspace setup changed. Refresh before retrying.');

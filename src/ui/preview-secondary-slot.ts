@@ -368,10 +368,13 @@ async function loadSecondaryElectron(
   }
 
   let existing = true;
+  let reusable = true;
   if (api.tabs?.create) {
     const listed = await api.tabs.list(WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
     if (options?.isCurrent?.() === false) return;
-    existing = listed.some((t) => t.id === tabId);
+    const guest = listed.find((t) => t.id === tabId);
+    existing = Boolean(guest);
+    reusable = Boolean(guest && (guest.loading || (guest.url && guest.url !== 'about:blank')));
     if (!existing) {
       await api.tabs.create(tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
     }
@@ -382,7 +385,7 @@ async function loadSecondaryElectron(
   }
   if (options?.isCurrent?.() === false) return;
   const tab = getPreviewTab(tabId);
-  if (existing && options?.reuse && tab && loadedSecondaryGuests.has(tab)) return;
+  if (reusable && options?.reuse && tab && loadedSecondaryGuests.has(tab)) return;
   if (api.navigateAndWait) {
     const result = await api.navigateAndWait(url, tabId, WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
     if (!result.ok && !tab?.loadFailed && options?.isCurrent?.() !== false) {
@@ -443,7 +446,9 @@ export async function renderSecondaryPreviewSlot(
     return;
   }
   if (!isCurrent()) return;
-  if (!options?.forceLoad && previous === tabId && loadedSecondaryUrl === url) return;
+  // Native instances can disappear independently of the saved URL. Validate
+  // the actual guest before reusing it, even when the selected tab is unchanged.
+  if (!usesElectron() && !options?.forceLoad && previous === tabId && loadedSecondaryUrl === url) return;
   loadedSecondaryUrl = url;
   if (usesElectron()) {
     hideFrame();

@@ -202,8 +202,14 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       || rows.some(row => row.matches('.sub-agent-card--active, .sub-agent-card[data-status="running"], .sub-agent-card[data-status="queued"], .sub-agent-group[data-live="true"]')
         || Boolean(row.querySelector('.sub-agent-card--active, .sub-agent-card[data-status="running"], .sub-agent-card[data-status="queued"]'))));
     const parentSettled = turn.executionStatus == null || turn.executionStatus === 'completed';
+    // Admission can precede the new user row. A queued command must not reopen
+    // the previous reply, but an already-live delegation can stay open.
+    const pendingCommand = latest ? chat.agentPendingCommand : undefined;
+    const pendingBelongsToTurn = pendingCommand && (
+      chat.history.slice(turn.fork, turn.end + 1).some(message => message.role === 'user' && message.commandId === pendingCommand.commandId)
+      || groups.get(turn.fork)?.button.dataset.outcome === 'live');
     const executionStatus = parentSettled && !interrupted
-      ? latest && chat.agentPendingCommand ? 'queued' : waitingForAgents ? 'waiting_for_agents' : turn.executionStatus
+      ? pendingBelongsToTurn ? 'queued' : waitingForAgents ? 'waiting_for_agents' : turn.executionStatus
       : turn.executionStatus;
     const recovery = executionStatus === 'recovery_required';
     const terminal = executionStatus != null && ['completed', 'failed', 'stopped', 'recovery_required'].includes(executionStatus);

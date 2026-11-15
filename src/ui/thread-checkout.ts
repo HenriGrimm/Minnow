@@ -105,14 +105,11 @@ export async function mountThreadCheckout(options: ThreadCheckoutOptions): Promi
       if (panelPathsEqual(path, state.cwd)) return;
       check(state.cwd);
       const local = panelPathsEqual(path, workspace);
-      if (chat.chatCommandVersion === 1 && (!local || !fixedBranch())) {
-        throw new Error('This server-owned conversation uses a server-managed checkout.');
-      }
       const next = await load(path);
       check(state.cwd);
       const result = await applyChatRunTargetChoice(chat, local ? { kind: 'local' } : { kind: 'attach', path, branch: next.branch });
       if (!result.ok) throw new Error(result.error || 'Could not select the worktree.');
-      if (!local && !next.branch) delete chat.gitBranch;
+      if (chat.chatCommandVersion !== 1 && !local && !next.branch) delete chat.gitBranch;
       touchChat(chat);
       scheduleSaveSessions();
       changed(path, next.branch);
