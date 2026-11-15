@@ -26,6 +26,8 @@ export function shouldKeepWorktree(
 ): boolean;
 export function wantsReuse(desired: Desired): boolean;
 
+export function multiRepoBoardError(ids: string[]): string;
+
 export function ensureBoardWorkspaceGit(): Promise<
   | {
       ok: true;

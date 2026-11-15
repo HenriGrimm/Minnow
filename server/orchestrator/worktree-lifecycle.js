@@ -27,6 +27,11 @@ import { initializeWorkspaceGit } from '../workspace/initialize-git.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { boardDir, loadState } from './journal.js';
 
+/** Why a board cannot start in a folder that holds several repositories. */
+export function multiRepoBoardError(ids) {
+  return `Boards run in a single repository, and this folder holds several (${ids.join(', ')}). Open one of them as the workspace to run this board.`;
+}
+
 /** Integration slot name used by `getWorktreeSlotPath`. Never reclaimed as an orphan. */
 export const INTEGRATION_SLOT = 'integration';
 
@@ -301,6 +306,13 @@ export function wantsReuse(desired) {
  * } | { ok: false, error: string }>}
  */
 export async function ensureBoardWorkspaceGit() {
+  // Boards integrate through one repository. A folder of repos would need an
+  // integration branch per repo, which boards do not do; never git-init the parent.
+  const { multiRepoSources } = await import('../worktree/multi-repo.js');
+  const sources = await multiRepoSources(getEffectiveWorkspaceRoot());
+  if (sources) {
+    return { ok: false, error: multiRepoBoardError(sources.map((repo) => repo.id)) };
+  }
   const result = await initializeWorkspaceGit();
   if (!result.ok) {
     return { ok: false, error: result.error || 'git init failed' };
