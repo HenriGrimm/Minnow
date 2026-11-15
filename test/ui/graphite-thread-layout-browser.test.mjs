@@ -123,15 +123,10 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
           <span class="chat-turn-changes__branch"><span class="icon-svg" aria-hidden="true">⑂</span>backend/modularity-and-read-budget</span>
         </div>
         <div class="chat-turn-changes__controls">
-          <button class="chat-turn-changes__undo" aria-label="Undo last agent turn" hidden><span class="icon-svg" aria-hidden="true">↶</span></button>
-          <div class="chat-turn-changes__actions chat-turn-changes__plan-actions">
-            <button class="chat-turn-changes__action"><span class="icon-svg" aria-hidden="true">▤</span>Open plan</button>
-            <button class="chat-turn-changes__action chat-turn-changes__action--primary"><span class="icon-svg" aria-hidden="true">◇</span>Build here</button>
-            <button class="chat-turn-changes__action" hidden><span class="icon-svg" aria-hidden="true">▥</span>Orchestrate</button>
-          </div>
-          <div class="chat-turn-changes__actions" hidden>
-            <button class="chat-turn-changes__action" hidden><span class="icon-svg" aria-hidden="true">⑂</span>Create PR</button>
-            <button class="chat-turn-changes__action chat-turn-changes__action--primary" hidden><span class="icon-svg" aria-hidden="true">◈</span>Commit</button>
+          <button class="chat-turn-changes__undo" aria-label="Undo last agent turn"><span class="icon-svg" aria-hidden="true">↶</span></button>
+          <div class="chat-turn-changes__actions">
+            <button class="chat-turn-changes__action"><span class="icon-svg" aria-hidden="true">⑂</span>Create PR</button>
+            <button class="chat-turn-changes__action chat-turn-changes__action--primary"><span class="icon-svg" aria-hidden="true">◈</span>Commit</button>
           </div>
         </div>
       </div>
@@ -141,6 +136,14 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
         <span class="chat-turn-changes__counts"><span class="chat-turn-changes__add">+195</span><span class="chat-turn-changes__del">−17</span></span>
         <span class="chat-turn-changes__file-chevron" aria-hidden="true">›</span>
       </div>
+      <div class="chat-turn-changes__plan-bar">
+        <div class="chat-turn-changes__plan-label"><span class="icon-svg" aria-hidden="true">▤</span><span class="chat-turn-changes__plan-kicker">Plan ready</span><span class="chat-turn-changes__plan-name">coltiva-repository-split.md</span></div>
+        <div class="chat-turn-changes__plan-actions">
+          <button class="chat-turn-changes__action">Open plan</button>
+          <button class="chat-turn-changes__action" hidden><span class="icon-svg" aria-hidden="true">▥</span>Orchestrate</button>
+          <button class="chat-turn-changes__action chat-turn-changes__action--primary"><span class="icon-svg" aria-hidden="true">◇</span>Build here</button>
+        </div>
+      </div>
     </section>\`)`);
   const measureChanges = (width, allActions = false) => session.evaluate(`(() => {
     const card = document.querySelector('.chat-turn-changes');
@@ -149,14 +152,16 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
     const heading = card.querySelector('.chat-turn-changes__heading');
     const branch = card.querySelector('.chat-turn-changes__branch');
     const controls = card.querySelector('.chat-turn-changes__controls');
+    const bar = card.querySelector('.chat-turn-changes__plan-bar');
     const range = document.createRange();
     range.selectNodeContents(branch.lastChild);
     const measure = element => element.getBoundingClientRect().toJSON();
     return {
       card: measure(card), heading: measure(heading), summary: measure(heading.firstElementChild),
-      branch: measure(branch), controls: measure(controls), file: measure(card.lastElementChild),
-      branchLines: range.getClientRects().length,
+      branch: measure(branch), controls: measure(controls), file: measure(card.querySelector('.chat-turn-changes__file')),
+      bar: measure(bar), branchLines: range.getClientRects().length,
       buttons: [...controls.querySelectorAll('button')].filter(button => button.getClientRects().length).map(measure),
+      planButtons: [...bar.querySelectorAll('button')].filter(button => button.getClientRects().length).map(measure),
     };
   })()`);
   for (const width of [660, 540]) {
@@ -170,15 +175,17 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
   assert.ok(narrowChanges.controls.top >= narrowChanges.heading.bottom);
   assert.equal(narrowChanges.controls.left, narrowChanges.heading.left);
   assert.ok(narrowChanges.file.top >= narrowChanges.controls.bottom);
+  assert.ok(narrowChanges.bar.top >= narrowChanges.file.bottom);
   assert.equal(narrowChanges.branchLines, 1);
-  assert.equal(narrowChanges.buttons.length, 2);
+  assert.equal(narrowChanges.buttons.length, 3);
   assert.equal(new Set(narrowChanges.buttons.map(button => button.top)).size, 1);
   assert.equal(new Set(narrowChanges.buttons.map(button => button.height)).size, 1);
+  assert.equal(narrowChanges.planButtons.length, 2);
+  assert.equal(new Set(narrowChanges.planButtons.map(button => button.top)).size, 1);
   const smallestChanges = await measureChanges(220, true);
   assert.ok(smallestChanges.controls.top >= smallestChanges.heading.bottom);
-  assert.equal(smallestChanges.buttons.length, 6);
-  assert.ok(new Set(smallestChanges.buttons.map(button => button.top)).size > 1);
-  assert.ok(smallestChanges.buttons.every(button => button.left >= smallestChanges.card.left && button.right <= smallestChanges.card.right));
+  assert.equal(smallestChanges.buttons.length + smallestChanges.planButtons.length, 6);
+  assert.ok([...smallestChanges.buttons, ...smallestChanges.planButtons].every(button => button.left >= smallestChanges.card.left && button.right <= smallestChanges.card.right));
   await session.evaluate(`document.querySelectorAll('.chat-turn-changes__controls button').forEach(button => { button.hidden = true; })`);
   assert.equal((await measureChanges(220)).controls.height, 0);
   await session.evaluate(`document.querySelector('.chat-turn-changes').remove()`);

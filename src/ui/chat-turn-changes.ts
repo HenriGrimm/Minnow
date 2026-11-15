@@ -106,13 +106,14 @@ export function createTurnChanges(
 
   const planPath = findTurnPlanPath(files.map((file) => file.path));
 
+  // Header holds only git actions; a saved plan gets its own next-step bar.
   const controls = document.createElement('div');
   controls.className = 'chat-turn-changes__controls';
   if (undo) controls.append(undo);
-  if (planPath) controls.append(createPlanActions(chat, planPath));
   if (actions) controls.append(actions);
   header.append(controls);
   card.append(header);
+  if (planPath) card.dataset.turnChangesPlan = 'true';
 
   const rows: HTMLElement[] = [];
   for (const file of files) {
@@ -194,6 +195,7 @@ export function createTurnChanges(
     more.addEventListener('click', () => { showAll = !showAll; syncMore(); });
     card.append(more);
   }
+  if (planPath) card.append(createPlanActions(chat, planPath));
   return card;
 }
 
@@ -207,23 +209,43 @@ export function findTurnPlanPath(paths: string[]): string | undefined {
 }
 
 function createPlanActions(chat: Chat, planPath: string): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'chat-turn-changes__plan-bar';
+  const label = document.createElement('div');
+  label.className = 'chat-turn-changes__plan-label';
+  const name = document.createElement('span');
+  name.className = 'chat-turn-changes__plan-name';
+  const slash = planPath.replace(/\\/g, '/').lastIndexOf('/');
+  name.textContent = slash >= 0 ? planPath.slice(slash + 1) : planPath;
+  name.title = planPath;
+  label.append(
+    createIcon('fileText', { className: 'chat-turn-changes__plan-icon', size: 13 }),
+    Object.assign(document.createElement('span'), { className: 'chat-turn-changes__plan-kicker', textContent: 'Plan ready' }),
+    name,
+  );
   const actions = document.createElement('div');
-  actions.className = 'chat-turn-changes__actions chat-turn-changes__plan-actions';
-  const button = (label: string, icon: IconName, title: string, onClick: () => void) => {
+  actions.className = 'chat-turn-changes__plan-actions';
+  bar.append(label, actions);
+  const button = (text: string, icon: IconName | null, title: string, onClick: () => void) => {
     const el = document.createElement('button');
     el.type = 'button';
     el.className = 'chat-turn-changes__action';
-    el.append(createIcon(icon, { size: 13 }), label);
+    if (icon) el.append(createIcon(icon, { size: 13 }));
+    el.append(text);
     el.title = title;
     el.addEventListener('click', onClick);
     actions.append(el);
     return el;
   };
-  button('Open plan', 'fileText', planPath, () => {
+  button('Open plan', null, `Open ${planPath}`, () => {
     const host = getSharedChatHost(chat.id);
     if (host?.openPlan && host.transcript.contains(actions)) { host.openPlan(planPath); return; }
     void import('./file-viewer').then((m) => m.openFileInViewer(planPath));
   });
+  const orchestrate = button('Orchestrate', 'boardView', 'Create a board from this plan', () => {
+    void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(planPath));
+  });
+  orchestrate.hidden = true;
   const build = button('Build here', 'fileCode', 'Implement the saved plan in this chat', async () => {
     const [{ sendProgrammaticChatText }, { scheduleSaveSessions, touchChat }, { setStatus }] = await Promise.all([
       import('../chat/messaging'), import('../state/sessions'), import('./status'),
@@ -239,16 +261,13 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
       setStatus('err', error instanceof Error ? error.message : 'Could not start building the plan');
     }
   });
-  const orchestrate = button('Orchestrate', 'boardView', 'Create a board from this plan', () => {
-    void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(planPath));
-  });
-  orchestrate.hidden = true;
   void readWorkspaceTextFile(planPath, chat.workspacePath, Date.now()).then((markdown) => {
     const type = readPlanType(markdown);
     orchestrate.hidden = type !== 'orchestrate';
+    orchestrate.classList.toggle('chat-turn-changes__action--primary', type === 'orchestrate');
     build.classList.toggle('chat-turn-changes__action--primary', type === 'build');
   }).catch(() => {});
-  return actions;
+  return bar;
 }
 
 /** Primary turn-changes card in the active transcript, if any. */
