@@ -10,6 +10,7 @@ import {
   EMPTY_CODE_CHANGE_TOTALS,
   ensureCodeChangeTotals,
   formatCodeChangeTotalsText,
+  getChatCodeChangeTotals,
   getPerFileChangeSummary,
   getWorkspaceCodeChangeTotals,
   hasCodeChangeTotals,
@@ -46,6 +47,34 @@ describe('code-change-ledger', () => {
     const chat = makeChat();
     recordCodeChange(chat, { additions: 0, deletions: 0 });
     assert.equal(chat.codeChangeTotals, undefined);
+  });
+
+  test('canonical display totals come from each chat\'s recorded results, not stale legacy totals', () => {
+    const a = { ...makeChat(), chatCommandVersion: 1 as const, codeChangeTotals: { additions: 0, deletions: 0 } };
+    a.history = [{ role: 'tool', tool_call_id: 'a', content: '', codeChange: {
+      additions: 7, deletions: 2, paths: ['a.ts', 'shared.ts'],
+    } }];
+    const b = { ...makeChat(), id: 'other', agentConversation: true } as Chat;
+    b.history = [{ role: 'tool', tool_call_id: 'b', content: '', codeChange: {
+      additions: 3, deletions: 1, path: 'shared.ts',
+    } }];
+    assert.deepEqual(getChatCodeChangeTotals(a), { additions: 7, deletions: 2 });
+    assert.deepEqual(getChatCodeChangeTotals(b), { additions: 3, deletions: 1 });
+    assert.deepEqual(getChatCodeChangeTotals(JSON.parse(JSON.stringify(a))), { additions: 7, deletions: 2 });
+    assert.deepEqual(a.codeChangeTotals, { additions: 0, deletions: 0 });
+    assert.equal(b.codeChangeTotals, undefined);
+    a.history = [];
+    assert.deepEqual(getChatCodeChangeTotals(a), EMPTY_CODE_CHANGE_TOTALS);
+  });
+
+  test('display totals do not read unloaded history and preserve legacy backfilled counts', () => {
+    const chat = makeChat();
+    chat.codeChangeTotals = { additions: 5, deletions: 1 };
+    assert.deepEqual(getChatCodeChangeTotals(chat), chat.codeChangeTotals);
+    chat.chatCommandVersion = 1;
+    chat.historyLoaded = false;
+    Object.defineProperty(chat, 'history', { get() { throw new Error('History must remain lazy'); } });
+    assert.deepEqual(getChatCodeChangeTotals(chat), { additions: 5, deletions: 1 });
   });
 
   test('reset restores empty totals', () => {

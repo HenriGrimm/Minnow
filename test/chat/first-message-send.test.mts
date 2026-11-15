@@ -94,6 +94,7 @@ test('first message paints before delayed promotion, prevents duplicate sends an
     assert.equal(column.querySelector('.graphite-new-thread__context')?.hasAttribute('hidden'), true);
     assert.equal(column.querySelector(':scope > .input-bar'), composer, 'the wired composer stays mounted');
     assert.equal(input.value, '', 'the pending bubble and composer must never display the same text');
+    assert.deepEqual(getPendingAttachments(), [], 'sent images leave the composer before routing finishes');
     assert.equal(chat.composerDraft, 'Review the build', 'retain the recoverable draft until acknowledgement');
     t.diagnostic(`First sending DOM: ${(performance.now() - started).toFixed(1)} ms, with promotion still unresolved`);
     assert.equal(document.querySelector('.msg--sending img')?.getAttribute('src'), image.dataUrl);
@@ -143,6 +144,35 @@ test('first message paints before delayed promotion, prevents duplicate sends an
   renderChatFromHistory(chat);
   assert.equal(document.querySelectorAll('.msg.user').length, 1);
   assert.equal(document.querySelector('.msg--sending'), null);
+});
+
+test('an image-only send owns its pixels while rejection restores files alongside newer attachments', async () => {
+  const { input } = setup(true);
+  input.value = '';
+  const image = { id: 'image-only', name: 'screen.png', kind: 'image' as const, size: 4, mimeType: 'image/png', dataUrl: 'data:image/png;base64,YWJjZA==' };
+  pushAttachment(image);
+  const command = deferred<Response>();
+  const dispatched = deferred<void>();
+  let payload: any;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/commands')) {
+      payload = JSON.parse(String(init?.body));
+      dispatched.resolve();
+      return command.promise;
+    }
+    return Response.json({});
+  };
+  const sending = sendMessageWithTools();
+  try {
+    assert.deepEqual(getPendingAttachments(), []);
+    await dispatched.promise;
+    assert.deepEqual(payload.images, [{ name: image.name, dataUrl: image.dataUrl }]);
+    pushAttachment({ id: 'new-file', name: 'next.txt', kind: 'text', text: 'Next', size: 4, mimeType: 'text/plain' });
+  } finally {
+    command.resolve(Response.json({ error: { message: 'Model unavailable' } }, { status: 400 }));
+    await sending;
+  }
+  assert.deepEqual(getPendingAttachments().map(attachment => attachment.id), ['image-only', 'new-file']);
 });
 
 test('a first command that fails before writing history cannot leave a permanent Sending bubble', async () => {
@@ -195,6 +225,7 @@ test('a rejected first send removes the pending bubble and leaves the draft retr
     assert.ok(document.querySelector('.msg--sending'));
     assert.equal(column.classList.contains('graphite-new-thread'), false);
     assert.equal(input.value, '', 'clear before the command acknowledgement');
+    assert.deepEqual(getPendingAttachments(), [], 'sent files leave the composer before acknowledgement');
     handleComposerDraftInput();
     persistComposerDraftForChatId(chat.id);
     applyComposerDraftForChat(chat);

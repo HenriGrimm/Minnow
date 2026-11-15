@@ -127,12 +127,12 @@ async function activateAssistantChat(chatId: string): Promise<void> {
   if (!chat) return;
   if (prevId !== chatId) clearAttachments();
   sessionState.activeId = chatId;
+  switchComposerDraft(prevId, chat);
   markSessionScalarsDirty();
   await ensureChatHistoryLoaded(chatId);
   if (!sessionState || sessionState.activeId !== chatId) return;
   acknowledgeChatViewed(chatId);
   rememberActiveChatForApp(CHAT_APP_ID, chatId);
-  switchComposerDraft(prevId, chat);
   scheduleSaveSessions();
   renderChatAppSurface();
   void import('../tools/stream-chat-dom').then((m) => m.remountStreamDomForChat(chatId));

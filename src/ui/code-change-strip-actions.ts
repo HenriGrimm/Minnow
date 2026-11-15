@@ -4,14 +4,11 @@ import { isChatStreaming } from '../chat/streaming-state';
 import { formatHistoryWithSkillTag } from '../skills/parse-slash';
 import { gitCommit, gitDiff, gitStage } from '../state/git-api';
 import { isWorkspaceGitRepo } from '../state/git-workspace';
-import { getActiveChat, saveSessionsNow, touchChat } from '../state/sessions';
+import { getActiveChat, saveSessionsNow, sessionState, touchChat } from '../state/sessions';
 import { getWorkspacePath } from '../state/workspace';
 import { resolveEffectiveChatModelBinding } from '../models/selection';
 import type { Chat, ToolResultMessage, AssistantToolCallMessage } from '../types';
-import {
-  getPerFileChangeSummary,
-  hasCodeChangeTotals,
-} from '../usage/code-change-ledger';
+import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { buildHistoryUserContent } from '../chat/build-api-messages';
 import { runChatTurn } from '../chat/run-turn-chat';
 import { setStatus } from './status';
@@ -41,8 +38,8 @@ function gitCwdForChat(chat: Chat): string | undefined {
   return workspace || undefined;
 }
 
-async function workspaceHasGitRepo(): Promise<boolean> {
-  const path = getWorkspacePath().trim();
+async function workspaceHasGitRepo(chat: Chat): Promise<boolean> {
+  const path = gitCwdForChat(chat) ?? '';
   const now = Date.now();
   if (gitCache && gitCache.path === path && now - gitCache.at < GIT_CACHE_MS) {
     return gitCache.isRepo;
@@ -304,7 +301,7 @@ async function onCreatePrClick(): Promise<void> {
     setStatus('err', 'Create PR is not available in Plan mode');
     return;
   }
-  if (!(await workspaceHasGitRepo())) {
+  if (!(await workspaceHasGitRepo(chat))) {
     setStatus('err', 'This workspace is not a git repository');
     syncCodeChangeStripActionsVisibility(chat);
     return;
@@ -342,22 +339,20 @@ function wireActionButtons(): void {
 
 /** Show Commit / Create PR when the primary turn card exists, git is available, and not yet shipped. */
 export function syncCodeChangeStripActionsVisibility(chat?: Chat | null): void {
+  if (!sessionState) return;
+  const active = getActiveChat();
+  // A background chat's work renderer must not hide another chat's controls.
+  if (chat && chat.id !== active?.id) return;
   const gen = ++syncGen;
   wireActionButtons();
   const { host, commit, pr } = ensureActionButtons();
   if (!host || !commit || !pr) return;
 
-  const active = chat ?? getActiveChat();
-  const totals = active?.codeChangeTotals;
-  const showStats =
-    active &&
-    hasCodeChangeTotals(totals) &&
-    totals &&
-    Boolean(findPrimaryTurnChangesCard());
+  const showStats = active && getPerFileChangeSummary(active).length > 0;
 
   void (async () => {
-    const hasGit = await workspaceHasGitRepo();
-    if (gen !== syncGen) return;
+    const hasGit = active ? await workspaceHasGitRepo(active) : false;
+    if (!sessionState || gen !== syncGen || getActiveChat()?.id !== active?.id) return;
 
     const allowed = active ? gitWritesAllowed(active) : false;
     const handled = Boolean(active?.codeChangeShipHandled);

@@ -188,6 +188,30 @@ test('Graphite panels open before the first message and restore each thread', as
   assert.equal(mainColumn.classList.contains('graphite-new-thread'), false);
   assert.equal(side.querySelector('[data-resource="pty-instance"]'), terminal);
 
+  // Canonical tool results arrive without the renderer-owned totals. The
+  // thread's Diff entry must survive that, and change counts on navigation.
+  first.chatCommandVersion = 1;
+  first.codeChangeTotals = { additions: 0, deletions: 0 };
+  first.history.push({ role: 'tool', tool_call_id: 'first-edit', content: '',
+    codeChange: { path: 'shared.ts', additions: 4, deletions: 2 } });
+  second.chatCommandVersion = 1;
+  second.history = [{ role: 'user', content: 'Another edit' }, { role: 'tool', tool_call_id: 'second-edit', content: '',
+    codeChange: { path: 'shared.ts', additions: 7, deletions: 1 } }];
+  win.dispatchEvent(new win.Event('hashchange'));
+  const headerDiff = document.querySelector<HTMLButtonElement>('.graphite-thread-header__diff')!;
+  assert.equal(headerDiff.hidden, false);
+  assert.match(headerDiff.textContent!, /\+4.*−2/);
+  sessions.activeId = second.id;
+  win.dispatchEvent(new win.Event('hashchange'));
+  assert.equal(headerDiff.hidden, false);
+  assert.match(headerDiff.textContent!, /\+7.*−1/);
+  sessions.activeId = first.id;
+  win.dispatchEvent(new win.Event('hashchange'));
+  assert.match(headerDiff.textContent!, /\+4.*−2/);
+  delete first.chatCommandVersion;
+  delete second.chatCommandVersion;
+  second.history = [];
+
   const mobileHost = document.getElementById('mobile')!;
   const unmount = mountMobileSurfacePortal(mobileHost, second.id);
   assert.equal(openSurface('preview'), true);

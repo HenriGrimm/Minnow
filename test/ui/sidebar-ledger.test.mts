@@ -75,6 +75,21 @@ test('git state: a PR outranks edits, unshipped edits outrank commits, and a fre
   assert.equal(host.getAttribute('aria-label'), 'worktree, pull request open #7, checks failed');
 });
 
+test('loaded canonical chats expose their own diff counts without a legacy accumulator', () => {
+  const first = chat('first', 10, { chatCommandVersion: 1, historyLoaded: true,
+    history: [{ role: 'tool', tool_call_id: 'a', content: '', codeChange: { path: 'shared.ts', additions: 4, deletions: 2 } }] });
+  const second = chat('second', 9, { chatCommandVersion: 1, historyLoaded: true,
+    codeChangeTotals: { additions: 0, deletions: 0 },
+    history: [{ role: 'tool', tool_call_id: 'b', content: '', codeChange: { path: 'shared.ts', additions: 7, deletions: 1 } }] });
+  const list = setup([first, second]);
+  renderSidebar();
+  assert.deepEqual([chatGitState(first, WS).additions, chatGitState(first, WS).deletions], [4, 2]);
+  assert.deepEqual([chatGitState(second, WS).additions, chatGitState(second, WS).deletions], [7, 1]);
+  assert.equal(chatGitState(first, WS).stage, 'uncommitted');
+  assert.match(list.querySelector('[data-chat-id="first"] .chat-item-git')?.textContent ?? '', /\+4.*−2/);
+  assert.match(list.querySelector('[data-chat-id="second"] .chat-item-git')?.textContent ?? '', /\+7.*−1/);
+});
+
 test('Today and Older sections; finished work archives in one go and Undo brings it back', () => {
   const today = chat('today', Date.now());
   const merged = chat('merged', 10, { gitBranch: 'feat/done' });

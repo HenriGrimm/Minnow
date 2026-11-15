@@ -25,6 +25,7 @@ mock.module('../../src/skills/parse-slash.ts', { namedExports: { formatHistoryWi
 mock.module('../../src/chat/build-api-messages.ts', { namedExports: { buildHistoryUserContent: (text: string) => text } });
 mock.module('../../src/chat/run-turn-chat.ts', { namedExports: { runChatTurn: async () => { calls.push({ op: 'chat-turn' }); } } });
 mock.module('../../src/state/sessions.ts', { namedExports: {
+  sessionState: {},
   getActiveChat: () => active, touchChat: (chat: Chat) => calls.push({ op: 'touch', input: chat.id }), saveSessionsNow: () => {},
 } });
 mock.module('../../src/state/workspace.ts', { namedExports: { getWorkspacePath: () => '/workspace' } });
@@ -39,7 +40,7 @@ mock.module('../../src/models/selection.ts', { namedExports: {
   readPersistedDefaultModelValue: () => '',
 } });
 mock.module('../../src/usage/code-change-ledger.ts', { namedExports: {
-  getPerFileChangeSummary: () => recordedPaths.map(path => ({ path })), hasCodeChangeTotals: () => true,
+  getPerFileChangeSummary: () => recordedPaths.map(path => ({ path })),
 } });
 mock.module('../../src/ui/chat-turn-changes.ts', { namedExports: { findPrimaryTurnChangesCard: () => document.querySelector('section') } });
 mock.module('../../src/ui/git-panel.ts', { namedExports: { refreshGitPanel: async () => { calls.push({ op: 'refresh-panel' }); } } });
@@ -101,6 +102,38 @@ beforeEach(async () => {
 });
 
 afterEach(async () => { await win.happyDOM.close(); });
+
+test('canonical chat with recorded files exposes Commit without legacy totals', async () => {
+  active.chatCommandVersion = 1;
+  delete active.codeChangeTotals;
+  actions.syncCodeChangeStripActionsVisibility(active);
+  await settle();
+  assert.equal(button().hidden, false);
+  assert.equal(button().disabled, false);
+  assert.equal(document.querySelector<HTMLElement>('#codeChangeStripActions')!.hidden, false);
+});
+
+test('background chat refresh cannot hide the active chat\'s Commit control', async () => {
+  const background = chat('background');
+  background.codeChangeShipHandled = true;
+  actions.syncCodeChangeStripActionsVisibility(active);
+  actions.syncCodeChangeStripActionsVisibility(background);
+  await settle();
+  assert.equal(button().hidden, false);
+  assert.equal(button().disabled, false);
+});
+
+test('a Git probe completing after navigation cannot update the next chat\'s controls', async () => {
+  button().hidden = true;
+  actions.invalidateCodeChangeStripActionsGitCache();
+  actions.syncCodeChangeStripActionsVisibility(active);
+  active = chat('next');
+  await settle();
+  assert.equal(button().hidden, true);
+  actions.syncCodeChangeStripActionsVisibility(active);
+  await settle();
+  assert.equal(button().hidden, false);
+});
 
 test('Commit generates with the utility model and commits the staged index without a chat turn', async () => {
   const source = active;

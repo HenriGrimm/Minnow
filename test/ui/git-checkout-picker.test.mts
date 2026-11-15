@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
+import { readFileSync } from 'node:fs';
 import { createGitCheckoutPicker, type CheckoutPickerState } from '../../src/ui/git-checkout-picker.ts';
 import type { GitCheckoutSwitchInput, GitOpResult } from '../../src/state/git-api.ts';
 import { isLocalServerAvailable, setLocalServerAvailable } from '../../src/tools/config.ts';
@@ -44,6 +45,20 @@ beforeEach(() => {
 });
 afterEach(async () => {
   picker.dispose(); await win.close(); Object.assign(globalThis, originals);
+});
+
+test('dropdown floats outside layout flow and marks only the open menu as a preview occluder', () => {
+  const style = document.createElement('style');
+  style.textContent = readFileSync(new URL('../../src/styles/git-checkout-picker.css', import.meta.url), 'utf8');
+  document.head.append(style);
+  const menu = document.getElementById('gitCheckoutMenu')!;
+  assert.equal(win.getComputedStyle(picker.root).position, 'relative');
+  click('main');
+  assert.equal(win.getComputedStyle(menu).position, 'absolute');
+  assert.equal(menu.classList.contains('mn-occludes-preview'), true);
+  picker.close();
+  assert.equal(menu.hidden, true);
+  assert.equal(menu.classList.contains('mn-occludes-preview'), false);
 });
 
 for (const choice of ['bring', 'leave'] as const) {

@@ -1,6 +1,7 @@
 import type { Chat, ChatCodeChangeTotals } from '../types';
 import {
   formatCodeChangeTotalsText,
+  getChatCodeChangeTotals,
   getPerFileChangeSummary,
   hasCodeChangeTotals,
 } from '../usage/code-change-ledger';
@@ -40,7 +41,7 @@ export function appendChatItemCodeChangeStats(
 
 /** Screen-reader label for session row code-change stats. */
 export function formatChatItemCodeChangeAria(chat: Chat): string {
-  const totals = chat.codeChangeTotals;
+  const totals = getChatCodeChangeTotals(chat);
   if (!hasCodeChangeTotals(totals) || !totals) return '';
   const fileCount = getPerFileChangeSummary(chat).length;
   const parts: string[] = [];

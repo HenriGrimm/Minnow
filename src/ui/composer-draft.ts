@@ -12,7 +12,8 @@ import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import type { Chat } from '../types';
 import { clearComposerInput, getActiveComposerSurface } from './composer-surface';
 import { autoResize } from './input';
-import { clearAttachments } from '../attachments/store';
+import { clearAttachments, getAttachmentEpoch, getPendingAttachments, replacePendingAttachments } from '../attachments/store';
+import type { Attachment } from '../attachments/types';
 import { clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import { composerPromptHistoryDraft, resetComposerPromptHistory } from './composer-prompt-history';
 import { isPairedDevice } from '../api/session-token';
@@ -38,6 +39,7 @@ let draftRestoreSuspended = false;
 
 export interface ComposerSubmissionDraft {
   text: string;
+  attachments: Attachment[];
   accept(): void;
   restore(): void;
 }
@@ -50,6 +52,9 @@ export function beginComposerSubmissionDraft(chat: Chat, input: HTMLTextAreaElem
   const pending = { text: input.value, persistedText: withComposerChatReferences(input.value), edited: false };
   persistComposerDraftOnChat(chat, pending.persistedText);
   sendingDrafts.set(chat, pending);
+  const attachments = getPendingAttachments();
+  clearAttachments();
+  const attachmentEpoch = getAttachmentEpoch();
   const edited = (): void => { if (sessionState?.activeId === chat.id) pending.edited = true; };
   input.addEventListener('input', edited);
   resetComposerPromptHistory();
@@ -63,6 +68,11 @@ export function beginComposerSubmissionDraft(chat: Chat, input: HTMLTextAreaElem
     if (sendingDrafts.get(chat) !== pending) return;
     sendingDrafts.delete(chat);
     const activeInput = sessionState?.activeId === chat.id ? getActiveComposerSurface().inputEl : null;
+    if (!accepted && activeInput && getAttachmentEpoch() === attachmentEpoch) {
+      const current = getPendingAttachments();
+      const currentIds = new Set(current.map(attachment => attachment.id));
+      replacePendingAttachments([...attachments.filter(attachment => !currentIds.has(attachment.id)), ...current]);
+    }
     const newerText = activeInput && (pending.edited || activeInput.value !== '');
     if (newerText) persistComposerDraftOnChat(chat, withComposerChatReferences(activeInput.value));
     else if (accepted) {
@@ -75,7 +85,7 @@ export function beginComposerSubmissionDraft(chat: Chat, input: HTMLTextAreaElem
     if (!isPairedDevice()) scheduleSaveSessions({ chatId: chat.id });
     refreshComposerStreamingAffordance();
   };
-  return { text: pending.text, accept: () => finish(true), restore: () => finish(false) };
+  return { text: pending.text, attachments, accept: () => finish(true), restore: () => finish(false) };
 }
 
 function draftTextForPersistence(chat: Chat, input: HTMLTextAreaElement, chatId?: string): string {

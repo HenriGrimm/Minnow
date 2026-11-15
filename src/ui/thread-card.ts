@@ -13,6 +13,7 @@ import { listIssues } from '../state/issues-store';
 import { clearActiveGoal, ensureChatHistoryLoaded, getActiveGoal, getChatMessageCount, sessionState } from '../state/sessions';
 import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import type { Chat, IssueCard, Message } from '../types';
+import { getChatCodeChangeTotals } from '../usage/code-change-ledger';
 import { createButton } from './components/button';
 import { openPopover, type PopoverHandle } from './components/popover';
 import { mountGraphiteNewThread } from './graphite-new-thread';
@@ -473,7 +474,7 @@ export function mountGraphiteThreadHeader(): void {
     branch.hidden = !chat;
     goal.hidden = !hasThread || !getActiveGoal(chat!);
     if (goal.hidden || !isThreadView || goalPopoverChat !== chat?.id) goalPopover?.close();
-    const totals = chat?.codeChangeTotals;
+    const totals = chat ? getChatCodeChangeTotals(chat) : undefined;
     diff.hidden = !hasThread || !(totals?.additions || totals?.deletions);
     if (!chat) return;
     const checkout = checkoutFor(chat);

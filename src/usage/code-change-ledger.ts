@@ -136,6 +136,25 @@ export function hasCodeChangeTotals(totals: ChatCodeChangeTotals | undefined): b
   return totals.additions > 0 || totals.deletions > 0;
 }
 
+/**
+ * Canonical viewers receive tool changes, not the legacy client's running total.
+ * Derive display counts from recorded results without dirtying the chat or
+ * estimating edits from tool arguments. Lazy sidebar shells must stay lazy.
+ */
+export function getChatCodeChangeTotals(chat: Chat): ChatCodeChangeTotals {
+  if (!isChatHistoryReady(chat) || (!(chat.chatCommandVersion === 1 || chat.agentConversation) && chat.codeChangeTotals)) {
+    return chat.codeChangeTotals ?? { ...EMPTY_CODE_CHANGE_TOTALS };
+  }
+  const totals = { ...EMPTY_CODE_CHANGE_TOTALS };
+  for (const message of chat.history) {
+    if (message.role !== 'tool' || !message.codeChange) continue;
+    const { additions, deletions } = message.codeChange;
+    if (Number.isFinite(additions) && additions > 0) totals.additions += additions;
+    if (Number.isFinite(deletions) && deletions > 0) totals.deletions += deletions;
+  }
+  return totals;
+}
+
 /** Resolve file paths from a single codeChange payload. */
 function pathsFromCodeChange(stats: CodeChangeStats): string[] {
   if (stats.path) return [stats.path];

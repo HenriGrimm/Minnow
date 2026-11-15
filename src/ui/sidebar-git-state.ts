@@ -6,6 +6,7 @@
  * render only ever reads what is already known.
  */
 import type { Chat } from '../types';
+import { getChatCodeChangeTotals } from '../usage/code-change-ledger';
 import { gitBranchTree, gitStatus, type GitBranchTreeEntry } from '../state/git-api';
 import { prList, type CheckState, type PullRequestSummary } from '../state/forge-api';
 import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
@@ -147,8 +148,7 @@ export function resetSidebarGitStateForTests(next?: { cwd: string; current?: str
  * counts as merged once the chat shipped, so a fresh branch never reads as done.
  */
 export function chatGitState(chat: Chat, cwd: string): ChatGitState {
-  const additions = chat.codeChangeTotals?.additions ?? 0;
-  const deletions = chat.codeChangeTotals?.deletions ?? 0;
+  const { additions, deletions } = getChatCodeChangeTotals(chat);
   const state: ChatGitState = { worktree: Boolean(chat.worktreeRoot), stage: null, additions, deletions, unpushed: 0, checks: 'none' };
   const repo = facts.get(cwd);
   const branch = chat.gitBranch?.trim();

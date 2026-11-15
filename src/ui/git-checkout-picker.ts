@@ -1,4 +1,5 @@
 import { createIcon, type IconName } from './icon';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import type { GitCheckoutSwitchInput, GitOpResult, GitSavedCheckoutChanges } from '../state/git-api';
 import { forgeRefresh, prList, type ForgeResult } from '../state/forge-api';
 import { panelPathsEqual } from './panel-worktree-cwd';
@@ -41,7 +42,7 @@ type PickerOptions = PickerActions & (
 
 export function createGitCheckoutPicker(options: PickerOptions) {
   const root = document.createElement('div');
-  root.className = 'git-checkout';
+  root.className = options.inline ? 'git-checkout' : 'git-checkout git-checkout--dropdown';
   const id = options.inline ? 'threadCheckout' : 'gitCheckout';
   const trigger = button('', 'git-checkout__trigger', () => {
     if (open) {
@@ -338,6 +339,8 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     root.setAttribute('aria-busy', String(busy));
     renderNotices();
     menu.hidden = !open;
+    if (open && !options.inline) markPreviewOccluder(menu, 'menu');
+    else unmarkPreviewOccluder(menu);
     menu.replaceChildren();
     if (!open) return;
     if (pending) {

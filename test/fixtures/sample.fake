@@ -1,5 +1,1 @@
-export const MY_EXPORT = 42;
-function callee() { return 1; }
-function caller() {
-  callee();
-}
+DISK_AFTER_OPEN

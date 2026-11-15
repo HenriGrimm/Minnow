@@ -464,13 +464,13 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     return;
   }
   const rawTextEarly = (draftSubmission?.text ?? input.value).trim();
-  const attachmentsAtSend = getPendingAttachments();
+  const attachmentsAtSend = draftSubmission?.attachments ?? getPendingAttachments();
   const attachmentEpochAtSend = getAttachmentEpoch();
   const chat = getActiveChat();
   const readOnly = chatReadOnlyReason(chat);
   if (readOnly) { showToast(readOnly); return; }
   // Local slash controls do not create server conversations or migrate history.
-  if ((rawTextEarly || getPendingAttachments().length) && !isPluginSlashCommand(rawTextEarly) &&
+  if ((rawTextEarly || attachmentsAtSend.length) && !isPluginSlashCommand(rawTextEarly) &&
       !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(rawTextEarly)) {
     if (chat.chatCommandVersion !== 1) flushComposerDraftSessionSave();
     try { await ensureOrdinaryChatRoute(chat); }
@@ -627,7 +627,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     );
     return;
   }
-  const pending = getPendingAttachments();
+  const pending = draftSubmission?.attachments ?? getPendingAttachments();
   const attachmentEpoch = getAttachmentEpoch();
   const pendingWithoutErrors = pending.filter((a) => a.kind !== 'error');
 
@@ -706,7 +706,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     setStatus('err', 'Could not read attached workspace file(s)');
     return;
   }
-  replacePendingAttachments(resolvedAttachments);
+  if (!draftSubmission) replacePendingAttachments(resolvedAttachments);
 
   if (attachmentsHaveImages(validAttachments) && !canSendImagesToModel(sendModelId)) {
     setStatus('err', 'This model cannot read images — sending the text only');

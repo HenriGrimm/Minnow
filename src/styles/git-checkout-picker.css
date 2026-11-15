@@ -67,6 +67,20 @@
 
 .git-checkout [hidden] { display: none !important; }
 
+.git-checkout--dropdown {
+  position: relative;
+}
+
+.git-checkout--dropdown > .git-checkout__menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  z-index: 1200;
+  box-shadow: var(--mn-menu-shadow);
+}
+
 .git-checkout__tabs {
   display: flex;
   gap: 4px;

@@ -97,7 +97,9 @@ function resolvePromptsForNavigation(): string[] {
   if (isHubComposerActive() && sessionState) {
     return collectWorkspaceUserPrompts(sessionState, getWorkspacePath());
   }
-  return collectChatUserPrompts(getActiveChat().history);
+  const chat = getActiveChat();
+  // Navigation transfers the composer before the selected transcript hydrates.
+  return chat.historyLoaded === false ? [] : collectChatUserPrompts(chat.history);
 }
 
 /** True when a collapsed caret sits at the start of the composer (Up may recall). */

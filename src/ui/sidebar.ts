@@ -2308,7 +2308,9 @@ export async function switchChat(id: string, isCurrent: () => boolean = () => tr
   const chat = sessionState.chats.find((c) => c.id === id);
   if (!chat) return;
   sessionState.activeId = id;
-  clearAttachments();
+  // Transfer the field with its owner before hydration yields to input/blur
+  // events or a send acknowledgement from the conversation we're leaving.
+  switchComposerDraft(prevActiveId, chat);
   markSessionScalarsDirty();
   const historyPending = chat.historyLoaded === false;
   if (historyPending) {
@@ -2319,7 +2321,6 @@ export async function switchChat(id: string, isCurrent: () => boolean = () => tr
   syncAskQuestionModalOnChatSwitch(prevActiveId, id);
   notifyAskQuestionDisplayContextChanged();
   acknowledgeChatViewed(id);
-  switchComposerDraft(prevActiveId, chat);
   syncModelSelectForActiveChat();
   if (historyPending) renderChatInForegroundShell(chat);
   else paintActiveChatInForegroundShell(chat);
