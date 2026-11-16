@@ -10,7 +10,7 @@ import {
 } from '../../src/state/sessions.ts';
 import { isEphemeralEmptyChat, pruneEphemeralEmptyChats } from '../../src/state/session-workspace-scope.ts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
-import { createChatWithMode, renderSidebar } from '../../src/ui/sidebar.ts';
+import { createChatWithMode, renderSidebar, setChatsArchivedWithUndo } from '../../src/ui/sidebar.ts';
 import { beginFirstMessageSubmission, acceptFirstMessageSubmission, finishFirstMessageSubmission } from '../../src/chat/first-message-submission.ts';
 import type { Chat } from '../../src/types.ts';
 
@@ -64,6 +64,16 @@ afterEach(async () => {
   setSessionStateForTests(null);
   resetWorkspaceStateForTests();
   globalThis.fetch = originalFetch;
+});
+
+test('archiving a long chat title shows a short confirmation with Undo', () => {
+  const value = chat('A very long chat title that should not appear in the archive confirmation');
+  const list = setup([value]);
+  setChatsArchivedWithUndo([value], true);
+  assert.equal(document.querySelector('.chat-list-toast__text')?.textContent, 'Chat archived.');
+  assert.equal(ids(list).includes(value.id), false);
+  document.querySelector<HTMLButtonElement>('.chat-list-toast__undo')!.click();
+  assert.ok(ids(list).includes(value.id));
 });
 
 test('a new chat stays in the list when left before acknowledgement or the first response', () => {

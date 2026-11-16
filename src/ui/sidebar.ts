@@ -601,7 +601,7 @@ export function setChatsArchivedWithUndo(chats: readonly Chat[], archived: boole
   for (const chat of targets) setChatArchived(chat, archived);
   renderSidebar();
   const one = targets.length === 1 ? `“${targets[0]!.name}”` : `${targets.length} chats`;
-  showSidebarToast(label ?? (archived ? `Archived ${one}` : `Restored ${one} to Working`), () => {
+  showSidebarToast(label ?? (archived ? (targets.length === 1 ? 'Chat archived.' : `Archived ${one}`) : `Restored ${one} to Working`), () => {
     for (const chat of targets) setChatArchived(findChatById(chat.id) ?? chat, !archived);
     renderSidebar();
   });
