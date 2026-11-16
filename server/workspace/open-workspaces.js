@@ -14,6 +14,7 @@
 
 import path from 'node:path';
 import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
+import { cliSessionIsIdle } from '../generations/agent-cli/lifecycle.js';
 import { normalizeWorkspacePathKey } from './root.js';
 
 /** @type {Map<string, { path: string, refs: number, openedAt: number, seq: number }>} */
@@ -69,7 +70,10 @@ export function closeWorkspace(absPath) {
   existing.refs -= 1;
   if (existing.refs <= 0) {
     openWorkspaces.delete(key);
-    void disposeCodexSessions(session => normalizeWorkspacePathKey(session.workspace) === key).catch(() => {});
+    // Release only idle processes. Server-run chats keep running without a
+    // window, so a running turn here must not die when its last view closes;
+    // its session is reclaimed by the idle timer once the turn ends.
+    void disposeCodexSessions(session => normalizeWorkspacePathKey(session.workspace) === key && cliSessionIsIdle(session)).catch(() => {});
     return true;
   }
   return false;

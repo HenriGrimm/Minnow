@@ -65,11 +65,11 @@ export function normalizeTurnClamp(value) {
 export function permissionLevelPromptLine(level) {
   switch (normalizePermissionLevel(level)) {
     case 'manual':
-      return 'Permission level: Manual. Reads inside the project run freely; edits, commands, and anything outside the project wait for the user to approve. If the user denies an action, do not try to work around it — ask what they want instead.';
+      return 'Permission level: Manual. Reads inside the project run freely; edits, commands, and anything outside the project wait for the user to approve. Respect denied actions and finish work that does not depend on them.';
     case 'full':
       return 'Permission level: Full access. Actions run without approval, so take extra care with anything destructive or irreversible and confirm intent with the user first.';
     default:
-      return 'Permission level: Auto. Routine work runs on its own; risky actions (outside the project, destructive, or sending data out) pause for the user. If the user denies an action, do not try to work around it — ask what they want instead.';
+      return 'Permission level: Auto. Routine work runs on its own; risky actions (outside the project, destructive, or sending data out) pause for the user. Respect denied actions and finish work that does not depend on them.';
   }
 }
 

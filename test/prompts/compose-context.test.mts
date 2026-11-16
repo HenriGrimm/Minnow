@@ -337,7 +337,7 @@ describe('builder prompt cwd rendering', () => {
       userMessagePreview: 'Scaffold frontend',
     });
 
-    assert.match(prompt, /Working directory: `C:\/Users\/dukky\/\.minnow\/worktrees\/gb-todo\/grp_932\/task-W1-FOUNDATION`/);
+    assert.match(prompt, /Working directory: C:\/Users\/dukky\/\.minnow\/worktrees\/gb-todo\/grp_932\/task-W1-FOUNDATION\r?\n/);
     assert.match(prompt, /In an isolated task worktree, do not escape to an absolute project path/);
     assert.doesNotMatch(prompt, /GB Todo/);
   });

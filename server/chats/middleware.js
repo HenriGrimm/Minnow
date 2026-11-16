@@ -138,7 +138,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         const finish = async receipt => {
           // The durable receipt commits before native checkpoint cleanup. A
           // rollback must never forget state for a conversation still on disk.
-          await disposeCodexSessions(session => session.chatId === chatId, { forget: true }).catch(() => {});
+          await disposeCodexSessions(session => session.chatId === chatId, { forget: true, reason: 'The chat was deleted.' }).catch(() => {});
           send(200, { receipt });
         };
         const prior = replay();

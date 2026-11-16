@@ -665,7 +665,7 @@ function deleteChatRows(db, chatIds, { deferCleanup = false } = {}) {
     const result = delChat.run(id);
     if (result.changes > 0) {
       removed += 1;
-      if (!deferCleanup) void disposeCodexSessions(session => session.chatId === id, { forget: true }).catch(() => {});
+      if (!deferCleanup) void disposeCodexSessions(session => session.chatId === id, { forget: true, reason: 'The chat was deleted.' }).catch(() => {});
     }
   }
   return removed;

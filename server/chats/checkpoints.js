@@ -116,6 +116,28 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
             }
           }, { signal });
         },
+        // A detached process (dev server, watcher, workflow) keeps writing after
+        // its launch returns, so no post snapshot can describe its effect. Record
+        // only the launch point: its later writes show up as drift before the
+        // next effect's own pre capture, never as a settled segment.
+        async detached(toolCallId, operation) {
+          if (!deferred) await waitForCapture(baseline, signal);
+          return withCoordinatedWorktreeMutation(cwd, async () => {
+            signal?.throwIfAborted();
+            await assertCurrent();
+            if (read(executionId, toolCallId)) throw new ChatContractError('recovery_required', 'A checkpointed mutation cannot be automatically repeated');
+            const pre = await snapshot('pre_detached');
+            signal?.throwIfAborted();
+            await assertCurrent();
+            if (deferred && !baselineSettled) {
+              write('$baseline', 'settled', pre);
+              baselineSettled = true;
+              deferred.resolve(pre);
+            }
+            write(toolCallId, 'detached', { pre });
+            return operation();
+          }, { signal });
+        },
         // Finalization is a required durable barrier, not fire-and-forget.
         async finalize() {
           if (deferred && !baselineSettled) {

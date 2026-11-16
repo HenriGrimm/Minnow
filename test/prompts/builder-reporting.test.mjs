@@ -16,6 +16,8 @@ for (const variant of ['agent.full.md']) {
     assert.match(body, /build warnings/);
     assert.match(body, /no errors observed in the checks run/);
     assert.doesNotMatch(body, /three unsuccessful repair cycles/i);
-    assert.match(body, /Keep fixing implementation and acceptance failures until the required checks pass or a concrete blocker/);
+    assert.match(body, /Diagnose and fix implementation and acceptance failures/);
+    assert.match(body, /defer only the work that depends on it/);
+    assert.match(body, /keep it unverified and run the other checks/);
   });
 }

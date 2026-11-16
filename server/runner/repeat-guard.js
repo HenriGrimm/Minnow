@@ -85,7 +85,7 @@ export function createRepeatGuard(options = {}) {
       const warning =
         `[Minnow: this exact ${name} call has returned this same result ${count} times ` +
         `in your last ${recent.length} calls. Repeating it will not change the outcome. ` +
-        'Change approach — read the error, try a different command, or report that you are blocked' +
+        'Change approach: diagnose the result, try a different command, or defer the blocked step and continue independent work' +
         (maxRepeats !== null && !stop ? `; at ${maxRepeats} repeats this attempt is stopped.]` : '.]');
       return { count, warning, stop };
     },

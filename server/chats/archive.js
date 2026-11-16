@@ -144,7 +144,7 @@ export function validateChatArchive(db, input) {
   for (const row of input.tables.chat_execution_profiles) if (stableId(row.payload_json) !== row.payload_hash) fail('invalid_request', 'An archived profile has an invalid hash');
   for (const row of input.tables.chat_workspace_checkpoints ?? []) {
     if (!input.tables.chat_executions.some(execution => execution.execution_id === row.execution_id && execution.chat_id === row.chat_id) ||
-        !['executing', 'uncertain', 'settled', 'retired'].includes(row.state) ||
+        !['executing', 'uncertain', 'settled', 'detached', 'retired'].includes(row.state) ||
         typeof row.workspace_key !== 'string' || !row.workspace_key || typeof row.checkpoint_id !== 'string' || !row.checkpoint_id) {
       fail('invalid_request', 'Invalid archived checkpoint ownership or state');
     }

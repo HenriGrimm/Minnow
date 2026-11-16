@@ -2,7 +2,7 @@
 id: local-model
 kind: info
 label: Local model guidance
-version: 1
+version: 2
 part: info
 description: Extra tool discipline for models running locally (LM Studio, llama.cpp, LAN hosts). Auto / On / Off in Settings → Agents.
 ---
@@ -22,11 +22,11 @@ description: Extra tool discipline for models running locally (LM Studio, llama.
 
 ## When something fails
 
-- Read the error and change something before retrying. Never repeat an identical failed call.
-- After three failed attempts at one step, stop and tell the user what is blocking you and what you tried.
+- Read the error, diagnose the cause, and fix it if you can. When retries yield no new evidence, try a different diagnostic or repair.
+- If one step needs input or a prerequisite you cannot obtain, set that step aside and finish every independent step and check first.
 
 ## Staying on task
 
 - Search before reading. Read ranges of large files, not the whole file. Don't re-read files that haven't changed.
-- Keep going until the request is done or you are blocked. Minnow asks the user when an action needs approval.
+- Keep working while there is an authorized edit, diagnostic, or check that advances the request. Ask only for input you cannot resolve yourself. Minnow asks the user when an action needs approval.
 - Finish with the files you changed, what you checked and the result, and anything left undone.

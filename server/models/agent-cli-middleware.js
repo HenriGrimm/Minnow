@@ -226,7 +226,8 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     if (action === 'enable' && req.method === 'POST') {
       const body = await readJsonBody(req);
       const provider = await setAgentCliProviderEnabled(kind, body?.enabled);
-      if (body?.enabled === false) await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId);
+      if (body?.enabled === false) await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId,
+        { reason: 'This CLI provider was turned off in Settings.' });
       sendJson(res, 200, { provider, agentCli: publicStatus(await getAgentCliStatus(kind)) });
       return true;
     }

@@ -44,7 +44,9 @@ describe('acceptance verification remains actionable after failed checks', () =>
   it(`builders keep repairing without a browser budget or fixed retry cutoff`, () => {
     const builder = read(path.join(PROMPTS_DIR, 'builder', `agent.full.md`));
     assert.doesNotMatch(builder, /two-minute total budget|three unsuccessful repair cycles|#3 attempts|within the remaining budget/i);
-    assert.match(builder, /Keep fixing failing acceptance tests until all required criteria pass or a concrete blocker/i);
+    assert.match(builder, /When an acceptance check fails, inspect the failure, fix the cause, and rerun the affected check/i);
+    assert.match(builder, /If a browser prerequisite is unavailable, finish the implementation and verification that do not depend on it/i);
+    assert.match(builder, /Keep the browser criterion unverified until the required check runs and passes/i);
     assert.match(builder, /change the hypothesis or approach/i);
     assert.match(builder, /Do not skip required checks, weaken assertions/i);
     assert.match(builder, /command and test timeouts appropriate/i);
@@ -94,14 +96,10 @@ describe('V2 prompts do not instruct board roles to call browser tools', () => {
 });
 
 describe('Builder prompt states the blocked criterion', () => {
-  it(`defines blocked as an environment problem, not a hard build`, () => {
+  it('reserves blocked for a required prerequisite after independent work is done', () => {
     const body = read(path.join(PROMPTS_DIR, 'builder', `agent.full.md`));
-    assert.match(body, /`blocked` means the environment cannot support the work/i);
-    assert.match(body, /missing dependency/i);
-    assert.match(body, /unstartable service/i);
-    assert.match(body, /absent credential/i);
-    assert.match(body, /does \*\*not\*\* mean the code is hard/i);
-    assert.match(body, /not an escape hatch from a failing build/i);
+    assert.match(body, /A missing prerequisite blocks only the steps that depend on it/i);
+    assert.match(body, /Report `blocked` only after that work is done and a required step still needs an unavailable/i);
   });
 });
 

@@ -732,8 +732,10 @@ async function shutdownRuntime(): Promise<void> {
   });
   await modelShutdown;
   if (!inProcessServer) return;
-  const codexLifecycle = await importServerModule<{ disposeCodexSessions: () => Promise<void> }>('generations/codex-app-server/lifecycle.js');
-  await codexLifecycle.disposeCodexSessions();
+  const codexLifecycle = await importServerModule<{
+    disposeCodexSessions: (filter?: () => boolean, options?: { reason?: string }) => Promise<void>;
+  }>('generations/codex-app-server/lifecycle.js');
+  await codexLifecycle.disposeCodexSessions(() => true, { reason: 'Minnow closed while this turn was running.' });
   const [ptyHost, generationsStore, serversIndex] = await Promise.all([
     importServerModule<{ destroyAllPtySessions: () => void }>('terminal/pty-host.js'),
     importServerModule<{ deleteGenerationsForProviderShutdown: () => void }>(

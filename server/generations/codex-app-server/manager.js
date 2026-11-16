@@ -61,7 +61,11 @@ export async function codexIdentity(runtime, workspace) {
     authLock: createHash('sha256').update(authPath).update(runtime.secrets?.cliToken ?? '').digest('hex') };
 }
 export function getCodexSession(key) { return sessions.get(key); }
-export async function closeCodexSession(session, { forget = false } = {}) {
+/**
+ * `reason` becomes the error of a round still running on this session, so the
+ * chat records why it ended (cancel, timeout, shutdown) instead of a generic close.
+ */
+export async function closeCodexSession(session, { forget = false, reason } = {}) {
   if (!session || session.closed || session.closing) return session?.closing;
   session.closed = true;
   if (session.nativeAbort) session.nativeExecution.signal.removeEventListener('abort', session.nativeAbort);
@@ -71,7 +75,7 @@ export async function closeCodexSession(session, { forget = false } = {}) {
   session.closing = Promise.resolve().then(async () => {
     try {
       const onFailure = session.onFailure; session.onFailure = null;
-      onFailure?.(new Error('Codex conversation closed.'));
+      onFailure?.(reason instanceof Error ? reason : new Error(reason || 'Codex conversation closed.'));
       // An unconfirmed exit must preserve the home and its process reservation.
       try { await session.rpc?.close(); }
       catch (error) {

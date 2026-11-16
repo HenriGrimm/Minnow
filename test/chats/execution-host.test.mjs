@@ -189,22 +189,28 @@ test('a review with final prose and settled effects does not inherit another cha
   } finally { release.resolve(); await running; s.cleanup(); }
 });
 
-test('dedicated detached command/server/workflow tools cannot claim a settled filesystem checkpoint', async () => {
+test('detached command/server/workflow tools launch without claiming a settled filesystem checkpoint', async () => {
   for (const [name, args] of [['start_background_command', { command: 'fixture server' }],
+    ['execute_command', { command: 'npm run dev', background: true }],
     ['manage_dev_servers', { action: 'start' }], ['action_run', { location: 'local' }]]) {
     const s = setup(); let captures = 0, posts = 0, effects = 0;
     try {
-      s.changePolicy(createChatPolicy({ modeId: 'build', fileWriteScope: 'workspace', toolPermissions: { [name]: 'full' } }));
+      // Full access keeps this about checkpoint coordination, not command approval.
+      s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'full', fileWriteScope: 'workspace', toolPermissions: { [name]: 'full' } }));
       const checkpoints = createChatCheckpointCoordinator({ repository: s.repository, capture: async () => ({ ok: true, sha: 's' + ++captures }) });
       const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
         prepareCheckpoint: input => checkpoints.prepare(input),
         prepareExecution: async () => ({ ...await s.prepare(async () => { posts++; return response(posts === 1 ? [tool(name, args)] : []); })(),
           tools: [{ type: 'function', function: { name, parameters: { type: 'object' } } }] }),
-        createToolDispatch: () => dispatch(async () => { effects++; return { content: 'must not start' }; }) });
+        createToolDispatch: () => dispatch(async () => { effects++; return { content: 'started run-1' }; }) });
       const result = await host.execute({ command, execution: s.execution, fence: s.fence });
-      assert.equal(result.outcome, 'no_report'); assert.equal(effects, 0, name);
-      assert.equal(captures, 1, 'no effect snapshots are advertised for a refused spawn');
-      assert.match(s.repository.readTranscript('chat').messages.find(row => row.role === 'tool').content, /Background mutations/);
+      assert.equal(result.outcome, 'no_report', name); assert.equal(effects, 1, name);
+      assert.equal(result.failure?.recoveryRequired, undefined, name);
+      assert.equal(captures, 2, 'baseline plus the launch-point capture; no post snapshot is claimed');
+      const record = checkpoints.read('execution', 'call-1');
+      assert.equal(record.state, 'detached', name);
+      assert.equal(record.post, undefined, name);
+      assert.match(s.repository.readTranscript('chat').messages.find(row => row.role === 'tool').content, /started run-1/);
     } finally { s.cleanup(); }
   }
 });

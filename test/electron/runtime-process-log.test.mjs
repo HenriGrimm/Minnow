@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRuntimeLog, observeRuntimeProcess, createServerStderrEcho } from '../../scripts/runtime-process-log.mjs';
+import { createRuntimeLog, observeRuntimeProcess, createServerStderrEcho, shouldRestartServer } from '../../scripts/runtime-process-log.mjs';
 
 const initializerWarning = "2026-10-26 01:02:33.8904136 [W:onnxruntime:, graph.cc:3490 onnxruntime::Graph::CleanUnusedInitializersAndNodeArgs] Removing initializer '/model/decoder/layers.1/final_layer_norm/Constant_output_0'. It is not used by any node and should be removed from the model.";
 
@@ -225,4 +225,24 @@ test('detached shell supervisor stays alive until final output and exit are reco
   const events = files.find((file) => file.endsWith('.events.log'));
   assert.match(fs.readFileSync(path.join(directory, stderr), 'utf8'), /late shell failure/);
   assert.match(fs.readFileSync(path.join(directory, events), 'utf8'), /"kind":"exit".*"code":17/);
+});
+
+test('dev supervisor restarts only a server that crashed after it was serving', () => {
+  const up = 5 * 60_000;
+  // Native crashes: Windows access violation and a POSIX crash signal.
+  assert.equal(shouldRestartServer({ code: 3221225477, signal: null, stopping: false, uptimeMs: up }), true);
+  assert.equal(shouldRestartServer({ code: null, signal: 'SIGSEGV', stopping: false, uptimeMs: up }), true);
+  // Requested stops and clean exits end the supervisor as before.
+  assert.equal(shouldRestartServer({ code: 0, signal: null, stopping: false, uptimeMs: up }), false);
+  assert.equal(shouldRestartServer({ code: 1, signal: null, stopping: true, uptimeMs: up }), false);
+  assert.equal(shouldRestartServer({ code: null, signal: 'SIGTERM', stopping: false, uptimeMs: up }), false);
+  assert.equal(shouldRestartServer({ code: 0xC000013A, signal: null, stopping: false, uptimeMs: up }), false, 'Windows Ctrl+C');
+  assert.equal(shouldRestartServer({ code: 130, signal: null, stopping: false, uptimeMs: up }), false, 'POSIX Ctrl+C');
+  // A startup failure is not retried in a loop.
+  assert.equal(shouldRestartServer({ code: 1, signal: null, stopping: false, uptimeMs: 2_000 }), false);
+  // Repeated crashes stop after three restarts in ten minutes.
+  const now = 1_000_000_000;
+  const recent = [now - 60_000, now - 120_000, now - 180_000];
+  assert.equal(shouldRestartServer({ code: 1, signal: null, stopping: false, uptimeMs: up, restartTimes: recent, now }), false);
+  assert.equal(shouldRestartServer({ code: 1, signal: null, stopping: false, uptimeMs: up, restartTimes: [now - 11 * 60_000, ...recent.slice(1)], now }), true);
 });

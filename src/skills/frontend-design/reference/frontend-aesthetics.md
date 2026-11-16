@@ -224,7 +224,7 @@ Run a separate behavioral pass: navigation, every primary control, keyboard orde
 
 Write critique before letting a detector's score decide what matters. Identify two strengths worth protecting and the three highest-impact weaknesses, each with evidence, user impact, and a proposed correction. If an independent reviewer is available, give them the brief and rendered evidence without your self-rating. Automated findings inform judgment; they do not define taste or justify changing an intentional design.
 
-Fix in order: broken tasks and accessibility barriers; wrong information architecture; weak composition and content; inconsistent system behavior; then fine craft. Recheck the affected states after changes. Stop and report an unresolved blocker instead of hiding it or endlessly tweaking.
+Fix in order: broken tasks and accessibility barriers; wrong information architecture; weak composition and content; inconsistent system behavior; then fine craft. Recheck the affected states after changes. If a check remains blocked, finish the independent fixes and checks, then name the remaining verification gap.
 
 **Review check:** What visibly or behaviorally improved between passes, and what evidence supports completion?
 

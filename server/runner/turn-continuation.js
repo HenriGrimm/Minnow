@@ -1,10 +1,10 @@
 import { stripXmlToolCallBlocks } from "./xml-tool-calls.js";
 const TURN_DEBUG_STORAGE_KEY = "minnowDebugTurns";
 const MAX_EMPTY_POST_TOOL_RETRIES = 1;
-const EMPTY_POST_TOOL_CONTINUE_INSTRUCTION = "You have tool results above. Reply to the user in plain language; do not call more tools unless necessary.";
+const EMPTY_POST_TOOL_CONTINUE_INSTRUCTION = "You have tool results above. If authorized work remains, take the next concrete action, including independent work when one step is blocked. Reply in plain language once the work is complete or you need input to proceed.";
 const CONTINUE_AFTER_TRUNCATION_INSTRUCTION = "Your previous reply was cut off because of the output token limit. Continue exactly where you left off without repeating what you already wrote.";
 const CONTINUE_AFTER_FAILURE_INSTRUCTION = "The previous reply failed before it finished. Continue from the work above — keep its conclusions and pick up exactly where it stopped. Do not repeat it and do not start over.";
-const WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION = "Your previous generation reached its output token limit while the task was still in progress. Continue the work from the current state and make the next concrete tool call. Do not call report_outcome until the task is implemented and verified, or you have a genuine blocker.";
+const WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION = "Your previous generation reached its output token limit while the task was still in progress. Continue from the current state and make the next concrete tool call. Finish all available work and verification before you call report_outcome. Defer only steps that depend on an unavailable prerequisite.";
 function resolveFailedTurnContinueInstruction(history) {
   const last = history[history.length - 1];
   if (!last || last.role === "user") return void 0;
@@ -21,7 +21,7 @@ const SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION = "You must use the available tools t
  */
 function buildReportToolNudgeInstruction(toolName) {
   const name = typeof toolName === "string" && toolName.trim() ? toolName.trim() : "report_outcome";
-  return `You must call the ${name} tool now with a valid JSON payload (outcome, summary, and the other required fields). Do not put the outcome only in assistant text, and do not reply with a JSON object as your message. A rejected ${name} call is not finished — read the error, fix the payload, and call the tool again.`;
+  return `If any authorized implementation or verification can still proceed, continue with the next concrete tool call, including work independent of a blocker. Once you have finished all available work, you must call the ${name} tool now with a valid JSON payload (outcome, summary, and the other required fields). Do not put the outcome only in assistant text, and do not reply with a JSON object as your message. A rejected ${name} call is not finished — read the error, fix the payload, and call the tool again.`;
 }
 function isTurnDebugEnabled() {
   return false;

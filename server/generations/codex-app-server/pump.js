@@ -26,7 +26,7 @@ const HANDOFF_QUIET_MS = 200;
 const HANDOFF_MAX_MS = 1000;
 function failure(session, error) {
   if (session.nativePolicy) void quarantineCodexSession(session).catch(() => {});
-  session.round?.finish('error', error); void closeCodexSession(session).catch(() => {});
+  session.round?.finish('error', error); void closeCodexSession(session, { reason: error }).catch(() => {});
 }
 function codexTurnError(error, fallback) {
   return Object.assign(new Error(error?.message ?? fallback), { quotaExceeded: error?.codexErrorInfo === 'usageLimitExceeded' });
@@ -202,13 +202,14 @@ async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleM
   const key = codexSessionKey(state, candidate);
   const abort = () => {
     const current = session;
+    // Closing fails the running round; give it this stop's real reason.
+    const reason = timeoutKind ? generationTimeoutMessage({ idleMs, maxMs }, timeoutKind) : 'Codex request cancelled.';
     if (current) void (current.nativePolicy ? quarantineCodexSession(current) : dirtyCodexSession(current)).catch(() => {});
     if (current?.turnId && current.rpc) {
       stopping = current.rpc.request('turn/interrupt', { threadId: current.threadId, turnId: current.turnId }, { timeoutMs: 1000 })
-        .catch(() => {}).finally(() => closeCodexSession(current).catch(() => {}));
-    } else stopping = closeCodexSession(current).catch(() => {});
-    queueMicrotask(() => round?.finish('error', new Error(timeoutKind
-      ? generationTimeoutMessage({ idleMs, maxMs }, timeoutKind) : 'Codex request cancelled.')));
+        .catch(() => {}).finally(() => closeCodexSession(current, { reason }).catch(() => {}));
+    } else stopping = closeCodexSession(current, { reason }).catch(() => {});
+    queueMicrotask(() => round?.finish('error', new Error(reason)));
   };
   controller.signal.addEventListener('abort', abort, { once: true });
   const nativeAbort = () => controller.abort(nativeExecution.signal.reason);
@@ -500,7 +501,7 @@ async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleM
         // Do not release the host's mutation boundary while a failed native
         // process can still act. Unconfirmed shutdown remains uncertainty.
         await quarantineCodexSession(session).catch(() => {});
-        await closeCodexSession(session);
+        await closeCodexSession(session, { reason: error });
         throw error;
       }
     });
@@ -509,7 +510,7 @@ async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleM
     return result;
   } catch (error) {
     if (nativePolicy && session) await quarantineCodexSession(session).catch(() => {});
-    await closeCodexSession(session).catch(() => {});
+    await closeCodexSession(session, { reason: timeoutKind ? generationTimeoutMessage({ idleMs, maxMs }, timeoutKind) : error }).catch(() => {});
     if (state.status === 'cancelled') return { outcome: 'complete' };
     const message = safeAgentCliDiagnostic(timeoutKind ? generationTimeoutMessage({ idleMs, maxMs }, timeoutKind) : error.message,
       session?.redactionSecrets ?? Object.values(runtime.secrets ?? {}));

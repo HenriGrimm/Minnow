@@ -233,9 +233,6 @@ export function createServerChatExecutionHost({
           const detached = args.background === true || name === 'start_background_command' ||
             name === 'manage_dev_servers' && ['start', 'restart'].includes(args.action) ||
             name === 'action_run' && args.location === 'local';
-          if (checkpoint && !CHECKPOINT_COORDINATION_TOOLS.has(name) && detached) {
-            return { content: 'Error: Background mutations cannot release a safety checkpoint before completion. Run this command in the foreground.' };
-          }
           const { allowed, denial } = await checkToolForDispatch(name, args, ctx.toolCallId);
           if (denial) return denial;
           // No intent exists until an adapter can own this exact call. A
@@ -286,7 +283,8 @@ export function createServerChatExecutionHost({
           };
           pendingEffects.set(executionId, (pendingEffects.get(executionId) ?? 0) + 1);
           try {
-            return await (!checkpoint || CHECKPOINT_COORDINATION_TOOLS.has(name) ? invoke() : checkpoint.effect(ctx.toolCallId, invoke));
+            if (!checkpoint || CHECKPOINT_COORDINATION_TOOLS.has(name)) return await invoke();
+            return await (detached ? checkpoint.detached(ctx.toolCallId, invoke) : checkpoint.effect(ctx.toolCallId, invoke));
           } catch (error) {
             throw error?.checkpointUncertain ? recovery(error) : error;
           } finally {

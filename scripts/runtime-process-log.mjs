@@ -105,6 +105,26 @@ export function createRuntimeLog(role, { env = process.env, maxBytes = MAX_BYTES
   return { directory, runId, write, event };
 }
 
+export const SERVER_RESTART_POLICY = Object.freeze({ minUptimeMs: 30_000, windowMs: 10 * 60_000, maxRestarts: 3 });
+const STOP_SIGNALS = new Set(['SIGINT', 'SIGTERM', 'SIGHUP']);
+// Ctrl+C reaches the whole console group, so the server can exit before the
+// supervisor's own SIGINT handler marks the stop: 130 (POSIX), 0xC000013A (Windows).
+const STOP_CODES = new Set([130, 0xC000013A]);
+
+/**
+ * Decide whether the dev supervisor should start the server again after it
+ * exited. Only a crash of a server that was already serving qualifies: a
+ * requested stop, a clean exit, or a startup failure (short uptime) ends the
+ * supervisor as before, and repeated crashes stop after maxRestarts per window.
+ */
+export function shouldRestartServer({ code, signal, stopping, uptimeMs, restartTimes = [], now = Date.now() },
+  policy = SERVER_RESTART_POLICY) {
+  if (stopping || code === 0 || STOP_CODES.has(code) || STOP_SIGNALS.has(signal)) return false;
+  if (code == null && !signal) return false;
+  if (!(uptimeMs >= policy.minUptimeMs)) return false;
+  return restartTimes.filter((at) => now - at < policy.windowMs).length < policy.maxRestarts;
+}
+
 /** Keep native stderr outside the process that may abort before JS handlers run. */
 export function observeRuntimeProcess(child, role, { echo = true, ...options } = {}) {
   const log = createRuntimeLog(role, options);

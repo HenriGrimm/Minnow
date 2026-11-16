@@ -24,7 +24,7 @@ export function createProgressBudget(enabled, maxCalls = 48) {
         const signature = failed ? name + ':' + String(result?.content ?? '').slice(0, 256) : '';
         probeFailures = signature && signature === previousFailure ? probeFailures + 1 : failed ? 1 : 0;
         previousFailure = signature;
-        if (probeFailures === 3) return `[Minnow verification checkpoint: ${name} had 3 consecutive failures with the same result. Follow its recovery advice or report the blocked criterion before repeating the probe.]`;
+        if (probeFailures === 3) return `[Minnow verification checkpoint: ${name} had 3 consecutive failures with the same result. Diagnose the cause or try a different check. If the criterion remains blocked, defer it and continue independent work.]`;
         return null;
       }
       if (!failed && (name === 'get_lsp_diagnostics' || (name === 'execute_command' &&
@@ -32,7 +32,7 @@ export function createProgressBudget(enabled, maxCalls = 48) {
       calls++;
       if (calls === 6) return '[Minnow build checkpoint: state Hypothesis:, Next edit:, and Acceptance check: now. Implement the smallest coherent change when evidence supports it; if not, name the specific missing fact and check only that. Do not make cosmetic edits to reset the budget.]';
       if (calls !== 12 && calls % limit !== 0) return null;
-      return `[Minnow build checkpoint: ${calls}/${limit} calls since the last confirmed edit. State Hypothesis:, Next edit:, Acceptance check:, or Blocked: with the specific missing fact. Consult retained findings and recall_history before re-reading. Implement a scoped change when supported; do not keep surveying or make cosmetic edits to reset this count. Continue the task and report honestly if blocked.]`;
+      return `[Minnow build checkpoint: ${calls}/${limit} calls since the last confirmed edit. State Hypothesis:, Next edit:, Acceptance check:, or Blocked: with the specific missing fact. Consult retained findings and recall_history before re-reading. Implement a scoped change when supported; do not keep surveying or make cosmetic edits to reset this count. Defer only the steps that depend on the missing fact and continue independent work.]`;
     },
   };
 }

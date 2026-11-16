@@ -182,7 +182,7 @@ export async function handleGenerationsRequest(req, res, pathname) {
       cancel(state);
       // A tool-handoff generation is complete while its native turn is parked.
       // Only close the session still attached to this exact generation id.
-      await shutdownCodexSessions(session => session.generationId === id);
+      await shutdownCodexSessions(session => session.generationId === id, { reason: 'Codex request cancelled.' });
       sendJson(res, 200, { ok: true });
       return true;
     }

@@ -1156,7 +1156,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: false,
     definition: toolSchema(
       'todo_write',
-      'Update the visible build progress checklist. Pass the full ordered list each call (replace-all). Use 3–8 concrete steps; mark completed items as you finish.',
+      'Update the visible build progress checklist. Pass the full ordered list each call (replace-all). List concrete steps that cover the whole request; mark completed items as you finish.',
       {
         todos: {
           type: 'array',

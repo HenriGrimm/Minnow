@@ -2,7 +2,7 @@
 id: default
 kind: tool-usage
 label: Tool usage
-version: 11
+version: 12
 part: tool-usage
 description: How to use Minnow's tools well.
 ---
@@ -17,6 +17,7 @@ Call tools to perform actions. Independent calls go in one message when they are
 - **More tools:** only core tools are loaded. The `search_tools` description lists every other family (git, browser, issues, Brain, settings, MCP, plugins). Load exact names with `select:git_status,git_diff`, or search by capability — load what you need instead of asking the user.
 - **Skills:** `load_skill` with `{}` or a query lists workflows; load one when it fits the task.
 - **Documents:** `read_document` for PDF/Office input; `create_pdf`, `create_spreadsheet`, `create_word_document` for output. Use `present_files` to hand the user files they should open.
-- **Progress:** for multi-step work, keep a `todo_write` list (3–8 steps, one in progress).
+- **Progress:** for multi-step work, keep a `todo_write` list that covers the whole request (mirror a plan's steps), one in progress. End with every item done or deferred with its blocker.
 - **Working notes:** after the first focused reads, write short `Hypothesis:`, `Next edit:` and `Acceptance check:` lines — they survive context compaction. Define an observable pass condition before testing. After compaction, check retained findings and `recall_history` before re-reading. Honor required tests and report any unverified criterion.
-- Don't stage generated output (`dist/`, `release/`). On Windows, use PowerShell or native commands — not Unix pipes.
+- Don't stage generated output (`dist/`, `release/`).
+- **Windows:** `execute_command` uses cmd.exe unless the workspace picks another shell profile. Chain with `&&`, not `;`. No Unix tools or PowerShell cmdlets; use Minnow's file and search tools. cmd.exe cuts a command at its first newline, so pass multi-line text through a file (`git commit -F`, `gh … --body-file`).
