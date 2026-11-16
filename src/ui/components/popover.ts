@@ -4,10 +4,12 @@
  *
  * Several popovers can be open at once (a picker inside a popover). Escape
  * closes only the topmost; an outside click closes every popover it lands
- * outside of. Clicks inside menus and tooltips count as inside.
+ * outside of. Clicks inside menus and tooltips count as inside. App dialogs
+ * suspend dismissal so their answers do not dispose the requesting popover.
  */
 
 import '../../styles/components/popover.css';
+import { isAppDialogOpen } from '../app-dialog';
 import {
   addClassNames,
   focusableWithin,
@@ -55,6 +57,7 @@ let listenersBound = false;
 const FLOATING_LAYER_SELECTOR = '.mn-menu, .mn-tooltip';
 
 function onPointerDown(event: PointerEvent): void {
+  if (isAppDialogOpen()) return;
   const target = event.target as Element | null;
   if (!target || typeof target.closest !== 'function') return;
   if (target.closest(FLOATING_LAYER_SELECTOR)) return;
@@ -68,8 +71,8 @@ function onPointerDown(event: PointerEvent): void {
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Escape' || stack.length === 0) return;
-  // A context menu opened from a popover closes first.
-  if (document.querySelector('.mn-menu')) return;
+  // A confirmation or context menu opened from a popover closes first.
+  if (isAppDialogOpen() || document.querySelector('.mn-menu')) return;
   event.preventDefault();
   // Capture phase on window: stop dialogs and shell overlays underneath reacting too.
   event.stopImmediatePropagation();

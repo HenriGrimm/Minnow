@@ -363,18 +363,25 @@ export async function status({ cwd, lineStats = false } = {}) {
 
   const status = parsePorcelainStatus(result.stdout, true);
   const parsed = lineStats === true ? await withStatusLineStats(repo.cwd, status) : status;
-  const gitDir = await git(['rev-parse', '--absolute-git-dir'], repo.cwd);
-  let operation;
-  if (gitDir.code === 0) {
-    const dir = gitDir.stdout.trim();
-    const markers = await Promise.all(['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD'].map(
-      (name) => fs.access(path.join(dir, name)).then(() => true, () => false),
-    ));
-    if (markers[0] || markers[1]) operation = 'rebase';
-    else if (markers[2]) operation = 'merge';
-    else if (markers[3]) operation = 'cherry-pick';
-  }
+  const active = await readGitOperation(repo.cwd);
+  const operation = active === 'revert' || active === 'sequencer' ? undefined : active;
   return { ok: true, ...parsed, ...(operation ? { operation } : {}) };
+}
+
+export async function readGitOperation(cwd) {
+  const result = await git(['rev-parse', '--absolute-git-dir'], cwd);
+  if (result.code !== 0) return undefined;
+  const dir = result.stdout.trim();
+  const [rebaseMerge, rebaseApply, merge, pick, revert, sequencer] = await Promise.all(
+    ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'sequencer'].map(
+      (name) => fs.access(path.join(dir, name)).then(() => true, () => false),
+    ),
+  );
+  if (rebaseMerge || rebaseApply) return 'rebase';
+  if (merge) return 'merge';
+  if (pick) return 'cherry-pick';
+  if (revert) return 'revert';
+  if (sequencer) return 'sequencer';
 }
 
 async function diffWorkingTree(repoCwd) {
@@ -831,12 +838,7 @@ export async function pull({ cwd } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
-  const result = await git(['pull'], repo.cwd);
-  if (result.code !== 0) {
-    return { ok: false, error: processError(result) };
-  }
-
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  return runCheckoutMutation(repo.cwd, ['pull']);
 }
 
 export async function fetch({ cwd } = {}) {
@@ -1400,6 +1402,17 @@ export async function show({ cwd, sha } = {}) {
   return { ok: true, patch, stat, stdout: result.stdout };
 }
 
+function runCheckoutMutation(cwd, args, reportConflict = false) {
+  return withIndexMutation(cwd, async () => {
+    const result = await git(args, cwd);
+    if (result.code !== 0) {
+      const error = processError(result);
+      return { ok: false, error, ...(reportConflict ? { conflict: isGitConflictOutput(error) } : {}) };
+    }
+    return { ok: true, stdout: (result.stdout ?? '').trim() };
+  });
+}
+
 function isGitConflictOutput(text) {
   const lower = String(text ?? '').toLowerCase();
   return (
@@ -1414,11 +1427,7 @@ export async function merge({ cwd, branch, noFf, abort } = {}) {
   if (!repo.ok) return repo;
 
   if (abort) {
-    const result = await git(['merge', '--abort'], repo.cwd);
-    if (result.code !== 0) {
-      return { ok: false, error: processError(result) };
-    }
-    return { ok: true, stdout: (result.stdout ?? '').trim() };
+    return runCheckoutMutation(repo.cwd, ['merge', '--abort']);
   }
 
   if (!branch || typeof branch !== 'string' || !branch.trim()) {
@@ -1428,13 +1437,7 @@ export async function merge({ cwd, branch, noFf, abort } = {}) {
   const args = ['merge', branch.trim()];
   if (noFf) args.push('--no-ff');
 
-  const result = await git(args, repo.cwd);
-  if (result.code !== 0) {
-    const err = processError(result);
-    return { ok: false, error: err, conflict: isGitConflictOutput(err) };
-  }
-
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  return runCheckoutMutation(repo.cwd, args, true);
 }
 
 export async function rebase({ cwd, onto, abort, continue: cont } = {}) {
@@ -1453,13 +1456,7 @@ export async function rebase({ cwd, onto, abort, continue: cont } = {}) {
     args.push(onto.trim());
   }
 
-  const result = await git(args, repo.cwd);
-  if (result.code !== 0) {
-    const err = processError(result);
-    return { ok: false, error: err, conflict: isGitConflictOutput(err) };
-  }
-
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  return runCheckoutMutation(repo.cwd, args, true);
 }
 
 export async function stashList({ cwd } = {}) {
@@ -1491,12 +1488,7 @@ export async function stashPush({ cwd, message, paths } = {}) {
     args.push('--', ...paths.map((p) => String(p)));
   }
 
-  const result = await git(args, repo.cwd);
-  if (result.code !== 0) {
-    return { ok: false, error: processError(result) };
-  }
-
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  return runCheckoutMutation(repo.cwd, args);
 }
 
 export async function stashPop({ cwd, index } = {}) {
@@ -1506,13 +1498,7 @@ export async function stashPop({ cwd, index } = {}) {
   const ref = typeof index === 'number' && index >= 0 ? `stash@{${index}}` : undefined;
   const args = ref ? ['stash', 'pop', ref] : ['stash', 'pop'];
 
-  const result = await git(args, repo.cwd);
-  if (result.code !== 0) {
-    const err = processError(result);
-    return { ok: false, error: err, conflict: isGitConflictOutput(err) };
-  }
-
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  return runCheckoutMutation(repo.cwd, args, true);
 }
 
 export async function stashApply({ cwd, index } = {}) {
@@ -1522,13 +1508,7 @@ export async function stashApply({ cwd, index } = {}) {
   const ref = typeof index === 'number' && index >= 0 ? `stash@{${index}}` : undefined;
   const args = ref ? ['stash', 'apply', ref] : ['stash', 'apply'];
 
-  const result = await git(args, repo.cwd);
-  if (result.code !== 0) {
-    const err = processError(result);
-    return { ok: false, error: err, conflict: isGitConflictOutput(err) };
-  }
-
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  return runCheckoutMutation(repo.cwd, args, true);
 }
 
 export async function stashDrop({ cwd, index } = {}) {
@@ -1562,13 +1542,7 @@ export async function cherryPick({ cwd, sha, abort, continue: cont } = {}) {
     args.push(sha.trim());
   }
 
-  const result = await git(args, repo.cwd);
-  if (result.code !== 0) {
-    const err = processError(result);
-    return { ok: false, error: err, conflict: isGitConflictOutput(err) };
-  }
-
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  return runCheckoutMutation(repo.cwd, args, true);
 }
 
 /**
@@ -1594,7 +1568,50 @@ export function parseNameStatus(text) {
 /**
  * @param {{ cwd?: string, message?: string }} [input]
  */
-export async function snapshotCreate({ cwd, message } = {}) {
+export function snapshotCreate({ cwd, message } = {}) {
+  return captureSnapshot({ cwd, message });
+}
+
+export function snapshotCreateForCheckpoint({ cwd, message } = {}) {
+  return captureSnapshot({ cwd, message, allowUnmerged: true });
+}
+
+async function captureConflictIndex(cwd, indexPath, env) {
+  const listed = await git(['ls-files', '--stage', '-z', '--', ':/'], cwd, env);
+  if (listed.code !== 0 || listed.accumulationTruncated) return { ok: false, error: 'Could not read the conflict index' };
+  const blobs = new Set();
+  let unmerged = false;
+  for (const entry of listed.stdout.split('\0')) {
+    if (!entry) continue;
+    const match = /^(\d{6}) ([0-9a-f]{40}) ([0-3])\t/.exec(entry);
+    if (!match) return { ok: false, error: 'Invalid conflict index entry' };
+    const [, mode, sha, stage] = match;
+    if (stage !== '0') unmerged = true;
+    if (mode !== '160000' && !/^0+$/.test(sha)) blobs.add(sha);
+  }
+  if (!unmerged) return { ok: false };
+
+  // Remove the split-index dependency from the private copy before saving it.
+  const fullIndex = await git(['-c', 'core.splitIndex=false', 'update-index', '--no-split-index'], cwd, env);
+  if (fullIndex.code !== 0) return { ok: false, error: processError(fullIndex) };
+  const archived = await git(['hash-object', '-w', '--no-filters', '--', indexPath], cwd);
+  if (archived.code !== 0) return { ok: false, error: processError(archived) };
+
+  // The index blob alone cannot keep the staged objects reachable in Git.
+  const entries = [`100644 blob ${archived.stdout.trim()}\tindex\0`];
+  for (const sha of blobs) entries.push(`100644 blob ${sha}\t${sha}\0`);
+  const tree = await runProcess('git', ['mktree', '-z'], {
+    cwd, timeout: GIT_TIMEOUT_MS,
+    onSpawn(child) {
+      child.stdin.on('error', () => {}); // A rejecting Git process may close the pipe early.
+      child.stdin.end(entries.join(''));
+    },
+  });
+  if (tree.code !== 0) return { ok: false, error: processError(tree) };
+  return { ok: true, treeSha: tree.stdout.trim() };
+}
+
+async function captureSnapshot({ cwd, message, allowUnmerged = false }) {
   const repo = { cwd: resolveCwd(cwd) };
   // rev-parse also validates repository membership. Avoid a separate Git
   // process for that check on every pre/post checkpoint, and overlap the two
@@ -1625,13 +1642,18 @@ export async function snapshotCreate({ cwd, message } = {}) {
       return { ok: false, error: 'Could not resolve HEAD' };
     }
 
-    // write-tree fails on an unmerged index. Refuse before restoring files if
-    // the user's staged state cannot be represented by a safety snapshot.
     // write-tree can update the cache-tree extension. Never run it against the
     // real index. Copying also retains stat data for unchanged tracked files.
     const indexTree = await git(['write-tree'], repo.cwd, env);
-    if (indexTree.code !== 0) return { ok: false, error: processError(indexTree) };
-    const stagedTree = indexTree.stdout.trim();
+    let stagedTree = indexTree.stdout.trim();
+    let indexMarker = 'Minnow-Index-V1';
+    if (indexTree.code !== 0) {
+      if (!allowUnmerged) return { ok: false, error: processError(indexTree) };
+      const conflict = await captureConflictIndex(repo.cwd, indexPath, env);
+      if (!conflict.ok) return { ok: false, error: conflict.error || processError(indexTree) };
+      stagedTree = conflict.treeSha;
+      indexMarker = 'Minnow-Conflict-Index-V1';
+    }
 
     // The staged tree is immutable now. Creating its anchor object need not
     // delay collection of the working tree into the separate private index.
@@ -1662,7 +1684,7 @@ export async function snapshotCreate({ cwd, message } = {}) {
     // Preserve the working tree as the snapshot commit's tree for existing diff
     // and UI callers. A tagged parent keeps the independent index tree reachable.
     const indexSha = indexCommit.stdout.trim();
-    commitArgs.push('-p', indexSha, '-m', msg, '-m', `Minnow-Index-V1: ${indexSha}`);
+    commitArgs.push('-p', indexSha, '-m', msg, '-m', `${indexMarker}: ${indexSha}`);
     const commitTree = await git(commitArgs, repo.cwd);
     if (commitTree.code !== 0) {
       return { ok: false, error: processError(commitTree) };
@@ -1713,12 +1735,17 @@ async function restoreSnapshot({ cwd, sha } = {}) {
   }
   const resolved = (commitParse.stdout ?? '').trim();
 
-  const treeParse = await git(['show', '-s', '--format=%T%n%P%n%(trailers:key=Minnow-Index-V1,valueonly)', resolved], repo.cwd);
+  const treeParse = await git(['show', '-s',
+    '--format=%T%x00%P%x00%(trailers:key=Minnow-Index-V1,valueonly)%x00%(trailers:key=Minnow-Conflict-Index-V1,valueonly)',
+    resolved], repo.cwd);
   if (treeParse.code !== 0) {
     return { ok: false, error: processError(treeParse) };
   }
-  const [treeSha, parents, ...indexMarkers] = treeParse.stdout.trimEnd().split(/\r?\n/);
-  const indexSha = indexMarkers.at(-1);
+  const [treeSha, parents, indexMarkers, conflictMarker] = treeParse.stdout.split('\0');
+  if (conflictMarker?.trim()) {
+    return { ok: false, error: 'This checkpoint records an unresolved Git conflict. Use Git to recover the conflict state.' };
+  }
+  const indexSha = indexMarkers?.trimEnd().split(/\r?\n/).at(-1);
   if (indexSha && (!/^[0-9a-f]{40}$/.test(indexSha) || !parents?.split(' ').includes(indexSha))) {
     return { ok: false, error: 'Invalid snapshot index parent' };
   }

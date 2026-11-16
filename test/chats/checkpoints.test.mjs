@@ -3,16 +3,20 @@ import { test } from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import Database from 'better-sqlite3';
 import { initSessionsSchema } from '../../server/config/sessions-schema.js';
 import { createChatRepository } from '../../server/chats/repository.js';
 import { createChatCheckpointCoordinator } from '../../server/chats/checkpoints.js';
 import { canonicalWorktreeMutationKey, withCoordinatedWorktreeMutation, withWorktreeMutation } from '../../server/git/action-run-lock.js';
+import { merge as gitMerge, snapshotRestore } from '../../server/git/git-ops.js';
 import { executeServerTool } from '../../server/runtime/tools-middleware.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { openWorkspace, closeWorkspace } from '../../server/workspace/open-workspaces.js';
 
 const gate = () => Promise.withResolvers();
+const exec = promisify(execFile);
 async function fixture(t, capture) {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-chat-checkpoint-'));
   const db = new Database(':memory:'); initSessionsSchema(db);
@@ -65,6 +69,83 @@ test('deferred baseline shares the first fresh pre-effect capture but recaptures
   assert.match(f.coordinator.read('writer', 'next').pre.sha, /^tree-3-/);
   await turn.finalize();
   assert.equal(captures, 4);
+});
+
+test('a conflict created by an agent is checkpointed and can be resolved in the next turn', async t => {
+  const f = await fixture(t);
+  const git = async (...args) => (await exec('git', args, { cwd: f.cwd, windowsHide: true })).stdout.trim();
+  const write = (file, content) => fs.writeFile(path.join(f.cwd, file), content + '\n');
+  await git('init', '-b', 'main');
+  await git('config', 'user.name', 'Checkpoint fixture');
+  await git('config', 'user.email', 'fixture@example.invalid');
+  await git('config', 'core.autocrlf', 'false');
+  await write('conflict.txt', 'base');
+  await write('local.txt', 'base');
+  await git('add', '.');
+  await git('commit', '-m', 'base');
+  await git('checkout', '-b', 'other');
+  await write('conflict.txt', 'theirs');
+  await git('commit', '-am', 'other');
+  await git('checkout', 'main');
+  await write('conflict.txt', 'ours');
+  await git('commit', '-am', 'main');
+
+  const merge = await f.prepare('merge', undefined, { deferBaseline: true });
+  const indexPath = path.join(f.cwd, '.git', 'index');
+  let unmergedIndex;
+  await merge.effect('merge-command', async () => {
+    const result = await gitMerge({ cwd: f.cwd, branch: 'other' });
+    assert.equal(result.ok, false);
+    assert.equal(result.conflict, true, result.error);
+    unmergedIndex = await fs.readFile(indexPath);
+  });
+  await merge.finalize();
+  const postMerge = f.coordinator.read('merge', 'merge-command').post.sha;
+  assert.deepEqual(await fs.readFile(indexPath), unmergedIndex);
+  assert.match(await git('show', `${postMerge}:conflict.txt`), /<<<<<<< HEAD\nours\n=======\ntheirs/);
+
+  await write('local.txt', 'staged');
+  await git('add', 'local.txt');
+  await git('update-index', '--split-index');
+  await write('local.txt', 'working');
+  const stagedIndex = await fs.readFile(indexPath);
+  const stageEntries = await git('ls-files', '--stage');
+  const nested = path.join(f.cwd, 'nested');
+  await fs.mkdir(nested);
+  const resolve = await f.prepare('resolve', undefined, { cwd: nested, deferBaseline: true });
+  await resolve.effect('patch', async () => {
+    assert.deepEqual(await fs.readFile(indexPath), stagedIndex);
+    await write('conflict.txt', 'resolved');
+  });
+  assert.deepEqual(await fs.readFile(indexPath), stagedIndex);
+  await resolve.effect('stage', () => git('add', 'conflict.txt'));
+  await resolve.effect('commit', () => git('commit', '--no-edit'));
+  await resolve.finalize();
+  assert.equal(await git('ls-files', '--unmerged'), '');
+  assert.equal((await git('rev-list', '--parents', '-1', 'HEAD')).split(' ').length, 3);
+  assert.equal(await git('show', 'HEAD:local.txt'), 'staged');
+  assert.equal(await fs.readFile(path.join(f.cwd, 'local.txt'), 'utf8'), 'working\n');
+
+  const pre = f.coordinator.read('resolve', 'patch').pre.sha;
+  const parent = await git('show', '-s', '--format=%(trailers:key=Minnow-Conflict-Index-V1,valueonly)', pre);
+  const archivedIndex = path.join(f.cwd, '.git', 'archived-index');
+  const { stdout: bytes } = await exec('git', ['cat-file', 'blob', `${parent}:index`], { cwd: f.cwd, encoding: 'buffer' });
+  await fs.writeFile(archivedIndex, bytes);
+  const { stdout: archivedStages } = await exec('git', ['ls-files', '--stage'], {
+    cwd: f.cwd, env: { ...process.env, GIT_INDEX_FILE: archivedIndex },
+  });
+  assert.equal(archivedStages.trim(), stageEntries);
+  assert.equal(await git('show', `${pre}:local.txt`), 'working');
+  assert.match((await snapshotRestore({ cwd: f.cwd, sha: pre })).error, /unresolved Git conflict/);
+});
+
+test('Source Control cannot merge while another operation owns the checkout', async t => {
+  const f = await fixture(t);
+  await exec('git', ['init'], { cwd: f.cwd });
+  await withWorktreeMutation(f.cwd, async () => {
+    const result = await gitMerge({ cwd: f.cwd, branch: 'other' });
+    assert.match(result.error, /local action is running/);
+  });
 });
 
 test('a failed deferred baseline or Stop cannot admit an effect', async t => {

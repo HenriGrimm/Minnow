@@ -475,6 +475,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--mn-space-2);
+  margin-top: var(--mn-space-3);
 }
 
 @media (pointer: coarse) {

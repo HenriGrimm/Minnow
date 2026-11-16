@@ -88,6 +88,31 @@ test('failed leave checkout rolls back files and staging without leaving a redun
   assert.deepEqual((await checkoutSavedChanges({ cwd })).savedChanges, []);
 });
 
+test('switching with Leave preserves a pending merge after its conflicts are staged', async (t) => {
+  const { cwd, git } = await fixture(t);
+  const file = path.join(cwd, 'tracked.txt');
+  await git('checkout', 'feature');
+  await fs.writeFile(file, 'theirs\n');
+  await git('commit', '-am', 'feature change');
+  await git('checkout', 'main');
+  await fs.writeFile(file, 'ours\n');
+  await git('commit', '-am', 'main change');
+  await git('branch', 'other');
+  await assert.rejects(git('merge', 'feature'), { code: 1 });
+  await fs.writeFile(file, 'resolved\n');
+  await git('add', 'tracked.txt');
+  assert.equal(await git('ls-files', '--unmerged'), '');
+  const mergeHead = await git('rev-parse', 'MERGE_HEAD');
+
+  const result = await checkoutSwitch({ cwd, branch: 'other', dirtyHandling: 'leave' });
+  assert.equal(result.code, 'operation_in_progress');
+  assert.match(result.error, /Finish or abort the current Git merge/);
+  assert.equal(await git('branch', '--show-current'), 'main');
+  assert.equal(await git('rev-parse', 'MERGE_HEAD'), mergeHead);
+  assert.equal(await git('show', ':tracked.txt'), 'resolved');
+  assert.equal(await git('stash', 'list'), '');
+});
+
 test('restore rejects a different branch, worktree, missing save and dirty destination', async (t) => {
   const { cwd, git, dirty } = await fixture(t);
   await dirty(); await checkoutSwitch({ cwd, branch: 'feature', dirtyHandling: 'leave' });

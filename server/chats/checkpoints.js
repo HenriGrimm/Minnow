@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { snapshotCreate } from '../git/git-ops.js';
+import { snapshotCreateForCheckpoint } from '../git/git-ops.js';
 import { canonicalWorktreeMutationKey, withCoordinatedWorktreeMutation } from '../git/action-run-lock.js';
 import { readChatCheckoutIdentity } from './context.js';
 import { ChatContractError } from './contracts.js';
@@ -28,7 +28,7 @@ async function waitForCapture(pending, signal) {
  * baseline certify that another chat/user has not changed the files.
  * Segments are observations for explicit recovery, not an automatic whole-tree undo.
  */
-export function createChatCheckpointCoordinator({ repository, capture = snapshotCreate } = {}) {
+export function createChatCheckpointCoordinator({ repository, capture = snapshotCreateForCheckpoint } = {}) {
   const db = repository.getDatabase();
   const read = (executionId, id) => {
     const row = db.prepare('SELECT state,payload_json FROM chat_workspace_checkpoints WHERE execution_id=? AND checkpoint_id=?').get(executionId, id);

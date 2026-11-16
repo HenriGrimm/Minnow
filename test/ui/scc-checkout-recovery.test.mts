@@ -5,6 +5,7 @@ import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { setLocalServerAvailable } from '../../src/tools/config.ts';
 import { checkoutBranchWithChoice, runCheckoutFlow } from '../../src/ui/git-checkout-confirm.ts';
 import { resetAppDialogForTests } from '../../src/ui/app-dialog.ts';
+import { closeAllPopovers, openPopover } from '../../src/ui/components/popover.ts';
 
 const originalFetch = globalThis.fetch;
 let win: Window;
@@ -28,7 +29,21 @@ function choose(label: string) {
   const button = [...document.querySelectorAll<HTMLButtonElement>('#appDialogPanel button')]
     .find((control) => control.textContent === label);
   assert.ok(button, label);
+  button.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true }));
   button.click();
+}
+
+/** Thread-card dismissal aborts the checkout subview before the button's click. */
+function checkoutPopover() {
+  const anchor = document.createElement('button');
+  const content = document.createElement('div');
+  const search = document.createElement('input');
+  content.append(search);
+  document.body.append(anchor);
+  const controller = new AbortController();
+  const handle = openPopover({ anchor, content, onClose: () => controller.abort() });
+  search.focus();
+  return { handle, search, isCurrent: () => !controller.signal.aborted };
 }
 
 async function waitForDialog() {
@@ -39,6 +54,7 @@ async function waitForDialog() {
 }
 
 afterEach(async () => {
+  closeAllPopovers();
   resetAppDialogForTests();
   setLocalServerAvailable(false);
   globalThis.fetch = originalFetch;
@@ -104,7 +120,9 @@ test('a shared workspace folder defaults to a new worktree before any checkout',
     return Response.json(input.op === 'checkoutPlan' ? { ok: true, location: 'here', branch: 'main', fileCount: 0 } : { ok: true, branch: 'review' });
   };
   let isolated = 0;
+  const popover = checkoutPopover();
   const pending = runCheckoutFlow({ cwd: '/repo', branch: 'review' }, {
+    isCurrent: popover.isCurrent,
     shared: { otherChats: 2, switchInNewWorktree: async () => { isolated += 1; return { ok: true, branch: 'review', location: 'worktree' }; } },
   });
   for (let attempt = 0; attempt < 20 && !document.querySelector('#appDialogPanel'); attempt++) await new Promise((r) => setTimeout(r, 0));
@@ -113,6 +131,8 @@ test('a shared workspace folder defaults to a new worktree before any checkout',
   choose('Switch in a new worktree');
   assert.equal((await pending).location, 'worktree');
   assert.equal(isolated, 1);
+  assert.equal(popover.handle.isOpen(), true);
+  assert.equal(document.activeElement, popover.search);
   assert.deepEqual(ops, ['checkoutPlan']);
 });
 
@@ -126,10 +146,44 @@ test('switching the shared folder anyway runs the ordinary checkout', async () =
     ops.push(input.op);
     return Response.json(input.op === 'checkoutPlan' ? { ok: true, location: 'here', branch: 'main', fileCount: 0 } : { ok: true, branch: 'review' });
   };
-  const pending = runCheckoutFlow({ cwd: '/repo', branch: 'review' }, { shared: { otherChats: 1 } });
+  const popover = checkoutPopover();
+  const pending = runCheckoutFlow({ cwd: '/repo', branch: 'review' }, {
+    isCurrent: popover.isCurrent,
+    shared: { otherChats: 1, switchInNewWorktree: async () => { assert.fail('Should switch here, not in a worktree'); } },
+  });
   for (let attempt = 0; attempt < 20 && !document.querySelector('#appDialogPanel'); attempt++) await new Promise((r) => setTimeout(r, 0));
-  assert.doesNotMatch(document.querySelector('#appDialogPanel')?.textContent ?? '', /new worktree/);
+  assert.match(document.querySelector('#appDialogPanel')?.textContent ?? '', /new worktree/);
   choose('Switch workspace anyway');
   assert.equal((await pending).ok, true);
+  assert.equal(popover.handle.isOpen(), true);
   assert.deepEqual(ops, ['checkoutPlan', 'checkoutSwitch']);
 });
+
+for (const cancel of ['Cancel', 'Escape'] as const) {
+  test(`${cancel} dismisses the shared-folder confirmation without closing its checkout popover`, async () => {
+    setup();
+    const ops: string[] = [];
+    globalThis.fetch = async (_url, init) => {
+      const input = JSON.parse(String(init?.body));
+      ops.push(input.op);
+      return Response.json({ ok: true, location: 'here', branch: 'main', fileCount: 0 });
+    };
+    const popover = checkoutPopover();
+    const pending = runCheckoutFlow({ cwd: '/repo', branch: 'review' }, {
+      isCurrent: popover.isCurrent,
+      shared: { otherChats: 1, switchInNewWorktree: async () => { assert.fail('Cancelled work must not run'); } },
+    });
+    await waitForDialog();
+    if (cancel === 'Cancel') choose('Cancel');
+    else document.activeElement!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    // Inspect dismissal before awaiting, so a swallowed Escape cannot hang the test.
+    assert.equal(document.getElementById('appDialogOverlay')?.hidden, true);
+    assert.equal((await pending).error, 'cancelled');
+    assert.equal(popover.handle.isOpen(), true);
+    assert.equal(document.activeElement, popover.search);
+    assert.deepEqual(ops, ['checkoutPlan']);
+    // Once the modal is gone, ordinary outside-click dismissal still works.
+    document.body.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true }));
+    assert.equal(popover.handle.isOpen(), false);
+  });
+}

@@ -5,6 +5,7 @@ import { runProcess } from '../process-runner.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { actionWorktreeOwner, assertActionWorktreeIdle, withWorktreeMutation } from './action-run-lock.js';
 import { checkoutForgePullRequest, requireForge } from './forge-ops.js';
+import { readGitOperation } from './git-ops.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
 
 const PREFIX = '[minnow-checkout:';
@@ -162,6 +163,13 @@ async function dropSaved(ctx, sha) {
   if (dropped.code !== 0) throw new Error(`Changes restored, but the saved stash could not be removed: ${error(dropped)}`);
 }
 
+async function pendingOperation(cwd) {
+  const operation = await readGitOperation(cwd);
+  if (!operation) return null;
+  const label = operation === 'sequencer' ? 'operation' : operation;
+  return { ok: false, code: 'operation_in_progress', error: `Finish or abort the current Git ${label} first.` };
+}
+
 export async function checkoutSavedChanges({ cwd } = {}) {
   const ctx = await context(cwd);
   return { ok: true, savedChanges: await savedEntries(ctx.cwd, ctx.worktree) };
@@ -240,6 +248,8 @@ export async function checkoutSwitch({ cwd, branch, pullRequest, create, startPo
         };
       }
     }
+    const pending = await pendingOperation(ctx.cwd);
+    if (pending) return pending;
     if (state.fileCount && !['bring', 'leave'].includes(dirtyHandling)) {
       return { ok: false, needsChoice: true, code: 'needs_choice', ...state };
     }
@@ -288,6 +298,8 @@ export async function checkoutRestoreChanges({ cwd, sha, expectedBranch } = {}) 
   return withWorktreeMutation(ctx.cwd, async () => {
     const state = await inspect(ctx.cwd);
     if (state.branch !== expectedBranch) return { ok: false, error: 'The current branch changed. Return to the saved branch before restoring.' };
+    const pending = await pendingOperation(ctx.cwd);
+    if (pending) return pending;
     if (state.fileCount) return { ok: false, error: 'Commit or stash your current changes before restoring saved changes.' };
     const saved = (await savedEntries(ctx.cwd, ctx.worktree)).find((s) => s.sha === sha && s.branch === state.branch);
     if (!saved) return { ok: false, error: 'These saved changes are no longer available in this worktree.' };
