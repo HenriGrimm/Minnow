@@ -40,7 +40,7 @@ function mountFileSurfaceChrome(files: HTMLElement): void {
   more.append(createIcon('more', { size: 14 }));
   more.addEventListener('click', () => {
     const commands = [
-      ['btnFileTreeRefresh', 'Refresh files'], ['btnFileSidebarCollapse', 'Collapse file tree'],
+      ['btnFileSidebarCollapse', 'Collapse file tree'],
       ['btnPreviewToggle', 'Open Browser'], ['btnAgentBrowserViewer', 'Open Agent Browser'],
       ['btnGitPanelToggle', 'Open Diff'], ['btnIssuesPanelToggle', 'Open workspace issues'],
     ] as const;
@@ -52,6 +52,8 @@ function mountFileSurfaceChrome(files: HTMLElement): void {
     }
     openContextMenu({ anchor: more, restoreFocus: more, label: more.title, items });
   });
+  const refresh = files.querySelector('#btnFileTreeRefresh');
+  if (refresh) wrap.append(refresh);
   wrap.append(more);
 }
 

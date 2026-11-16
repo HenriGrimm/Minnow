@@ -5,8 +5,9 @@ import { gitStatusRenderKey } from './git-status-render-key';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 import { isGraphiteSurfaceLayout, refreshGraphiteSurfaceLayout, requestGraphiteSurface } from './surfaces/surface-bridge';
 import { createFileTypeIconElement } from './file-type-icons';
-import { openContextMenu, type MenuItem } from './context-menu';
+import { openContextMenu } from './context-menu';
 import { paintGraphiteFileDiff } from './graphite-file-diff';
+import { createGitHistoryBrowser } from './git-history-browser';
 import type { Chat } from '../types';
 /**
 
@@ -39,7 +40,6 @@ import {
   gitCommit,
 
   gitDiff,
-  gitLog,
 
 
   gitPull,
@@ -109,6 +109,7 @@ import { fetchGitChangeReview, fetchGitCommitMessage } from './git-commit-messag
 import { resolveEffectiveChatModelBinding } from '../models/selection';
 
 import { showToast } from './toast';
+import { chatsBoundToWorktree, detachChatsFromRemovedWorktree } from './chat-checkout-guard';
 import { inferGitUiChatKind, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { createGitRecoveryNotice } from './git-recovery';
 import { isUnmergedBranchDelete } from './git-branch-delete';
@@ -221,8 +222,10 @@ function setPanelCwd(next: string | undefined): void {
   if (graphiteGitActive()) {
     renderedSectionsKey = null;
     bodyMount?.replaceChildren();
+    historyBrowser?.destroy();
+    historyBrowser = null;
     graphMount?.replaceChildren();
-    if (graphMount) delete graphMount.dataset.graphiteKey;
+    selectedCommitSha = null;
   }
   changesSelection?.clear();
   recovery?.clear();
@@ -248,6 +251,7 @@ let cachedMergeBranchLists = {
 let selectedCommitSha: string | null = null;
 
 let graphHandle: ReturnType<typeof renderGitGraph> | null = null;
+let historyBrowser: ReturnType<typeof createGitHistoryBrowser> | null = null;
 
 const graphOptions: GitGraphOptions = {};
 
@@ -270,6 +274,7 @@ function getGitMount(): HTMLElement | null {
 /** Clear browse override so the next chat/composer sync can drive panel cwd. */
 export function clearPanelCwdUserOverride(): void {
   panelCwdUserOverride = false;
+  paintFollowBar();
 }
 
 /** Composer run-target seed for new chats when the user manually picked a worktree in Source Control (browse override). */
@@ -371,7 +376,7 @@ function syncMergeToMainButton(
     lockedLocalBranches: lists.lockedLocal,
   });
 
-  mergeToMainBtn.hidden = !visible;
+  mergeToMainBtn.hidden = !graphiteGitActive() && !visible;
   mergeToMainBtn.disabled = !visible;
 }
 
@@ -549,22 +554,41 @@ async function handleMergeToMain(): Promise<void> {
 async function handleDeleteWorktree(): Promise<void> {
   const targetPath = panelCwd ?? getWorkspacePath();
   if (!targetPath || isMainWorktreePath(targetPath)) return;
-  if (!await appConfirm(`Remove worktree at ${targetPath}?`)) return;
+  const bound = chatsBoundToWorktree(targetPath);
+  const chatsLine = bound.length
+    ? ` ${bound.length === 1 ? '1 chat uses' : `${bound.length} chats use`} it; ${bound.length === 1 ? 'it returns' : 'they return'} to Local.`
+    : '';
+  if (!await appConfirm(`Remove worktree at ${targetPath}?${chatsLine}`, { title: 'Remove worktree', confirmLabel: 'Remove', danger: true })) return;
 
   const removeCwd = getEffectiveCwdArg();
   const ws = getWorkspacePath().trim();
   setPanelCwd(ws || undefined);
 
-  const ok = await runGitOp(() => gitWorktreeRemove({ path: targetPath, cwd: removeCwd }), {
-    successMessage: 'Worktree removed',
-  });
-  if (ok) return;
-
-  if (!await appConfirm('Worktree has uncommitted changes. Force remove?')) return;
-  await runGitOp(
-    () => gitWorktreeRemove({ path: targetPath, force: true, cwd: removeCwd }),
-    { successMessage: 'Worktree removed' },
-  );
+  const first = await gitWorktreeRemove({ path: targetPath, cwd: removeCwd });
+  if (!first.ok) {
+    // Only a dirty tree warrants --force; any other refusal (locked, busy) is shown as is.
+    if (first.code !== 'dirty') {
+      setPanelCwd(targetPath);
+      await showPanelGitFailure(first.error ?? 'Could not remove the worktree', 'generic', gitErrorChatContext(), cwdGeneration);
+      return;
+    }
+    if (!await appConfirm('That worktree has uncommitted or untracked files. Force remove deletes them permanently.', {
+      title: 'Force remove worktree', confirmLabel: 'Force remove', danger: true,
+    })) {
+      setPanelCwd(targetPath);
+      return;
+    }
+    if (!await runGitOp(
+      () => gitWorktreeRemove({ path: targetPath, force: true, cwd: removeCwd }),
+      { successMessage: 'Worktree removed' },
+    )) return;
+  } else {
+    showToast('Worktree removed', 'success');
+    await refreshGitPanel();
+    void syncFileTreeGitPollCwd();
+  }
+  const failed = await detachChatsFromRemovedWorktree(bound);
+  if (failed.length) showToast(`Could not return ${failed.join(', ')} to Local. Choose a checkout in the chat.`, 'error');
 }
 
 // ── Commit chrome ────────────────────────────────────────────────────────────
@@ -864,6 +888,7 @@ function ensurePanelDom(): HTMLElement {
   mergeToMainBtn.className = 'git-panel-action-btn git-panel-action-btn--merge-main';
   mergeToMainBtn.dataset.gitAction = 'merge';
   mergeToMainBtn.hidden = true;
+  mergeToMainBtn.disabled = true;
   decorateGitSourceControlButton(mergeToMainBtn, 'Merge to main');
   mergeToMainBtn.addEventListener('click', () => void handleMergeToMain());
 
@@ -1026,36 +1051,40 @@ function ensurePanelDom(): HTMLElement {
 
 function configureGraphiteGitChrome(root: HTMLElement): void {
   if (root.classList.contains('git-panel-root__inner--graphite')) return;
+  graphHandle?.destroy();
+  graphHandle = null;
+  if (graphMount) graphMount.className = 'git-panel-graph-mount';
   root.classList.add('git-panel-root__inner--graphite');
-  const toolbar = root.querySelector('.git-panel-toolbar');
-  if (checkoutPicker) toolbar?.prepend(checkoutPicker.root);
-  if (aheadBehindEl) toolbar?.append(aheadBehindEl);
-  if (refreshBtn) toolbar?.append(refreshBtn);
-  const center = root.querySelector<HTMLButtonElement>('#btnGitCenter');
+  const toolbar = root.querySelector('.git-panel-toolbar')!;
+  const toolbarActions = toolbar.querySelector('.git-panel-center-row')!;
+  const toolbarStart = toolbarActions.querySelector('.git-panel-center-row__start')!;
+  const help = toolbarStart.querySelector('#btnGitHelp')!;
+  toolbarActions.setAttribute('role', 'group');
+  toolbarActions.setAttribute('aria-label', 'Git actions');
+  if (refreshBtn) toolbarActions.append(refreshBtn);
+  for (const [selector, label, icon] of [
+    ['[data-git-action="pull"]', 'Pull', 'gitPull'],
+    ['[data-git-action="push"]', 'Push', 'gitPush'],
+    ['[data-git-action="merge"]', 'Merge to main', 'gitMerge'],
+    ['#btnGitCenter', 'Open Source Control', 'gitBranch'],
+  ] as const) {
+    const button = root.querySelector<HTMLButtonElement>(selector);
+    if (!button) continue;
+    button.className = 'icon-btn';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.removeAttribute('aria-pressed');
+    button.replaceChildren(createIcon(icon, { size: 14 }));
+    toolbarActions.append(button);
+  }
+  if (mergeToMainBtn) mergeToMainBtn.hidden = false;
+  toolbarActions.append(help);
+  toolbarStart.remove();
+  if (checkoutPicker) toolbar.prepend(checkoutPicker.root);
+  if (aheadBehindEl) toolbar.append(aheadBehindEl);
+  toolbar.append(toolbarActions);
+
   const actions = root.querySelector('.git-panel-commit-actions');
-  const more = document.createElement('button');
-  more.type = 'button';
-  more.className = 'icon-btn graphite-git-more';
-  more.title = 'More Git actions';
-  more.setAttribute('aria-label', more.title);
-  more.setAttribute('aria-haspopup', 'menu');
-  more.append(createIcon('more', { size: 14 }));
-  more.addEventListener('click', () => {
-    const generation = cwdGeneration;
-    const item = (id: string, label: string): MenuItem => {
-      const action = root.querySelector<HTMLButtonElement>(`[data-git-action="${id}"]`);
-      return { id, label, disabled: !action || action.disabled || action.hidden, onSelect: () => {
-        if (panelOpen && generation === cwdGeneration) action?.click();
-      } };
-    };
-    openContextMenu({ anchor: more, restoreFocus: more, label: more.title, items: [
-      item('pull', 'Pull'), item('push', 'Push'), item('merge', 'Merge to main'),
-      { kind: 'separator' },
-      { id: 'source-control', label: 'Open Source Control', onSelect: () => center?.click() },
-      { id: 'help', label: 'How worktrees and branches work', onSelect: () => root.querySelector<HTMLButtonElement>('#btnGitHelp')?.click() },
-    ] });
-  });
-  toolbar?.append(more);
 
   const views = document.createElement('div');
   views.className = 'graphite-git-views';
@@ -1073,7 +1102,7 @@ function configureGraphiteGitChrome(root: HTMLElement): void {
     });
     views.append(control);
   }
-  toolbar?.after(views);
+  toolbar.after(views);
   const commitBox = root.querySelector('.git-panel-commit-box');
   if (commitBox) root.append(commitBox);
   setGraphiteGitView(root, 'changes');
@@ -1256,6 +1285,57 @@ function syncCheckoutPicker(): void {
     remoteBranches: cachedMergeBranchLists.remote,
     worktrees: knownWorktrees, savedChanges: savedCheckoutChanges,
   });
+  paintFollowBar();
+}
+
+let followBar: HTMLElement | null = null;
+
+function checkoutLabel(path: string): string {
+  const ws = getWorkspacePath().trim();
+  if (ws && pathsEqual(path, ws)) return 'the workspace folder';
+  return path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || path;
+}
+
+/**
+ * After a manual worktree pick the panel stops following the active chat.
+ * Say so, with a one-click way back, instead of silently showing a different
+ * checkout than the chat in front of the user.
+ */
+function paintFollowBar(): void {
+  const anchor = checkoutPicker?.root;
+  if (!anchor) return;
+  const ws = getWorkspacePath().trim();
+  const chat = sessionState ? getActiveChat() : null;
+  const chatCwd = chat && sessionState
+    ? resolvePanelWorktreeCwd(resolvePanelBrowseCwd({ chat, groups: sessionState.groups })) ?? ws
+    : '';
+  const viewing = panelCwd ?? ws;
+  const show = Boolean(panelCwdUserOverride && chat && chatCwd && viewing && !pathsEqual(viewing, chatCwd)
+    && !graphiteWorkspaceDiffChatId);
+  if (!show) {
+    if (followBar) followBar.hidden = true;
+    return;
+  }
+  if (!followBar) {
+    followBar = document.createElement('div');
+    followBar.className = 'git-panel-follow-bar';
+    followBar.setAttribute('role', 'status');
+  }
+  if (followBar.previousElementSibling !== anchor) anchor.after(followBar);
+  const text = document.createElement('span');
+  text.className = 'git-panel-follow-bar__text';
+  text.textContent = `Viewing ${checkoutLabel(viewing)}. This chat uses ${checkoutLabel(chatCwd)}.`;
+  const follow = document.createElement('button');
+  follow.type = 'button';
+  follow.className = 'git-panel-follow-bar__action';
+  follow.textContent = 'Follow chat';
+  follow.addEventListener('click', () => {
+    clearPanelCwdUserOverride();
+    syncPanelFromActiveChat({ forceFileTree: true });
+    void refreshGitPanel();
+  });
+  followBar.replaceChildren(text, follow);
+  followBar.hidden = false;
 }
 
 // ── Commit ───────────────────────────────────────────────────────────────────
@@ -1755,64 +1835,30 @@ function buildSection(
 
 function syncGraphSelectedCommit(): void {
   graphOptions.selectedSha = selectedCommitSha;
-  if (graphiteGitActive()) {
-    for (const row of graphMount?.querySelectorAll<HTMLButtonElement>('[data-commit]') ?? []) {
-      row.setAttribute('aria-pressed', String(row.dataset.commit === selectedCommitSha));
-    }
-  }
+  historyBrowser?.setSelection(selectedCommitSha);
   void graphHandle?.refresh();
 }
 
-async function renderGraphiteHistory(generation: number): Promise<void> {
-  const history = graphMount;
-  if (!history || panelRoot?.dataset.gitView !== 'history') return;
-  const result = await gitLog({ cwd: getEffectiveCwdArg(), count: 12 });
-  if (generation !== cwdGeneration || !panelOpen || !history.isConnected) return;
-  const commits = result.commits ?? [];
-  const key = JSON.stringify([commits, result.error]);
-  if (history.dataset.graphiteKey === key) return;
-  history.dataset.graphiteKey = key;
-  history.classList.add('graphite-git-history');
-  history.replaceChildren();
-  for (const commit of commits) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'graphite-git-history-row';
-    row.dataset.commit = commit.hash;
-    row.setAttribute('aria-pressed', String(commit.hash === selectedCommitSha));
-    row.title = commit.subject;
-    const dot = document.createElement('span');
-    dot.className = 'graphite-git-history-dot';
-    dot.setAttribute('aria-hidden', 'true');
-    const copy = document.createElement('span');
-    copy.className = 'graphite-git-history-copy';
-    const subject = document.createElement('span');
-    subject.className = 'graphite-git-history-subject';
-    subject.textContent = commit.subject;
-    const metadata = document.createElement('span');
-    metadata.className = 'graphite-git-history-metadata';
-    metadata.textContent = `${commit.hash.slice(0, 7)} · ${commit.author} · ${commit.relativeTime}`;
-    copy.append(subject, metadata);
-    row.append(dot, copy);
-    row.addEventListener('click', () => void showCommitDiff(commit.hash));
-    row.addEventListener('contextmenu', event => {
-      event.preventDefault();
+async function refreshGraphiteHistory(generation: number): Promise<void> {
+  if (!panelOpen || !graphMount?.isConnected || panelRoot?.dataset.gitView !== 'history') return;
+  historyBrowser ??= createGitHistoryBrowser(graphMount, {
+    cwd: getEffectiveCwdArg() ?? (getWorkspacePath().trim() || undefined),
+    selectedSha: selectedCommitSha,
+    onSelectCommit: (sha) => void showCommitDiff(sha),
+    onContextMenu: ({ commit }, event) => {
+      const row = event.currentTarget as HTMLElement;
       openContextMenu({ anchor: row, restoreFocus: row, label: 'Commit', items: [
-        { id: 'changes', label: 'Open changes', onSelect: () => showCommitDiff(commit.hash) },
+        { id: 'changes', label: 'Open changes', onSelect: () => {
+          if (panelOpen && generation === cwdGeneration && row.isConnected) return showCommitDiff(commit.hash);
+        } },
         { id: 'history', label: 'Open Source Control history', onSelect: async () => {
           const { openSourceControlCenterLazy } = await import('./source-control-center-entry');
           await openSourceControlCenterLazy({ section: 'history' });
         } },
       ] });
-    });
-    history.append(row);
-  }
-  if (commits.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'git-panel-empty';
-    empty.textContent = result.error || 'No commits yet';
-    history.append(empty);
-  }
+    },
+  });
+  await historyBrowser.refresh();
 }
 
 function ensureGitGraph(): void {
@@ -1835,6 +1881,7 @@ function buildGraphContextMenuCtx(): GitGraphContextMenuCtx {
     onOpenChanges: (sha) => void showCommitDiff(sha),
     onRefresh: () => refreshGitPanel(),
     getCurrentBranch: () => currentBranchName,
+    onOpenWorktree: (path) => setGitPanelCwd(pathsEqual(path, getWorkspacePath()) ? undefined : path),
         onConflict: (message) =>
           showGitUiFailure(message, { chatKind: 'merge', ctx: gitErrorChatContext() }),
   };
@@ -1854,7 +1901,9 @@ async function showCommitDiff(sha: string): Promise<void> {
 
   }
 
+  const generation = cwdGeneration;
   const opened = await openGitCommitDiffPanel({ sha, cwd: getEffectiveCwdArg() });
+  if (generation !== cwdGeneration) return;
 
   if (!opened.ok) {
 
@@ -2129,6 +2178,8 @@ export async function refreshGitPanel(): Promise<void> {
       syncCommitConflictState();
 
       if (isMissingGitRepositoryError(status.error)) {
+        historyBrowser?.destroy();
+        historyBrowser = null;
         recovery?.clear();
         latestGitStatus = null;
         syncCommitConflictState();
@@ -2184,7 +2235,7 @@ export async function refreshGitPanel(): Promise<void> {
 
     applyPendingGraphiteCheckoutTarget();
     if (graphiteGitActive()) {
-      await renderGraphiteHistory(generation);
+      await refreshGraphiteHistory(generation);
     } else {
       ensureGitGraph();
       graphOptions.cwd = getEffectiveCwdArg();
@@ -2331,7 +2382,11 @@ export function toggleGitSidePanel(): void {
 export function syncPanelFromActiveChat(options?: { forceFileTree?: boolean }): void {
   if (!sessionState) return;
   refreshGraphiteSurfaceLayout();
-  if (panelCwdUserOverride || (panelOpen && graphiteWorkspaceDiffChatId)) return;
+  if (panelCwdUserOverride || (panelOpen && graphiteWorkspaceDiffChatId)) {
+    // The active chat may have changed under a manual pick; keep the bar honest.
+    paintFollowBar();
+    return;
+  }
 
   const chat = getActiveChat();
   if (document.documentElement.classList.contains('mn-mobile-app') && graphiteGitChatId && graphiteGitChatId !== chat.id) return;
@@ -2469,6 +2524,9 @@ export function resetGitPanelForTests(): void {
   stopPolling();
 
   refreshPending = false;
+
+  historyBrowser?.destroy();
+  historyBrowser = null;
 
   closeGitPanelNamePopover();
 

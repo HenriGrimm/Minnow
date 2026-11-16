@@ -9,6 +9,8 @@ import { buildAgentCliToolCatalog, createAgentCliBridge } from './bridge.js';
 import { createJsonlDecoder } from './jsonl.js';
 import { buildAgentCliPrompt } from './prompt.js';
 import { createAgentCliTranslator, mapAgentCliUsage, mapClaudeRateLimit } from './translate.js';
+import { normalizeClaudeRateLimitUsage } from '../../models/cli-usage-normalize.js';
+import { parseAllowanceResetTime } from '../quota-error.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from './errors.js';
 import { prepareAgentCliInvocation } from './invocation.js';
 import { spawnAgentCli } from './spawn.js';
@@ -294,6 +296,10 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
       if (kind === 'claude' && event.type === 'rate_limit_event') {
         const rateLimit = mapClaudeRateLimit(event.rate_limit_info);
         if (rateLimit) {
+          if (round && !round.finished) {
+            round.rateLimit = rateLimit;
+            round.reportUsage?.(normalizeClaudeRateLimitUsage(rateLimit));
+          }
           session.rateLimit = { ...rateLimit, observed_at: Date.now() };
           updateAgentCliSessionOutput(session.capture, { rateLimit: session.rateLimit });
           // Persist the native observation even when this request later fails.
@@ -471,7 +477,7 @@ async function startProcess(session, signal) {
 }
 
 /** Keep one native CLI process across Minnow tool rounds. */
-export async function pumpAgentCliSession({ state, runtime, candidate, index, idleMs, maxMs, canFailover }) {
+export async function pumpAgentCliSession({ state, runtime, candidate, index, idleMs, maxMs, canFailover, reportUsage }) {
   const settings = runtime.profile.agentCli ?? {};
   const controller = new AbortController();
   state.upstreamController = controller;
@@ -513,6 +519,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     let resolveRound;
     const complete = new Promise(resolve => { resolveRound = resolve; });
     round = {
+      reportUsage,
       state, body, controller, calls: [], nativeToolUses: new Set(), nativeHandoffChecks: new Map(), pendingNativeHandoffs: 0, finished: false, failure: null, idleTimer: null,
       maxTimer: null, handoffTimer: null, timeoutKind: null, emitted: false, content: '', reasoning: '', rawUsage: [],
       choose() {
@@ -569,11 +576,14 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           const message = error?.message ?? classified?.message ?? interruptedHandoff ?? requiredMissing;
           if (message) {
             const safe = safeAgentCliDiagnostic(message, session.secretValues);
-            const quota = classified?.quotaExceeded === true;
-            const reset = session.rateLimit?.status === 'rejected' ? session.rateLimit.resets_at : undefined;
-            const failure = quota ? { ...classified.failure,
-              scope: ['seven_day_opus', 'seven_day_sonnet'].includes(session.rateLimit?.window) ? 'family' : 'provider',
-              ...(Number.isFinite(reset) ? { resetAt: reset < 1e12 ? reset * 1000 : reset } : {}),
+            const rejected = this.rateLimit?.status === 'rejected' ? this.rateLimit : null;
+            const reset = rejected?.resets_at ?? rejected?.windows?.[rejected.window]?.resets_at;
+            const resetAt = Number.isFinite(reset) ? (reset < 1e12 ? reset * 1000 : reset)
+              : rejected && parseAllowanceResetTime(safe);
+            const quota = classified?.quotaExceeded === true || Boolean(classified && resetAt);
+            const failure = quota ? { ...classified.failure, kind: 'quota',
+              scope: ['seven_day_opus', 'seven_day_sonnet'].includes(rejected?.window) ? 'family' : 'provider',
+              ...(resetAt ? { resetAt } : {}),
             } : undefined;
             if (!this.emitted && !session.inferenceStarted && canFailover) outcome = { outcome: 'retry', message: safe, retrySameCandidate: false, hostSuspect: false };
             else { markError(state, safe, { quotaExceeded: quota, failure }); outcome = { outcome: 'fatal', message: safe, hostSuspect: false, quotaExceeded: quota, failure }; }

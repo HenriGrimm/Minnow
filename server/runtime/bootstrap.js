@@ -16,6 +16,8 @@ import { initMemoryApi } from '../memory/routes.js';
 import { initBrainApi } from '../brain/routes.js';
 import { ensureProviderRegistry } from '../providers/store.js';
 import { snapshotSessionsDbIfDue } from '../config/sessions-snapshot.js';
+import { initializeSessionsDb } from '../config/sessions-db.js';
+import { useJsonSessionsStore } from '../config/sessions-repo.js';
 import { initPluginsApi } from '../tools/middleware.js';
 import { initWorkspaceRoot, getAppRoot } from '../workspace/root.js';
 import { recomputeAllNextRuns } from '../scheduler/store.js';
@@ -62,15 +64,10 @@ export async function bootstrapMinnowRuntime() {
   await ensureBenchmarkWorkspace();
   await ensureSchedulerWorkspace();
   await ensureAgentPacksLayout();
-  const workspacePath = await initWorkspaceRoot();
-  await ensureProviderRegistry();
-  await initMemoryApi();
-  await initBrainApi();
-  await initLspConfig();
-  await initMcpApi();
-  await initServersApi();
-  await initPluginsApi();
-  await recomputeAllNextRuns();
+  const [workspacePath] = await Promise.all([
+    initializeRuntimeServices(),
+    useJsonSessionsStore() ? undefined : initializeSessionsDb(),
+  ]);
   sweepCheckpoints();
   setImmediate(() => {
     void import('../terminal-runner.js').then((m) => m.warmupTerminalPlatformCaches());
@@ -80,8 +77,18 @@ export async function bootstrapMinnowRuntime() {
   });
   startBackupScheduleLoop();
   const homePath = getMinnowHome();
-  return {
-    workspacePath,
-    homePath,
-  };
+  return { workspacePath, homePath };
+}
+
+async function initializeRuntimeServices() {
+  const workspacePath = await initWorkspaceRoot();
+  await ensureProviderRegistry();
+  await initMemoryApi();
+  await initBrainApi();
+  await initLspConfig();
+  await initMcpApi();
+  await initServersApi();
+  await initPluginsApi();
+  await recomputeAllNextRuns();
+  return workspacePath;
 }

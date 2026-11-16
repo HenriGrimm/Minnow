@@ -119,7 +119,7 @@ describe('syncModelSelectPicker', () => {
       const { buildTopBarModelOptionHtml } = await import('../../src/lib/format-model-label.ts');
       const { encodeModelSelectKey } = await import('../../src/lib/model-select-key.ts');
       const { modelCache } = await import('../../src/app-state.ts');
-      const { syncModelSelectPicker, setModelHostFilter, setModelLibraryFilter, setModelSearchQuery } =
+      const { syncModelSelectPicker, renderModelSelectMenuRows, setModelHostFilter, setModelLibraryFilter, setModelSearchQuery } =
         await import('../../src/ui/model-select-picker.ts');
       const provider = {
         id: 'claude-code-cli', label: 'Claude Code', baseUrl: '', apiKind: 'agent-cli-v1' as const,
@@ -140,7 +140,8 @@ describe('syncModelSelectPicker', () => {
       sel.value = encodeModelSelectKey(provider.id, 'opus');
       syncModelSelectPicker();
 
-      const menu = doc.getElementById('modelSelectMenu')!;
+      const menu = doc.getElementById('modelSelectMenu') as unknown as HTMLUListElement;
+      renderModelSelectMenuRows(menu, sel);
       const header = menu.querySelector<HTMLButtonElement>('[data-provider-id="claude-code-cli"]');
       assert.ok(header);
       assert.match(header.textContent ?? '', /Claude Code/);
@@ -162,7 +163,7 @@ describe('syncModelSelectPicker', () => {
       assert.equal(sel.value, encodeModelSelectKey(provider.id, 'opus'));
 
       setModelSearchQuery('Anthropic');
-      syncModelSelectPicker();
+      renderModelSelectMenuRows(menu, sel);
       assert.equal(menu.querySelectorAll('.model-select-option').length, models.length);
     } finally {
       const { setModelSearchQuery } = await import('../../src/ui/model-select-picker.ts');
@@ -196,7 +197,7 @@ describe('syncModelSelectPicker', () => {
 
     try {
       const { modelCache } = await import('../../src/app-state.ts');
-      const { syncModelSelectPicker } = await import('../../src/ui/model-select-picker.ts');
+      const { syncModelSelectPicker, renderModelSelectMenuRows } = await import('../../src/ui/model-select-picker.ts');
 
       modelCache.clear();
       modelCache.set('a/model-a', { id: 'a/model-a', state: 'loaded' });
@@ -207,7 +208,9 @@ describe('syncModelSelectPicker', () => {
 
       syncModelSelectPicker();
 
-      const menu = doc.getElementById('modelSelectMenu');
+      const menu = doc.getElementById('modelSelectMenu') as unknown as HTMLUListElement;
+      assert.equal(menu.childElementCount, 0, 'synchronizing a closed picker leaves rows unmounted');
+      renderModelSelectMenuRows(menu, sel);
       const items = menu?.querySelectorAll('.model-select-option');
       assert.equal(items?.length, 2);
 
@@ -255,7 +258,7 @@ describe('syncModelSelectPicker', () => {
 
     try {
       const { modelCache } = await import('../../src/app-state.ts');
-      const { syncModelSelectPicker } = await import('../../src/ui/model-select-picker.ts');
+      const { renderModelSelectMenuRows } = await import('../../src/ui/model-select-picker.ts');
 
       modelCache.clear();
       modelCache.set('vision/model', {
@@ -273,7 +276,10 @@ describe('syncModelSelectPicker', () => {
         },
       });
 
-      syncModelSelectPicker();
+      renderModelSelectMenuRows(
+        doc.getElementById('modelSelectMenu') as unknown as HTMLUListElement,
+        doc.getElementById('modelSelect') as unknown as HTMLSelectElement,
+      );
       const badges = doc.querySelectorAll('.model-cap-badge');
       assert.ok(badges.length >= 2);
       const texts = [...badges].map((el) => el.textContent);
@@ -305,10 +311,11 @@ describe('syncModelSelectPicker', () => {
     (globalThis as { window: Window }).window = win as unknown as Window & typeof globalThis.window;
 
     try {
-      const { syncModelSelectPicker } = await import('../../src/ui/model-select-picker.ts');
+      const { syncModelSelectPicker, renderModelSelectMenuRows } = await import('../../src/ui/model-select-picker.ts');
       const sel = doc.getElementById('modelSelect') as HTMLSelectElement;
       sel.value = 'vendor/long-model-id';
       syncModelSelectPicker();
+      renderModelSelectMenuRows(doc.getElementById('modelSelectMenu') as unknown as HTMLUListElement, sel);
 
       const row = doc.querySelector('.model-select-option') as HTMLElement | null;
       const triggerText = doc.getElementById('modelSelectTriggerText');
@@ -441,10 +448,11 @@ describe('syncModelSelectPicker', () => {
     (globalThis as { window: Window }).window = win as unknown as Window & typeof globalThis.window;
 
     try {
-      const { syncModelSelectPicker } = await import('../../src/ui/model-select-picker.ts');
+      const { syncModelSelectPicker, renderModelSelectMenuRows } = await import('../../src/ui/model-select-picker.ts');
       const sel = doc.getElementById('modelSelect') as HTMLSelectElement;
       sel.value = 'qwen/qwen3.6-35b-a3b';
       syncModelSelectPicker();
+      renderModelSelectMenuRows(doc.getElementById('modelSelectMenu') as unknown as HTMLUListElement, sel);
 
       const menuLabel = doc.querySelector('.model-select-option-label');
       assert.equal(menuLabel?.textContent, longLabel);

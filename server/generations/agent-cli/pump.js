@@ -7,7 +7,8 @@ import { admitAgentCli } from './admission.js';
 import { createAgentCliBridge, buildAgentCliToolCatalog } from './bridge.js';
 import { createJsonlDecoder } from './jsonl.js';
 import { buildAgentCliPrompt } from './prompt.js';
-import { createAgentCliTranslator } from './translate.js';
+import { createAgentCliTranslator, mapClaudeRateLimit } from './translate.js';
+import { normalizeClaudeRateLimitUsage } from '../../models/cli-usage-normalize.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from './errors.js';
 import { prepareAgentCliInvocation as defaultPrepareInvocation } from './invocation.js';
 import { spawnAgentCli as defaultSpawn } from './spawn.js';
@@ -39,7 +40,7 @@ export function agentCliRoleAllowed(state, settings) {
 }
 
 /** CLI response rounds end before Minnow executes a handed-off tool. */
-export async function pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover }) {
+export async function pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover, reportUsage }) {
   if (state.status === 'cancelled') return { outcome: 'complete' };
   if (isMinnowOnlyExecution(state) || !getNativeExecutionContext(state) && UTILITY_ROLES.has(state.fallbackRole)) runtime = { ...runtime, profile: { ...runtime.profile,
     agentCli: { ...runtime.profile.agentCli, nativeCodingTools: false } } };
@@ -53,7 +54,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
   if (!agentCliRoleAllowed(state, settings)) return { outcome: 'retry', retrySameCandidate: false, hostSuspect: false, message: 'Background use of this CLI is off. Enable it in Models → Subscriptions or select another model for this role.' };
   if (settings.kind === 'codex' && process.env.MINNOW_CODEX_LEGACY_EXEC !== '1'
     && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn && !agentCliSessionIsMocked()) {
-    return pumpCodexAppServer({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
+    return pumpCodexAppServer({ state, runtime, candidate, index, idleMs, maxMs, canFailover, reportUsage });
   }
   if (nativeExecution) {
     const message = 'Trusted native execution is supported only by the Codex app-server adapter.';
@@ -61,7 +62,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
   }
   const interactiveClaude = settings.kind === 'claude' && settings.interactive !== false && process.env.MINNOW_CLAUDE_LEGACY_PRINT !== '1' && process.env.MINNOW_AGENT_CLI_REPLAY !== '1';
   if ((state.chatId || interactiveClaude) && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn) {
-    return pumpAgentCliSession({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
+    return pumpAgentCliSession({ state, runtime, candidate, index, idleMs, maxMs, canFailover, reportUsage });
   }
   const controller = new AbortController();
   state.upstreamController = controller;
@@ -156,6 +157,10 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
       }
     }, { tools });
     const decoder = createJsonlDecoder({ onEvent: event => {
+      if (reportUsage && settings.kind === 'claude' && event.type === 'rate_limit_event') {
+        const rateLimit = mapClaudeRateLimit(event.rate_limit_info);
+        if (rateLimit) reportUsage(normalizeClaudeRateLimitUsage(rateLimit));
+      }
       translator.consume(event);
       if (translator.snapshot().terminal) void stop().catch(error => { failure = error; });
     } });

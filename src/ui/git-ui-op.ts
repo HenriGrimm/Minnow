@@ -11,10 +11,16 @@ import {
   type BeginGitActivityOptions,
 } from './git-activity-overlay';
 import type { GitErrorChatContext, GitErrorChatKind } from './git-error-to-chat';
+import type { NotifyAction } from './toast';
 
 export interface GitUiOpResult {
   ok: boolean;
   error?: string;
+  code?: string;
+  /** `in_worktree`: the checkout that already has the target. */
+  worktreePath?: string;
+  /** `busy`: cancellable local action holding the checkout. */
+  busyRunId?: string;
   conflict?: boolean;
 }
 
@@ -30,6 +36,8 @@ export interface RunGitUiOpOptions extends BeginGitActivityOptions {
   handlesError?: (result: GitUiOpResult) => boolean;
   /** A surface with its own recovery UI replaces the global error notification. */
   onError?: (error: string) => void;
+  /** Recovery actions for a failed result, shown on the error card. */
+  recoveryActions?: (result: GitUiOpResult) => NotifyAction[];
 }
 
 function isCancelled(error: string | undefined): boolean {
@@ -102,8 +110,10 @@ export async function runGitUiOp<T extends GitUiOpResult>(
       }
       finishGitActivityError(handle, {
         error: result.error ?? 'Git operation failed',
+        code: result.code,
         chatKind: inferGitUiChatKind(options.successMessage, options.chatKind),
         ctx: options.ctx,
+        actions: options.recoveryActions?.(result),
       });
       return result;
     }
@@ -131,14 +141,16 @@ export async function runGitUiOp<T extends GitUiOpResult>(
 /** Show a parsed git/GitHub error popover without an in-flight activity. */
 export function showGitUiFailure(
   error: string | undefined,
-  options?: { chatKind?: GitErrorChatKind; ctx?: GitErrorChatContext },
+  options?: { chatKind?: GitErrorChatKind; ctx?: GitErrorChatContext; code?: string; actions?: NotifyAction[] },
 ): void {
   const text = (error ?? '').trim() || 'Git operation failed';
   if (isCancelled(text)) return;
   showGitErrorPopover({
     error: text,
+    code: options?.code,
     chatKind: options?.chatKind ?? 'generic',
     ctx: options?.ctx,
+    actions: options?.actions,
   });
 }
 

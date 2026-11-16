@@ -773,7 +773,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   const retainedStart = retainedChatHistoryStart(area, chat);
   const appendStart = chatHistoryAppendStart(area, chat);
   if (appendStart === undefined) forgetChatSurface(area);
-  const scrollAnchor = captureChatScrollAnchor();
+  const scrollAnchor = appendStart === undefined && retainedStart !== undefined ? captureChatScrollAnchor() : null;
   const restoreAgentFocus = captureAgentConversationFocus(area, chat.id);
   if (appendStart === undefined) disposeChatWorkView(area);
   // A newer paint owns the transcript; the previous chat's chunks must not land in it.
@@ -948,7 +948,8 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   });
   renderPersistedSubAgentCardsForChat(chat);
   syncThoughtsCaretPulse(area);
-  restoreChatScrollAnchor(scrollAnchor);
+  if (scrollAnchor) restoreChatScrollAnchor(scrollAnchor);
+  else scrollChatToBottom();
   refreshMetricsStripForChat(chat);
   refreshContextUsageRing();
   if (isChatStreaming(chat.id) && isStreamDomVisible(chat.id)) {

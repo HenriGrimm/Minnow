@@ -8,14 +8,13 @@ import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { isProtectedBranchName } from '../lib/git-trunk-branch';
 import { filterUserFacingBranches } from '../lib/worktree-list-parse';
 import {
-  gitCheckout,
   gitCheckoutDetach,
   gitCherryPick,
   gitCreateTag,
   gitDeleteBranch,
   gitRemoteUrl,
 } from '../state/git-api';
-import { confirmDirtyCheckout } from './git-checkout-confirm';
+import { checkoutRecoveryActions, confirmDirtyCheckout, runCheckoutFlow } from './git-checkout-confirm';
 import { openCherryPickDialog } from './git-advanced-actions';
 import { extractLocalBranchRefs, type CommitVisual } from './git-graph';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
@@ -30,6 +29,8 @@ export interface GitGraphContextMenuCtx {
   onConflict?: (message: string, kind: 'cherry-pick') => void;
   getCurrentBranch?: () => string;
   conflictHost?: HTMLElement | null;
+  /** Point the surface at a worktree that already has the branch. */
+  onOpenWorktree?: (path: string) => void | Promise<void>;
 }
 
 type MenuItemDef =
@@ -238,12 +239,13 @@ async function runCheckout(
   branch: string,
   successMessage: string,
 ): Promise<void> {
-  if (!(await confirmDirtyCheckout(ctx.cwd))) return;
-  const result = await runGitUiOp(() => gitCheckout({ branch, cwd: ctx.cwd }), {
+  const expectedBranch = ctx.getCurrentBranch?.() || undefined;
+  const result = await runGitUiOp(() => runCheckoutFlow({ branch, cwd: ctx.cwd, expectedBranch }, { openWorktree: ctx.onOpenWorktree }), {
     label: 'Switching branch…',
     successMessage,
     chatKind: 'checkout',
     ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+    recoveryActions: (failed) => checkoutRecoveryActions(failed, { cwd: ctx.cwd, openWorktree: ctx.onOpenWorktree }),
   });
   if (!result.ok) return;
   await ctx.onRefresh();
@@ -388,20 +390,21 @@ async function buildMenuItems(
           fixedStartPoint: sha,
           onSubmit: async (result) => {
             anchor.remove();
-            if (!(await confirmDirtyCheckout(ctx.cwd))) return;
             const checkoutResult = await runGitUiOp(
               () =>
-                gitCheckout({
+                runCheckoutFlow({
                   branch: result.name,
                   create: true,
                   startPoint: result.startPoint,
                   cwd: ctx.cwd,
+                  expectedBranch: ctx.getCurrentBranch?.() || undefined,
                 }),
               {
                 label: 'Creating branch…',
                 successMessage: `Created branch ${result.name}`,
                 chatKind: 'checkout',
                 ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+                recoveryActions: (failed) => checkoutRecoveryActions(failed, { cwd: ctx.cwd }),
               },
             );
             if (!checkoutResult.ok) return;

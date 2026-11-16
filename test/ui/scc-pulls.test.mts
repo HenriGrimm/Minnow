@@ -215,3 +215,25 @@ test('empty check conclusions stay pending; draft and conflict merge states are 
   assert.equal(prMergeLabel(pr(2, { draft: true })), 'Draft pull request');
   assert.equal(prMergeLabel(pr(2, { mergeable: 'conflicting' })), 'Merge conflicts');
 });
+
+test('PR rows say where each PR is checked out without asking GitHub per row', async () => {
+  setup();
+  const ops: string[] = [];
+  const porcelain = 'worktree /repo\nHEAD abc\nbranch refs/heads/feature/2\n\nworktree /repo/.worktrees/review\nHEAD def\nbranch refs/heads/feature/1\n';
+  const prs = [pr(1), pr(2), pr(3, { headRef: 'feature/1', crossRepository: true })];
+  mount(prs, async (args) => {
+    ops.push(args.op);
+    if (args.op === 'list') return { ok: true, output: porcelain };
+    if (args.op === 'prList') return { ok: true, prs };
+    if (args.op === 'prView') return { ok: true, pr: prs.find((item) => item.number === args.number) };
+    if (args.op === 'checkoutPlan') return { ok: true, location: 'current', branch: 'feature/2' };
+    return { ok: true, local: ['main', 'feature/2'], remote: [] };
+  });
+  await settle();
+  const row = (n: number) => view!.root.querySelector(`.scc-prrow[data-number="${n}"]`)?.textContent ?? '';
+  assert.match(row(2), /Checked out here/);
+  assert.match(row(1), /In review/);
+  assert.doesNotMatch(row(3), /In review|Checked out here/, 'a fork head name never matches a local worktree');
+  assert.match(row(3), /Fork/);
+  assert.equal(ops.filter((op) => op === 'checkoutPlan').length, 1, 'only the opened detail asks the server');
+});

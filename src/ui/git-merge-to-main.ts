@@ -1,10 +1,10 @@
-import { confirmDirtyCheckout } from './git-checkout-confirm';
+import { runCheckoutFlow } from './git-checkout-confirm';
 import {
   resolveTrunkBranchName,
   shouldShowMergeToMain,
   trunkBranchExists,
 } from '../lib/git-trunk-branch';
-import { gitBranches, gitCheckout, gitMerge, type GitOpResult } from '../state/git-api';
+import { gitBranches, gitMerge, type GitOpResult } from '../state/git-api';
 
 export interface MergeToMainContext {
   /** Branch checked out in the panel (source of the merge). */
@@ -61,10 +61,8 @@ export async function runMergeToMain(ctx: MergeToMainContext): Promise<GitOpResu
 
   const currentAtMain = (branchesAtMain.current ?? '').trim();
   if (currentAtMain !== trunk) {
-    if (!(await confirmDirtyCheckout(mainCwd))) {
-      return { ok: false, error: 'cancelled' };
-    }
-    const checkout = await gitCheckout({ branch: trunk, cwd: mainCwd });
+    // Same guarded flow as every other switch: dirty-file choice, never a silent carry.
+    const checkout = await runCheckoutFlow({ branch: trunk, cwd: mainCwd, expectedBranch: currentAtMain || undefined });
     if (!checkout.ok) {
       return checkout;
     }

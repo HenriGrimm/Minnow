@@ -5,6 +5,7 @@
 import { finalizeResponseMeta, type StreamMetaAccumulator } from '../api/chat';
 import { normalizeModeId } from '../chat/modes/types';
 import { findChatById } from '../state/sessions';
+import { getSessionTokenLedgers } from '../config/api-client';
 import { listProviders } from '../providers/store';
 import type { Chat, Stats, Usage } from '../types';
 import { computeCostUsd, hasMeasurableUsage, resolveModelPricing } from './pricing';
@@ -52,6 +53,12 @@ export async function recordChatCompletionUsage(
     ...(input.at != null ? { at: input.at } : {}),
   };
 
+  // A background completion can finish before the renderer hydrates its chat.
+  if (!chat.tokenLedger && chat.tokenLedgerTotals) {
+    const ledgers = await getSessionTokenLedgers(chat.id).catch(() => null);
+    if (!ledgers) return;
+    chat.tokenLedger ??= ledgers[chat.id];
+  }
   recordTokenUsage(chat, payload);
 }
 

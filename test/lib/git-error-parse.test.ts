@@ -117,6 +117,34 @@ describe('parseGitError', () => {
   });
 });
 
+describe('checkout failures', () => {
+  test('incidental "timeout" and "fix conflicts" text does not misclassify', () => {
+    assert.equal(parseGitError("error: pathspec 'src/timeout.ts' did not match any file(s) known to git").kind, 'generic');
+    assert.equal(parseGitError("remote: Commit 'fix conflicts in readme' rejected by hook").kind, 'generic');
+    assert.equal(parseGitError('fatal: unable to access: Connection timeout after 30000 ms').kind, 'timeout');
+    assert.equal(parseGitError('connect ETIMEDOUT 140.82.112.3:443').kind, 'timeout');
+  });
+
+  test('maps a branch held by another worktree', () => {
+    const parsed = parseGitError("fatal: 'feature' is already used by worktree at 'C:/repo/.worktrees/feature'");
+    assert.equal(parsed.kind, 'worktree_in_use');
+    assert.equal(parsed.title, 'Checked out in another worktree');
+  });
+
+  test('maps overwrite, lock file and busy output', () => {
+    assert.equal(parseGitError('error: Your local changes to the following files would be overwritten by checkout:\n\ta.txt').kind, 'overwrite');
+    assert.equal(parseGitError("fatal: Unable to create 'C:/r/.git/index.lock': File exists.").kind, 'lock_file');
+    assert.equal(parseGitError('A local action is running in this worktree. Stop it before changing branches or removing the worktree.').kind, 'busy');
+  });
+
+  test('a server code wins over text matching', () => {
+    assert.equal(parseGitError('Could not switch', undefined, 'in_worktree').kind, 'worktree_in_use');
+    assert.equal(parseGitError("error: pathspec 'nope' did not match any file(s) known to git", undefined, 'missing_ref').kind, 'missing_ref');
+    assert.equal(parseGitError('The current branch changed.', undefined, 'stale_branch').kind, 'stale');
+    assert.equal(parseGitError('fatal: Could not resolve host: github.com', undefined, 'unknown').kind, 'network');
+  });
+});
+
 describe('firstMeaningfulGitErrorLine', () => {
   test('skips hint and remote prefixes', () => {
     assert.equal(

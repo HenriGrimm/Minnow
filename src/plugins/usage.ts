@@ -16,13 +16,13 @@ export function getPluginChatUsage(chatId?: string) {
   const chat = sessionState?.chats.find(chat => chat.id === (chatId ?? sessionState?.activeId));
   const workspace = getViewWorkspacePath() || getWorkspacePath();
   if (!chat || !inWorkspace(chat.workspacePath ?? '', workspace)) return null;
-  const entry = chat.tokenLedger?.entries.at(-1);
+  const entry = chat.tokenLedger ? chat.tokenLedger.entries.at(-1) : chat.tokenLedgerPreview?.latest;
   return structuredClone({
     chatId: chat.id,
     workspacePath: workspace,
     streaming: streamingChatIds.has(chat.id),
-    totals: chat.tokenLedger?.totals ?? EMPTY_LEDGER_TOTALS,
-    bySource: chat.tokenLedger?.bySource ?? {},
+    totals: chat.tokenLedger?.totals ?? chat.tokenLedgerTotals ?? EMPTY_LEDGER_TOTALS,
+    bySource: chat.tokenLedger?.bySource ?? chat.tokenLedgerPreview?.bySource ?? {},
     current: resolveLastTurnMetrics(chat),
     latest: entry ? {
       id: entry.id, at: entry.at, source: entry.source,

@@ -63,11 +63,16 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   const sidebarToggle = menubar.querySelector<HTMLButtonElement>('.mn-os-mb-chat-toggle');
   const navigation = menubar.querySelector<HTMLElement>('.mn-os-mb-left');
   const shell = menubar.parentElement;
-  const syncNavigationWidth = (): void => {
-    if (navigation && shell) shell.style.setProperty('--mn-titlebar-measured-navigation-width', `${navigation.getBoundingClientRect().width}px`);
+  let navigationWidth: number | undefined;
+  const syncNavigationWidth = (width: number): void => {
+    if (!shell || navigationWidth === width) return;
+    navigationWidth = width;
+    shell.style.setProperty('--mn-titlebar-measured-navigation-width', `${width}px`);
   };
-  const navigationObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncNavigationWidth);
-  if (navigation) navigationObserver?.observe(navigation);
+  const navigationObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(([entry]) => {
+    if (entry) syncNavigationWidth(entry.borderBoxSize?.[0]?.inlineSize ?? entry.target.getBoundingClientRect().width);
+  });
+  if (navigation && navigationObserver) navigationObserver.observe(navigation, { box: 'border-box' });
   const menubarActions = menubar.querySelector<HTMLElement>('.mn-os-mb-right');
   const workspaceActions = menubar.querySelector<HTMLElement>('.mn-os-workspace-actions');
   const modelsTrigger = workspaceActions?.querySelector<HTMLButtonElement>('[aria-controls="modelsSystemPopover"]');
@@ -313,7 +318,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     }
     syncWorkspaceMenubarPlacement();
     if (desktopChanged || visibilityChanged) window.dispatchEvent(new window.Event('minnow:graphite-workspace-changed'));
-    syncNavigationWidth();
+    if (!navigationObserver && navigation) syncNavigationWidth(navigation.getBoundingClientRect().width);
     if (animate) {
       const transition = stage?.getAnimations?.().find(animation =>
         'transitionProperty' in animation && ['margin-inline-start', 'margin-left'].includes(String(animation.transitionProperty)));

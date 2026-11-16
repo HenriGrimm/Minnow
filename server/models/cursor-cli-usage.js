@@ -26,7 +26,7 @@ export async function readCursorUsageCredentials(options = {}) {
   let auth;
   try { auth = JSON.parse(await fs.readFile(cursorAuthPath(options), 'utf8')); }
   catch (error) {
-    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
+    if (error.code !== 'ENOENT') {
       throw new CliUsageError('error', 'Could not read the Cursor login. Verify the CLI and retry.');
     }
   }
@@ -36,14 +36,19 @@ export async function readCursorUsageCredentials(options = {}) {
   let claims = {};
   try { claims = JSON.parse(Buffer.from(auth.accessToken.split('.')[1] ?? '', 'base64url').toString('utf8')) ?? {}; }
   catch { /* opaque token: the endpoint decides */ }
+  const login = { token: auth.accessToken, accountKey: typeof claims.sub === 'string' ? claims.sub : undefined };
   if (typeof claims.exp === 'number' && claims.exp * 1000 <= (options.now ?? Date.now)()) {
+    if (typeof auth.refreshToken === 'string' && auth.refreshToken.trim()) {
+      return { ...login, needsRenewal: true };
+    }
     throw new CliUsageError('signed-out', 'Cursor login has expired. Verify or sign in to the CLI, then refresh.');
   }
-  return { token: auth.accessToken, accountKey: typeof claims.sub === 'string' ? claims.sub : undefined };
+  return login;
 }
 
 /** Private vendor endpoint (the CLI's own /usage RPCs): isolate its contract and never expose its raw body. */
 export async function readCursorAccountUsage(credentials, options = {}) {
+  if (credentials.needsRenewal) throw new CliUsageError('unavailable', 'Cursor Agent has a saved login to renew. Use Cursor Agent, then refresh usage.');
   const call = async (method) => {
     const response = await (options.fetch ?? fetch)(`${DASHBOARD}/${method}`, {
       method: 'POST', body: '{}',
@@ -51,7 +56,7 @@ export async function readCursorAccountUsage(credentials, options = {}) {
       redirect: 'error', signal: AbortSignal.timeout(10_000),
     });
     if (response.status === 401 || response.status === 403) {
-      throw new CliUsageError('signed-out', 'Cursor account usage needs a current login. Verify or sign in to the CLI.');
+      throw new CliUsageError('unavailable', 'Cursor could not authorize the usage check. Verify the CLI connection and try again.');
     }
     if (!response.ok) throw usageHttpError(response, 'Cursor');
     return readBoundedUsageJson(response, 'Cursor');

@@ -32,6 +32,7 @@ import {
 } from './validators.js';
 
 import { CHAT_DETAIL_META_KEYS, isRunStub, mergeRunOverStored, RUN_DETAIL_KEYS, slimChatSummary } from './chat-detail.js';
+import { runSessionsMaintenance } from './sessions-maintenance.js';
 import { recallQueryTerms, runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
 import { isDeletedManagedConversation, isManagedConversation, readAgentConversationProjection } from '../chats/schema.js';
@@ -264,6 +265,7 @@ function getReadStmts(db) {
       `SELECT ${RUN_STUB_PAYLOAD_SQL} AS payload_json FROM chat_runs WHERE chat_id = ? ORDER BY run_id ASC`,
     ),
     runForChat: db.prepare('SELECT payload_json FROM chat_runs WHERE chat_id = ? AND run_id = ?'),
+    lastChatProfile: db.prepare('SELECT profile_id,profile_version FROM chat_execution_profiles WHERE chat_id=? ORDER BY rowid DESC LIMIT 1'),
   };
   readStmtsByDb.set(db, stmts);
   return stmts;
@@ -356,10 +358,11 @@ function stitchChat(row, children) {
   delete chat.profileReference;
   for (const key of ['agentExecution', 'agentPendingCommand', 'agentActivityCursor', 'agentRequestSummary', 'agentRequests',
     'agentTaskAttention', 'agentModelSelection', 'agentAuthority', 'agentPresentationRevision']) delete chat[key];
-  const agentConversation = readAgentConversationProjection(getSessionsDb(), row.id);
+  const db = getSessionsDb();
+  const agentConversation = readAgentConversationProjection(db, row.id);
   if (agentConversation) chat.agentConversation = agentConversation;
-  if (isManagedConversation(getSessionsDb(), row.id)) chat.chatCommandVersion = 1;
-  const profile = getSessionsDb().prepare('SELECT profile_id,profile_version FROM chat_execution_profiles WHERE chat_id=? ORDER BY rowid DESC LIMIT 1').get(row.id);
+  if (isManagedConversation(db, row.id)) chat.chatCommandVersion = 1;
+  const profile = getReadStmts(db).lastChatProfile.get(row.id);
   if (profile) chat.profileReference = { profileId: profile.profile_id, profileVersion: profile.profile_version };
 
   if (row.kind) chat.kind = row.kind;
@@ -389,7 +392,6 @@ function stitchChat(row, children) {
   if (children.activeLoops.length) chat.activeLoops = children.activeLoops;
 
   if (chat.chatCommandVersion === 1) {
-    const db = getSessionsDb();
     Object.assign(chat, readChatActivity(db, row.id), readManagedHistoryVersion(db, row.id, row.history_digest));
   }
 
@@ -1175,7 +1177,7 @@ export function readAllChatIds() {
  * @param {Record<string, any>} row
  * @param {{ runs?: unknown[], activeLoops?: unknown[], }} [children] `runs` are stubs.
  */
-function chatRowToSummary(row, children = {}) {
+function chatRowToSummary(row, children = {}, compact = false) {
   const stitched = stitchChat(row, {
     messages: [],
     terminalHistory: [],
@@ -1183,7 +1185,7 @@ function chatRowToSummary(row, children = {}) {
     subAgentRuns: [],
     activeLoops: children.activeLoops ?? [],
   });
-  const { history: _history, ...rest } = slimChatSummary(stitched);
+  const { history: _history, ...rest } = slimChatSummary(stitched, { compact });
   void _history;
   /** @type {Record<string, unknown>} */
   const summary = {
@@ -1196,8 +1198,22 @@ function chatRowToSummary(row, children = {}) {
   if (typeof row.history_digest === 'string' && row.history_digest) {
     summary.historyDigest = row.history_digest;
   }
+  if (compact && row.token_ledger_totals) summary.tokenLedgerTotals = parseJson(row.token_ledger_totals, undefined);
+  if (compact && row.token_ledger_preview) summary.tokenLedgerPreview = parseJson(row.token_ledger_preview, undefined);
   return summary;
 }
+
+const COMPACT_CHAT_SUMMARY_COLUMNS = `
+  c.id, c.name, c.sort_index, c.kind, c.expert_id, c.workspace_path, c.provider_id, c.model_id, c.mode_id,
+  c.group_id, c.board_group_id, c.board_task_id, c.worktree_root, c.git_branch, c.updated_at, c.last_message_at,
+  c.last_assistant_at, c.unread, c.turn_error, c.message_count, c.last_message_preview, c.history_digest,
+  CASE WHEN json_valid(c.meta_json) THEN json_remove(c.meta_json, '$.tokenLedger') ELSE '{}' END AS meta_json,
+  CASE WHEN json_valid(c.meta_json) THEN json_extract(c.meta_json, '$.tokenLedger.totals') END AS token_ledger_totals,
+  CASE WHEN (CASE WHEN json_valid(c.meta_json) THEN json_type(c.meta_json, '$.tokenLedger.totals') END) = 'object' THEN json_object(
+    'bySource', json_extract(c.meta_json, '$.tokenLedger.bySource'),
+    'latest', json_extract(c.meta_json, '$.tokenLedger.entries[#-1]')
+  ) END AS token_ledger_preview
+`;
 
 /** @param {{ payload_json: string }[]} rows */
 function parsePayloadRows(rows) {
@@ -1205,7 +1221,7 @@ function parsePayloadRows(rows) {
 }
 
 /**
- * @param {{ workspace?: string, sinceRevision?: number }} [filter]
+ * @param {{ workspace?: string, sinceRevision?: number, compact?: boolean }} [filter]
  *   `sinceRevision` limits the result to chats stamped after that session revision.
  * @returns {Record<string, unknown>[]}
  */
@@ -1215,18 +1231,28 @@ export function readChatSummaries(filter = {}) {
   const workspaceRaw = typeof filter.workspace === 'string' ? filter.workspace : '';
   const workspace = normalizeWorkspacePath(workspaceRaw);
   const since = Number.isSafeInteger(filter.sinceRevision) ? filter.sinceRevision : null;
+  const compact = filter.compact === true;
   if (since != null) {
     // A delta is a handful of chats: read only their children, never every chat's runs.
-    return stmts.chatsSinceRevision.all(since)
+    const rows = compact ? db.prepare(
+      `SELECT ${COMPACT_CHAT_SUMMARY_COLUMNS} FROM chats c JOIN chat_revisions r ON r.chat_id = c.id
+        WHERE r.revision > ? ORDER BY c.sort_index ASC, c.id ASC`,
+    ).all(since) : stmts.chatsSinceRevision.all(since);
+    return rows
       .filter((row) => !workspace || row.workspace_path === workspace)
       .map((row) =>
         chatRowToSummary(row, {
           runs: parsePayloadRows(stmts.runStubsForChat.all(row.id)),
           activeLoops: parsePayloadRows(stmts.loopsForChat.all(row.id)),
-        }),
+        }, compact),
       );
   }
-  const rows = workspace
+  const rows = compact
+    ? db.prepare(
+      `SELECT ${COMPACT_CHAT_SUMMARY_COLUMNS} FROM chats c ${workspace ? 'WHERE c.workspace_path = ?' : ''}
+        ORDER BY c.sort_index ASC, c.id ASC`,
+    ).all(...(workspace ? [workspace] : []))
+    : workspace
     ? db
         .prepare(
           'SELECT * FROM chats WHERE workspace_path = ? ORDER BY sort_index ASC, id ASC',
@@ -1241,8 +1267,18 @@ export function readChatSummaries(filter = {}) {
     chatRowToSummary(row, {
       runs: parsePayloadRows(runsByChat.get(row.id) ?? []),
       activeLoops: parsePayloadRows(loopsByChat.get(row.id) ?? []),
-    }),
+    }, compact),
   );
+}
+
+/** Read ledgers for Usage without assembling any chat or transcript projections. */
+export function readSessionTokenLedgers(chatId) {
+  const db = getSessionsDb();
+  const rows = db.prepare(
+    `SELECT id, json_extract(meta_json, '$.tokenLedger') AS ledger FROM chats
+      WHERE (CASE WHEN json_valid(meta_json) THEN json_type(meta_json, '$.tokenLedger') END) = 'object'${chatId ? ' AND id = ?' : ''}`,
+  ).all(...(chatId ? [chatId] : []));
+  return Object.fromEntries(rows.map(({ id, ledger }) => [id, parseJson(ledger, null)]));
 }
 
 export function toSessionsFtsQuery(raw) {
@@ -1502,7 +1538,7 @@ function readManagedHistoryVersion(db, id, historyDigest) {
 }
 
 /**
- * @param {{ workspace?: string, sinceRevision?: number }} [filter]
+ * @param {{ workspace?: string, sinceRevision?: number, compact?: boolean }} [filter]
  */
 export function readSessionSummariesState(filter = {}) {
   const db = getSessionsDb();
@@ -1542,7 +1578,7 @@ export function readSessionSummariesState(filter = {}) {
     );
   }
 
-  const chats = readChatSummaries({ workspace: workspaceRaw, sinceRevision: since ?? undefined });
+  const chats = readChatSummaries({ workspace: workspaceRaw, sinceRevision: since ?? undefined, compact: filter.compact });
   const listedIds = since == null
     ? chats.map((chat) => chat.id)
     : (workspace
@@ -1582,6 +1618,17 @@ export function readSessionSummariesState(filter = {}) {
   }
 
   return raw;
+}
+
+/** Keep the initial projection and JSON encoding off the host for large session catalogs. */
+export async function serializeSessionSummaries(filter) {
+  // An index-only probe keeps the common small-catalog and delta paths on their
+  // existing fast connection without paying worker startup cost.
+  if (filter.compact && filter.sinceRevision === undefined
+    && getSessionsDb().prepare('SELECT 1 FROM chats LIMIT 1 OFFSET 255').get()) {
+    return runSessionsMaintenance('read-summaries', { filter });
+  }
+  return JSON.stringify(readSessionSummariesState(filter));
 }
 
 export function exportSessionStateToJson() {

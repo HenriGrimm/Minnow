@@ -9,6 +9,7 @@ import { handleProviderRequest } from '../../server/providers/routes.js';
 import { getProviderRuntime } from '../../server/providers/store.js';
 import { resolveServerModelContextLimit } from '../../server/models/context-window.js';
 import { registerCliDisposal, lockCliChat } from '../../server/generations/agent-cli/lifecycle.js';
+import { allowanceContext, getAllowanceTracker } from '../../server/generations/allowance.js';
 import { setTestHome, rmTestHome, httpRequest } from '../providers/test-helpers.js';
 
 let homeDir;
@@ -338,5 +339,38 @@ describe('agent CLI model routes', () => {
     assert.equal(reset.json.agentCli.contextWindowTokens, undefined);
     assert.equal((await getProviderRuntime('claude-code-cli')).profile.agentCli.contextWindowTokens, undefined);
     assert.equal(await resolveServerModelContextLimit(model), 200_000);
+  });
+
+  test('Claude usage 429 exposes native measurements and a confirmed reset only for the current login', async t => {
+    const keyNames = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL',
+      'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'];
+    const original = keyNames.map(key => [key, process.env[key]]);
+    t.after(() => {
+      for (const [key, value] of original) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    });
+    keyNames.forEach(key => delete process.env[key]);
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'fixture-first-account';
+    assert.equal((await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { clearCliToken: true })).status, 200);
+    const resetAt = Date.now() + 3600_000;
+    const windows = [{ id: 'five_hour', label: '5-hour', usedPercent: 100, windowMinutes: 300, resetsAt: new Date(resetAt).toISOString() }];
+    const context = await allowanceContext('claude-code-cli', 'sonnet');
+    const tracker = await getAllowanceTracker();
+    tracker.observeCliUsage(context, { windows });
+    tracker.record(context, { kind: 'quota', scope: 'provider', resetAt });
+    await tracker.flush();
+    t.mock.method(globalThis, 'fetch', async () => new Response('private vendor body', { status: 429, headers: { 'Retry-After': '180' } }));
+    const url = '/api/models/agent-clis/claude/usage';
+    const first = (await httpRequest(baseUrl, 'GET', url)).json.usage;
+    assert.equal(first.status, 'stale');
+    assert.deepEqual(first.windows, windows);
+    assert.deepEqual(first.quotaLimits, [{ label: null, resetsAt: windows[0].resetsAt }]);
+    assert.notEqual(first.retryAt, first.quotaLimits[0].resetsAt);
+    assert.doesNotMatch(JSON.stringify(first), /private vendor body|fixture-first-account/);
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'fixture-other-account';
+    const second = (await httpRequest(baseUrl, 'GET', url)).json.usage;
+    assert.deepEqual(second.windows, []);
+    assert.equal(second.quotaLimits, undefined);
   });
 });

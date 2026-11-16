@@ -53,6 +53,7 @@ import { getWorkspacePath } from '../state/workspace';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
 import { createIcon, iconHtml, type IconName } from './icon';
 import { openDevServerFormPopover } from './dev-server-form-popover';
+import { restoreGraphiteMaximizedPanel } from './surfaces/surface-bridge';
 const ROOT_ID = 'devServerScreenRoot';
 const CHAT_AREA_CLASS = 'chat-area--dev-server';
 const MAIN_COLUMN_CLASS = 'main-column--dev-server';
@@ -138,7 +139,7 @@ async function closeCompetingMainColumnViews(): Promise<void> {
   await closeOtherCodeStageViews('dev-server');
 }
 
-function buildShell(): HTMLElement {
+function buildShell(useAppTitlebar: boolean): HTMLElement {
   const root = document.createElement('div');
   root.id = ROOT_ID;
   root.className = 'dev-server-screen is-open';
@@ -147,7 +148,7 @@ function buildShell(): HTMLElement {
     ? workspacePath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || 'workspace'
     : 'workspace';
   root.innerHTML = `
-    <header class="dev-server-screen__toolbar" data-app-titlebar>
+    <header class="dev-server-screen__toolbar"${useAppTitlebar ? ' data-app-titlebar' : ''}>
       <div class="dev-server-screen__heading">
         <span class="dev-server-screen__heading-icon" aria-hidden="true">${iconHtml('appDevServer', { size: 18 })}</span>
         <div class="dev-server-screen__heading-copy">
@@ -763,6 +764,7 @@ function syncRailButton(): void {
 
 export async function openDevServerScreen(): Promise<void> {
   if (isDevServerScreenOpen()) {
+    restoreGraphiteMaximizedPanel();
     void refreshAll();
     return;
   }
@@ -780,12 +782,15 @@ export async function openDevServerScreen(): Promise<void> {
     returnChatId = sessionState.activeId;
   }
 
-  const shell = buildShell();
+  // Graphite's dock can sit alongside or replace this column. The shell
+  // menubar owns the top row in both layouts.
+  const shell = buildShell(!area.closest('.graphite-surfaces'));
   area.replaceChildren();
   area.appendChild(shell);
   stripMainColumnOverlayClasses();
   area.classList.add(CHAT_AREA_CLASS);
   document.getElementById('mainColumn')?.classList.add(MAIN_COLUMN_CLASS);
+  restoreGraphiteMaximizedPanel();
 
   const tabs = shell.querySelector<HTMLElement>('[data-role="log-tabs"]');
   const output = shell.querySelector<HTMLElement>('[data-role="log-output"]');
@@ -796,13 +801,13 @@ export async function openDevServerScreen(): Promise<void> {
   syncPortsAutoButton();
   syncRailButton();
   startPolling();
-  await refreshWorktreeOptions();
-  await refreshAll();
   notifyAskQuestionDisplayContextChanged();
   void import('./preview-electron-visibility').then((m) =>
     m.scheduleElectronPreviewHostVisibilitySync(),
   );
   notifyCodeStageViewChanged();
+  await refreshWorktreeOptions();
+  await refreshAll();
 }
 
 export function closeDevServerScreen(options?: {

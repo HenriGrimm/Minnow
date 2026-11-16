@@ -8,7 +8,6 @@ import { tagServerIngress } from './server/network/ingress.js';
 import {
   applyRemoteConfigAtBoot,
   configureRemoteIngress,
-  getRemoteStatus,
   shutdownRemoteIngress,
 } from './server/remote/ingress-manager.js';
 import { createDevRemoteBundle } from './server/remote/dev-remote-bundle.js';
@@ -190,8 +189,8 @@ async function main() {
   console.log(`Terminal PTY: ${localUrl.replace(/\/$/, '')}/api/terminal/ws?sessionId=…`);
   console.log(`Scheduler API: ${localUrl.replace(/\/$/, '')}/api/scheduler/ping`);
   await startSchedulerForHost(localUrl);
-  // Phones get a bundled build kept current in the background, not ~1,600 live
-  // modules. MINNOW_REMOTE_LIVE_MODULES=1 serves them live modules instead.
+  // Build on the first phone navigation, then keep that bundle current in the background.
+  // MINNOW_REMOTE_LIVE_MODULES=1 serves live modules instead.
   const remoteBundle = process.env.MINNOW_REMOTE_LIVE_MODULES === '1'
     ? undefined
     : createDevRemoteBundle({
@@ -211,9 +210,6 @@ async function main() {
     }),
   });
   await applyRemoteConfigAtBoot();
-  const remote = getRemoteStatus();
-  // Build ahead when phones can already connect; otherwise the first phone request starts it.
-  if (remote.lan.state === 'on' || !['off', 'unavailable'].includes(remote.anywhere.state)) remoteBundle?.start();
   const onShutdown = async () => {
     flushDeviceActivity();
     remoteBundle?.stop();

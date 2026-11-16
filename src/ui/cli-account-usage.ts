@@ -9,7 +9,12 @@ export interface AccountUsageView {
   refresh: (force?: boolean) => Promise<void>;
 }
 
+export function activeAccountQuotaLimits(usage: AgentCliAccountUsage | null) {
+  return usage?.quotaLimits?.filter(limit => !limit.resetsAt || Date.parse(limit.resetsAt) > Date.now()) ?? [];
+}
+
 export function accountUsageSummary(usage: AgentCliAccountUsage | null): string {
+  if (activeAccountQuotaLimits(usage).length) return 'Usage limit reached';
   if (!usage || !usage.windows.length || !['ready', 'stale'].includes(usage.status)) return 'Usage unavailable';
   const used = Math.max(...usage.windows.map(row => row.usedPercent));
   return `${Math.max(0, Math.floor(100 - used))}% left${usage.status === 'stale' ? ' · last known' : ''}`;
@@ -44,11 +49,14 @@ export function createAccountUsageView(
   status.className = 'cli-account-usage__status';
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
+  const limits = document.createElement('p');
+  limits.className = 'cli-account-usage__status';
+  limits.hidden = true;
   const rows = document.createElement('div');
   rows.className = 'cli-account-usage__windows';
   const metadata = document.createElement('p');
   metadata.className = 'cli-account-usage__metadata';
-  root.append(heading, status, rows, metadata);
+  root.append(heading, limits, status, rows, metadata);
   let usage: AgentCliAccountUsage | null = null;
   let active = false;
   let controller: AbortController | null = null;
@@ -61,7 +69,14 @@ export function createAccountUsageView(
     refreshButton.textContent = controller ? 'Refreshing…' : 'Refresh';
     const retryAt = usage?.retryAt ? Date.parse(usage.retryAt) : 0;
     refreshButton.disabled = Boolean(controller) || retryAt > Date.now();
-    refreshButton.title = retryAt > Date.now() ? `Try again after ${localTime(usage!.retryAt!)}` : '';
+    refreshButton.title = retryAt > Date.now() ? `Next usage check ${localTime(usage!.retryAt!)}` : '';
+    const quotaLimits = activeAccountQuotaLimits(usage);
+    limits.textContent = quotaLimits.map(limit => {
+      const label = limit.label ? `Usage limit reached for ${limit.label}` : 'Usage limit reached';
+      const reset = limit.resetsAt ? `Resets ${localTime(limit.resetsAt)}` : 'Reset time unavailable';
+      return `${label}. ${reset}.`;
+    }).join(' ');
+    limits.hidden = !quotaLimits.length;
     const expired = usage?.windows.some(row => row.resetsAt && Date.parse(row.resetsAt) <= Date.now());
     status.textContent = !usage ? 'Checking account usage…'
       : usage.status === 'stale' ? `Showing last-known usage. ${usage.message ?? ''}`
@@ -83,14 +98,14 @@ export function createAccountUsageView(
       meter.dataset.tone = remaining <= 10 ? 'danger' : remaining <= 25 ? 'warning' : 'normal';
       const reset = document.createElement('span');
       reset.className = 'cli-account-usage__reset';
-      reset.textContent = row.resetsAt ? `Resets ${localTime(row.resetsAt)}` : 'Reset time unavailable';
+      reset.textContent = row.resetsAt ? `${Date.parse(row.resetsAt) <= Date.now() ? 'Reset was due' : 'Resets'} ${localTime(row.resetsAt)}` : 'Reset time unavailable';
       item.append(label, value, meter, reset);
       rows.append(item);
     }
     const parts = [usage?.plan, usage?.fetchedAt ? `Updated ${localTime(usage.fetchedAt)}` : null];
     if (usage?.credits?.unlimited) parts.push('Unlimited credits');
     else if (usage?.credits?.balance != null) parts.push(`Credits: ${usage.credits.balance}`);
-    if (usage?.retryAt && retryAt > Date.now()) parts.push(`Retry after ${localTime(usage.retryAt)}`);
+    if (usage?.retryAt && retryAt > Date.now()) parts.push(`Next usage check ${localTime(usage.retryAt)}`);
     metadata.textContent = parts.filter(Boolean).join(' · ');
     metadata.hidden = !metadata.textContent;
   }

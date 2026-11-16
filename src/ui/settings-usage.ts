@@ -14,7 +14,7 @@ import {
   mergeSessionBySource,
   sumSessionLedgerTotals,
 } from '../usage/token-ledger';
-import type { TokenLedgerBySource, TokenLedgerEntry, TokenLedgerTotals } from '../usage/types';
+import type { ChatTokenLedger, TokenLedgerBySource, TokenLedgerEntry, TokenLedgerTotals } from '../usage/types';
 import { appendSettingsGroup, linkToSettingsSection } from './settings-layout';
 import { appConfirm } from './app-dialog';
 import { appendSettingsOfflineHint } from './settings-controls';
@@ -355,17 +355,22 @@ export async function renderUsageSettingsSection(): Promise<void> {
     content.append(actions);
   }
 
+  let savedLedgers: Record<string, ChatTokenLedger> | null = null;
+  let loadingLedgers = isServerStorageMode()
+    && getChatsSortedByUpdatedDesc().some(chat => !chat.tokenLedger && chat.tokenLedgerTotals);
+  let ledgerLoadFailed = false;
   const renderReport = () => {
     report.replaceChildren();
     const workspace = getWorkspacePath();
     const activeChat = getActiveChat();
     const totalScope = scope.value === 'total';
     const workspaceScope = scope.value === 'workspace';
-    const chats = totalScope ? getChatsSortedByUpdatedDesc()
+    const sourceChats = totalScope ? getChatsSortedByUpdatedDesc()
       : workspaceScope ? getChatsForWorkspace(workspace) : [activeChat];
+    const chats = sourceChats.map(chat => ({ tokenLedger: chat.tokenLedger ?? savedLedgers?.[chat.id] }));
     const totals = sumSessionLedgerTotals(chats);
     reset.hidden = !totalScope && !workspaceScope;
-    reset.disabled = totals.completionCount === 0;
+    reset.disabled = loadingLedgers || ledgerLoadFailed || totals.completionCount === 0;
     reset.textContent = totalScope ? 'Reset total usage' : 'Reset workspace usage';
     const entries = chats.flatMap((chat) => chat.tokenLedger?.entries ?? []);
     const group = appendSettingsGroup(
@@ -381,6 +386,11 @@ export async function renderUsageSettingsSection(): Promise<void> {
       : workspaceScope
       ? 'All recorded usage in these workspace chats, including the active chat when it belongs to this workspace.'
       : 'All recorded usage in this chat, including agent and title responses.'));
+    if (loadingLedgers) {
+      appendUsageEmpty(group, 'Loading recorded usage…');
+      return;
+    }
+    if (ledgerLoadFailed) appendUsageEmpty(group, 'Some recorded usage could not be loaded.');
     if (totals.completionCount === 0) {
       if (graphite) appendUsageMetrics(group, totals, true);
       appendUsageEmpty(group, workspaceScope && !workspace
@@ -415,6 +425,16 @@ export async function renderUsageSettingsSection(): Promise<void> {
   });
   scope.addEventListener('change', renderReport);
   renderReport();
+  if (loadingLedgers) {
+    void import('../config/api-client').then(({ getSessionTokenLedgers }) => getSessionTokenLedgers()).then(ledgers => {
+      savedLedgers = ledgers;
+    }, () => {
+      ledgerLoadFailed = true;
+    }).finally(() => {
+      loadingLedgers = false;
+      if (mount.firstElementChild === shell) renderReport();
+    });
+  }
 
   const pricingNote = el('div', 'usage-pricing-note');
   pricingNote.dataset.settingsSearchKey = 'models.usage.pricing';

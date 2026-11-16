@@ -31,11 +31,11 @@ export function createChatWorkspacePreparation(options: {
   admit(chatId: string, intent: ChatWorkspaceIntent | null): void;
   prepare(input: WorkspacePreparationInput): Promise<{ execution: ExecutionRecord; target: ChatTargetContext }>;
   read(chatId: string): ChatWorkspaceState | null;
-  /** Authenticated human-only action. Never deletes the retained checkout. */
-  chooseLocal(input: { chatId: string; expectedIntentId: string }): ChatShell;
+  /** Authenticated human-only action. Null expects no admitted setup. */
+  chooseLocal(input: { chatId: string; expectedIntentId: string | null }): ChatShell;
   /** Authenticated human Retry; prepares dependencies but never replays inference. */
   retry(input: { chatId: string; expectedIntentId: string; signal?: AbortSignal }): Promise<ChatShell>;
   stopRetry(chatId: string, executionId?: string): boolean;
   applyChoice(caller: import('./caller.js').ChatCaller, input: { chatId: string; action: 'retry' | 'local';
-    expectedIntentId: string; clientRequestId?: string }): Promise<{ chat: ChatShell }>;
+    expectedIntentId: string | null; clientRequestId?: string }): Promise<{ chat: ChatShell }>;
 };

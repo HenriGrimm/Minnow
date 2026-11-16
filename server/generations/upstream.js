@@ -244,7 +244,8 @@ export async function pumpUpstreamAsync({ state }) {
     if (runtime.profile.apiKind === 'agent-cli-v1') {
       const canFailover = !state.failoverDisabled && index < state.candidates.length - 1;
       const context = await allowanceContext(candidate.providerId, candidate.modelId, runtime);
-      const result = await withAllowance(context, () => pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover, nativeExecution }), () => state.status === 'cancelled');
+      const result = await withAllowance(context, reportUsage => pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover, reportUsage }),
+        () => state.status === 'cancelled');
       if (result.allowanceBlocked && canFailover) result.outcome = 'retry';
       if (result.outcome === 'complete') return;
       if (result.outcome === 'fatal' || !canFailover) {

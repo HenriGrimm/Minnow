@@ -4,6 +4,7 @@ import type { PaneSlotId } from '../../state/file-panel';
 interface GraphiteSurfaceBridge {
   request(id: LauncherSurfaceId, action: 'show' | 'hide' | 'toggle' | 'maximize'): boolean;
   refresh(): void;
+  restoreMaximizedPanel(): void;
   showContent?(kind: ContentTabKind, key: string, forceLoad?: boolean, panel?: SurfacePanel): Promise<void> | undefined;
   splitPanel?(): boolean;
   previewSlot?(tabId: string): PaneSlotId | undefined;
@@ -48,6 +49,10 @@ export function cycleGraphiteContent(direction: 'next' | 'prev'): boolean {
 
 export function refreshGraphiteSurfaceLayout(): void {
   bridge?.refresh();
+}
+
+export function restoreGraphiteMaximizedPanel(): void {
+  bridge?.restoreMaximizedPanel();
 }
 
 /** Graphite mounts the primary browser in its selected surface panel. */

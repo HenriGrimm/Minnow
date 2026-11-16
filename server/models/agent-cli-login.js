@@ -9,7 +9,7 @@ const LOGIN_ARGS = {
   cursor: ['login'],
 };
 const LOGIN_HOSTS = {
-  claude: ['claude.ai', 'platform.claude.com', 'console.anthropic.com'],
+  claude: ['claude.ai', 'claude.com', 'platform.claude.com', 'console.anthropic.com'],
   codex: ['auth.openai.com', 'auth0.openai.com', 'chatgpt.com'],
   cursor: ['cursor.com', 'www.cursor.com', 'authenticator.cursor.sh', 'accounts.cursor.com', 'accounts.x.ai', 'accounts.spacex.ai'],
 };
@@ -18,7 +18,8 @@ export function agentCliLoginUrl(kind, value) {
   try {
     const url = new URL(value);
     if (url.protocol === 'https:' && !url.username && !url.password && !url.port
-      && LOGIN_HOSTS[kind]?.includes(url.hostname)) return url.href;
+      && LOGIN_HOSTS[kind]?.includes(url.hostname)
+      && (kind !== 'claude' || url.pathname.endsWith('/oauth/authorize'))) return url.href;
   } catch { /* Ignore partial URLs and terminal diagnostics. */ }
   return null;
 }
@@ -53,6 +54,7 @@ export function createAgentCliLoginService({ resolveBin = resolveAgentCliBin, sp
     const session = { id: randomUUID(), kind, state: 'starting', verificationUrl: null, code: null, error: null };
     sessions.set(kind, session);
     const runEnv = applyAgentCliCaptureEnv(env, bin.command);
+    if (kind === 'claude') runEnv.DISABLE_AUTOUPDATER = '1';
     if (kind === 'cursor') runEnv.NO_OPEN_BROWSER = '1';
     let child;
     try {
@@ -67,7 +69,13 @@ export function createAgentCliLoginService({ resolveBin = resolveAgentCliBin, sp
     }
     session.child = child;
     let output = '';
-    const clear = () => { output = ''; session.verificationUrl = null; session.code = null; clearTimeout(session.timer); };
+    const partial = { stdout: '', stderr: '' };
+    const clear = () => {
+      output = partial.stdout = partial.stderr = '';
+      session.verificationUrl = null;
+      session.code = null;
+      clearTimeout(session.timer);
+    };
     session.clear = clear;
     const fail = (message) => {
       if (!pending(session)) return;
@@ -76,18 +84,22 @@ export function createAgentCliLoginService({ resolveBin = resolveAgentCliBin, sp
       clear();
       session.stopped = Promise.resolve(stop(child, { graceMs: 1500 })).catch(() => {});
     };
-    const capture = (chunk) => {
+    const capture = (stream, chunk) => {
       if (!pending(session)) return;
-      output = (output + stripAnsiFromCliText(chunk.toString())).slice(-32_768);
-      for (const match of output.matchAll(/https:\/\/[^\s<>"\u001b]+/g)) {
+      const text = stripAnsiFromCliText(chunk.toString());
+      output = (output + text).slice(-32_768);
+      const buffer = (partial[stream] + text).slice(-32_768);
+      // OAuth query parameters can arrive in another chunk. Wait for a delimiter.
+      for (const match of buffer.matchAll(/https:\/\/[^\s<>"\u001b]+(?=[\s<>"\u001b])/g)) {
         const url = agentCliLoginUrl(kind, match[0]);
         if (url) { session.verificationUrl = url; session.state = 'waiting'; }
       }
+      partial[stream] = buffer.match(/\S+$/)?.[0] ?? '';
       const code = output.match(/(?:code[:\s]+)[`'"\s]*([A-Z0-9]{4}-[A-Z0-9]{4})(?![A-Z0-9])/i)?.[1];
       if (code && kind !== 'claude') session.code = code;
     };
-    child.stdout.on('data', capture);
-    child.stderr.on('data', capture);
+    child.stdout.on('data', chunk => capture('stdout', chunk));
+    child.stderr.on('data', chunk => capture('stderr', chunk));
     child.stdin.on('error', () => fail('Sign-in input closed. Start again.'));
     child.once('error', () => fail('Could not start sign-in. Check that the CLI is installed and try again.'));
     child.once('close', async (code) => {

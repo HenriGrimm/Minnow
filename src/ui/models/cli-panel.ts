@@ -15,7 +15,7 @@ import { invalidateProviderCache } from '../../providers/store';
 import { modelProducerLogoSvg } from '../../providers/model-producer';
 import { createSettingsSwitch } from '../settings-switch';
 import { el, skeletonRows } from './dom';
-import { accountUsageSummary, createAccountUsageView } from '../cli-account-usage';
+import { accountUsageSummary, activeAccountQuotaLimits, createAccountUsageView } from '../cli-account-usage';
 import { setModelsRailCount } from './graphite-chrome';
 import { createAgentCliSignIn } from '../agent-cli-sign-in';
 import { launchApp } from '../../os/router';
@@ -440,8 +440,9 @@ function renderCli(status: AgentCliStatus): CliView {
         (highest, item) => !highest || item.usedPercent > highest.usedPercent ? item : highest, undefined,
       );
       const used = window ? Math.min(100, Math.max(0, window.usedPercent)) : 0;
+      const limitReached = activeAccountQuotaLimits(snapshot).length > 0;
       allowance.textContent = window ? `${window.label}${snapshot?.status === 'stale' ? ' · last known' : ''}` : 'Usage';
-      percentage.textContent = window ? `${Math.round(used)}% used` : '—';
+      percentage.textContent = limitReached ? 'Limit reached' : window ? `${Math.round(used)}% used` : '—';
       meter.style.setProperty('--cli-used', `${used}%`);
       meter.dataset.tone = used >= 90 ? 'danger' : used >= 70 ? 'warning' : 'normal';
     },
@@ -506,7 +507,7 @@ function renderCli(status: AgentCliStatus): CliView {
     nativeInfo.textContent = next.kind === 'codex' ? next.nativeCodingCapability?.reason
       ?? 'Codex uses Minnow tools. Native coding tools are unavailable in this version of Minnow.' : '';
     nativeInfo.hidden = signingIn || next.kind !== 'codex';
-    if (next.installed && row.isConnected) usage.start();
+    if (next.installed && row.isConnected && !signingIn) usage.start();
     else usage.stop();
     const busy = pending.has(next.kind) || settings.busy() || Boolean(loadController);
     const account = next.accountEmail || (next.authStatus === 'signed-in' ? 'Account email unavailable' : '');

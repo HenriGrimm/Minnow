@@ -4,6 +4,7 @@ import '../styles/settings-graphite.css';
 
 import { isPairedDevice } from '../api/session-token';
 import { detectLocalServer } from '../tools/client';
+import { createBackToChatButton } from './back-to-chat';
 import { refreshSettingsSection } from './settings-sections';
 import { closeProviderEditor } from './settings-providers';
 import { disposeAppUpdatesSettings } from './settings-updates';
@@ -599,9 +600,12 @@ export function initSettingsPage(): void {
     },
   });
 
-  document
-    .getElementById('btnSettingsPageBack')
-    ?.addEventListener('click', backToChatFromSettings);
+  const header = root?.querySelector('.settings-page-header');
+  if (header) {
+    const back = createBackToChatButton(backToChatFromSettings);
+    back.id = 'btnSettingsPageBack';
+    header.prepend(back);
+  }
 
   initSettingsMobileNav();
   document.addEventListener('keydown', (event) => {

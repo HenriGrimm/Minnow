@@ -29,6 +29,7 @@ import {
   shouldInterceptPtyHistoryArrow,
 } from './terminal-history-nav';
 import { createPtyInputGate } from './terminal-pty-input-gate';
+import { createPtyOutputBuffer } from './terminal-pty-output';
 import { handleTerminalWebLink } from './terminal-console-links';
 import { buildTerminalXtermTheme } from './terminal-xterm-theme';
 
@@ -67,11 +68,13 @@ let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSentCols = 0;
 let lastSentRows = 0;
 let onSessionEnded: ((tabId: string) => void) | null = null;
+let viewportHasSize = false;
 
 /** Hold keys until xterm finishes parsing output so zsh is back in zle (MIN-670). */
 const ptyInputGate = createPtyInputGate({
   dispatch: dispatchPtyUserInput,
 });
+const ptyOutput = createPtyOutputBuffer(writePtyOutput);
 
 /** ResizeObserver fires while the prompt is redrawing; coalesce SIGWINCH. */
 const RESIZE_DEBOUNCE_MS = 50;
@@ -173,7 +176,7 @@ function applyXtermTheme(): void {
 /** Re-read CSS variables into xterm after theme change (no-op if terminal not mounted). */
 function refreshXtermTheme(): void {
   applyXtermTheme();
-  fitAddon?.fit();
+  if (viewportHasSize) fitAddon?.fit();
 }
 
 function disconnectWs(): void {
@@ -182,6 +185,7 @@ function disconnectWs(): void {
     activeWs = null;
   }
   ptyInputGate.reset();
+  ptyOutput.reset();
 }
 
 /** Close WebSocket for the active tab without killing the server PTY. */
@@ -196,7 +200,7 @@ function currentTerminalSize(): { cols: number; rows: number } {
 
 /** Fit the viewport and notify the PTY; skip the syscall when size is unchanged. */
 function fitAndResize(sessionId: string | null): void {
-  if (!fitAddon || !term || !hostEl) return;
+  if (!fitAddon || !term || !hostEl || !viewportHasSize) return;
   fitAddon.fit();
   const cols = term.cols;
   const rows = term.rows;
@@ -278,6 +282,16 @@ function handleHistoryKeys(data: string): boolean {
   return true;
 }
 
+function writePtyOutput(data: string): void {
+  if (!term) return;
+  ptyInputGate.beginOutputParse();
+  try {
+    term.write(data, () => ptyInputGate.endOutputParse());
+  } catch {
+    ptyInputGate.endOutputParse();
+  }
+}
+
 function connectWs(sessionId: string, tabId: string): void {
   disconnectWs();
   const url = buildTerminalWsUrl(sessionId);
@@ -285,26 +299,20 @@ function connectWs(sessionId: string, tabId: string): void {
   activeWs = ws;
 
   ws.onmessage = (ev) => {
+    if (activeWs !== ws) return;
     const text = typeof ev.data === 'string' ? ev.data : '';
     const msg = parsePtyServerMessage(text);
     if (!msg || !term) return;
     if (msg.type === 'output') {
-      ptyInputGate.beginOutputParse();
-      try {
-        term.write(msg.data, () => {
-          ptyInputGate.endOutputParse();
-        });
-      } catch {
-        ptyInputGate.endOutputParse();
-      }
+      ptyOutput.append(msg.data);
     } else if (msg.type === 'exit') {
-      term.writeln(`\r\n[Session ended — exit ${msg.code}]`);
+      ptyOutput.append(`\r\n[Session ended — exit ${msg.code}]\r\n`);
       onSessionEnded?.(tabId);
     }
   };
 
   ws.onopen = () => {
-    fitAndResize(sessionId);
+    if (activeWs === ws) fitAndResize(sessionId);
   };
 
   ws.onclose = () => {
@@ -367,7 +375,14 @@ function ensureTerminal(): Terminal | null {
   });
 
   const resizeTarget = hostEl;
-  resizeObserver = new ResizeObserver(() => {
+  resizeObserver = new ResizeObserver(([entry]) => {
+    if (!entry) return;
+    const { width, height } = entry.contentRect;
+    viewportHasSize = width > 0 && height > 0;
+    // xterm's selection redraw bypasses its own render pause, and a hidden
+    // viewport returns zero for every glyph measurement. Defer writes at the source.
+    ptyOutput.setVisible(viewportHasSize);
+    if (!viewportHasSize) return;
     const sid = activeWs ? new URL(activeWs.url).searchParams.get('sessionId') : null;
     scheduleFitAndResize(sid);
   });
@@ -558,6 +573,8 @@ export function disposeTerminalXterm(): void {
   }
   resizeObserver?.disconnect();
   resizeObserver = null;
+  viewportHasSize = false;
+  ptyOutput.setVisible(false);
   themeObserver?.disconnect();
   themeObserver = null;
   term?.dispose();

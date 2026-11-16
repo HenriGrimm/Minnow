@@ -11,6 +11,7 @@ import { getCliCapability, cliSessionIsIdle } from '../generations/agent-cli/lif
 import { agentCliNativeCodingCapability } from './agent-cli-native.js';
 import { createAgentCliUpdates } from './agent-cli-updates.js';
 import { getRequestIngress } from '../network/ingress.js';
+import { allowanceContext, getAllowanceTracker } from '../generations/allowance.js';
 import {
   AGENT_CLI_DEFINITIONS,
   getAgentCliDefinition,
@@ -120,6 +121,26 @@ export async function listAgentCliStatuses() {
   );
 }
 
+async function usageWithCliFallback(kind, refresh) {
+  const usage = await getAgentCliAccountUsage(kind, { refresh });
+  if (!['error', 'unavailable', 'stale'].includes(usage.status)) return usage;
+  const runtime = await getAgentCliProviderConfig(kind);
+  if (!runtime.profile) return usage;
+  const context = await allowanceContext(runtime.profile.id, '', runtime);
+  const { measurements, quotaLimits } = (await getAllowanceTracker()).cliUsageFallback(context);
+  const known = new Map(usage.windows.map(window => [window.id, window]));
+  const fetchedAt = usage.fetchedAt ? Date.parse(usage.fetchedAt) : 0;
+  let latest = fetchedAt;
+  for (const { window, at } of measurements) {
+    const prior = known.get(window.id);
+    if (prior && at <= fetchedAt) continue;
+    known.set(window.id, { ...window, resetsAt: window.resetsAt ?? prior?.resetsAt ?? null });
+    latest = Math.max(latest, at);
+  }
+  return { ...usage, ...(quotaLimits.length ? { quotaLimits } : {}),
+    ...(known.size ? { status: 'stale', windows: [...known.values()], fetchedAt: new Date(latest).toISOString() } : {}) };
+}
+
 /**
  * @param {import('http').IncomingMessage} req
  * @param {import('http').ServerResponse} res
@@ -193,7 +214,7 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     if (action === 'usage' && req.method === 'GET') {
       const query = new URL(req.url ?? pathname, 'http://localhost').searchParams;
       res.setHeader('Cache-Control', 'no-store');
-      sendJson(res, 200, { usage: await getAgentCliAccountUsage(kind, { refresh: query.get('refresh') === '1' }) });
+      sendJson(res, 200, { usage: await usageWithCliFallback(kind, query.get('refresh') === '1') });
       return true;
     }
     if (action === 'verify' && req.method === 'POST') {

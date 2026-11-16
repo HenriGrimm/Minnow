@@ -229,6 +229,8 @@ const PR_LIST_FIELDS = [
   'isDraft',
   'author',
   'headRefName',
+  'headRefOid',
+  'isCrossRepository',
   'baseRefName',
   'createdAt',
   'updatedAt',
@@ -278,6 +280,8 @@ function normalizePr(pr) {
     draft: Boolean(pr?.isDraft),
     author: String(pr?.author?.login ?? ''),
     headRef: String(pr?.headRefName ?? ''),
+    ...(pr?.headRefOid ? { headRefOid: String(pr.headRefOid) } : {}),
+    crossRepository: Boolean(pr?.isCrossRepository),
     baseRef: String(pr?.baseRefName ?? ''),
     createdAt: String(pr?.createdAt ?? ''),
     updatedAt: String(pr?.updatedAt ?? ''),
@@ -319,9 +323,7 @@ const PR_VIEW_FIELDS = [
   'commits',
   'files',
   'reviews',
-  'headRefOid',
   'headRepositoryOwner',
-  'isCrossRepository',
   'mergeStateStatus',
 ].join(',');
 

@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events';
 import { runRequestWork } from '../../server/runtime/request-work.js';
 import {
   detectAgentCli,
+  verifyAgentCliAuth,
   parseAgentCliAccountEmail,
   parseAgentCliAuthStatus,
   resetAgentCliDetectionCacheForTests,
@@ -25,6 +26,12 @@ async function versionFixture() {
   const script = path.join(homeDir, 'fixture.mjs');
   const trace = path.join(homeDir, 'versions.log');
   await fs.writeFile(script, `import fs from 'node:fs';
+if (process.argv[2] === 'auth') {
+  if (process.argv.slice(3).join(' ') !== 'status') process.exit(2);
+  if (process.env.MINNOW_PROBE_AUTH_STATE === 'unavailable') process.exit(2);
+  process.stdout.write(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', email: 'builder@example.com' }));
+  process.exit(0);
+}
 fs.appendFileSync(${JSON.stringify(trace)}, 'version\\n');
 await new Promise(resolve => setTimeout(resolve, Number(process.env.MINNOW_PROBE_DELAY_MS ?? 200)));
 process.stdout.write((process.env.MINNOW_PROBE_VERSION ?? 'fixture 1.0') + '\\n');
@@ -99,8 +106,29 @@ describe('agent CLI passive detection', () => {
     );
     assert.equal(parseAgentCliAuthStatus('\u001B[32m{"loggedIn":true}\u001B[0m'), 'signed-in');
     assert.equal(parseAgentCliAuthStatus('{"authenticated":false}'), 'signed-out');
+    assert.equal(parseAgentCliAuthStatus('{"loggedIn":true,"authMethod":"api_key_helper"}'), 'token');
+    assert.equal(parseAgentCliAuthStatus('Warning: could not check whether you are logged in'), 'unknown');
     assert.equal(parseAgentCliAuthStatus('{"is_error":false,"result":"ok"}'), 'unknown');
     assert.equal(parseAgentCliAuthStatus('command failed for an unrelated reason'), 'unknown');
+  });
+
+  test('Claude uses the native JSON status command and a version refresh keeps verified sign-in', async () => {
+    const { options } = await versionFixture();
+    const root = path.join(options.homeDir, '.claude');
+    await fs.mkdir(root);
+    const file = path.join(root, '.credentials.json');
+    await fs.writeFile(file, '{}');
+    const verified = await verifyAgentCliAuth('claude', options);
+    assert.equal(verified.authStatus, 'signed-in');
+    assert.equal(verified.accountEmail, 'builder@example.com');
+    const updated = await detectAgentCli('claude', { ...options, fresh: true, env: { MINNOW_PROBE_VERSION: 'fixture 2.0' } });
+    assert.equal(updated.authStatus, 'signed-in');
+    assert.equal(updated.version, 'fixture 2.0');
+    const unavailable = await verifyAgentCliAuth('claude', { ...options, env: { MINNOW_PROBE_AUTH_STATE: 'unavailable' } });
+    assert.equal(unavailable.authStatus, 'signed-in');
+    assert.equal(unavailable.verifiedAt, verified.verifiedAt);
+    await fs.rm(file);
+    assert.equal((await detectAgentCli('claude', { ...options, fresh: true })).authStatus, 'unknown');
   });
 
   test('reports configured executable and token without exposing token contents', async () => {

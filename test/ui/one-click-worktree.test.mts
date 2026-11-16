@@ -10,20 +10,26 @@ import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { initComposerRunTarget } from '../../src/ui/composer-run-target.ts';
 import { issueUsesWorktree, toggleIssueWorktree, promptIssueChatRunTarget } from '../../src/ui/issues-chat-run-target.ts';
 
-test('composer enables without setup and lets the user return to Local before sending', async () => {
+test('managed composer enables without setup and lets the user return to Local before sending', async () => {
   const dom = new Window();
   const requests: any[] = [];
-  installHappyDomGlobals(dom, { fetch: (async (_url, init) => {
+  const chat = createEmptyChatObject('model', '/repo');
+  chat.chatCommandVersion = 1;
+  chat.gitBranch = 'main';
+  chat.composerDraft = 'Keep this draft';
+  const endpoint = `/api/chats/${chat.id}`;
+  installHappyDomGlobals(dom, { fetch: (async (url, init) => {
     const body = JSON.parse(String(init?.body || '{}'));
-    requests.push(body);
+    requests.push({ url: String(url), ...body });
+    if (url === endpoint || url === `${endpoint}/workspace`) {
+      return Response.json({ chat: { id: chat.id, gitBranch: 'main', worktreeRoot: '' } });
+    }
     return Response.json({ ok: true, current: 'main' });
   }) as typeof fetch });
   setStorageModeForTests('localStorage');
   globalThis.CustomEvent = dom.CustomEvent as typeof CustomEvent;
   setLocalServerAvailableForTests(true);
   setWorkspaceFromServer({ path: '/repo', label: 'repo', isDefault: false });
-  const chat = createEmptyChatObject('model', '/repo');
-  chat.gitBranch = 'main';
   setSessionStateForTests({ chats: [chat], activeId: chat.id });
   document.body.innerHTML = '<div id="composerControls"></div>';
   try {
@@ -33,6 +39,7 @@ test('composer enables without setup and lets the user return to Local before se
     assert.equal(enable.getAttribute('aria-label'), 'Enable worktree');
     enable.click();
     assert.equal(requests.filter(r => r.op === 'enable_chat').length, 0);
+    assert.equal(requests.some(r => r.url === `${endpoint}/workspace`), false);
     assert.equal(chat.worktreeEnabled, true);
     assert.equal(chat.worktreeRoot, undefined);
     assert.equal(enable.disabled, false);
@@ -49,6 +56,11 @@ test('composer enables without setup and lets the user return to Local before se
     for (let i = 0; i < 40 && enable.disabled; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.equal(chat.worktreeEnabled, undefined);
     assert.equal(enable.getAttribute('aria-label'), 'Enable worktree');
+    assert.equal(chat.composerDraft, 'Keep this draft');
+    const choices = requests.filter(r => r.url === `${endpoint}/workspace`);
+    assert.equal(choices.length, 1);
+    assert.equal(choices[0].action, 'local');
+    assert.equal(choices[0].expectedIntentId, null);
     assert.equal(requests.some(r => r.op === 'enable_chat'), false);
   } finally {
     setLocalServerAvailableForTests(false);
@@ -128,11 +140,15 @@ test('one worktree control switches branches in its checkout and returns to Loca
     assert.equal(chat.worktreeRoot, '/repo/login-fix', 'clicking the active worktree opens options');
     item('Switch branch')!.click();
     await settle(() => Boolean(item('feature/search')));
-    assert.equal(item('main'), undefined, 'workspace branch is locked in another checkout');
-    assert.equal(item('other'), undefined, 'other worktree branch is excluded');
+    const switchable = [...document.querySelectorAll('#composerRunTargetMenu .composer-run-target-menu__section')]
+      .find(section => section.textContent?.startsWith('Switch branch'))!;
+    const names = [...switchable.querySelectorAll('button')].map(b => b.textContent);
+    assert.equal(names.includes('main'), false, 'workspace branch is locked in another checkout');
+    assert.equal(names.includes('other'), false, 'other worktree branch is not a switch target');
+    assert.ok(item('other · other'), 'a branch held elsewhere routes to its checkout instead');
     item('feature/search')!.click();
     await settle(() => chat.gitBranch === 'feature/search' && !button.disabled);
-    assert.ok(requests.some(body => body.op === 'checkout' && body.branch === 'feature/search' && body.cwd === '/repo/login-fix'));
+    assert.ok(requests.some(body => body.op === 'checkoutSwitch' && body.branch === 'feature/search' && body.cwd === '/repo/login-fix'));
     button.click();
     await settle(() => Boolean(item('Back to Local')));
     item('Back to Local')!.click();

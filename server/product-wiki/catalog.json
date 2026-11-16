@@ -53,7 +53,7 @@
         "Measure one real task"
       ],
       "section": "Get started",
-      "hash": "3938dae5373c8eccaafbed182cca233a0a008f9000ef27aae99815e85b807b25"
+      "hash": "f01abf352b5bf6a601e84cad349d774061ce0d1a07baf076163d371c7988e768"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -139,15 +139,17 @@
       "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Workspace navigation for the launcher and thread card. Find and edit a file 1. Open Side panel → Files . Expand a ",
       "headings": [
         "Find and edit a file",
+        "Local environments in worktrees",
         "Terminal",
         "Dev servers",
         "Browser preview",
         "Review the thread's work",
         "Source Control Center",
+        "Switch branches and pull requests",
         "Code map"
       ],
       "section": "Apps",
-      "hash": "e6407e04e8b44a9044f8c66518547d37ba80bee74488de93b33786f5a485b556"
+      "hash": "765e1a314414ab7499590b6152d68ca271245b8a2dd136406d23195a9be079fd"
     },
     {
       "path": "documentation/manual/apps/models.md",

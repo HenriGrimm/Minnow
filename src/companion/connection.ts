@@ -23,6 +23,11 @@ export function startCompanionConnectionMonitor(callbacks: {
   const onVisible = () => {
     if (document.visibilityState === 'visible') resume();
   };
+  const onPageShow = (event: PageTransitionEvent) => {
+    // Initial navigation already started a probe. Only a bfcache restore can
+    // resume a stale request here.
+    if (event.persisted) resume();
+  };
   // Mobile browsers can suspend a fetch and its timeout together. Discard it on
   // wake rather than waiting for a stale check before trying the restored Wi-Fi.
   const resume = () => {
@@ -39,7 +44,7 @@ export function startCompanionConnectionMonitor(callbacks: {
     controller?.abort();
     window.clearInterval(timer);
     window.removeEventListener('online', resume);
-    window.removeEventListener('pageshow', resume);
+    window.removeEventListener('pageshow', onPageShow);
     window.removeEventListener('offline', probe);
     window.removeEventListener('minnow-auth-check', probe);
     document.removeEventListener('visibilitychange', onVisible);
@@ -87,7 +92,7 @@ export function startCompanionConnectionMonitor(callbacks: {
 
   const timer = window.setInterval(probe, RECONNECT_INTERVAL_MS);
   window.addEventListener('online', resume);
-  window.addEventListener('pageshow', resume);
+  window.addEventListener('pageshow', onPageShow);
   window.addEventListener('offline', probe);
   window.addEventListener('minnow-auth-check', probe);
   document.addEventListener('visibilitychange', onVisible);

@@ -430,6 +430,11 @@ async function stopActionWorker(entry) {
   return entry.stopPromise;
 }
 
+/** Label of a running local action, for "Waiting for …" checkout notices. */
+export function activeLocalRunLabel(id) {
+  return active.get(id)?.record?.label;
+}
+
 export async function localRunCancel(args) {
   const { run } = await localRunView(args);
   const entry = active.get(run.id);

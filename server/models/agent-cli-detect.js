@@ -10,6 +10,7 @@ import {
 } from '../generations/agent-cli/resolve-bin.js';
 import { getAgentCliDefinition, getAgentCliInstallCommand } from './agent-cli-catalog.js';
 import { codexSourceHome } from '../generations/agent-cli/codex-auth.js';
+import { cursorAuthPath } from './cursor-cli-usage.js';
 
 export const AGENT_CLI_DETECTION_TTL_MS = 60_000;
 const DETECTION_TIMEOUT_MS = 5_000;
@@ -52,8 +53,7 @@ function credentialFiles(kind, homeDir, env) {
     const root = env.CODEX_HOME?.trim() || path.join(homeDir, '.codex');
     return [path.join(root, 'auth.json')];
   }
-  const root = env.CURSOR_CONFIG_DIR?.trim() || path.join(homeDir, '.cursor');
-  return [path.join(root, 'auth.json')];
+  return [cursorAuthPath({ env, homeDir })];
 }
 
 /** @param {string} text */
@@ -82,7 +82,7 @@ export function parseAgentCliAuthStatus(text) {
       return 'signed-out';
     }
     if (parsed.loggedIn === true || parsed.authenticated === true) {
-      if (/^(?:api[_ -]?key|token)$/i.test(parsed.authMethod ?? '')) return 'token';
+      if (/^(?:api[_ -]?key(?:_helper)?|token|oauth_token|third_party)$/i.test(parsed.authMethod ?? '')) return 'token';
       return 'signed-in';
     }
     if (typeof parsed.status === 'string') {
@@ -90,11 +90,11 @@ export function parseAgentCliAuthStatus(text) {
       if (/^(logged[_ -]?out|signed[_ -]?out|unauthenticated)$/i.test(parsed.status.trim())) return 'signed-out';
     }
   }
-  if (/not logged in|not authenticated|signed out|login required|unauthenticated/i.test(normalized)) {
+  if (/^[ \t✗✘×]*(?:not (?:logged|signed) in|not authenticated|signed out|login required|unauthenticated)(?:\b|$)/im.test(normalized)) {
     return 'signed-out';
   }
   if (/(?:logged|signed) in (?:using|with) (?:an? )?(?:api key|token)/i.test(normalized)) return 'token';
-  if (/logged in|authenticated|signed in/i.test(normalized)) return 'signed-in';
+  if (/^[ \t✓✔]*(?:logged in|authenticated|signed in)\b/im.test(normalized)) return 'signed-in';
   return 'unknown';
 }
 
@@ -146,7 +146,7 @@ export async function detectAgentCli(kind, options = {}) {
   if (!options.fresh && cached && now - cached.at < AGENT_CLI_DETECTION_TTL_MS) return cached.value;
   if (!options.fresh && STATUS_INFLIGHT.has(cacheKey)) return STATUS_INFLIGHT.get(cacheKey);
 
-  const work = readAgentCliStatus(kind, options, { definition, env, homeDir, hasToken, files, now }).then(value => {
+  const work = readAgentCliStatus(kind, options, { definition, env, homeDir, hasToken, files, now, previous: cached?.value }).then(value => {
     // A forced refresh or cache reset supersedes older in-flight observations.
     if (STATUS_INFLIGHT.get(cacheKey) === work) STATUS_CACHE.set(cacheKey, { at: Date.now(), value });
     return value;
@@ -156,7 +156,7 @@ export async function detectAgentCli(kind, options = {}) {
   finally { if (STATUS_INFLIGHT.get(cacheKey) === work) STATUS_INFLIGHT.delete(cacheKey); }
 }
 
-async function readAgentCliStatus(kind, options, { definition, env, homeDir, hasToken, files, now }) {
+async function readAgentCliStatus(kind, options, { definition, env, homeDir, hasToken, files, now, previous }) {
   const configuredPath = typeof options.binPath === 'string' && options.binPath.trim()
     ? options.binPath.trim()
     : '';
@@ -175,9 +175,9 @@ async function readAgentCliStatus(kind, options, { definition, env, homeDir, has
     }
   }
   const installed = Boolean(resolved);
-  const hasCredentialFile = (
-    await Promise.all(files.map(fileExists))
-  ).some(Boolean);
+  const fileStamps = await Promise.all(files.map(file => fs.stat(file).then(stat => [stat.ino, stat.mtimeMs, stat.size]).catch(() => null)));
+  const hasCredentialFile = fileStamps.some(Boolean);
+  const credentialStamp = JSON.stringify(fileStamps);
 
   let version;
   if (installed) {
@@ -194,14 +194,18 @@ async function readAgentCliStatus(kind, options, { definition, env, homeDir, has
     }
   }
 
+  const verified = installed && previous?.authStatus === 'signed-in' && previous.credentialStamp === credentialStamp
+    && now - Date.parse(previous.verifiedAt) < AGENT_CLI_DETECTION_TTL_MS;
   const value = {
     kind,
     providerId: definition.providerId,
     label: definition.label,
     installed,
-    authStatus: hasToken ? 'token' : hasCredentialFile || installed ? 'unknown' : 'signed-out',
+    authStatus: hasToken ? 'token' : verified ? 'signed-in' : hasCredentialFile || installed ? 'unknown' : 'signed-out',
+    credentialStamp,
     ...(hasCredentialFile ? { hasCredentialFile: true } : {}),
     ...(version ? { version } : {}),
+    ...(verified ? { verifiedAt: previous.verifiedAt, accountEmail: previous.accountEmail } : {}),
     ...(resolved ? {
       resolvedBinPath: resolved.display,
       resolvedCommand: resolved.command,
@@ -233,13 +237,17 @@ export async function verifyAgentCliAuth(kind, options = {}) {
   const definition = getAgentCliDefinition(kind);
   let authStatus = 'unknown';
   let accountEmail;
+  const env = applyAgentCliCaptureEnv(options.env ?? process.env, passive.resolvedCommand);
+  if (kind === 'claude') env.DISABLE_AUTOUPDATER = '1';
   try {
     const result = await runProcess(
       passive.resolvedCommand,
       [...passive.resolvedArgsPrefix, ...definition.authArgs],
       {
-      timeout: DETECTION_TIMEOUT_MS,
-        env: applyAgentCliCaptureEnv(options.env ?? process.env, passive.resolvedCommand),
+        timeout: DETECTION_TIMEOUT_MS,
+        env,
+        // Verification belongs to the installed CLI, including after an update.
+        signal: null,
       },
     );
     authStatus = parseAgentCliAuthStatus(`${result.stdout}\n${result.stderr}`);
@@ -248,9 +256,10 @@ export async function verifyAgentCliAuth(kind, options = {}) {
         ? await codexAccountEmail(options)
         : parseAgentCliAccountEmail(`${result.stdout}\n${result.stderr}`);
     }
-  } catch (err) {
-    if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') authStatus = 'signed-out';
-  }
+  } catch { /* A probe failure leaves authentication unverified. */ }
+  // A launcher can fail during replacement. Keep a recent verification when
+  // the status command returns no answer and the credential metadata matches.
+  if (authStatus === 'unknown' && passive.authStatus === 'signed-in') return passive;
   const value = { ...passive, authStatus, verifiedAt, accountEmail };
   for (const [cacheKey, cached] of STATUS_CACHE) {
     if (cached.value === passive) STATUS_CACHE.set(cacheKey, { at: Date.now(), value });

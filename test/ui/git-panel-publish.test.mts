@@ -6,7 +6,7 @@ const unused = async () => ({ ok: true });
 let confirmed = true;
 const calls: unknown[] = [];
 mock.module('../../src/state/git-api.ts', { namedExports: {
-  gitCheckoutSwitch: unused, gitCheckoutSavedChanges: unused, gitCheckoutRestoreChanges: unused,
+  gitCheckoutSwitch: unused, gitCheckoutSavedChanges: unused, gitCheckoutRestoreChanges: unused, gitCheckoutPlan: unused,
   issueWorkOperation: unused, gitWorktreeStatus: unused,
   gitBranches: unused, gitCheckout: unused, gitDiff: unused, gitDiscard: unused, gitIgnore: unused,
   gitPull: unused, gitStage: unused, gitStatus: unused, gitUnstage: unused,

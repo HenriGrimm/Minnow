@@ -154,15 +154,8 @@ func run(ctx context.Context, server *tsnet.Server, target *url.URL, secret stri
 	}
 	defer listener.Close()
 
-	whoIs := func(ctx context.Context, remoteAddr string) string {
-		who, err := lc.WhoIs(ctx, remoteAddr)
-		if err != nil || who == nil || who.UserProfile == nil {
-			return ""
-		}
-		return who.UserProfile.LoginName
-	}
 	httpServer := &http.Server{
-		Handler:           NewProxy(target, secret, whoIs),
+		Handler:           NewProxy(target, secret),
 		ReadHeaderTimeout: 30 * time.Second,
 		ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
 			return WithConnInfo(ctx, describeConn(conn))

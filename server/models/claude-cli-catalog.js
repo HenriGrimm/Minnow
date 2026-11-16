@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { createJsonlDecoder } from '../generations/agent-cli/jsonl.js';
 import { resolveAgentCliBin, applyAgentCliCaptureEnv } from '../generations/agent-cli/resolve-bin.js';
 import { killProcessTreeAndWait } from '../terminal-runner.js';
+import { tryAdmitAgentCliProbe } from '../generations/agent-cli/admission.js';
 
 const TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
@@ -81,8 +82,14 @@ export async function fetchClaudeModelCatalog(options = {}) {
   if (!options.refresh && cached && Date.now() - cached.at < TTL_MS) return cached.models;
   if (inflight.has(key)) return inflight.get(key);
   const work = (async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-claude-catalog-'));
+    const release = tryAdmitAgentCliProbe('claude-code-cli');
+    if (!release) {
+      if (cached) return cached.models;
+      throw new Error('The Claude model list can refresh when Claude Code is idle.');
+    }
+    let cwd;
     try {
+      cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-claude-catalog-'));
       const runEnv = applyAgentCliCaptureEnv(env, bin.command);
       runEnv.DISABLE_AUTOUPDATER = '1';
       if (options.cliToken?.trim()) runEnv.CLAUDE_CODE_OAUTH_TOKEN = options.cliToken.trim();
@@ -90,7 +97,10 @@ export async function fetchClaudeModelCatalog(options = {}) {
       if (cache.size >= 16) cache.delete(cache.keys().next().value);
       cache.set(key, { at: Date.now(), models });
       return models;
-    } finally { await fs.rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+    } finally {
+      release();
+      if (cwd) await fs.rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   })();
   inflight.set(key, work);
   try { return await work; }

@@ -143,7 +143,9 @@ test('Claude credentials follow inference auth configuration and expired logins 
     await fs.writeFile(file, JSON.stringify({ claudeAiOauth: { accessToken: 'expired-token', expiresAt: 1 } }));
     await assert.rejects(readClaudeUsageCredentials(options), error => error.status === 'signed-out' && !error.message.includes('expired-token'));
     await fs.writeFile(file, JSON.stringify({ claudeAiOauth: { accessToken: 'expired-token', refreshToken: 'native-refresh-token', expiresAt: 1 } }));
-    await assert.rejects(readClaudeUsageCredentials(options), error => error.status === 'unavailable'
+    const renewable = await readClaudeUsageCredentials(options);
+    assert.equal(renewable.needsRenewal, true);
+    await assert.rejects(readClaudeAccountUsage(renewable, { fetch: () => assert.fail('renewable login must not call usage') }), error => error.status === 'unavailable'
       && !/sign in|expired-token|native-refresh-token/i.test(error.message));
     const keychain = await readClaudeUsageCredentials({ env: {}, homeDir: path.join(root, 'missing'), platform: 'darwin', runProcess: async (command, args) => {
       assert.equal(command, '/usr/bin/security');
@@ -242,9 +244,12 @@ test('Cursor credentials mirror the CLI store per platform and never refresh an 
     }
     const expired = jwt({ sub: 'auth0|user_1', exp: 1 });
     await fs.writeFile(file, JSON.stringify({ accessToken: expired, refreshToken: 'refresh-secret' }));
-    await assert.rejects(readCursorUsageCredentials(options), error => error.status === 'signed-out' && !error.message.includes(expired));
+    const renewable = await readCursorUsageCredentials(options);
+    assert.equal(renewable.needsRenewal, true);
+    await assert.rejects(readCursorAccountUsage(renewable, { fetch: () => assert.fail('renewable login must not call usage') }),
+      error => error.status === 'unavailable' && !error.message.includes(expired));
     await fs.writeFile(file, 'not json');
-    await assert.rejects(readCursorUsageCredentials(options), error => error.status === 'signed-out');
+    await assert.rejects(readCursorUsageCredentials(options), error => error.status === 'error');
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
@@ -268,7 +273,7 @@ test('Cursor endpoint posts the dashboard RPCs, tolerates a missing plan and red
   const noPlan = await readCursorAccountUsage(login, { fetch: async url => url.endsWith('/GetPlanInfo') ? new Response('', { status: 500 }) : new Response(usage) });
   assert.equal(noPlan.plan, null);
   assert.equal(noPlan.windows.length, 1);
-  for (const [status, expected] of [[401, 'signed-out'], [403, 'signed-out'], [429, 'error'], [500, 'error']]) {
+  for (const [status, expected] of [[401, 'unavailable'], [403, 'unavailable'], [429, 'error'], [500, 'error']]) {
     await assert.rejects(readCursorAccountUsage(login, { fetch: async () => new Response('secret-token', { status, headers: { 'Retry-After': '120' } }) }),
       error => error.status === expected && !error.message.includes('secret-token'));
   }
@@ -283,14 +288,16 @@ test('Cursor token refresh by the CLI keeps the same-subject snapshot while anot
     const write = (sub, n) => fs.writeFile(file, JSON.stringify({ accessToken: jwt({ sub, n, exp: 4102444800 }) }));
     await write('user-a', 1);
     let calls = 0;
+    let time = Date.now();
     let next = () => write('user-a', 2);
-    const service = createAgentCliUsageService({ readUsage: async () => { calls++; await next(); return data; } });
+    const service = createAgentCliUsageService({ now: () => time, readUsage: async () => { calls++; await next(); return data; } });
     const options = { platform: 'win32', env: { APPDATA: root }, homeDir: root };
     assert.equal((await service.get('cursor', options)).status, 'ready');
     await service.get('cursor', options);
     assert.equal(calls, 1, 'same subject token refresh is cached under the refreshed credentials');
     next = () => write('user-b', 3);
     await write('user-a', 4);
+    time += 61_000;
     assert.equal((await service.get('cursor', options)).status, 'unavailable');
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });

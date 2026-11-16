@@ -21,7 +21,7 @@ mock.module('../../server/git/gh-cli.js', {
     },
   },
 });
-const { checkoutSwitch, checkoutSavedChanges, checkoutRestoreChanges } = await import('../../server/git/checkout-switch.js');
+const { checkoutPlan, checkoutSwitch, checkoutSavedChanges, checkoutRestoreChanges, classifyCheckoutFailure } = await import('../../server/git/checkout-switch.js');
 
 async function fixture(t) {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-checkout-'));
@@ -123,8 +123,15 @@ test('clean creation works; stale requests and running actions prevent mutation'
   assert.equal((await checkoutSwitch({ cwd, branch: 'feature', expectedBranch: 'other' })).ok, false);
   assert.equal((await checkoutSwitch({ cwd, branch: ' -B' })).ok, false);
   acquireActionWorktree(cwd, 'test-action');
-  await assert.rejects(checkoutSwitch({ cwd, branch: 'feature' }), /local action/);
+  const busy = await checkoutSwitch({ cwd, branch: 'feature' });
+  assert.equal(busy.code, 'busy');
+  assert.match(busy.error, /local action/);
+  assert.equal((await checkoutPlan({ cwd, branch: 'feature' })).busy, true);
+  assert.equal(busy.busyRunId, undefined, 'only local actions are stoppable from a checkout notice');
   releaseActionWorktree(cwd, 'test-action');
+  acquireActionWorktree(cwd, 'local-run-1');
+  assert.equal((await checkoutSwitch({ cwd, branch: 'feature' })).busyRunId, 'local-run-1');
+  releaseActionWorktree(cwd, 'local-run-1');
   assert.equal((await checkoutSwitch({ cwd, branch: 'new-feature', create: true, startPoint: 'main' })).ok, true);
   assert.equal(await git('branch', '--show-current'), 'new-feature');
 });
@@ -183,4 +190,60 @@ test('failed PR checkout restores saved changes only if still on the original br
   assert.match(partial.error, /changes remain saved on main/);
   assert.equal(await git('status', '--porcelain'), '');
   assert.equal((await checkoutSavedChanges({ cwd })).savedChanges[0].branch, 'main');
+});
+
+test('a branch checked out in another worktree is reported before stashing', async (t) => {
+  const { cwd, git, dirty } = await fixture(t);
+  const linked = path.join(cwd, '.worktrees', 'feature');
+  await git('worktree', 'add', linked, 'feature');
+  t.after(() => git('worktree', 'remove', '--force', linked).catch(() => {}));
+  await dirty();
+  const before = await git('status', '--porcelain');
+  const plan = await checkoutPlan({ cwd, branch: 'feature' });
+  assert.equal(plan.location, 'worktree');
+  assert.equal(path.resolve(plan.worktreePath).toLowerCase(), path.resolve(linked).toLowerCase());
+  const result = await checkoutSwitch({ cwd, branch: 'feature', dirtyHandling: 'leave' });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'in_worktree');
+  assert.equal(result.worktreeBranch, 'feature');
+  assert.equal(await git('branch', '--show-current'), 'main');
+  assert.equal(await git('status', '--porcelain'), before);
+  assert.deepEqual((await checkoutSavedChanges({ cwd })).savedChanges, []);
+  assert.equal((await checkoutPlan({ cwd, branch: 'main' })).location, 'current');
+});
+
+test('a pull request in another worktree is detected by name, tracking ref or head commit without calling gh', async (t) => {
+  const { cwd, git } = await fixture(t);
+  await git('remote', 'add', 'origin', 'https://github.com/owner/repo.git');
+  const linked = path.join(cwd, '.worktrees', 'feature');
+  await git('worktree', 'add', linked, 'feature');
+  t.after(() => git('worktree', 'remove', '--force', linked).catch(() => {}));
+  const calls = pullCheckouts.length;
+  const pull = (extra) => ({ number: 42, url: 'https://github.com/owner/repo/pull/42', ...extra });
+
+  const sameRepo = await checkoutSwitch({ cwd, branch: 'feature', pullRequest: pull() });
+  assert.equal(sameRepo.code, 'in_worktree');
+
+  // A fork whose head is named `main` must not match the main worktree by name.
+  const forkPlan = await checkoutPlan({ cwd, branch: 'main', pullRequest: pull({ crossRepository: true }) });
+  assert.equal(forkPlan.location, 'here');
+
+  await git('config', 'branch.feature.merge', 'refs/pull/42/head');
+  const tracked = await checkoutSwitch({ cwd, branch: 'main', pullRequest: pull({ crossRepository: true }) });
+  assert.equal(tracked.code, 'in_worktree');
+  await git('config', '--unset', 'branch.feature.merge');
+
+  const head = await git('rev-parse', 'feature');
+  const byOid = await checkoutPlan({ cwd, branch: 'other', pullRequest: pull({ crossRepository: true, headRefOid: head }) });
+  assert.equal(byOid.location, 'worktree');
+  assert.equal(pullCheckouts.length, calls);
+});
+
+test('checkout failures map to stable codes', () => {
+  assert.deepEqual(classifyCheckoutFailure("fatal: 'feature' is already used by worktree at 'C:/repo/.worktrees/feature'"),
+    { code: 'in_worktree', worktreePath: 'C:/repo/.worktrees/feature' });
+  assert.equal(classifyCheckoutFailure('error: Your local changes to the following files would be overwritten by checkout:').code, 'overwrite');
+  assert.equal(classifyCheckoutFailure("error: pathspec 'nope' did not match any file(s) known to git").code, 'missing_ref');
+  assert.equal(classifyCheckoutFailure("fatal: Unable to create 'C:/repo/.git/index.lock': File exists.").code, 'lock_file');
+  assert.deepEqual(classifyCheckoutFailure('something else'), {});
 });

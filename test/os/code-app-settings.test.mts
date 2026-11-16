@@ -11,7 +11,7 @@ function setupCodeSettingsDom(doc: Document): void {
     </div>
     <div id="appBody"></div>
     <main id="settingsView" class="settings-page mn-os-app-layer" data-os-app="settings">
-      <button type="button" id="btnSettingsPageBack" aria-label="Back to Code">Back</button>
+      <header class="settings-page-header" data-app-titlebar></header>
     </main>
   `;
 }
@@ -220,7 +220,9 @@ describe('code app settings (MIN-417)', () => {
     syncAppHostForTests();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const back = document.getElementById('btnSettingsPageBack');
+    const back = document.querySelector<HTMLButtonElement>(
+      '.settings-page-header > #btnSettingsPageBack.back-to-chat.mn-btn--ghost',
+    );
     assert.ok(back);
     back.click();
     syncOsRouteFromHashForTests();

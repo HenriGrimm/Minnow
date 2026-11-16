@@ -273,6 +273,46 @@
   gap: 6px;
 }
 
+/* Panel shows a checkout other than the active chat's (manual worktree pick). */
+.git-panel-follow-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--mn-warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-warning-soft);
+  color: var(--mn-fg);
+  font-size: 12px;
+}
+
+.git-panel-follow-bar[hidden] {
+  display: none;
+}
+
+.git-panel-follow-bar__text {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.git-panel-follow-bar__action {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.git-panel-follow-bar__action:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
 .git-panel-sync-row {
   display: flex;
   flex-wrap: wrap;
@@ -959,20 +999,25 @@
 
 .git-panel-root__inner--graphite .git-panel-toolbar {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--mn-space-1);
   padding: var(--mn-space-2) var(--mn-diff-content-inset);
   border: 0;
 }
 
-.git-panel-root__inner--graphite :is(.git-panel-center-row, .git-panel-sync-row) {
+.git-panel-root__inner--graphite .git-panel-sync-row {
   display: none;
 }
 
 .git-panel-root__inner--graphite .git-checkout {
-  flex: 0 1 360px;
-  min-width: 0;
+  flex: 1 1 192px;
+  max-width: 360px;
   margin-inline-end: auto;
+}
+
+.git-panel-root__inner--graphite .git-panel-follow-bar {
+  flex-basis: 100%;
 }
 
 .git-panel-root__inner--graphite .git-checkout__trigger {
@@ -1021,13 +1066,27 @@
   font-size: 11px;
 }
 
-.git-panel-root__inner--graphite :is(.git-panel-help-btn, .graphite-git-more) {
+.git-panel-root__inner--graphite .git-panel-center-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--mn-space-1);
+  margin-inline-start: auto;
+}
+
+.git-panel-root__inner--graphite .git-panel-center-row .icon-btn {
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: var(--mn-control-h-sm);
+  height: var(--mn-control-h-sm);
   padding: 0;
   border: 0;
   border-radius: 7px;
+}
+
+.git-panel-root__inner--graphite .git-panel-center-row .icon-btn:disabled:not(.is-busy) {
+  background: transparent;
+  color: var(--mn-fg);
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .graphite-git-views {
@@ -1257,9 +1316,7 @@
 }
 
 .graphite-git-file-name,
-.graphite-git-file-directory,
-.graphite-git-history-subject,
-.graphite-git-history-metadata {
+.graphite-git-file-directory {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1345,57 +1402,91 @@
 .graphite-git-deletion { color: var(--mn-danger); }
 .graphite-git-patch__notice { margin: 0; padding: 4px 8px; color: var(--mn-fg-muted); }
 
-.graphite-git-history {
-  position: relative;
+.git-panel-root__inner--graphite[data-git-view="history"] .git-panel-scroll {
+  gap: 0;
+  padding-block: 0;
+  overflow: hidden;
+}
+
+.git-panel-root__inner--graphite[data-git-view="history"] :is(.git-panel-section--history, .git-panel-section__body--history, .git-panel-graph-mount),
+.git-history-browser {
   display: flex;
   flex-direction: column;
-}
-
-.graphite-git-history::before {
-  content: "";
-  position: absolute;
-  inset: 12px auto 12px 10px;
-  border-inline-start: 1px solid var(--mn-border-strong);
-  pointer-events: none;
-}
-
-.graphite-git-history-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  flex: 1;
+  min-height: 0;
   min-width: 0;
-  padding: 6px;
+  margin: 0;
+  padding: 0;
   border: 0;
-  border-radius: 7px;
-  background: transparent;
+}
+
+.git-history-browser [hidden] { display: none; }
+
+.git-history-browser__toolbar,
+.git-history-browser__footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mn-space-2);
+  min-width: 0;
+  padding: var(--mn-space-2) 0;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+}
+
+.git-history-browser__toolbar { border-block-end: 1px solid var(--mn-border); }
+.git-history-browser__footer { border-block-start: 1px solid var(--mn-border); }
+.git-history-browser__footer span { flex: 1; overflow-wrap: anywhere; }
+
+.git-history-browser__toolbar label {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mn-space-2);
+  max-width: 430px;
+  min-width: 0;
+}
+
+.git-history-browser__branch,
+.git-history-browser__footer button {
+  min-width: 0;
+  min-height: var(--mn-control-h-sm);
+  padding: 0 var(--mn-space-2);
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
-  text-align: start;
+  font: inherit;
   cursor: pointer;
 }
 
-.graphite-git-history-row:is(:hover, [aria-pressed="true"]) {
-  background: var(--mn-sel, var(--mn-surface-2));
+.git-history-browser__branch { flex: 1 1 140px; text-overflow: ellipsis; }
+.git-history-browser__footer button:hover { background: var(--mn-surface-2); }
+.git-history-browser__footer button[aria-disabled="true"] { color: var(--mn-fg-muted); cursor: default; }
+
+.git-history-browser__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
-.graphite-git-history-dot {
-  z-index: 1;
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 50%;
-  border: 1px solid var(--mn-fg-muted);
-  background: var(--mn-surface-1);
-}
+.git-history-browser .git-graph__list { position: relative; }
+.git-history-browser .git-graph__row:focus-visible { outline-offset: -2px; }
+.git-history-browser .git-graph__marker { width: var(--git-history-gutter, var(--git-marker-w)); }
+.git-history-browser .git-graph__subject { font-size: 12.5px; }
+.git-history-browser .git-graph__meta { flex-wrap: nowrap; font-size: 11px; }
+.git-history-browser .git-graph__sha { font-family: var(--font-mono); }
+.git-history-browser .git-graph__time { color: var(--mn-fg-muted); }
+.git-history-browser .git-graph__ref-chip[data-kind="head"] { border-color: var(--mn-accent); color: var(--mn-accent-ink); }
+.git-history-browser .git-graph__ref-chip[data-kind="remote"] { border-style: dashed; }
 
-.graphite-git-history-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+@media (pointer: coarse) {
+  .git-history-browser :is(.git-graph__row, select, button) { min-height: var(--touch-min); }
 }
-
-.graphite-git-history-subject { font-size: 12.5px; }
-.graphite-git-history-metadata { color: var(--mn-fg-muted); font: 11px var(--font-mono); }
 
 .graphite-git-review-label {
   display: none;
@@ -1406,8 +1497,15 @@
 }
 
 .graphite-surface-panel--changes-sheet .git-checkout__trigger,
-.graphite-surface-panel--changes-sheet .git-panel-toolbar :is(.git-panel-help-btn, .graphite-git-more) {
+.graphite-surface-panel--changes-sheet .git-panel-center-row .icon-btn {
   min-height: 36px;
+}
+
+@media (pointer: coarse) {
+  .git-panel-root__inner--graphite .git-panel-center-row .icon-btn {
+    width: var(--touch-min);
+    height: var(--touch-min);
+  }
 }
 
 .graphite-surface-panel--changes-sheet .graphite-git-views button,

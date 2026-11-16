@@ -1,5 +1,4 @@
 import type { Chat } from '../../types';
-import { ensureTokenLedger } from '../../usage/token-ledger';
 import {
   clearActiveGoal,
   getActiveGoal,
@@ -26,10 +25,9 @@ function formatGoalStatus(chat: Chat): string {
     return 'No active goal. Use /goal <condition> to set one.';
   }
 
-  ensureTokenLedger(chat);
   const tokensSince = Math.max(
     0,
-    (chat.tokenLedger?.totals.totalTokens ?? 0) - goal.tokenBaseline,
+    (chat.tokenLedger?.totals.totalTokens ?? chat.tokenLedgerTotals?.totalTokens ?? 0) - goal.tokenBaseline,
   );
   const elapsed = formatElapsed(Date.now() - goal.startedAt);
   const achievedLine = goal.achieved ? ' · achieved' : '';

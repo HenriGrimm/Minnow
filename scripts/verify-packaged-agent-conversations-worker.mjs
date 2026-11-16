@@ -14,7 +14,7 @@ globalThis.fetch = async () => { throw new Error('Packaged verification does not
 async function check(name, operation) { failedCheck = name; await operation(); checks.push(name); }
 
 try {
-  let createChatRepository, createProductionChatRuntime, loadChatPreparationComposer, captureChatProfile, exportChatArchive;
+  let createChatRepository, createProductionChatRuntime, loadChatPreparationComposer, captureChatProfile, exportChatArchive, initializeSessionsDb, checkMappedSessionsIntegrity;
   await check('asar-esm-runtime', async () => {
     assert.ok(process.versions.electron, 'Use the supplied packaged Electron executable');
     assert.equal(path.basename(app), 'app.asar');
@@ -26,12 +26,18 @@ try {
     ({ createProductionChatRuntime } = await packed('server/chats/runtime.js'));
     ({ loadChatPreparationComposer, captureChatProfile } = await packed('server/chats/preparation.js'));
     ({ exportChatArchive } = await packed('server/chats/archive.js'));
-    ({ closeSessionsDb } = await packed('server/config/sessions-db.js'));
+    ({ closeSessionsDb, initializeSessionsDb } = await packed('server/config/sessions-db.js'));
+    ({ checkMappedSessionsIntegrity } = await packed('server/config/sessions-integrity.js'));
   });
   let repository;
   await check('native-sqlite', async () => {
+    await initializeSessionsDb();
     repository = createChatRepository();
-    assert.equal(typeof repository.getDatabase().prepare('SELECT sqlite_version() AS version').get().version, 'string');
+    const db = repository.getDatabase();
+    assert.equal(typeof db.prepare('SELECT sqlite_version() AS version').get().version, 'string');
+    const mapped = db.pragma('mmap_size = 1048576', { simple: true });
+    db.pragma('mmap_size = 0');
+    if (mapped > 0) assert.equal(await checkMappedSessionsIntegrity(db.name), true);
   });
   await check('canonical-transcript', async () => {
     const workspace = path.join(home, 'workspace'); await fs.mkdir(workspace, { recursive: true });

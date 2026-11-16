@@ -20,6 +20,7 @@ export class AllowanceTracker {
     this.changed = changed;
     this.probes = new Map();
     this.listeners = new Set();
+    this.cliUsage = new Map();
   }
   key(context, scope = 'model') { return JSON.stringify([context.identity, scope === 'provider' ? '*' : scope === 'family' && context.family ? `family:${context.family}` : context.modelId]); }
   block(context) {
@@ -75,6 +76,35 @@ export class AllowanceTracker {
     if (block && !this.probes.has(block.key)) { block.row.retryAt = this.now(); this.changed(); }
   }
   snapshot() { return Object.fromEntries(this.rows); }
+
+  observeCliUsage(context, data) {
+    if (!data.windows.length) return;
+    const at = this.now();
+    const windows = new Map(this.cliUsage.get(context.identity));
+    for (const window of data.windows) windows.set(window.id, { window, at });
+    for (const [id, entry] of windows) if (at - entry.at > 60 * 60_000) windows.delete(id);
+    this.cliUsage.delete(context.identity);
+    if (this.cliUsage.size >= 32) this.cliUsage.delete(this.cliUsage.keys().next().value);
+    this.cliUsage.set(context.identity, new Map([...windows].slice(-64)));
+  }
+
+  cliUsageFallback(context) {
+    const now = this.now();
+    const observed = this.cliUsage.get(context.identity);
+    const measurements = [...(observed?.values() ?? [])].filter(entry => now - entry.at <= 60 * 60_000);
+    const prefix = `${JSON.stringify([context.identity]).slice(0, -1)},`;
+    const quotaLimits = [];
+    for (const [key, row] of this.rows) {
+      if (!key.startsWith(prefix) || row.kind !== 'quota' || row.retryAt <= now) continue;
+      let scope;
+      try { [, scope] = JSON.parse(key); } catch { continue; }
+      if (typeof scope !== 'string') continue;
+      const label = scope === '*' ? null : scope.replace(/^family:/, '').slice(0, 160);
+      const resetsAt = row.resetAt > now && row.resetAt <= 8.64e15 ? new Date(row.resetAt).toISOString() : null;
+      quotaLimits.push({ label, resetsAt });
+    }
+    return { measurements, quotaLimits: quotaLimits.slice(0, 32) };
+  }
 }
 
 async function openService(home) {
@@ -129,7 +159,7 @@ export async function withAllowance(context, attempt, cancelled = () => false) {
   }
   let result;
   try {
-    result = await attempt();
+    result = await attempt(data => tracker.observeCliUsage(context, data));
     const failure = ['quota', 'rate_limit', 'unavailable'].includes(result.failure?.kind)
       ? result.failure : allowanceFailure(result.message, result);
     if (failure?.kind === 'quota' && context.cli && !result.failure) failure.scope = 'provider';

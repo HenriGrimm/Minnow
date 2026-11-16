@@ -120,6 +120,9 @@ test('consecutive real Git windows have no overlap and include remote-only histo
     git('init', '-b', 'main');
     git('config', 'user.name', 'History Tester');
     git('config', 'user.email', 'test@example.com');
+    const unborn = await log({ cwd, ref: 'HEAD', fullRefs: true });
+    assert.equal(unborn.ok, true);
+    assert.deepEqual(unborn.commits, []);
     for (let i = 0; i < 5; i++) git('commit', '--allow-empty', '-m', `Commit ${i}`);
     git('tag', 'v1');
     git('checkout', '-b', 'remote-only');
@@ -127,6 +130,7 @@ test('consecutive real Git windows have no overlap and include remote-only histo
     git('update-ref', 'refs/remotes/upstream/remote-only', 'HEAD');
     git('checkout', 'main');
     git('branch', '-D', 'remote-only');
+    git('symbolic-ref', 'refs/remotes/upstream/HEAD', 'refs/remotes/upstream/remote-only');
     const first = await log({ cwd, count: 3, fullRefs: true });
     const second = await log({ cwd, count: 3, skip: first.nextSkip, fullRefs: true, historyKey: first.historyKey });
     assert.equal(first.ok, true);
@@ -136,8 +140,28 @@ test('consecutive real Git windows have no overlap and include remote-only histo
     const all = [...first.commits, ...second.commits];
     assert.equal(new Set(all.map((c) => c.hash)).size, 6);
     assert.ok(all.some((c) => c.refs.includes('refs/remotes/upstream/remote-only')));
+    assert.deepEqual(first.historyBranches, ['refs/heads/main', 'refs/remotes/upstream/remote-only']);
     const index = new Map(all.map((c, i) => [c.hash, i]));
     for (const c of all) for (const p of c.parents) assert.ok(index.get(p) > index.get(c.hash));
+    const remoteRef = 'refs/remotes/upstream/remote-only';
+    const remote = await log({ cwd, ref: remoteRef, count: 2, fullRefs: true });
+    assert.equal(remote.commits[0].subject, 'Remote tip');
+    assert.deepEqual(await log({ cwd, ref: remoteRef, ifHistoryKey: remote.historyKey }), {
+      ok: true, historyUnchanged: true, historyKey: remote.historyKey,
+    });
+    const wrongScope = await log({ cwd, ref: 'refs/heads/main', skip: remote.nextSkip, historyKey: remote.historyKey });
+    assert.equal(wrongScope.historyChanged, true);
+    const main = await log({ cwd, ref: 'refs/heads/main' });
+    assert.equal(main.commits[0].subject, 'Commit 4');
+    assert.ok(main.commits.every((commit) => commit.subject !== 'Remote tip'));
+    assert.equal(git('branch', '--show-current'), 'main');
+    assert.equal((await log({ cwd, ref: 'refs/heads/main~1' })).ok, false);
+    git('branch', 'same-tip');
+    const head = await log({ cwd, ref: 'HEAD', fullRefs: true });
+    git('checkout', 'same-tip');
+    const switched = await log({ cwd, ref: 'HEAD', fullRefs: true, ifHistoryKey: head.historyKey });
+    assert.equal(switched.commits[0].hash, head.commits[0].hash);
+    assert.ok(switched.commits[0].refs.includes('HEAD -> refs/heads/same-tip'));
     git('commit', '--allow-empty', '-m', 'New head');
     const changed = await log({ cwd, count: 3, skip: first.nextSkip, historyKey: first.historyKey });
     assert.equal(changed.historyChanged, true);

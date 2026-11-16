@@ -42,6 +42,7 @@ export interface AgentCliAccountUsage {
   fetchedAt: string | null;
   checkedAt: string;
   retryAt: string | null;
+  quotaLimits?: { label: string | null; resetsAt: string | null }[];
   message: string | null;
 }
 

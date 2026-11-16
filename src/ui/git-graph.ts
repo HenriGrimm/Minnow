@@ -1,5 +1,6 @@
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { gitLog, type GitCommitEntry } from '../state/git-api';
+import { parseGitHistoryRefs } from './git-history-map/model';
 
 const LOG_COUNT = 200;
 const BRANCH_COLORS = 7;
@@ -87,7 +88,7 @@ export interface CollapsedRow {
 // ── Refs ─────────────────────────────────────────────────────────────────────
 
 function commitIsHead(refs: string[]): boolean {
-  return refs.some((r) => /\bHEAD\b/.test(r));
+  return refs.some((r) => r === 'HEAD' || r.startsWith('HEAD -> '));
 }
 
 /** Parse a git log ref string into a short branch name, when possible. */
@@ -291,6 +292,7 @@ interface ActiveLane {
 export function computeGraphLayout(
   visuals: CommitVisual[],
   squashLinks: Map<string, string> = new Map(),
+  exactParents = false,
 ): CommitVisual[] {
   const lanes: (ActiveLane | null)[] = [];
   const colorByHash = new Map(visuals.map((v) => [v.commit.hash, v.colorIndex]));
@@ -338,15 +340,16 @@ export function computeGraphLayout(
 
     const [firstParent, ...mergeParents] = commit.parents;
     if (firstParent) {
-      const mainlineLane =
-        !visual.isMain && isMainByHash.get(firstParent) === true
+      const parentLane = exactParents
+        ? lanes.findIndex((l, index) => index !== lane && l?.expecting === firstParent)
+        : !visual.isMain && isMainByHash.get(firstParent) === true
           ? lanes.findIndex((l) => l !== null && isMainByHash.get(l.expecting) === true)
           : -1;
-      if (mainlineLane >= 0) {
+      if (parentLane >= 0) {
         curves.push({
           kind: 'out',
           fromLane: lane,
-          toLane: mainlineLane,
+          toLane: parentLane,
           colorIndex: visual.colorIndex,
           joins: true,
         });
@@ -584,6 +587,7 @@ interface RowContext {
   onSelect?: (sha: string) => void;
   selectedSha?: string | null;
   onContextMenu?: (visual: CommitVisual, event: MouseEvent) => void;
+  browser?: boolean;
   /** Collapsed view: branch clusters shown as sub-dots after the main dot. */
   clusters?: BranchCluster[];
   extraCount?: number;
@@ -631,21 +635,16 @@ function renderRow(visual: CommitVisual, step: number, ctx: RowContext): HTMLEle
   const row = document.createElement('div');
   row.className = 'git-graph__row';
   if (!visual.isMain) row.classList.add('git-graph__row--branch');
-  if (
-    ctx.selectedSha &&
-    (visual.commit.hash === ctx.selectedSha || visual.commit.hash.startsWith(ctx.selectedSha))
-  ) {
-    row.classList.add('git-graph__row--selected');
-  }
+  setGitGraphRowSelected(row, Boolean(ctx.selectedSha && visual.commit.hash.startsWith(ctx.selectedSha)));
   row.dataset.sha = visual.commit.hash;
   // Shortcodes in the stored subject stay in git; the row shows the glyph.
   const subjectText = expandGitmojiShortcodes(visual.commit.subject);
-  row.title = `${subjectText} (${visual.branchKey})`;
+  row.title = ctx.browser ? subjectText : `${subjectText} (${visual.branchKey})`;
 
   const onSelect = ctx.onSelect;
   if (onSelect) {
     row.setAttribute('role', 'button');
-    row.tabIndex = 0;
+    row.tabIndex = ctx.browser ? -1 : 0;
     row.addEventListener('click', () => onSelect(visual.commit.hash));
     row.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -705,15 +704,32 @@ function renderRow(visual: CommitVisual, step: number, ctx: RowContext): HTMLEle
   time.className = 'git-graph__time';
   time.textContent = visual.commit.relativeTime;
 
+  if (ctx.browser) {
+    const sha = document.createElement('span');
+    sha.className = 'git-graph__sha';
+    sha.textContent = visual.commit.hash.slice(0, 7);
+    sha.title = visual.commit.hash;
+    meta.append(sha);
+  }
   meta.append(author, time);
 
   if (visual.commit.refs.length > 0) {
     const refsEl = document.createElement('div');
     refsEl.className = 'git-graph__refs';
-    for (const ref of visual.commit.refs) {
-      refsEl.appendChild(renderRefChip(ref, visual.colorIndex));
+    if (ctx.browser) {
+      for (const ref of parseGitHistoryRefs(visual.commit)) {
+        const chip = renderRefChip(ref.name, visual.colorIndex);
+        chip.dataset.kind = ref.kind;
+        chip.title = ref.kind === 'head' ? 'Current checkout' : `${ref.name} (${ref.kind})`;
+        if (ref.kind === 'tag') chip.textContent = `Tag: ${ref.name}`;
+        if (ref.kind === 'remote') chip.textContent = `${ref.name} (remote)`;
+        refsEl.append(chip);
+      }
+    } else {
+      for (const ref of visual.commit.refs) refsEl.append(renderRefChip(ref, visual.colorIndex));
     }
-    content.append(subject, meta, refsEl);
+    content.append(subject, meta);
+    if (refsEl.childElementCount) content.append(refsEl);
   } else {
     content.append(subject, meta);
   }
@@ -721,6 +737,11 @@ function renderRow(visual: CommitVisual, step: number, ctx: RowContext): HTMLEle
   row.append(body);
   body.append(marker, content);
   return row;
+}
+
+export function setGitGraphRowSelected(row: HTMLElement, selected: boolean): void {
+  row.classList.toggle('git-graph__row--selected', selected);
+  row.setAttribute('aria-pressed', String(selected));
 }
 
 function renderToggleRow(
@@ -781,13 +802,24 @@ function appendExpandedRows(
   squashLinks: Map<string, string>,
   ctx: RowContext,
 ): void {
-  const laidOut = computeGraphLayout(visuals, squashLinks);
+  const laidOut = computeGraphLayout(visuals, squashLinks, ctx.browser);
   const laneCount = maxLaneIndex(laidOut) + 1;
   const step = laneStep(laneCount);
+  if (ctx.browser) list.style.setProperty('--git-history-gutter', `${laneCount * step}px`);
 
   for (const visual of laidOut) {
     list.appendChild(renderRow(visual, step, ctx));
   }
+}
+
+export function renderGitGraphRows(list: HTMLElement, commits: GitCommitEntry[], options: GitGraphOptions): void {
+  list.replaceChildren();
+  appendExpandedRows(list, assignCommitVisuals(commits), new Map(), {
+    onSelect: options.onSelectCommit,
+    onContextMenu: options.onContextMenu,
+    selectedSha: options.selectedSha,
+    browser: true,
+  });
 }
 
 function appendCollapsedRows(

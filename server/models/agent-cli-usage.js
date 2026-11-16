@@ -27,7 +27,8 @@ async function loadCredentials(kind, options) {
   }
   if (kind === 'cursor') {
     const credentials = await readCursorUsageCredentials(options);
-    return { key: identity.update(credentials.token).digest('hex'), credentials, accountKey: credentials.accountKey };
+    const accountScope = credentials.accountKey && identity.copy().update(credentials.accountKey).digest('hex');
+    return { key: identity.update(credentials.token).digest('hex'), credentials, accountKey: credentials.accountKey, accountScope };
   }
   const authPath = options.codexAuthPath || path.join(codexSourceHome(options), 'auth.json');
   const auth = await fs.readFile(authPath).catch(error => {
@@ -39,7 +40,13 @@ async function loadCredentials(kind, options) {
     const parsed = JSON.parse(auth.toString('utf8'));
     if (typeof parsed.tokens?.account_id === 'string') accountKey = parsed.tokens.account_id;
   } catch { /* app-server diagnoses malformed login files */ }
-  return { key: identity.update(authPath).update(auth).digest('hex'), credentials: null, accountKey };
+  identity.update(authPath);
+  const accountScope = accountKey && identity.copy().update(accountKey).digest('hex');
+  return { key: identity.update(auth).digest('hex'), credentials: null, accountKey, accountScope };
+}
+
+function sameLogin(before, after) {
+  return before.key === after.key || Boolean(before.accountScope && before.accountScope === after.accountScope);
 }
 
 /** Opaque account identity for allowance cooldowns; never fetches account usage. */
@@ -76,10 +83,11 @@ export function createAgentCliUsageService(deps = {}) {
         return empty(kind, error instanceof CliUsageError ? error.status : 'error',
           error instanceof CliUsageError ? error.message : 'Could not read the CLI login. Verify it and retry.', now());
       }
-      const key = `${kind}:${login.key}`;
+      const key = `${kind}:${login.accountScope ?? login.key}`;
       const cached = cache.get(key);
       const time = now();
-      if (cached && (time < cached.retryAfter || (!options.refresh && time < cached.expiresAt))) {
+      const renewed = cached?.unavailable && cached.loginKey !== login.key;
+      if (cached && !renewed && (time < cached.retryAfter || (!options.refresh && time < cached.expiresAt))) {
         if (cached.good && time - Date.parse(cached.good.fetchedAt) > MAX_STALE_MS) {
           return { ...cached.result, status: 'error', windows: [], plan: null, credits: undefined, fetchedAt: null };
         }
@@ -88,19 +96,11 @@ export function createAgentCliUsageService(deps = {}) {
       if (inflight.has(key)) return inflight.get(key);
       const work = (async () => {
         let entry;
-        let cacheKey = key;
         try {
           const data = await read(kind, login.credentials, options);
           // A sign-in change during a request must not paint another account's quota.
           const current = await credentials(kind, options);
-          if (current.key !== login.key) {
-            if (!login.accountKey || current.accountKey !== login.accountKey) {
-              return empty(kind, 'unavailable', 'CLI login changed. Refresh to load the current account.', now());
-            }
-            // The native CLI refreshed tokens for the same account (Codex
-            // account_id, Cursor token subject). Cache under its new fingerprint.
-            cacheKey = `${kind}:${current.key}`;
-          }
+          if (!sameLogin(login, current)) return empty(kind, 'unavailable', 'CLI login changed. Refresh to load the current account.', now());
           const at = now();
           const result = { kind, status: 'ready', ...data, fetchedAt: new Date(at).toISOString(),
             checkedAt: new Date(at).toISOString(), retryAt: null, message: null };
@@ -112,22 +112,24 @@ export function createAgentCliUsageService(deps = {}) {
           let current;
           try { current = await credentials(kind, options); }
           catch { return empty(kind, 'unavailable', 'CLI login changed or is unavailable. Verify it and refresh.', now()); }
-          if (current.key !== login.key) {
+          if (!sameLogin(login, current)) {
             return empty(kind, 'unavailable', 'CLI login changed. Refresh to load the current account.', now());
           }
           const at = now();
           const status = error instanceof CliUsageError ? error.status : 'error';
           const message = error instanceof CliUsageError ? error.message : `${NAMES[kind]} account usage could not be refreshed. Verify the CLI or try again later.`;
           const failures = (cached?.failures ?? 0) + 1;
-          const delay = Math.min(15 * TTL_MS, Math.max(TTL_MS * 2 ** Math.min(failures - 1, 4),
-            error instanceof CliUsageError && Number.isFinite(error.retryMs) ? error.retryMs : 0));
-          const good = status === 'error' && cached?.good && at - Date.parse(cached.good.fetchedAt) <= MAX_STALE_MS ? cached.good : null;
+          const delay = Math.max(Math.min(15 * TTL_MS, TTL_MS * 2 ** Math.min(failures - 1, 4)),
+            error instanceof CliUsageError && Number.isFinite(error.retryMs) && at + error.retryMs <= 8.64e15 ? error.retryMs : 0);
+          const good = ['error', 'unavailable'].includes(status) && cached?.good
+            && at - Date.parse(cached.good.fetchedAt) <= MAX_STALE_MS ? cached.good : null;
           const result = { ...(good ?? empty(kind, status, message, at)), status: good ? 'stale' : status,
             message, checkedAt: new Date(at).toISOString(), retryAt: new Date(at + delay).toISOString() };
-          entry = { good, result, failures, expiresAt: at + delay, retryAfter: at + delay };
+          entry = { good, result, failures, expiresAt: at + delay, retryAfter: at + delay,
+            unavailable: status === 'unavailable', loginKey: login.key };
         }
-        if (cache.size >= 32 && !cache.has(cacheKey)) cache.delete(cache.keys().next().value);
-        cache.set(cacheKey, entry);
+        if (cache.size >= 32 && !cache.has(key)) cache.delete(cache.keys().next().value);
+        cache.set(key, entry);
         return entry.result;
       })();
       inflight.set(key, work);

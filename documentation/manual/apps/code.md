@@ -42,11 +42,30 @@ Open **Browser** to keep a page alongside the thread. Use the preview width sele
 3. Run the relevant checks in **Terminal**. If a failure needs investigation, give the agent the exact command and the first error.
 4. To commit, inspect staged and unstaged changes in **Source Control**.
 
+Open **Diff → History** to follow commits through forks and merges. Use **History branch** to browse all refs, the current checkout, or a local or fetched remote branch without switching checkouts. Select a commit to open its diff. **Load older commits** extends the graph.
+
 ## Source Control Center
 
 Open **Source control** from the workspace sidebar. In a Git workspace, **Changes** shows the current checkout's staged and unstaged files. Open a diff, stage the intended files, enter a message, and confirm the staged list before selecting **Commit**. With an empty staged list, the commit control can include all working tree changes. Check the branch before pushing.
 
 Use **History** to find the commit that introduced a change. Use **Branches** or **Worktrees** to inspect or switch checkouts. A worktree has its own files and branch, so look for uncommitted changes there before removing it.
+
+### Switch branches and pull requests
+
+Every switch control (the thread's **Checkout** row, the composer's worktree menu, the side panel, **Branches**, **Pull requests** and the history menu) works the same way:
+
+- With uncommitted files, Minnow asks whether to **Bring my changes** or **Leave changes** on the current branch. Changes that stay behind are saved and offered for restore when you return to that branch.
+- Git keeps a branch in one worktree at a time. When the branch or pull request is already checked out in another worktree, Minnow offers **Open worktree** (side panel and Source Control) or **Use that checkout** (a thread) instead of failing. Fork pull requests are matched by their tracking branch or head commit.
+- Threads on **Local** share the workspace folder and its branch. If other threads use that folder, switching asks first; **Switch in a new worktree** keeps the change to the current thread, and **Switch workspace anyway** moves every Local thread.
+- When a switch fails, the message names the cause, such as local changes that would be overwritten, a branch that is not fetched yet, or a running local action, and offers the matching action. The original Git output stays under **Technical details**.
+- When a local action is using the checkout, the picker shows **Waiting for** the action's name, with **Stop and switch** and **Try again**.
+- The branch list starts with **Recent**: branches you last switched to or from in that checkout. Use the arrow keys to move, **Enter** to switch and the left and right arrows to change tabs.
+
+**Pull requests** marks each open pull request that is **Checked out here** or **In** another worktree, and labels pull requests from forks. **Worktrees** shows each worktree's uncommitted file count, commits to push and pull, and the threads that use it, with **Open chat**.
+
+The thread's **Checkout** row and the composer show the branch actually checked out, and whether the workspace folder is shared with other threads. After you pick another worktree in the side panel or Source Control, a notice says which checkout the current thread uses; select **Follow chat** to return to it.
+
+Removing a worktree returns the threads that used it to **Local**. **Force remove** is offered only when the worktree has uncommitted or untracked files, and it deletes them.
 
 For pull requests and GitHub Actions, connect GitHub in **Settings → Code and workspace → External Connections**, and make sure the checkout has a GitHub remote. The Source Control app shows repository-level PRs and runs. The thread's **Pull request** surface opens a PR linked to that conversation.
 

@@ -157,6 +157,13 @@
 .git-checkout__restore button { margin-top: 8px; border-color: var(--mn-border); }
 .git-checkout__empty { display: block; padding: 12px 8px; font-size: 12px; color: var(--mn-fg-muted); }
 .git-checkout__error { display: block; margin: 10px 2px 4px; color: var(--mn-danger); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.git-checkout__details { margin: 0 2px 6px; font-size: 12px; color: var(--mn-fg-muted); }
+.git-checkout__details summary { cursor: pointer; }
+.git-checkout__details pre { margin: 6px 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 11px; }
+.git-checkout__notice-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.git-checkout__group { display: block; padding: 8px 8px 2px; font-size: 11px; font-weight: 600; color: var(--mn-fg-muted); }
+.git-checkout__hint { display: block; padding: 6px 8px 2px; font-size: 11px; color: var(--mn-fg-muted); }
+@media (pointer: coarse) { .git-checkout__hint { display: none; } }
 
 @media (hover: hover) and (pointer: fine) {
   .git-checkout button:hover:not(:disabled) { background: var(--mn-menu-hover-bg); }

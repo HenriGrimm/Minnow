@@ -32,6 +32,10 @@ export function createAgentCliSignIn(kind: AgentCliKind, label: string, options:
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
   link.hidden = true;
+  const copyLink = document.createElement('button');
+  copyLink.type = 'button';
+  copyLink.className = 'models-inline-btn';
+  copyLink.textContent = 'Copy link';
   const deviceCode = document.createElement('p');
   deviceCode.className = 'cli-sign-in__device-code';
   deviceCode.hidden = true;
@@ -44,7 +48,11 @@ export function createAgentCliSignIn(kind: AgentCliKind, label: string, options:
   retry.className = 'models-inline-btn is-primary';
   retry.textContent = 'Try again';
   retry.hidden = true;
-  actions.append(link, retry, cancel);
+  actions.append(link, copyLink, retry, cancel);
+  const browserStatus = document.createElement('p');
+  browserStatus.className = 'cli-sign-in__message';
+  browserStatus.setAttribute('role', 'status');
+  browserStatus.hidden = true;
   const fallback = document.createElement('details');
   fallback.className = 'cli-sign-in__fallback';
   const summary = document.createElement('summary');
@@ -70,7 +78,7 @@ export function createAgentCliSignIn(kind: AgentCliKind, label: string, options:
   const note = document.createElement('p');
   note.className = 'cli-sign-in__note';
   note.textContent = `Sign in directly with ${label}. Your login stays in the CLI’s credential store on this computer.`;
-  root.append(heading, steps, message, deviceCode, actions, fallback, note);
+  root.append(heading, steps, message, deviceCode, actions, browserStatus, fallback, note);
   let disposed = false;
   let flow: AgentCliLogin | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -78,6 +86,12 @@ export function createAgentCliSignIn(kind: AgentCliKind, label: string, options:
   let controller: AbortController | undefined;
   let revision = 0;
   let startWork: Promise<void> | undefined;
+  let pollFailures = 0;
+
+  function reportBrowserStatus(text: string): void {
+    browserStatus.textContent = text;
+    browserStatus.hidden = !text;
+  }
 
   function render(): void {
     const state = flow?.state ?? 'starting';
@@ -90,9 +104,9 @@ export function createAgentCliSignIn(kind: AgentCliKind, label: string, options:
       : state === 'waiting' ? 'Continue in your browser. This page updates when you finish.'
         : state === 'verifying' ? 'Checking your login…'
           : state === 'signed-in' ? 'Your account is ready to use in Minnow.' : 'You can start again whenever you are ready.');
-    link.hidden = !flow?.verificationUrl || terminal;
-    if (flow?.verificationUrl && !terminal) link.href = flow.verificationUrl;
-    else link.removeAttribute('href');
+    link.hidden = copyLink.hidden = !flow?.verificationUrl || state !== 'waiting';
+    if (flow?.verificationUrl && !link.hidden) link.href = flow.verificationUrl;
+    else { link.removeAttribute('href'); reportBrowserStatus(''); }
     deviceCode.textContent = flow?.code ? `Enter this code in your browser: ${flow.code}` : '';
     deviceCode.hidden = !flow?.code || terminal;
     cancel.hidden = terminal;
@@ -126,22 +140,45 @@ export function createAgentCliSignIn(kind: AgentCliKind, label: string, options:
     try {
       const next = await request(kind, 'poll', { id: flow.id, signal: controller?.signal });
       if (disposed || attempt !== revision) return;
+      pollFailures = 0;
       flow = next;
       render();
       if (['signed-in', 'failed', 'cancelled'].includes(next.state)) { settle(next.state === 'signed-in'); return; }
       timer = setTimeout(() => void poll(attempt), 1000);
     } catch {
       if (disposed || attempt !== revision) return;
+      if (++pollFailures < 3) {
+        timer = setTimeout(() => void poll(attempt), 1000);
+        return;
+      }
       const id = flow.id;
       void request(kind, 'cancel', { id }).catch(() => {});
       fail();
     }
   }
 
-  link.addEventListener('click', event => {
+  link.addEventListener('click', async event => {
     if (!window.minnow?.app?.openExternal) return;
     event.preventDefault();
-    void window.minnow.app.openExternal(link.href);
+    const url = flow?.verificationUrl;
+    if (link.hidden || !url) return;
+    reportBrowserStatus('');
+    try { await window.minnow.app.openExternal(url); }
+    catch {
+      if (!disposed && !link.hidden && flow?.verificationUrl === url) {
+        reportBrowserStatus('Could not open your browser. Copy the link and open it in your browser.');
+      }
+    }
+  });
+  copyLink.addEventListener('click', async () => {
+    const url = flow?.verificationUrl;
+    if (copyLink.hidden || !url) return;
+    try {
+      await window.navigator.clipboard.writeText(url);
+      if (!disposed && !link.hidden && flow?.verificationUrl === url) reportBrowserStatus('Sign-in link copied. Open it in your browser.');
+    } catch {
+      if (!disposed && !link.hidden && flow?.verificationUrl === url) reportBrowserStatus('Right-click Open sign-in page to copy the link.');
+    }
   });
   retry.addEventListener('click', options.retry);
   cancel.addEventListener('click', async () => {
@@ -182,6 +219,7 @@ export function createAgentCliSignIn(kind: AgentCliKind, label: string, options:
       const attempt = ++revision;
       root.hidden = false;
       flow = null;
+      pollFailures = 0;
       fallback.open = false;
       codeError.textContent = '';
       controller = new AbortController();

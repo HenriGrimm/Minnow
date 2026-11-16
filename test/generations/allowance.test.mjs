@@ -74,6 +74,32 @@ test('incomplete repeated refusals do not shorten a known reset', () => {
   assert.equal(tracker.block(context).row.retryAt, 100 + 86400_000);
 });
 
+test('CLI fallback isolates native measurements and carries confirmed resets through restart', () => {
+  let time = 100;
+  const tracker = new AllowanceTracker({ now: () => time });
+  const resetAt = time + 2 * 3600_000;
+  const windows = [{ id: 'five_hour', label: '5-hour', usedPercent: 100, windowMinutes: 300, resetsAt: new Date(resetAt).toISOString() }];
+  tracker.observeCliUsage(context, { windows });
+  tracker.record(context, { ...quota, resetAt });
+  const resets = [{ label: null, resetsAt: new Date(resetAt).toISOString() }];
+  assert.deepEqual(tracker.cliUsageFallback(context), { measurements: [{ at: time, window: windows[0] }], quotaLimits: resets });
+  assert.deepEqual(tracker.cliUsageFallback({ ...context, identity: 'account-b' }), { measurements: [], quotaLimits: [] });
+  const reopened = new AllowanceTracker({ rows: tracker.snapshot(), now: () => time });
+  assert.deepEqual(reopened.cliUsageFallback(context), { measurements: [], quotaLimits: resets });
+  time += 3700000;
+  assert.deepEqual(tracker.cliUsageFallback(context), { measurements: [], quotaLimits: resets });
+  time = resetAt;
+  assert.deepEqual(reopened.cliUsageFallback(context), { measurements: [], quotaLimits: [] });
+});
+
+test('Claude reports dated weekly resets in the CLI’s timezone', () => {
+  const now = Date.parse('2026-11-15T17:00:00Z');
+  assert.deepEqual(allowanceFailure("You've hit your weekly limit · resets Nov 20, 9pm (America/New_York)", { now }),
+    { kind: 'quota', scope: 'model', resetAt: Date.parse('2026-11-21T02:00:00Z') });
+  assert.equal(allowanceFailure("You've hit your limit · resets Nov 20 at 9pm (America/New_York)", { now })?.resetAt,
+    Date.parse('2026-11-21T02:00:00Z'));
+});
+
 test('CLI environment credentials invalidate allowance fingerprints without account requests', async () => {
   const first = await getAgentCliAllowanceIdentity('claude', { env: { ANTHROPIC_API_KEY: 'first-key' } });
   const second = await getAgentCliAllowanceIdentity('claude', { env: { ANTHROPIC_API_KEY: 'second-key' } });

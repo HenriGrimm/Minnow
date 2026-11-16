@@ -18,7 +18,7 @@ export function usageHttpError(response, name) {
   const retryMs = retry && Number.isFinite(seconds) ? seconds * 1000
     : retry ? Date.parse(retry) - Date.now() : undefined;
   return new CliUsageError('error', response.status === 429
-    ? `${name} usage is temporarily rate limited. Try again later.` : `${name} account usage is temporarily unavailable.`, retryMs);
+    ? `${name} temporarily limited usage checks.` : `${name} account usage is temporarily unavailable.`, retryMs);
 }
 
 /** Bound even an unexpected successful response before parsing it. */
@@ -69,17 +69,19 @@ export async function readClaudeUsageCredentials(options = {}) {
   if (!oauth?.accessToken || typeof oauth.accessToken !== 'string') {
     throw new CliUsageError('signed-out', 'Sign in to Claude Code to see account usage.');
   }
+  const login = { token: oauth.accessToken, plan: oauth.subscriptionType ?? null };
   if (typeof oauth.expiresAt === 'number' && oauth.expiresAt <= (options.now ?? Date.now)()) {
     if (typeof oauth.refreshToken === 'string' && oauth.refreshToken.trim()) {
-      throw new CliUsageError('unavailable', 'Claude will renew its login on the next request. Send a message, then refresh usage.');
+      return { ...login, needsRenewal: true };
     }
     throw new CliUsageError('signed-out', 'Claude login has expired. Verify or sign in to the CLI, then refresh.');
   }
-  return { token: oauth.accessToken, plan: oauth.subscriptionType ?? null };
+  return login;
 }
 
 /** Private vendor endpoint: isolate its contract and never expose its raw body. */
 export async function readClaudeAccountUsage(credentials, options = {}) {
+  if (credentials.needsRenewal) throw new CliUsageError('unavailable', 'Claude will renew its login on the next request. Send a message, then refresh usage.');
   const response = await (options.fetch ?? fetch)('https://api.anthropic.com/api/oauth/usage', {
     headers: { Authorization: `Bearer ${credentials.token}`, 'anthropic-beta': 'oauth-2025-04-20',
       'Content-Type': 'application/json' },

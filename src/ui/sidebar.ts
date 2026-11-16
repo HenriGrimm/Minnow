@@ -2342,7 +2342,7 @@ export async function switchChat(id: string, isCurrent: () => boolean = () => tr
   syncComposerUndoFromActiveChat();
   syncViewModeToggleFromActiveChat();
   clearPanelCwdUserOverride();
-  syncPanelFromActiveChat({ forceFileTree: true });
+  syncPanelFromActiveChat();
   syncWorkAgentDevFromActiveChat();
   syncGoalActiveHint();
   syncLoopActiveHint();
@@ -2582,7 +2582,7 @@ export async function createChatWithMode(
   renderStatsForChat(chat);
   syncCreateChatChrome(chat.id);
   clearPanelCwdUserOverride();
-  syncPanelFromActiveChat({ forceFileTree: true });
+  syncPanelFromActiveChat();
   syncModelSelectForActiveChat();
   void import('./terminal-panel').then((m) => m.refreshTerminalHistoryForActiveChat());
   syncComposerFromStreamingState();

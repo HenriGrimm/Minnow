@@ -14,6 +14,7 @@ import {
   chatForSessionsWire,
   ensureChatHistoryLoaded,
   isSessionsLazyHistoryEnabled,
+  loadSessionsFromStorage,
   requireHistory,
   resetSessionPersistenceForTests,
   setDirtyTrackingVerifierForcedForTests,
@@ -67,6 +68,30 @@ describe('lazy history (C.2)', () => {
 
   test('lazy-history flag defaults ON', () => {
     assert.equal(isSessionsLazyHistoryEnabled(), true);
+  });
+
+  test('compact boot keeps unloaded ledgers off the write path and hydrates the active ledger', async () => {
+    setStorageModeForTests('server');
+    const totals = { promptTokens: 4, completionTokens: 2, totalTokens: 6, completionCount: 1, costUsd: 0 };
+    const ledger = { totals, entries: [], bySource: {} };
+    const summary = (id: string) => ({
+      id, name: id, workspacePath: '', modelId: '', messageCount: 1, lastMessagePreview: '', tokenLedgerTotals: totals,
+    });
+    globalThis.fetch = async input => {
+      if (String(input).includes('/summaries')) {
+        assert.match(String(input), /view=compact/);
+        return Response.json({ version: 6, activeId: CHAT_A, groups: [], chats: [summary(CHAT_A), summary(CHAT_B)] });
+      }
+      assert.match(String(input), new RegExp(`/history/${CHAT_A}`));
+      return Response.json({ history: [{ role: 'user', content: 'one' }], detail: { tokenLedger: ledger } });
+    };
+    await loadSessionsFromStorage();
+    const active = sessionState!.chats.find(chat => chat.id === CHAT_A)!;
+    const unloaded = sessionState!.chats.find(chat => chat.id === CHAT_B)!;
+    assert.deepEqual(active.tokenLedger, ledger);
+    assert.deepEqual(unloaded.tokenLedgerTotals, totals);
+    assert.equal('tokenLedger' in chatForSessionsWire(unloaded), false);
+    assert.equal('tokenLedgerTotals' in chatForSessionsWire(unloaded), false);
   });
 
   test('ensureChatHistoryLoaded is a no-op when flag is off', async () => {

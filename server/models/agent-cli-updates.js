@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { AGENT_CLI_DEFINITIONS, clearAgentCliModelCatalogCache } from './agent-cli-catalog.js';
-import { detectAgentCli } from './agent-cli-detect.js';
+import { detectAgentCli, verifyAgentCliAuth } from './agent-cli-detect.js';
 import { getAgentCliProviderConfig } from '../providers/store.js';
 import {
   applyAgentCliCaptureEnv,
@@ -44,9 +44,10 @@ export function compareCliVersions(kind, installed, latest) {
   return installed.includes('-') && !latest.includes('-') ? 'available' : 'current';
 }
 
-async function detect(kind, fresh) {
+async function detect(kind, fresh, verify = false) {
   const { profile, secrets } = await getAgentCliProviderConfig(kind);
-  return detectAgentCli(kind, { binPath: profile?.agentCli?.binPath, cliToken: secrets.cliToken, fresh });
+  return (verify ? verifyAgentCliAuth : detectAgentCli)(kind,
+    { binPath: profile?.agentCli?.binPath, cliToken: secrets.cliToken, fresh });
 }
 
 async function readLatestVersion(kind, request) {
@@ -131,7 +132,7 @@ export function createAgentCliUpdates(deps = {}) {
       });
     } catch (error) { failure = error; }
     clearAgentCliModelCatalogCache('cursor');
-    const installedVersion = parseCliVersion('cursor', (await detectCli('cursor', true)).version);
+    const installedVersion = parseCliVersion('cursor', (await detectCli('cursor', true, true)).version);
     if (installedVersion && compareCliVersions('cursor', installedVersion, latest) === 'current') return { installedVersion };
     const reason = signal.aborted ? 'The updater timed out. Check your connection and retry.'
       : failure?.code ? 'The Windows package could not be installed. Check installation permissions and available disk space.'
@@ -174,7 +175,7 @@ export function createAgentCliUpdates(deps = {}) {
         }).catch(() => null);
       } finally { await fs.rm(cwd, { recursive: true, force: true }).catch(() => {}); }
       clearAgentCliModelCatalogCache(kind);
-      const after = await detectCli(kind, true);
+      const after = await detectCli(kind, true, true);
       const installedVersion = parseCliVersion(kind, after.version);
       if (result?.code !== 0) {
         const output = `${result?.stderr ?? ''}\n${result?.stdout ?? ''}`;

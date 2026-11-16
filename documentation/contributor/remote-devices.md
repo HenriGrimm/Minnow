@@ -47,7 +47,9 @@ Unauthenticated routes are exactly `host-info`, `claim`, `requests` (POST), `req
 - It maps events to status: `off`, `unavailable` (binary missing), `starting`, `needs-login {authUrl}`, `needs-approval {feature, url}`, `ready {url, dnsName, loginName}`, or `error`. A crashed helper restarts with backoff.
 - Server-side loops back into the listener (the stream tunnel in `stream-ws.js`) carry the secret through `getRequestRelayHeaders(req)`.
 
-**Dev servers and Funnel.** Under `npm start`, the remote listeners serve Vite's dev middlewares (source modules, `/@vite/client`), because phones need them to load the app. With Funnel on, that puts a Vite dev server on the internet. Develop Anywhere with **Only devices with the Tailscale app** (`funnel: false`), and test public Funnel access on a packaged build, which serves only `dist/`.
+Under `npm start`, the first remote navigation starts a background Vite watcher. The watcher owns cleanup of the previous dev server's bundle cache. The navigation waits up to 20 seconds for the first build, then falls back to the restricted Vite module handler. API calls and asset probes leave the watcher idle before the first navigation. The packaged server serves `dist/`. Both use [the same asset handler](../../server/remote/bundle-assets.js) to gzip text assets and cache content-hashed URLs on remote requests. HTML navigations go through the auth-aware middleware and use `Cache-Control: no-store`.
+
+Develop Anywhere with **Only devices with the Tailscale app** (`funnel: false`). Test public Funnel access on a packaged build. Funnel relays traffic and applies bandwidth limits. For tailnet-only performance checks, run `tailscale ping <Minnow node name>` from a device on the same tailnet to see whether the connection becomes direct. [Funnel limits](https://tailscale.com/docs/features/tailscale-funnel) · [Tailscale connection types](https://tailscale.com/docs/reference/connection-types)
 
 The binary is located from `MINNOW_TAILNET_BIN`, then packaged `resources/bin/`, then `resources/bin/<os>-<arch>/` in a checkout ([`sidecar-binary.js`](../../server/remote/sidecar-binary.js)). Build it with `npm run tailnet:build` (Go 1.24+). Package builds run `scripts/build-tailnet-sidecar.mjs --package`, which fails in CI without Go.
 
@@ -59,7 +61,7 @@ The binary is located from `MINNOW_TAILNET_BIN`, then packaged `resources/bin/`,
 - Otherwise it waits for `GET /api/auth/session`. A `401` + marker shows **Disconnected** if this browser was connected before, else **Connect this device** (Scan QR where the browser has `BarcodeDetector` and a secure context, Request access, code entry on the home network).
 - After connecting, the Home Screen tip appears once, and a phone on `http:` is offered the move to Anywhere when it is ready.
 
-The connection monitor ([`connection.ts`](../../src/companion/connection.ts)) probes every five seconds and on wake/online/pageshow. An outage never ends a pairing.
+The connection monitor ([`connection.ts`](../../src/companion/connection.ts)) probes every five seconds, when the device wakes or comes online, and when the browser restores a cached page. An outage never ends a pairing.
 
 ### Phone app
 

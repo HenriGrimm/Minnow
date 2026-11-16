@@ -220,6 +220,29 @@ test('default production routing promotes an idle historical root and continues 
   await assert.rejects(fs.access(path.join(f.workspace, 'old.txt')), { code: 'ENOENT' });
 });
 
+test('ordinary HTTP Local clears a saved worktree preference before the first send', { timeout: 15000 }, async t => {
+  const f = await fixture(t, () => 'Ran locally.');
+  const git = args => promisify(execFile)('git', args, { cwd: f.workspace, windowsHide: true });
+  await git(['init']); await git(['config', 'user.name', 'Fixture']); await git(['config', 'user.email', 'fixture@example.invalid']);
+  await git(['add', '.']); await git(['commit', '-m', 'seed']);
+  f.db.prepare("UPDATE chats SET meta_json=json_set(meta_json,'$.worktreeEnabled',json('true')) WHERE id='chat'").run();
+  const local = await f.request('/api/chats/chat/workspace', { action: 'local', expectedIntentId: null, clientRequestId: 'cancel-deferred' });
+  assert.equal(local.status, 200, JSON.stringify(local.body));
+  assert.equal(local.body.chat.worktreeEnabled, false);
+  assert.equal(f.runtime.workspacePreparation.read('chat'), null);
+  assert.equal(f.calls.length, 0);
+
+  const sent = await f.request('/api/chats/chat/commands', { action: 'send', text: 'Use my local folder', clientRequestId: 'first-local' });
+  assert.equal(sent.status, 202, JSON.stringify(sent.body));
+  await f.runtime.service.idle('chat');
+  const command = f.repository.getCommand(sent.body.receipt.commandId);
+  assert.equal(command.state, 'settled');
+  assert.equal(command.captured.workspacePreparation, undefined);
+  assert.equal(command.captured.scope.workspaceId, (await f.runtime.context.resolveTarget('chat')).scope.workspaceId);
+  assert.equal(f.repository.getChat('chat').worktreeRoot, '');
+  assert.equal(f.calls.length, 1);
+});
+
 test('ordinary HTTP worktree send binds the final checkout before inference and later turns retain it', { timeout: 30000 }, async t => {
   const f = await fixture(t, input => input.messages.some(row => row.role === 'tool')
     ? 'Verified isolated checkout.' : [toolCall('save_file', { path: 'isolated.txt', content: 'only in checkout' }, 'isolated-write')]);
@@ -238,6 +261,9 @@ test('ordinary HTTP worktree send binds the final checkout before inference and 
   assert.equal(first.status, 202, JSON.stringify(first.body));
   const initial = f.repository.getCommand(first.body.receipt.commandId);
   assert.ok(initial.captured.workspacePreparation?.id);
+  const stale = await f.request('/api/chats/chat/workspace', { action: 'local', expectedIntentId: null, clientRequestId: 'stale-cancel-deferred' });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.error.code, 'stale_revision');
   await f.runtime.service.idle('chat');
   const saved = f.repository.getChat('chat');
   assert.equal(saved.workspacePreparation.status, 'ready', saved.workspacePreparation.error);

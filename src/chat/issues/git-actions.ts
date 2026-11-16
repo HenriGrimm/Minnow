@@ -1,5 +1,5 @@
 import { appendIssueLinks } from '../../state/issues-store.ts';
-import { gitCheckout, gitPush, gitRemoteUrl } from '../../state/git-api.ts';
+import { gitPush, gitRemoteUrl } from '../../state/git-api.ts';
 import { forgeStatus } from '../../state/forge-api.ts';
 import { openWorkspacePr } from '../../state/worktree-service.ts';
 import { expandGitmojiShortcodes } from '../../lib/gitmoji-shortcodes.mjs';
@@ -53,10 +53,13 @@ export async function detectGhAvailable(force = false): Promise<boolean> {
 export async function createBranchFromIssue(issue: IssueCard): Promise<IssueGitActionResult> {
   const branch = resolveIssueBranchName(issue);
   const existing = (issue.gitLinks ?? []).some((l) => l.kind === 'branch' && l.ref === branch);
-  const result = await gitCheckout({ branch, create: !existing });
+  // The shared flow asks about uncommitted files instead of carrying them silently.
+  const { runCheckoutFlow } = await import('../../ui/git-checkout-confirm');
+  const result = await runCheckoutFlow({ branch, create: !existing });
   if (!result.ok) {
+    if (result.error === 'cancelled') return { ok: false, error: 'cancelled' };
     if (!existing) {
-      const retry = await gitCheckout({ branch, create: false });
+      const retry = await runCheckoutFlow({ branch });
       if (!retry.ok) {
         return { ok: false, error: retry.error ?? result.error ?? 'Could not create or checkout branch' };
       }

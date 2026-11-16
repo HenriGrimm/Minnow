@@ -55,6 +55,7 @@ interface ActiveSurface {
 }
 
 let stage: HTMLElement | null = null;
+let stageSize: { width: number; height: number } | undefined;
 let content: SurfaceContent | undefined;
 let activeKey = '';
 let state = normalizeSurfaceState();
@@ -179,28 +180,32 @@ function placePanel(panel: SurfaceDock, root: HTMLElement, open: boolean, docked
     panelSlides.delete(panel);
     root.classList.remove('graphite-surface-panel--sliding');
   } else if (wasHidden || wasClosing !== closing) {
-    const transition = stage?.getAnimations?.().find(animation =>
-      'transitionProperty' in animation && animation.transitionProperty === `--mn-graphite-${panel}-reveal`);
-    root.classList.toggle('graphite-surface-panel--sliding', Boolean(transition));
-    if (transition) {
-      const slide = { key: activeKey, tab: state[panel].active, closing };
-      panelSlides.set(panel, slide);
-      const finish = () => {
-        if (panelSlides.get(panel) !== slide) return;
-        panelSlides.delete(panel);
-        root.classList.remove('graphite-surface-panel--sliding');
-        if (closing) render();
-        else schedulePreviewLayout();
-      };
-      void transition.finished.then(finish, finish);
-    } else {
+    const host = stage;
+    const view = host?.ownerDocument.defaultView;
+    if (!host?.getAnimations || !view?.requestAnimationFrame ||
+      document.documentElement.hasAttribute('data-reduce-motion') || view.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       panelSlides.delete(panel);
-      if (closing) {
-        root.hidden = true;
-        root.removeAttribute('inert');
-        root.classList.remove('graphite-surface-panel--closing');
-      }
+      root.classList.remove('graphite-surface-panel--sliding', 'graphite-surface-panel--closing');
+      if (closing) { root.hidden = true; root.removeAttribute('inert'); }
+      return;
     }
+    const slide = { key: activeKey, tab: state[panel].active, closing };
+    panelSlides.set(panel, slide);
+    root.classList.add('graphite-surface-panel--sliding');
+    const finish = () => {
+      if (panelSlides.get(panel) !== slide) return;
+      panelSlides.delete(panel);
+      root.classList.remove('graphite-surface-panel--sliding');
+      if (closing) render();
+      else schedulePreviewLayout();
+    };
+    view.requestAnimationFrame(() => {
+      if (panelSlides.get(panel) !== slide) return;
+      const transition = host.getAnimations().find(animation =>
+        'transitionProperty' in animation && animation.transitionProperty === `--mn-graphite-${panel}-reveal`);
+      if (transition) void transition.finished.then(finish, finish);
+      else finish();
+    });
   }
 }
 
@@ -249,7 +254,8 @@ function updateSize(panel: SurfaceDock, value: number): void {
 }
 
 function availableSize(panel: SurfaceDock): number {
-  const dimension = panel === 'side' ? stage?.clientWidth : stage?.clientHeight;
+  const size = stageSize ?? (stage && { width: stage.clientWidth, height: stage.clientHeight });
+  const dimension = panel === 'side' ? size?.width : size?.height;
   if (!dimension) return Infinity;
   return Math.max(0, dimension - (panel === 'side' ? SIDE_CHAT_MIN_WIDTH : 180));
 }
@@ -260,11 +266,13 @@ function dockSize(panel: SurfaceDock, value: number, available = availableSize(p
 }
 
 function applySizes(): void {
+  const availableByPanel = { side: availableSize('side'), bottom: availableSize('bottom') };
   for (const panel of SURFACE_DOCKS) {
-    const available = availableSize(panel);
+    const available = availableByPanel[panel];
     const applied = dockSize(panel, dragSizes[panel] ?? sizes[panel], available);
     const resizer = mounted.get(panel)?.resizer;
-    stage?.style.setProperty(`--mn-graphite-${panel}-size`, `${applied}px`);
+    const sizeProp = `--mn-graphite-${panel}-size`;
+    if (stage && stage.style.getPropertyValue(sizeProp) !== `${applied}px`) stage.style.setProperty(sizeProp, `${applied}px`);
     resizer?.setAttribute('aria-valuemin', String(dockSize(panel, PANEL_SIZES[panel].min, available)));
     const max = Math.min(PANEL_SIZES[panel].max, available);
     if (Number.isFinite(max)) resizer?.setAttribute('aria-valuemax', String(max));
@@ -859,6 +867,17 @@ export function toggleSurfaceMaximize(panel: SurfacePanel = state.focused): void
   focusSelected(panel);
 }
 
+function restoreMaximizedPanel(): void {
+  const chat = getContextChat();
+  if (!chat || usePhonePresentation()) return;
+  syncChat(chat);
+  syncViewport();
+  if (!state.maximized) return;
+  state.maximized = null;
+  persist();
+  render();
+}
+
 export function mountSurfacePanelToggles(host: HTMLElement): void {
   for (const panel of ['bottom', 'side'] as const) {
     const label = panel === 'side' ? 'Side panel' : 'Bottom panel';
@@ -1218,6 +1237,7 @@ export function mountSurfacePanels(host: HTMLElement, options: {
   if (stage === host) return;
   if (stage) return;
   stage = host;
+  stageSize = undefined;
   content = options.content;
   legacySurfaces = options.legacyOpen ?? [];
   stage.classList.add('graphite-surfaces');
@@ -1237,6 +1257,7 @@ export function mountSurfacePanels(host: HTMLElement, options: {
   setGraphiteSurfaceBridge({
     request: handleLegacyRequest,
     refresh: refreshSurfacePanels,
+    restoreMaximizedPanel,
     showContent: content ? (kind, key, forceLoad, into) => {
       const chat = getContextChat();
       if (!chat) return;
@@ -1282,6 +1303,8 @@ export function mountSurfacePanels(host: HTMLElement, options: {
   });
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(() => {
+      if (stage !== host) return;
+      stageSize = { width: host.clientWidth, height: host.clientHeight };
       applySizes();
       schedulePreviewLayout();
     }).observe(host);

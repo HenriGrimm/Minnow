@@ -499,6 +499,6 @@ export async function getContextBudget(
     lastTurnCompletionTokens: lastTurn?.completion_tokens ?? null,
     lastTurnTotalTokens: lastTurn?.total_tokens ?? null,
     nativeContext,
-    sessionUsage: chat.tokenLedger?.totals,
+    sessionUsage: chat.tokenLedger?.totals ?? chat.tokenLedgerTotals,
   });
 }

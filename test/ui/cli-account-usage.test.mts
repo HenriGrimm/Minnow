@@ -52,7 +52,8 @@ test('manual refresh forwards its intent and backoff disables refresh without in
   const view = createAccountUsageView('claude', { request: async (_kind, options) => {
     requests.push(options?.refresh === true);
     return requests.length === 1 ? snapshot : { ...snapshot, status: 'error', windows: [], fetchedAt: null,
-      message: 'Try later', retryAt: new Date(Date.now() + 120000).toISOString() };
+      message: 'Claude temporarily limited usage checks.', retryAt: new Date(Date.now() + 120000).toISOString(),
+      quotaLimits: [{ label: 'opus', resetsAt: new Date(Date.now() + 3600000).toISOString() }] };
   } });
   views.push(view);
   document.body.append(view.root);
@@ -63,7 +64,8 @@ test('manual refresh forwards its intent and backoff disables refresh without in
   assert.deepEqual(requests, [false, true]);
   assert.equal(view.root.querySelector('progress'), null);
   assert.equal(view.root.querySelector<HTMLButtonElement>('button')!.disabled, true);
-  assert.match(view.root.textContent ?? '', /Retry after/);
+  assert.match(view.root.textContent ?? '', /Usage limit reached for opus\. Resets/);
+  assert.match(view.root.textContent ?? '', /Next usage check/);
 });
 
 test('hidden views skip requests and teardown aborts in-flight work so late replies cannot paint', async () => {

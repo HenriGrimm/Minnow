@@ -12,11 +12,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Database from 'better-sqlite3';
+import { checkMappedSessionsIntegrity } from '../../server/config/sessions-integrity.js';
 
 import {
   closeSessionsDb,
   deleteSessionsDb,
   getSessionsDb,
+  initializeSessionsDb,
   readSessionMeta,
 } from '../../server/config/sessions-db.js';
 import {
@@ -262,6 +264,25 @@ describe('sessions.db snapshots', () => {
     assert.equal(readSessionMeta(opened, 'dbCorruptRecoveredAt'), null);
   });
 
+  test('the isolated mapped check reads committed WAL data and rejects a damaged tree', async (t) => {
+    seed();
+    const db = getSessionsDb();
+    const mapped = db.pragma('mmap_size = 1048576', { simple: true });
+    db.pragma('mmap_size = 0');
+    if (!(mapped > 0)) return t.skip('SQLite memory mapping is unavailable on this build');
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      assert.equal(await checkMappedSessionsIntegrity(sessionsDbPath()), true);
+    } finally {
+      db.exec('ROLLBACK');
+    }
+
+    corruptSessionsDb();
+    const damaged = fs.readFileSync(sessionsDbPath());
+    assert.equal(await checkMappedSessionsIntegrity(sessionsDbPath()), false);
+    assert.deepEqual(fs.readFileSync(sessionsDbPath()), damaged, 'the scanner does not recover or rewrite the source');
+  });
+
   test('corrupt sessions.db is quarantined and restored from the newest snapshot', async () => {
     seed();
     const snapshot = await snapshotSessionsDb(getSessionsDb(), { force: true });
@@ -269,7 +290,11 @@ describe('sessions.db snapshots', () => {
 
     corruptSessionsDb();
 
-    const db = getSessionsDb();
+    const init = initializeSessionsDb();
+    assert.equal(initializeSessionsDb(), init);
+    assert.throws(() => getSessionsDb(), /still being initialized/);
+    const db = await init;
+    assert.equal(getSessionsDb(), db);
 
     assert.ok(readSessionMeta(db, 'dbCorruptRecoveredAt'), 'corruption must be stamped');
     assert.ok(readSessionMeta(db, 'dbRestoredFromSnapshotAt'), 'restore must be stamped');

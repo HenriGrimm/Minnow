@@ -58,6 +58,7 @@ export function createHistoryView(ctx: SccContext): SccView {
         onOpenChanges: (sha) => void selectCommit(sha),
         onRefresh: () => ctx.refreshAll(),
         getCurrentBranch: () => ctx.getBranch(),
+        onOpenWorktree: ctx.openWorktree,
         onConflict: (message) =>
           showGitUiFailure(message, { chatKind: 'merge', ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()) }),
       });

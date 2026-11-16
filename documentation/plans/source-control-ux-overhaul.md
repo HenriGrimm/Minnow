@@ -77,7 +77,7 @@ Rejected: auto-removing the other worktree to free the branch (destructive). `gi
 ## Implementation steps
 
 ### 1. Server checkout planner and structured results
-- [ ] A pre-flight reports where a branch or PR lives and what the switch would cost, without mutating anything.
+- [x] A pre-flight reports where a branch or PR lives and what the switch would cost, without mutating anything.
 - Changes: Add `checkoutPlan({ cwd, branch? , pullRequest? })` in `server/git/checkout-switch.js` and register it in `middleware.js`.
 - Read `git worktree list --porcelain` once. For branches, match by `branch refs/heads/<name>`. For PRs, resolve `gh pr view <n> --json headRefName,headRefOid,isCrossRepository,headRepositoryOwner`, then match a worktree whose branch is the head name, whose HEAD equals `headRefOid`, or whose branch merges `refs/pull/<n>/head`.
 - Return `{ ok, target: { branch, localBranch? }, location: 'current' | 'here' | 'worktree', worktreePath?, dirty: { fileCount }, busy?: { label } }`.
@@ -87,7 +87,7 @@ Rejected: auto-removing the other worktree to free the branch (destructive). `gi
 - Verify: Extend `test/server/checkout-switch.test.mjs` with real-Git linked-worktree fixtures (branch, same-name PR, fork PR via OID, busy lock, overwrite conflict).
 
 ### 2. Error vocabulary and one recovery presentation
-- [ ] Every checkout failure has a title, a plain summary and at least one action.
+- [x] Every checkout failure has a title, a plain summary and at least one action.
 - Changes: Add `worktree_in_use`, `overwrite`, `missing_ref`, `lock_file`, `busy` and `stale` kinds to `src/lib/git-error-parse.ts`. Prefer `result.code` when present.
 - Add a shared `GitRecoveryAction` list (`Open in worktree`, `Use that checkout for this chat`, `Stop action`, `Bring/Leave changes`, `Refresh branches`, `Fetch and retry`, `Send to chat`) rendered by both the picker's inline notice and the activity error popover. Keep technical output under a "Technical details" disclosure.
 - Show `partial` as a warning: "Switched to X, but updating from GitHub failed".
@@ -96,7 +96,7 @@ Rejected: auto-removing the other worktree to free the branch (destructive). `gi
 - Verify: `test/lib/git-error-parse.test.ts`, `test/ui/scc-checkout-recovery.test.mts`.
 
 ### 3. Client checkout controller and entry-point consolidation
-- [ ] All switch entry points share one flow and one set of questions.
+- [x] All switch entry points share one flow and one set of questions.
 - Changes: Create `src/state/checkout-controller.ts` exporting `requestCheckout({ scope: 'panel' | 'chat', chat?, cwd, branch? , pullRequest?, create?, startPoint? })`. The flow is: plan → shared-folder guard (step 5) → dirty choice → `checkoutSwitch` → map `code` to recovery actions → emit `GIT_CHECKOUT_CHANGED_EVENT` and refresh facts.
 - Route `git-checkout-picker` (branches **and PR rows**), `thread-checkout`, SCC header/Branches, `scc-pulls` / PR detail Checkout, `composer-run-target` `applyBranchCheckout`, the graph context menu and `git-merge-to-main` through it. Delete `confirmDirtyCheckout` once unused.
 - Replace the composer "Switch branch" submenu with the thread checkout picker in inline mode, so the composer and thread header share one UI.
@@ -105,7 +105,7 @@ Rejected: auto-removing the other worktree to free the branch (destructive). `gi
 - Verify: `test/ui/git-checkout-picker.test.mts`, `test/ui/thread-checkout.test.mts`, `test/ui/scc-pulls.test.mts`, `test/ui/scc-refs.test.mts`, plus a new `test/state/checkout-controller.test.mts`.
 
 ### 4. Live checkout facts and one checkout identity component
-- [ ] Every surface shows the same live branch and location.
+- [x] Every surface shows the same live branch and location.
 - Changes: Add `src/state/checkout-facts.ts`, a per-path cache of `{ branch | detached sha, dirtyCount, ahead/behind, chatsBound[] }`. Feed it from existing status polls, `refreshSidebarGitFacts` and `GIT_CHECKOUT_CHANGED_EVENT`. Never start a new poll loop.
 - Add a `createCheckoutBadge()` component showing `branch · Workspace (shared with N)`, `branch · <worktree>`, `Detached at abc123`, `Setting up…` or `Busy: <action>`. Use it in the composer run-target label, the thread header, the Git panel picker trigger and the SCC header.
 - Stop displaying `chat.gitBranch` as current. Write it from facts after each turn and switch, as "last seen branch". Sidebar `chatGitState` prefers live facts for the chat's checkout and falls back to `gitBranch` for archived or offline chats.
@@ -113,14 +113,14 @@ Rejected: auto-removing the other worktree to free the branch (destructive). `gi
 - Verify: `test/ui/git-panel-branch-sync.test.mts`, `test/state/chat-worktree.test.mts`, sidebar git-state tests and a new facts unit test.
 
 ### 5. Shared-folder guard and chat↔panel follow state
-- [ ] Users always know whether an action affects only this chat.
+- [x] Users always know whether an action affects only this chat.
 - Changes: In `requestCheckout` with `scope: 'chat'` on a Local chat, count other non-archived chats bound to the same folder. If any exist, ask: "**N other chats use the workspace folder.** Switching changes their files too." The options are **Switch in a new worktree** (default focus), **Switch workspace anyway** and **Cancel**. The new-worktree choice reuses `worktreeAdd` with `checkoutExisting` (or the owning worktree if one exists) and `applyChatRunTargetChoice({ kind:'attach' })`. The running-chat refusal remains.
 - Git panel and SCC: when the shown checkout differs from the active chat's checkout, show a slim bar, "Viewing <badge> — this chat uses <badge>", with a **Follow chat** button that clears `panelCwdUserOverride`. SCC header names the chat it follows.
 - Acceptance: switching from a Local chat with siblings never moves the folder without the explicit choice. A manual panel worktree pick is always visibly marked.
 - Verify: `test/ui/thread-checkout.test.mts`, `test/ui/panel-worktree-cwd.test.mts`, `test/os/source-control-app.test.mts`.
 
 ### 6. Worktree and branch list polish
-- [ ] Lists show where things live and route there.
+- [x] Lists show where things live and route there.
 - Changes: SCC Branches: replace the disabled Checkout on in-worktree branches with **Open worktree**, and show the worktree name chip.
 - PR list and detail: show "Checked out here", "In <worktree>" or "Fork" tags, using `checkoutPlan` results cached per list load. The primary action becomes **Open** when the PR is already checked out.
 - Worktrees list: show bound chats, dirty count and ahead/behind; add an **Open chat** action. Removal confirmation lists bound chats and detaches them to Local on success. Offer **Force remove** only when the failure is classified as dirty or untracked.
@@ -130,13 +130,23 @@ Rejected: auto-removing the other worktree to free the branch (destructive). `gi
 - Verify: `test/ui/scc-refs.test.mts`, `test/ui/scc-pulls.test.mts`, `test/server/worktree-ops.test.mjs`, and an inspection of the rendered UI at desktop and narrow widths.
 
 ### 7. Regression, docs and release checks
-- [ ] Behavior is covered and documented.
+- [x] Behavior is covered and documented.
 - Changes: Update `documentation/context.md` (checkout planner, result codes, facts store) and `documentation/manual/apps/code.md` (switching, PRs in worktrees, shared-folder prompt, follow-chat bar).
 - Run focused suites, `npm run test:check-coverage`, `npx tsc --noEmit` and `npm run impeccable:detect` on the touched UI. Inspect the git diff and status.
 - Acceptance: affected suites and the typecheck pass. Unrun or platform-limited checks are reported.
 - Verify: The commands above.
 
 ## Acceptance checklist
+
+> Implementation status (2026-11-15). Shipped differently from the plan:
+> - The controller is `runCheckoutFlow` in `src/ui/git-checkout-confirm.ts` (it needs dialogs), not `src/state/checkout-controller.ts`; its tests are in `test/ui/scc-checkout-recovery.test.mts`.
+> - No new facts store. Live branches come from the existing per-path sidebar facts cache (`getLiveCheckoutBranch`), refreshed on `GIT_CHECKOUT_CHANGED_EVENT`. There is no `createCheckoutBadge` component; composer, thread card and SCC labels were updated in place.
+> - The composer keeps its branch submenu (routed through the shared flow; worktree-held branches route to their checkout). The SCC header keeps its branch popover.
+> - Sidebar `chatGitState` still keys PR state on `chat.gitBranch` (the chat's branch history); the composer now updates it from the live branch for the active chat.
+> - `confirmDirtyCheckout` remains only for detached-commit checkout, which has no stash-aware server flow; it no longer proceeds silently when status is unreadable.
+>
+> Polish pass (same day): SCC Pulls list location/Fork tags, worktree row changed/ahead/behind counts and Open chat, the picker's "Waiting for <action>" notice with Stop and switch, Recent branches and the keyboard hint row, and tighter `timeout` / `fix conflicts` patterns all shipped.
+> Still unverified: a rendered-UI inspection at desktop and narrow widths. The running app on port 9473 serves a built bundle, and the agent chat could not start a separate dev server.
 
 - [ ] Checking out a PR whose branch is in another worktree offers to open that worktree and never errors or stashes.
 - [ ] Every switch entry point asks the same dirty-file question and uses the same recovery actions.

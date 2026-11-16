@@ -12,6 +12,7 @@ import { promisify } from 'node:util';
 import { after, before, describe, test } from 'node:test';
 import {
   branches,
+  branchTree,
   cherryPick,
   commit,
   deleteBranch,
@@ -423,6 +424,22 @@ describe('git API', () => {
     const removed = await worktreeRemove({ cwd: repoDir, path: repoDir });
     assert.equal(removed.ok, false);
     assert.match(removed.error ?? '', /Cannot remove the main worktree|is a main working tree/i);
+  });
+
+  test('worktreeRemove marks only a dirty refusal as forceable, and branchTree names the holding worktree', async () => {
+    const wtPath = path.join(repoDir, '.worktrees', 'wt-dirty-remove');
+    const added = await worktreeAdd({ cwd: repoDir, branch: 'wt-dirty-remove', path: wtPath });
+    assert.equal(added.ok, true);
+    const tree = await branchTree({ cwd: repoDir });
+    const held = tree.branches.find((entry) => entry.name === 'wt-dirty-remove');
+    assert.equal(held?.worktree, true);
+    assert.equal(path.resolve(held?.worktreePath ?? '').toLowerCase(), path.resolve(wtPath).toLowerCase());
+    await fs.writeFile(path.join(wtPath, 'scratch.txt'), 'untracked\n');
+    const refused = await worktreeRemove({ cwd: repoDir, path: wtPath });
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'dirty');
+    const forced = await worktreeRemove({ cwd: repoDir, path: wtPath, force: true });
+    assert.equal(forced.ok, true);
   });
 
   test('worktreeAdd slugifies invalid branch names', async () => {

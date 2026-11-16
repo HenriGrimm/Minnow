@@ -8,7 +8,7 @@ function percent(value) {
 
 function reset(value) {
   if (value == null) return null;
-  const date = new Date(typeof value === 'number' ? value * 1000 : value);
+  const date = new Date(typeof value === 'number' && value < 1e12 ? value * 1000 : value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
@@ -21,7 +21,7 @@ function durationLabel(minutes) {
 
 export function normalizeCodexUsage(data, account) {
   const buckets = data?.rateLimitsByLimitId && Object.keys(data.rateLimitsByLimitId).length
-    ? Object.entries(data.rateLimitsByLimitId) : [['codex', data?.rateLimits]];
+    ? Object.entries(data.rateLimitsByLimitId) : [[text(data?.rateLimits?.limitId, 'codex'), data?.rateLimits]];
   const windows = [];
   for (const [id, bucket] of buckets.slice(0, 32)) {
     for (const name of ['primary', 'secondary']) {
@@ -56,6 +56,17 @@ export function normalizeClaudeUsage(data, plan) {
     windows.push({ id, label, windowMinutes, usedPercent: percent(row.utilization), resetsAt: reset(row.resets_at) });
   }
   return { windows, plan: text(plan) };
+}
+
+export function normalizeClaudeRateLimitUsage(rateLimit) {
+  const windows = {};
+  for (const [id, row] of Object.entries(rateLimit.windows ?? {})) {
+    if (row.utilization != null) windows[id] = { utilization: row.utilization * 100, resets_at: row.resets_at };
+  }
+  if (rateLimit.window && rateLimit.utilization != null) windows[rateLimit.window] = {
+    utilization: rateLimit.utilization * 100, resets_at: rateLimit.resets_at ?? windows[rateLimit.window]?.resets_at,
+  };
+  return normalizeClaudeUsage(windows);
 }
 
 function epochMs(value) {

@@ -10,6 +10,7 @@ import { getChatCodeChangeTotals } from '../usage/code-change-ledger';
 import { gitBranchTree, gitStatus, type GitBranchTreeEntry } from '../state/git-api';
 import { prList, type CheckState, type PullRequestSummary } from '../state/forge-api';
 import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
+import { GIT_CHECKOUT_CHANGED_EVENT } from '../state/git-checkout-events';
 import { createIcon, type IconName } from './icon';
 
 export type ChatGitStage = 'uncommitted' | 'committed' | 'pr-draft' | 'pr-open' | 'merged' | 'closed';
@@ -114,6 +115,8 @@ export function initSidebarGitState(): void {
   refresh();
   subscribeWorkspace(() => refresh());
   window.addEventListener('focus', () => refresh());
+  // Any in-app switch re-reads the workspace HEAD at once instead of on the next poll.
+  window.addEventListener(GIT_CHECKOUT_CHANGED_EVENT, () => refresh(true));
   setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, STALE_MS);
 }
 
@@ -122,6 +125,15 @@ export function getWorkspaceGitSummary(cwd: string): WorkspaceGitSummary | null 
   const known = facts.get(cwd);
   if (!known?.current) return null;
   return { branch: known.current, ahead: known.ahead, behind: known.behind, changed: known.changed };
+}
+
+/**
+ * The branch actually checked out at `cwd`, once read. Every surface labels a
+ * checkout from this rather than a chat's saved `gitBranch`, which only records
+ * the branch the chat last saw.
+ */
+export function getLiveCheckoutBranch(cwd: string | undefined): string | null {
+  return cwd ? facts.get(cwd)?.current ?? null : null;
 }
 
 export function resetSidebarGitStateForTests(next?: { cwd: string; current?: string; trunk?: string; branches?: GitBranchTreeEntry[]; prs?: PullRequestSummary[]; ahead?: number | null; behind?: number | null; changed?: number }): void {

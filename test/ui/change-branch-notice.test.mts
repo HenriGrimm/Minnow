@@ -23,6 +23,9 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
     current = input.branch;
     return { ok: true, branch: current };
   },
+  gitCheckoutPlan: async () => ({ ok: true, location: 'here' }),
+  gitFetch: async () => ({ ok: true }),
+  gitStatus: async () => ({ ok: true }),
 } });
 mock.module('../../src/state/workspace.ts', { namedExports: { getWorkspacePath: () => '/repo' } });
 mock.module('../../src/state/sessions.ts', { namedExports: {

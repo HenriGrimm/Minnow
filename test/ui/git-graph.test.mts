@@ -189,6 +189,19 @@ describe('computeGraphLayout', () => {
     assert.equal(maxLaneIndex(rows), 1);
   });
 
+  it('keeps an exact branch edge separate until its actual parent', () => {
+    const rows = computeGraphLayout(assignCommitVisuals([
+      commit(M, [B, E], { refs: ['HEAD -> main'] }),
+      commit(E, [A], { refs: ['feature/test'] }),
+      commit(B, [A]),
+      commit(A, []),
+    ]), new Map(), true);
+
+    assert.deepEqual(rows[1].curves, []);
+    assert.ok(rows[1].rails.some((rail) => rail.kind === 'down' && rail.lane === rows[1].lane));
+    assert.ok(rows[2].curves.some((curve) => curve.joins && curve.toLane === rows[1].lane));
+  });
+
   it('lands a commit on the lane already heading to it', () => {
     // D (feature/a) sits directly on top of main's C; E (feature/b) forks from B.
     const rows = computeGraphLayout(

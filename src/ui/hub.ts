@@ -113,7 +113,7 @@ function buildAmbientStatusLine(): string {
 function sumWorkspaceTokens(workspacePath: string): number {
   if (!sessionState) return 0;
   const chats = getChatsForWorkspace(workspacePath, sessionState);
-  return chats.reduce((sum, chat) => sum + (chat.tokenLedger?.totals?.totalTokens ?? 0), 0);
+  return chats.reduce((sum, chat) => sum + (chat.tokenLedger?.totals?.totalTokens ?? chat.tokenLedgerTotals?.totalTokens ?? 0), 0);
 }
 
 async function fetchHubServerMetrics(): Promise<void> {

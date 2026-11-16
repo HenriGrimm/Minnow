@@ -28,6 +28,10 @@ export function acquireActionWorktree(cwd, id) {
 export function releaseActionWorktree(cwd, id) {
   if (owners.get(key(cwd)) === id) owners.delete(key(cwd));
 }
+/** Id holding a checkout's mutation lock (`local-…` for a cancellable local action). */
+export function actionWorktreeOwner(cwd) {
+  return owners.get(key(cwd));
+}
 export function assertActionWorktreeIdle(cwd) {
   if (owners.has(key(cwd)) && owners.get(key(cwd)) !== mutationScope.getStore()?.id)
     throw new Error(

@@ -14,5 +14,5 @@ export interface RecordTokenUsageInput {
   usage: Usage; stats?: Stats; costUsd: number | null;
 }
 export function recordTokenUsage(chat: Pick<Chat, 'tokenLedger'>, input: RecordTokenUsageInput): TokenLedgerEntry | null;
-export function sumSessionLedgerTotals(chats: Array<Pick<Chat, 'tokenLedger'>>): TokenLedgerTotals;
+export function sumSessionLedgerTotals(chats: Array<Pick<Chat, 'tokenLedger' | 'tokenLedgerTotals'>>): TokenLedgerTotals;
 export function mergeSessionBySource(chats: Array<Pick<Chat, 'tokenLedger'>>): TokenLedgerBySource;

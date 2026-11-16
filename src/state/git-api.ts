@@ -81,7 +81,32 @@ export interface GitCommitSnapshot {
   treeSha: string;
 }
 
+/** Stable checkout outcome codes from `checkoutSwitch` / `checkoutPlan` / `worktreeRemove`. */
+export type GitCheckoutCode =
+  | 'in_worktree'
+  | 'needs_choice'
+  | 'busy'
+  | 'overwrite'
+  | 'missing_ref'
+  | 'stale_branch'
+  | 'lock_file'
+  | 'partial'
+  | 'dirty'
+  | 'locked';
+
 export interface GitOpResult {
+  code?: GitCheckoutCode;
+  /** `in_worktree` / `checkoutPlan`: the checkout that already has the target. */
+  worktreePath?: string;
+  worktreeBranch?: string;
+  /** `checkoutPlan`: where the target lives relative to this checkout. */
+  location?: 'current' | 'here' | 'worktree';
+  busy?: boolean;
+  busyReason?: string;
+  /** Cancellable local action holding the checkout lock. */
+  busyRunId?: string;
+  /** That action's label, for "Waiting for …" notices. */
+  busyLabel?: string;
   needsChoice?: boolean;
   fileCount?: number;
   savedChanges?: GitSavedCheckoutChanges[];
@@ -139,7 +164,7 @@ export interface GitSavedCheckoutChanges {
 export interface GitCheckoutSwitchInput {
   cwd?: string;
   branch: string;
-  pullRequest?: { number: number; url: string };
+  pullRequest?: { number: number; url: string; headRef?: string; headRefOid?: string; crossRepository?: boolean };
   create?: boolean;
   startPoint?: string;
   dirtyHandling?: 'bring' | 'leave';
@@ -148,6 +173,11 @@ export interface GitCheckoutSwitchInput {
 
 export function gitCheckoutSwitch(input: GitCheckoutSwitchInput): Promise<GitOpResult> {
   return postGit('checkoutSwitch', { ...input });
+}
+
+/** Read-only pre-flight: is the target here, current, or checked out in another worktree? */
+export function gitCheckoutPlan(input: Pick<GitCheckoutSwitchInput, 'cwd' | 'branch' | 'pullRequest'>): Promise<GitOpResult> {
+  return postGit('checkoutPlan', { ...input });
 }
 
 export function gitCheckoutSavedChanges(cwd?: string): Promise<GitOpResult> {
@@ -286,6 +316,8 @@ export interface GitLogResult extends GitOpResult {
   commits?: GitCommitEntry[];
   hasMore?: boolean;
   nextSkip?: number | null;
+  historyBranches?: string[];
+  historyUnchanged?: boolean;
 }
 
 export function gitLog(input?: {
@@ -294,8 +326,10 @@ export function gitLog(input?: {
   skip?: number;
   fullRefs?: boolean;
   historyKey?: string | null;
-}): Promise<GitLogResult> {
-  return postGit('log', input ?? {});
+  ifHistoryKey?: string | null;
+  ref?: string;
+}, signal?: AbortSignal): Promise<GitLogResult> {
+  return postGit('log', input ?? {}, signal);
 }
 
 // ── Branches ─────────────────────────────────────────────────────────────────
@@ -338,6 +372,8 @@ export interface GitBranchTreeEntry {
   upstreamGone: boolean;
   /** Checked out in another worktree, so it cannot be checked out here. */
   worktree: boolean;
+  /** That worktree's path, when `worktree` is true. */
+  worktreePath?: string;
 }
 
 export interface GitBranchTreeResult {

@@ -97,7 +97,12 @@ export function createDevRemoteHandler(handler, opts) {
   const { bundle } = opts;
   return (req, res) => {
     const pathname = String(req.url ?? '/').split(/[?#]/, 1)[0];
-    if (bundle && !pathname.startsWith('/api/')) {
+    // Assets and probes need no build until a browser opens the app.
+    const opensApp = req.method === 'GET' && (
+      pathname === '/' || pathname === '/index.html' || pathname === '/connect' ||
+      (req.headers['sec-fetch-mode'] === 'navigate' && /^\/[\w/-]+$/.test(pathname))
+    );
+    if (bundle && !pathname.startsWith('/api/') && (bundle.isReady() || opensApp)) {
       void bundle.whenReady().then((built) => {
         if (built) return bundle.serve(req, res);
         return serveLive();

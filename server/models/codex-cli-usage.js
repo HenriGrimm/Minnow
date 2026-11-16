@@ -4,14 +4,18 @@ import path from 'node:path';
 import { resolveAgentCliBin, applyAgentCliCaptureEnv } from '../generations/agent-cli/resolve-bin.js';
 import { prepareCodexAuth } from '../generations/agent-cli/codex-auth.js';
 import { createCliRpc } from '../generations/agent-cli/rpc.js';
+import { tryAdmitAgentCliProbe } from '../generations/agent-cli/admission.js';
 import { normalizeCodexUsage } from './cli-usage-normalize.js';
 import { CliUsageError } from './claude-cli-usage.js';
 
 export async function readCodexAccountUsage(options = {}) {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-usage-'));
+  const release = tryAdmitAgentCliProbe('codex-cli');
+  if (!release) throw new CliUsageError('unavailable', 'Account usage can refresh when Codex is idle.', 10_000);
+  let home;
   let rpc;
   let syncAuth;
   try {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-usage-'));
     syncAuth = await prepareCodexAuth(home, options);
     await fs.writeFile(path.join(home, 'config.toml'), 'cli_auth_credentials_store = "file"\n', { mode: 0o600 });
     const bin = await (options.resolveBin ?? resolveAgentCliBin)({ kind: 'codex', ...options });
@@ -33,6 +37,9 @@ export async function readCodexAccountUsage(options = {}) {
     return normalized;
   } finally {
     try { await rpc?.close(); await syncAuth?.(); }
-    finally { await fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+    finally {
+      release();
+      if (home) await fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   }
 }

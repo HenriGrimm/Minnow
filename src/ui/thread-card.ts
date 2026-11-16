@@ -20,6 +20,7 @@ import { mountGraphiteNewThread } from './graphite-new-thread';
 import { createIcon, type IconName } from './icon';
 import { createChatWithMode, renderSidebar, setChatsArchivedWithUndo, subscribeSidebarRender } from './sidebar';
 import { chatGitState, getWorkspaceGitSummary, refreshSidebarGitFacts, subscribeSidebarGitState } from './sidebar-git-state';
+import { otherChatsInCheckout } from './chat-checkout-guard';
 import { mountSurfacePanelToggles, openSurface } from './surfaces/surfaces-column';
 import { showToast } from './toast';
 
@@ -270,6 +271,10 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
     if (worktree) refreshSidebarGitFacts(worktree);
     const state = chatGitState(chat, workspace);
     const git = getWorkspaceGitSummary(checkout);
+    // A just-switched label holds only until the live read catches up, so later
+    // terminal or other-chat switches still show.
+    if (currentBranch && git?.branch === currentBranch) currentBranch = undefined;
+    const sharing = worktree ? 0 : otherChatsInCheckout(chat, checkout, workspace).length;
     const issue = findThreadIssue(chat);
     const goal = getActiveGoal(chat);
     const devServer = rowButton('terminal', 'Dev servers', undefined, () => {
@@ -285,7 +290,8 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
       }).catch(() => showLoadError(panel, 'Could not load dev servers.'));
     });
     checkoutRow = rowButton('gitBranch', (currentBranch ?? git?.branch ?? chat.gitBranch) || 'Checkout',
-      worktree ? `worktree · ${worktree.split(/[\\/]/).at(-1)}` : 'main checkout', () => {
+      worktree ? `worktree · ${worktree.split(/[\\/]/).at(-1)}`
+        : sharing ? `workspace folder · shared with ${sharing} ${sharing === 1 ? 'chat' : 'chats'}` : 'workspace folder', () => {
         const panel = showSubview('Checkout', () => checkoutRow);
         void import('./thread-checkout').then(({ mountThreadCheckout }) => {
           if (panel.signal.aborted || !isCurrent()) return;

@@ -130,7 +130,8 @@ class TranscriptScroller {
   }
 
   toBottom(): void {
-    this.pin();
+    this.pinned = true;
+    this.intent = this.lastDirection = null;
     this.writeTo(this.root.scrollHeight);
     this.notify();
   }
@@ -145,10 +146,11 @@ class TranscriptScroller {
   }
 
   restore(anchor: TranscriptScrollAnchor): void {
+    if (anchor.pinned) { this.toBottom(); return; }
     this.pinned = anchor.pinned;
     this.intent = this.lastDirection = null;
     const max = Math.max(0, this.root.scrollHeight - this.root.clientHeight);
-    this.writeTo(anchor.pinned ? this.root.scrollHeight : Math.max(0, max - anchor.distanceFromBottom));
+    this.writeTo(Math.max(0, max - anchor.distanceFromBottom));
     this.notify();
   }
 

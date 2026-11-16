@@ -10,6 +10,8 @@ import type { Chat } from '../types';
 import { isComposerRecoveryBlocked } from './composer-send';
 import { syncComposerRunTargetFromActiveChat } from './composer-run-target';
 import { createGitCheckoutPicker, type CheckoutPickerState } from './git-checkout-picker';
+import { confirmSharedFolder } from './git-checkout-confirm';
+import { sharedFolderGuard } from './chat-checkout-guard';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import { refreshSidebarGitFacts } from './sidebar-git-state';
 
@@ -82,6 +84,18 @@ export async function mountThreadCheckout(options: ThreadCheckoutOptions): Promi
     inline: true,
     onSwitch: async input => {
       check(input.cwd ?? state.cwd, true);
+      // First attempt only: the dirty-choice retry already passed this prompt.
+      if (!input.dirtyHandling) {
+        const guard = sharedFolderGuard(chat, input.cwd ?? state.cwd, workspace, input, (path, branch) => changed(path, branch));
+        if (guard) {
+          const gate = await confirmSharedFolder(input, guard, isCurrent);
+          if (gate !== 'proceed') {
+            if (gate.ok && isCurrent()) update(await load(cwd()).catch(() => state));
+            return gate;
+          }
+          check(input.cwd ?? state.cwd, true);
+        }
+      }
       const result = await gitCheckoutSwitch(input);
       if (result.ok || (input.pullRequest && result.branch && !result.needsChoice)) {
         const branch = result.branch ?? input.branch;

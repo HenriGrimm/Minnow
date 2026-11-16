@@ -161,7 +161,7 @@ export function flushComposerDraftSessionSave(chatId?: string): void {
   }
   const id = chatId ?? draftSaveChatId;
   draftSaveChatId = null;
-  if (id) scheduleSaveSessions({ chatId: id });
+  if (id) scheduleSaveSessions({ chatId: id, metadataOnly: true });
 }
 
 function scheduleIdleComposerDraftSave(chatId: string): void {
@@ -171,7 +171,7 @@ function scheduleIdleComposerDraftSave(chatId: string): void {
     draftSaveTimer = null;
     const id = draftSaveChatId;
     draftSaveChatId = null;
-    if (id) scheduleSaveSessions({ chatId: id });
+    if (id) scheduleSaveSessions({ chatId: id, metadataOnly: true });
   }, DRAFT_SESSION_SAVE_IDLE_MS);
 }
 
@@ -199,7 +199,7 @@ export function clearComposerAfterSend(
   draftSaveChatId = null;
   if (isPairedDevice()) return;
   if (!hadDraft) return;
-  scheduleSaveSessions({ chatId: chat.id });
+  scheduleSaveSessions({ chatId: chat.id, metadataOnly: true });
   void import('./sidebar').then((m) => m.renderSidebar());
   void import('./chat-app').then((m) => m.refreshChatAppSessionRail());
 }

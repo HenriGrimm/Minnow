@@ -230,7 +230,7 @@ export function parseLogLine(line) {
   if (trimmed.includes(LOG_FIELD_SEP)) {
     const [hash, parentsField, subject, author, relativeTime, refsField] =
       trimmed.split(LOG_FIELD_SEP);
-    if (!/^[0-9a-f]{40}$/.test(hash ?? '')) return null;
+    if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(hash ?? '')) return null;
     return {
       hash,
       parents: (parentsField ?? '').split(' ').filter(Boolean),
@@ -851,7 +851,7 @@ export async function fetch({ cwd } = {}) {
   return { ok: true };
 }
 
-export function historyLogArgs(count = 10, skip = 0, fullRefs = false) {
+export function historyLogArgs(count = 10, skip = 0, fullRefs = false, tip) {
   const bounded = (value, fallback, min, max) => {
     const n = Number(value);
     return Number.isFinite(n) ? Math.max(min, Math.min(Math.floor(n), max)) : fallback;
@@ -862,8 +862,8 @@ export function historyLogArgs(count = 10, skip = 0, fullRefs = false) {
     size,
     offset,
     args: ['log', '--topo-order', fullRefs ? '--decorate=full' : '--decorate=short',
-      '--format=%H%x1f%P%x1f%s%x1f%an%x1f%ar%x1f%D',
-      '--exclude=refs/stash', '--all', `--skip=${offset}`, '-n', String(size + 1)],
+      '--format=%H%x1f%P%x1f%s%x1f%an%x1f%ar%x1f%D', ...(tip ? [] : ['--exclude=refs/stash', '--all']),
+      `--skip=${offset}`, '-n', String(size + 1), ...(tip ? [tip, '--'] : [])],
   };
 }
 
@@ -874,30 +874,53 @@ export function historyLogPage(stdout, size, offset) {
   return { ok: true, commits, hasMore, nextSkip: hasMore ? offset + commits.length : null };
 }
 
-async function historyRefsKey(cwd) {
-  const refs = await git(['show-ref', '--head'], cwd);
-  if (refs.code > 1) return null;
-  return createHash('sha256').update(String(refs.stdout ?? '').split('\n').sort().join('\n')).digest('hex');
+function isHistoryBranch(ref) {
+  return /^(refs\/heads\/.+|refs\/remotes\/.+)$/.test(ref) && !/^refs\/remotes\/[^/]+\/HEAD$/.test(ref);
 }
 
-export async function log({ cwd, count = 10, skip = 0, fullRefs = false, historyKey } = {}) {
+async function readHistoryRefs(cwd, ref) {
+  const [shown, head] = await Promise.all([git(['show-ref', '--head'], cwd), git(['symbolic-ref', '-q', 'HEAD'], cwd)]);
+  for (const result of [shown, head]) {
+    if (result.code !== 0 && result.code !== 1) return { ok: false, error: processError(result) };
+  }
+  const lines = (shown.stdout ?? '').trim().split(/\r?\n/).sort();
+  const refs = new Map();
+  for (const line of lines) {
+    const match = /^([0-9a-f]{40}(?:[0-9a-f]{24})?) (.+)$/.exec(line);
+    if (match) refs.set(match[2], match[1]);
+  }
+  const key = createHash('sha256').update(JSON.stringify([ref ?? '', head.stdout?.trim(), lines])).digest('hex');
+  return { ok: true, refs, key };
+}
+
+export async function log({ cwd, count = 10, skip = 0, fullRefs = false, historyKey, ifHistoryKey, ref } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
+  if (ref !== undefined && (typeof ref !== 'string' || (ref !== 'HEAD' && !isHistoryBranch(ref)))) {
+    return { ok: false, error: 'Choose HEAD or a local or remote branch.' };
+  }
 
-  const key = await historyRefsKey(repo.cwd);
+  const snapshot = await readHistoryRefs(repo.cwd, ref);
+  if (!snapshot.ok) return snapshot;
+  const { key, refs } = snapshot;
   if (historyKey && key !== historyKey) {
     return { ok: false, historyChanged: true, error: 'History changed. Refresh to load the current graph.' };
   }
-  const { args, size, offset } = historyLogArgs(count, skip, fullRefs === true);
-  const result = await git(args, repo.cwd);
-  if (result.code !== 0) {
-    return { ok: false, error: processError(result) };
-  }
+  if (ifHistoryKey && key === ifHistoryKey) return { ok: true, historyUnchanged: true, historyKey: key };
 
-  if (key !== await historyRefsKey(repo.cwd)) {
+  const tip = refs.get(ref);
+  if (ref && ref !== 'HEAD' && !tip) return { ok: false, error: 'This branch no longer exists. Choose another branch.' };
+  const { args, size, offset } = historyLogArgs(count, skip, fullRefs === true, tip);
+  const result = ref === 'HEAD' && !tip ? { code: 0, stdout: '' } : await git(args, repo.cwd);
+  if (result.code !== 0) return { ok: false, error: processError(result) };
+
+  const latest = await readHistoryRefs(repo.cwd, ref);
+  if (!latest.ok) return latest;
+  if (key !== latest.key) {
     return { ok: false, historyChanged: true, error: 'History changed while loading. Refresh to try again.' };
   }
-  return { ...historyLogPage(result.stdout, size, offset), historyKey: key };
+  return { ...historyLogPage(result.stdout, size, offset), historyKey: key,
+    ...(fullRefs === true && offset === 0 ? { historyBranches: [...refs.keys()].filter(isHistoryBranch).sort() } : {}) };
 }
 
 export async function branches({ cwd } = {}) {
@@ -979,6 +1002,16 @@ export async function branchTree({ cwd } = {}) {
   const lockedElsewhere = repoRoot && wtResult.code === 0
     ? parseWorktreeLockedBranches(wtResult.stdout ?? '', repoRoot)
     : new Set();
+  // Branch → checkout path, so a branch held elsewhere can route there.
+  const worktreePaths = new Map();
+  if (wtResult.code === 0) {
+    let wtPath = '';
+    for (const raw of String(wtResult.stdout ?? '').split('\n')) {
+      const line = raw.trimEnd();
+      if (line.startsWith('worktree ')) wtPath = line.slice('worktree '.length);
+      else if (line.startsWith('branch refs/heads/') && wtPath) worktreePaths.set(line.slice('branch refs/heads/'.length), path.normalize(wtPath));
+    }
+  }
   const commonDir = (commonResult.stdout ?? '').trim();
   const logsDir = commonDir ? path.resolve(repo.cwd, commonDir, 'logs', 'refs', 'heads') : '';
 
@@ -991,7 +1024,8 @@ export async function branchTree({ cwd } = {}) {
     const worktree = lockedElsewhere.has(name);
     if (worktree && isMinnowBoardBranch(name)) continue;
     if (head?.trim() === '*') current = name;
-    rows.push({ name, sha, upstream: upstream ?? '', track: track ?? '', date: date ?? '', subject: subject ?? '', worktree });
+    rows.push({ name, sha, upstream: upstream ?? '', track: track ?? '', date: date ?? '', subject: subject ?? '', worktree,
+      ...(worktree && worktreePaths.has(name) ? { worktreePath: worktreePaths.get(name) } : {}) });
   }
 
   const reflogs = await Promise.all(rows.map(async (row) => {
@@ -1038,6 +1072,7 @@ export async function branchTree({ cwd } = {}) {
         upstreamBehind: upstream.behind,
         upstreamGone: upstream.gone,
         worktree: row.worktree,
+        ...(row.worktreePath ? { worktreePath: row.worktreePath } : {}),
       };
     }),
   };
@@ -1260,7 +1295,11 @@ export async function worktreeRemove({ cwd, path: worktreePath, force } = {}) {
   const gitCwd = mainWorktreePath ?? repo.cwd;
   const result = await withWorktreeMutation(path.resolve(repo.cwd, targetPath), () => git(args, gitCwd));
   if (result.code !== 0) {
-    return { ok: false, error: processError(result) };
+    const text = processError(result);
+    // Only a dirty tree warrants offering --force; other failures must not.
+    const dirty = /contains modified or untracked files|use --force to delete/i.test(text);
+    const locked = /is locked|use 'remove -f -f'/i.test(text);
+    return { ok: false, error: text, ...(dirty ? { code: 'dirty' } : locked ? { code: 'locked' } : {}) };
   }
 
   invalidateRegisteredWorktreeCache();

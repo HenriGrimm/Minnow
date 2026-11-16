@@ -30,14 +30,17 @@ test('checks only installed CLIs and treats unparseable or ambiguous feeds as un
 
 test('executes fixed updater argv once, protects active work and rechecks the installed version', async () => {
   let version = '1.1.0';
+  const verified = [];
   let finish;
   let launched;
   const started = new Promise(resolve => { launched = resolve; });
   const providerId = 'claude-code-cli';
   const updates = createAgentCliUpdates({
-    detect: async kind => kind === 'claude'
-      ? { installed: true, version, resolvedCommand: 'fixture-cli', resolvedArgsPrefix: ['fixture.js'] }
-      : { installed: false },
+    detect: async (kind, fresh, verify) => {
+      if (verify) verified.push([kind, fresh, version]);
+      return kind === 'claude' ? { installed: true, version, resolvedCommand: 'fixture-cli', resolvedArgsPrefix: ['fixture.js'] }
+        : { installed: false };
+    },
     fetch: async () => Response.json({ version: '1.2.0' }),
     run: async (command, args, options) => {
       launched({ command, args, options });
@@ -59,6 +62,7 @@ test('executes fixed updater argv once, protects active work and rechecks the in
   assert.equal(invocation.options.ignoreStdin, true);
   finish();
   assert.deepEqual(await work, { installedVersion: '1.2.0' });
+  assert.deepEqual(verified, [['claude', true, '1.2.0']]);
   assert.equal((await updates.check()).items[0].state, 'current');
   (await admitAgentCli(providerId))();
 });

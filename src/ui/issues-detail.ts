@@ -1842,7 +1842,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     fallbackOk: string,
   ): void {
     if (result.ok === false) {
-      gitErrorByIssueId.set(issueId, result.error || 'Git action failed');
+      // A dismissed checkout prompt is not a failure.
+      if (result.error !== 'cancelled') gitErrorByIssueId.set(issueId, result.error || 'Git action failed');
       return;
     }
     showIssuesToast(result.message || fallbackOk, 'success');

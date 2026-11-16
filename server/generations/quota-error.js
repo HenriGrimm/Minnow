@@ -22,6 +22,7 @@ export const QUOTA_EXHAUSTED_MARKERS = [
   "you've hit your limit",
   "you've hit your usage limit",
   "you've hit your session limit",
+  "you've hit your weekly limit",
   'you have hit your limit',
   'you have hit your usage limit',
   'you have reached your usage limit',
@@ -130,17 +131,26 @@ export function allowanceFailure(message, options = {}) {
   };
 }
 
-/** CLI clock reset hints include a timezone, e.g. "resets 11pm (America/Los_Angeles)". */
+const RESET_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** CLI reset hints include a local time and timezone, with a date for longer windows. */
 export function parseAllowanceResetTime(text, now = Date.now()) {
-  const match = /resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([^)]+)\)/i.exec(String(text));
-  if (!match || Number(match[1]) < 1 || Number(match[1]) > 12 || Number(match[2] ?? 0) > 59) return undefined;
+  const match = /resets?\s+(?:(\w{3,9})\s+(\d{1,2})(?:,\s*|\s+))?(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([^)]+)\)/i.exec(String(text));
+  if (!match) return undefined;
+  const [, monthName, date, rawHour, rawMinute = '0', period, timeZone] = match;
+  const month = monthName && RESET_MONTHS.indexOf(monthName.slice(0, 3).toLowerCase()) + 1;
+  const day = Number(date);
+  if ((monthName && (!month || day < 1 || day > 31)) || Number(rawHour) < 1 || Number(rawHour) > 12 || Number(rawMinute) > 59) return undefined;
   try {
-    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: match[4], year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
     const parts = (at) => Object.fromEntries(formatter.formatToParts(at).map((part) => [part.type, Number(part.value)]));
     const today = parts(now);
-    const hour = Number(match[1]) % 12 + (match[3].toLowerCase() === 'pm' ? 12 : 0);
-    for (let day = 0; day <= 1; day += 1) {
-      const local = Date.UTC(today.year, today.month - 1, today.day + day, hour, Number(match[2] ?? 0));
+    const hour = Number(rawHour) % 12 + (period.toLowerCase() === 'pm' ? 12 : 0);
+    const year = today.year + Number(today.month === 12 && month === 1);
+    const dates = month ? [Date.UTC(year, month - 1, day, hour, Number(rawMinute))]
+      : [0, 1].map(offset => Date.UTC(year, today.month - 1, today.day + offset, hour, Number(rawMinute)));
+    for (const local of dates) {
+      if (month && new Date(local).getUTCDate() !== day) return undefined;
       let candidate = local;
       for (let iteration = 0; iteration < 4; iteration += 1) {
         const value = parts(candidate);

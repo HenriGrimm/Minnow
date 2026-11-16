@@ -130,7 +130,7 @@ test('hung checks time out, never overlap, and retry', async () => {
   assert.equal(calls, 2);
 });
 
-test('phone wake aborts a suspended probe and checks the restored network immediately', async () => {
+test('the initial pageshow preserves the first probe; a cached page restore restarts it', async () => {
   let calls = 0;
   fetchMock = (_input, init) => {
     calls += 1;
@@ -143,7 +143,11 @@ test('phone wake aborts a suspended probe and checks the restored network immedi
   };
   let ready = false;
   void start().ready.then((value) => { ready = value; });
-  window.dispatchEvent(new Event('pageshow'));
+  window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: false }));
+  await flush();
+  assert.equal(calls, 1);
+  assert.deepEqual(changes, []);
+  window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
   await flush();
   await flush();
   assert.equal(calls, 2);

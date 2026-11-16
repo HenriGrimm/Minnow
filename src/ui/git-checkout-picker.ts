@@ -5,8 +5,27 @@ import { forgeRefresh, prList, type ForgeResult } from '../state/forge-api';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
 import { displayRemoteRef, isSkippedRemoteRef, shortLocalNameFromRemote } from '../lib/git-ref-start.mjs';
+import { parseGitError } from '../lib/git-error-parse';
+import { actionApi } from '../state/actions-api';
 
 const branchNameOrder = new Intl.Collator(undefined, { numeric: true });
+
+/** Branches recently switched to or from, per checkout (memory only, newest first). */
+const recentByCheckout = new Map<string, string[]>();
+const RECENT_LIMIT = 5;
+const recentKey = (cwd: string) => cwd.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+function rememberRecent(cwd: string, branches: (string | undefined)[]): void {
+  if (!cwd) return;
+  const key = recentKey(cwd);
+  const next = [...branches.filter((b): b is string => Boolean(b && b !== 'HEAD')), ...(recentByCheckout.get(key) ?? [])];
+  recentByCheckout.set(key, [...new Set(next)].slice(0, RECENT_LIMIT + 1));
+}
+
+/** Test helper: recent branches are module state shared by every picker. */
+export function resetRecentCheckoutsForTests(): void {
+  recentByCheckout.clear();
+}
 const checkoutTabs = [
   ['branches', 'Branches', 'Branch name…'],
   ['worktrees', 'Worktrees', 'Name or path…'],
@@ -75,6 +94,12 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   let checkingOutPull: number | undefined;
   let disposed = false;
   let message = '';
+  /** Raw Git output behind the plain-language message. */
+  let messageDetails = '';
+  /** The target turned out to be checked out in another worktree. */
+  let movedTo: { path: string; label: string } | undefined;
+  /** A local action holds this checkout; the switch can retry once it stops. */
+  let blocked: { input: GitCheckoutSwitchInput; runId?: string; label?: string } | undefined;
   let pending: GitCheckoutSwitchInput | undefined;
   let pendingComplete: (() => Promise<void>) | undefined;
   let pendingCount = 0;
@@ -95,10 +120,36 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     el.textContent = value;
     return el;
   }
-  function worktreeName(wt?: ParsedWorktree) {
+  function worktreeName(wt?: Pick<ParsedWorktree, 'path'>) {
     const path = wt?.path ?? state.cwd;
     if (panelPathsEqual(path, state.workspace)) return 'Workspace';
     return path.replace(/\\/g, '/').split('/').pop() || 'Worktree';
+  }
+  /** Plain-language failure; the raw output goes behind Technical details. */
+  function describeFailure(result: GitOpResult, input: GitCheckoutSwitchInput): string {
+    const fallback = input.pullRequest ? 'Could not check out the pull request.' : 'Could not switch branches.';
+    const raw = (result.error ?? '').trim();
+    if (!raw) { messageDetails = ''; return fallback; }
+    const parsed = parseGitError(raw, fallback, result.code);
+    if (parsed.kind === 'generic') { messageDetails = ''; return raw; }
+    messageDetails = raw;
+    return `${parsed.title}. ${parsed.summary}`;
+  }
+  async function stopAndRetry(hold: { input: GitCheckoutSwitchInput; runId?: string }) {
+    if (busy || disposed || !hold.runId) return;
+    busy = true;
+    render();
+    const stopped = await actionApi('localRunCancel', { cwd: hold.input.cwd ?? state.cwd, id: hold.runId });
+    busy = false;
+    if (disposed) return;
+    if (!stopped.ok) {
+      blocked = undefined;
+      message = stopped.error || 'Could not stop the action.';
+      messageDetails = '';
+      render();
+      return;
+    }
+    await requestSwitch(hold.input);
   }
   function close() {
     if (busy) return;
@@ -106,6 +157,8 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     open = Boolean(options.inline);
     pending = undefined;
     pendingComplete = undefined;
+    movedTo = undefined;
+    blocked = undefined;
     query = '';
     render();
   }
@@ -134,14 +187,24 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   async function requestSwitch(input: GitCheckoutSwitchInput, onComplete = pendingComplete) {
     if (busy || disposed) return;
     const key = contextKey();
+    const fromBranch = state.branch;
     busy = true;
     checkingOutPull = input.pullRequest?.number;
     message = '';
+    messageDetails = '';
+    movedTo = undefined;
+    blocked = undefined;
     render();
     try {
       const result = await options.onSwitch(input);
       if (disposed) return;
+      if (!result.ok && (result.error ?? '').trim().toLowerCase() === 'cancelled') {
+        pending = undefined;
+        pendingComplete = undefined;
+        return;
+      }
       if (result.ok) {
+        rememberRecent(input.cwd ?? state.cwd, [result.branch ?? input.branch, fromBranch]);
         pending = undefined;
         pendingComplete = undefined;
         open = Boolean(options.inline);
@@ -157,8 +220,17 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         pendingComplete = onComplete;
         pendingCount = result.fileCount ?? 0;
         open = true;
+      } else if (result.code === 'in_worktree' && result.worktreePath) {
+        // Detected by tracking ref or head commit (e.g. fork PRs): route like a branch row.
+        movedTo = { path: result.worktreePath, label: input.pullRequest ? `PR #${input.pullRequest.number}` : input.branch };
+        pending = undefined;
+        open = true;
+      } else if (result.code === 'busy') {
+        blocked = { input, runId: result.busyRunId, label: result.busyLabel };
+        pending = undefined;
+        open = true;
       } else {
-        message = result.error ?? (input.pullRequest ? 'Could not check out the pull request.' : 'Could not switch branches.');
+        message = describeFailure(result, input);
         pending = undefined;
         open = true;
       }
@@ -187,6 +259,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     if (busy || disposed) return;
     busy = true;
     message = '';
+    messageDetails = '';
     render();
     try {
       await options.onWorktree(path);
@@ -205,6 +278,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     const key = contextKey();
     busy = true;
     message = '';
+    messageDetails = '';
     render();
     try {
       const result = await options.onRestore({ cwd: state.cwd, expectedBranch: state.branch, sha: saved.sha });
@@ -224,10 +298,59 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       status.setAttribute('role', 'status');
       notices.append(status);
     }
+    if (blocked) {
+      const hold = blocked;
+      const offer = document.createElement('div');
+      offer.className = 'git-checkout__restore';
+      offer.setAttribute('role', 'alert');
+      offer.append(
+        text(hold.label ? `Waiting for ${hold.label}` : 'A local action is using this checkout', 'git-checkout__title'),
+        text('Git changes wait until it finishes. Stop it to switch now.', 'git-checkout__detail'),
+      );
+      const actions = document.createElement('div');
+      actions.className = 'git-checkout__notice-actions';
+      if (hold.runId) {
+        const stop = button(busy ? 'Working…' : 'Stop and switch', 'git-checkout__action', () => void stopAndRetry(hold), 'close');
+        stop.disabled = busy;
+        actions.append(stop);
+      }
+      const retry = button('Try again', 'git-checkout__action', () => void requestSwitch(hold.input), 'refresh');
+      retry.disabled = busy;
+      actions.append(retry);
+      offer.append(actions);
+      notices.append(offer);
+    }
+    if (movedTo) {
+      const target = movedTo;
+      const offer = document.createElement('div');
+      offer.className = 'git-checkout__restore';
+      offer.setAttribute('role', 'alert');
+      offer.append(
+        text(`${target.label} is open in ${worktreeName(state.worktrees.find((w) => panelPathsEqual(w.path, target.path)) ?? { path: target.path } as ParsedWorktree)}`, 'git-checkout__title'),
+        text('Git keeps a branch in one worktree at a time.', 'git-checkout__detail'),
+      );
+      const go = button(options.inline ? 'Use that checkout' : 'Open worktree', 'git-checkout__action', () => {
+        movedTo = undefined;
+        void selectWorktree(target.path);
+      }, 'gitWorktree');
+      go.disabled = busy;
+      offer.append(go);
+      notices.append(offer);
+    }
     if (message) {
       const error = text(message, 'git-checkout__error');
       error.setAttribute('role', 'alert');
       notices.append(error);
+      if (messageDetails) {
+        const details = document.createElement('details');
+        details.className = 'git-checkout__details';
+        const summary = document.createElement('summary');
+        summary.textContent = 'Technical details';
+        const pre = document.createElement('pre');
+        pre.textContent = messageDetails;
+        details.append(summary, pre);
+        notices.append(details);
+      }
     }
     const saved = state.savedChanges.find((entry) => entry.branch === state.branch);
     if (saved) {
@@ -256,7 +379,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         const byMain = Number(b.label === 'main') - Number(a.label === 'main');
         return byRemote || byMain || branchNameOrder.compare(a.label, b.label);
       });
-      for (const { branch, label, remote } of matches) {
+      const branchRow = ({ branch, label, remote }: { branch: string; label: string; remote: boolean }) => {
         const create = remote && !state.branches.includes(branch);
         const wt = state.worktrees.find((w) => w.branch === branch && !panelPathsEqual(w.path, state.cwd));
         const current = branch === state.branch;
@@ -274,8 +397,18 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         row.append(identity);
         if (remote) row.append(text('remote', 'git-checkout__tag'));
         if (state.savedChanges.some((s) => s.branch === branch)) row.append(text('Saved changes', 'git-checkout__tag'));
-        list.append(row);
+        return row;
+      };
+      // Shortcuts to the branches last used here; the full list follows unchanged.
+      const recent = needle ? [] : (recentByCheckout.get(recentKey(state.cwd)) ?? [])
+        .filter((name) => name !== state.branch && state.branches.includes(name))
+        .slice(0, RECENT_LIMIT);
+      if (recent.length) {
+        list.append(text('Recent', 'git-checkout__group'));
+        for (const name of recent) list.append(branchRow({ branch: name, label: name, remote: false }));
+        if (matches.length) list.append(text('All branches', 'git-checkout__group'));
       }
+      for (const match of matches) list.append(branchRow(match));
     } else if (tab === 'worktrees') {
       for (const wt of state.worktrees.filter((w) => `${w.branch} ${w.path}`.toLocaleLowerCase().includes(needle))) {
         const current = panelPathsEqual(wt.path, state.cwd);
@@ -309,16 +442,33 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       }
       for (const pr of result.prs ?? []) {
         if (!`#${pr.number} ${pr.title} ${pr.headRef}`.toLocaleLowerCase().includes(needle)) continue;
-        const row = button('', 'git-checkout__item', () => void requestSwitch({
-          branch: pr.headRef, pullRequest: { number: pr.number, url: pr.url },
-          cwd: state.cwd, expectedBranch: state.branch,
-        }), pr.draft ? 'gitPullRequestDraft' : 'gitPullRequest');
+        // Same-repo PRs check out under their head name; fork heads say nothing locally.
+        const sameName = !pr.crossRepository;
+        const current = sameName && pr.headRef === state.branch;
+        const wt = sameName && !current
+          ? state.worktrees.find((w) => w.branch === pr.headRef && !panelPathsEqual(w.path, state.cwd))
+          : undefined;
+        const row = button('', 'git-checkout__item', () => {
+          if (wt) void selectWorktree(wt.path);
+          else void requestSwitch({
+            branch: pr.headRef,
+            pullRequest: {
+              number: pr.number, url: pr.url, headRef: pr.headRef,
+              ...(pr.headRefOid ? { headRefOid: pr.headRefOid } : {}),
+              ...(pr.crossRepository !== undefined ? { crossRepository: pr.crossRepository } : {}),
+            },
+            cwd: state.cwd, expectedBranch: state.branch,
+          });
+        }, current ? 'check' : pr.draft ? 'gitPullRequestDraft' : 'gitPullRequest');
         row.disabled = busy;
+        if (current) row.setAttribute('aria-current', 'true');
         const identity = document.createElement('span');
         identity.className = 'git-checkout__identity';
-        identity.append(text(`#${pr.number} ${pr.title}`, 'git-checkout__title'), text(pr.headRef, 'git-checkout__detail'));
+        const where = current ? ' · Checked out here' : wt ? ` · Open in ${worktreeName(wt)}` : '';
+        identity.append(text(`#${pr.number} ${pr.title}`, 'git-checkout__title'), text(`${pr.headRef}${where}`, 'git-checkout__detail'));
         row.append(identity);
         if (pr.draft) row.append(text('Draft', 'git-checkout__tag'));
+        if (pr.crossRepository) row.append(text('Fork', 'git-checkout__tag'));
         list.append(row);
       }
       if (!list.childElementCount) list.append(text(query ? 'No matching pull requests' : 'No open pull requests', 'git-checkout__empty'));
@@ -407,7 +557,9 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       }
     });
     renderRows(list);
-    menu.append(tabs, searchField, list);
+    const hint = text(options.inline ? '↑↓ move · Enter switch · ←→ tabs' : '↑↓ move · Enter switch · ←→ tabs · Esc close', 'git-checkout__hint');
+    hint.setAttribute('aria-hidden', 'true');
+    menu.append(tabs, searchField, list, hint);
     if (tab === 'pulls') {
       void loadPullRequests();
       return;
@@ -450,7 +602,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       const branchesChanged = JSON.stringify([next.branches, next.remoteBranches]) !== JSON.stringify([state.branches, state.remoteBranches]);
       state = next;
       if (cwdChanged) pulls = undefined;
-      if (moved) { open = Boolean(options.inline); pending = undefined; message = ''; query = ''; if (!busy) pendingComplete = undefined; }
+      if (moved) { open = Boolean(options.inline); pending = undefined; message = ''; messageDetails = ''; movedTo = undefined; blocked = undefined; query = ''; if (!busy) pendingComplete = undefined; }
       // A poll must not steal focus from a user searching or choosing an action.
       if (!open || moved) render();
       else {

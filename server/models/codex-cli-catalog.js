@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { resolveAgentCliBin, applyAgentCliCaptureEnv } from '../generations/agent-cli/resolve-bin.js';
 import { codexSourceHome, prepareCodexAuth } from '../generations/agent-cli/codex-auth.js';
 import { createCodexRpc } from '../generations/codex-app-server/rpc.js';
+import { tryAdmitAgentCliProbe } from '../generations/agent-cli/admission.js';
 
 const TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
@@ -60,9 +61,15 @@ export async function fetchCodexModelCatalog(options = {}) {
   if (!options.refresh && cached && Date.now() - cached.at < TTL_MS) return cached.models;
   if (inflight.has(key)) return inflight.get(key);
   const work = (async () => {
-    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-catalog-'));
+    const release = tryAdmitAgentCliProbe('codex-cli');
+    if (!release) {
+      if (cached) return cached.models;
+      throw new Error('The Codex model list can refresh when Codex is idle.');
+    }
+    let home;
     let syncAuth;
     try {
+      home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-catalog-'));
       syncAuth = await prepareCodexAuth(home, { ...options, env });
       await fs.writeFile(path.join(home, 'config.toml'), 'cli_auth_credentials_store = "file"\n', { mode: 0o600 });
       const runEnv = applyAgentCliCaptureEnv(env, bin.command);
@@ -89,7 +96,10 @@ export async function fetchCodexModelCatalog(options = {}) {
       return models;
     } finally {
       try { await syncAuth?.(); }
-      finally { await fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+      finally {
+        release();
+        if (home) await fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      }
     }
   })();
   inflight.set(key, work);

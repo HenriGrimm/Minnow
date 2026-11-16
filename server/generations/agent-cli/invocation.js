@@ -311,11 +311,12 @@ export async function prepareAgentCliInvocation(input) {
     // sends the entire replay transcript to a second, uncached inference.
     env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = '1';
     env.DISABLE_AUTO_COMPACT = '1';
+    // Settings → Updates owns updates for Minnow's Claude processes.
+    env.DISABLE_AUTOUPDATER = '1';
     if (input.interactive) {
       env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = 'false';
       env.MCP_CONNECTION_NONBLOCKING = '0';
       env.ENABLE_TOOL_SEARCH = 'false';
-      env.DISABLE_AUTOUPDATER = '1';
       env.TERM = 'xterm-256color';
       delete env.CLAUDE_CODE_ENTRYPOINT;
     }

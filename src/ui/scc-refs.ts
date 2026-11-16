@@ -11,6 +11,7 @@ import {
   gitStashList,
   gitStashPop,
   gitStashPush,
+  gitStatus,
   gitWorktreeAdd,
   gitWorktreeRemove,
   type GitBranchTreeEntry,
@@ -29,11 +30,12 @@ import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { isProtectedBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { panelPathsEqual } from './panel-worktree-cwd';
-import { checkoutBranchWithChoice } from './git-checkout-confirm';
+import { checkoutBranchWithChoice, checkoutRecoveryActions } from './git-checkout-confirm';
+import { chatsBoundToWorktree, detachChatsFromRemovedWorktree } from './chat-checkout-guard';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
-import { gitUiCtx, inferGitUiLabel, runGitUiOp } from './git-ui-op';
+import { gitUiCtx, inferGitUiLabel, runGitUiOp, type GitUiOpResult } from './git-ui-op';
 import { createIcon } from './icon';
-import { showToast } from './toast';
+import { showToast, type NotifyAction } from './toast';
 import {
   button,
   chip,
@@ -51,11 +53,13 @@ async function run(
   fn: () => Promise<GitOpResult>,
   ctx: SccContext,
   successMessage?: string,
+  recoveryActions?: (result: GitUiOpResult) => NotifyAction[],
 ): Promise<boolean> {
   const result = await runGitUiOp(fn, {
     label: inferGitUiLabel(successMessage),
     successMessage,
     ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+    recoveryActions,
   });
   if (!result.ok) return false;
   await ctx.refreshAll();
@@ -543,7 +547,12 @@ export function createBranchesView(ctx: SccContext): SccView {
     main.appendChild(name);
     if (isCurrent) main.appendChild(chip('checked out', 'current'));
     if (entry.name === trunk && isRoot) main.appendChild(chip('trunk', 'trunk'));
-    if (entry.worktree) main.appendChild(chip('in worktree', 'branch'));
+    const worktreeLeaf = entry.worktreePath?.split(/[\\/]/).filter(Boolean).pop();
+    if (entry.worktree) {
+      const tag = chip(worktreeLeaf ? `in ${worktreeLeaf}` : 'in worktree', 'branch');
+      if (entry.worktreePath) tag.title = `Checked out at ${entry.worktreePath}`;
+      main.appendChild(tag);
+    }
     if (entry.merged) main.appendChild(chip('merged', 'merged'));
     if (hasChildren && !open) main.appendChild(el('span', 'scc-btree__hidden', `+${countDescendants(node)}`));
 
@@ -580,7 +589,16 @@ export function createBranchesView(ctx: SccContext): SccView {
     if (entry.date) when.title = new Date(entry.date).toLocaleString();
 
     const actions = el('div', 'scc-refrow__actions');
-    if (!isCurrent) {
+    const openHere = entry.worktree && entry.worktreePath && ctx.openWorktree
+      ? () => void ctx.openWorktree!(entry.worktreePath!).then(() => ctx.refreshAll())
+      : undefined;
+    if (!isCurrent && openHere) {
+      actions.appendChild(button({
+        label: 'Open worktree',
+        title: `${entry.name} is checked out at ${entry.worktreePath}. Work there.`,
+        onClick: openHere,
+      }));
+    } else if (!isCurrent) {
       const checkoutBtn = button({
         label: 'Checkout',
         title: entry.worktree ? `${entry.name} is checked out in another worktree` : `Switch to ${entry.name}`,
@@ -619,12 +637,17 @@ export function createBranchesView(ctx: SccContext): SccView {
 
     if (!isCurrent && !entry.worktree) {
       row.addEventListener('dblclick', () => void checkout(entry.name));
+    } else if (!isCurrent && openHere) {
+      row.addEventListener('dblclick', openHere);
     }
     row.addEventListener('keydown', (event) => {
       if (event.target !== row) return;
       if (event.key === 'Enter' && !isCurrent && !entry.worktree) {
         event.preventDefault();
         void checkout(entry.name);
+      } else if (event.key === 'Enter' && !isCurrent && openHere) {
+        event.preventDefault();
+        openHere();
       } else if (event.key === 'ArrowRight' && hasChildren && !open) {
         event.preventDefault();
         toggle(entry.name, true);
@@ -689,9 +712,11 @@ export function createBranchesView(ctx: SccContext): SccView {
       () => checkoutBranchWithChoice(
         { ...input, cwd, expectedBranch, branch: name },
         () => !destroyed && worktreePathsEqual(cwd, ctx.getCwd() ?? getWorkspacePath()),
+        { openWorktree: ctx.openWorktree },
       ),
       ctx,
       message,
+      (failed) => checkoutRecoveryActions(failed, { cwd, openWorktree: ctx.openWorktree }),
     );
   }
 
@@ -1004,6 +1029,7 @@ export function createWorktreesView(
 
     const active = ctx.getCwd() ?? workspace;
     const frag = document.createDocumentFragment();
+    const statusTargets: { path: string; slot: HTMLElement }[] = [];
 
     for (const worktree of worktrees) {
       const isWorkspace = Boolean(workspace && panelPathsEqual(worktree.path, workspace));
@@ -1017,9 +1043,29 @@ export function createWorktreesView(
       else if (worktree.detached) meta.push(chip('detached', 'warn'));
       if (isPrincipal) meta.push(chip('main worktree', 'trunk'));
       else if (isWorkspace) meta.push(chip('workspace', 'trunk'));
+      const bound = isWorkspace ? [] : chatsBoundToWorktree(worktree.path);
+      if (bound.length) {
+        const tag = chip(`${bound.length} ${bound.length === 1 ? 'chat' : 'chats'}`, 'branch');
+        tag.title = `Used by ${bound.map((chat) => chat.name || 'Untitled chat').join(', ')}`;
+        meta.push(tag);
+      }
+      // Filled after paint: uncommitted files and sync state, so removal is an informed choice.
+      const statusSlot = el('span', 'scc-refrow__wtstatus');
+      statusSlot.hidden = true;
+      meta.push(statusSlot);
+      statusTargets.push({ path: worktree.path, slot: statusSlot });
       meta.push(worktree.path);
 
       const actions: HTMLElement[] = [];
+      if (bound.length) {
+        const chat = [...bound].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
+        actions.push(button({
+          label: 'Open chat',
+          title: `Open ${chat.name || 'the chat'} that works in this checkout`,
+          variant: 'ghost',
+          onClick: () => void openChat(chat.id),
+        }));
+      }
       if (!isActive) {
         actions.push(
           button({
@@ -1057,9 +1103,11 @@ export function createWorktreesView(
         });
       if (!isPrincipal && !isWorkspace) {
         selection.add(row, worktree.path, worktree.path, async () => {
+          const using = chatsBoundToWorktree(worktree.path);
           const result = await gitWorktreeRemove({ path: worktree.path, cwd: workspace || undefined });
-          if (result.ok && panelPathsEqual(worktree.path, ctx.getCwd() ?? workspace)) {
-            options.onSelectWorktree(undefined);
+          if (result.ok) {
+            if (panelPathsEqual(worktree.path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(undefined);
+            await detachChatsFromRemovedWorktree(using);
           }
           return result;
         });
@@ -1070,37 +1118,85 @@ export function createWorktreesView(
     }
     body.replaceChildren(frag);
     selection.end();
+    void paintWorktreeStatus(statusTargets, version);
+  }
+
+  /** One at a time: leaves HTTP connections for interactive work. */
+  async function paintWorktreeStatus(targets: { path: string; slot: HTMLElement }[], version: number): Promise<void> {
+    for (const { path, slot } of targets) {
+      const status = await gitStatus(path).catch(() => null);
+      if (destroyed || version !== refreshVersion || !slot.isConnected) return;
+      if (!status?.ok) continue;
+      const changed = new Set([...status.staged ?? [], ...status.unstaged ?? [], ...status.untracked ?? []].map((file) => file.path)).size;
+      const parts: HTMLElement[] = [];
+      if (changed) {
+        const tag = chip(`${changed} changed`, 'warn');
+        tag.title = `${changed} uncommitted or untracked ${changed === 1 ? 'file' : 'files'}`;
+        parts.push(tag);
+      }
+      const ahead = status.ahead ?? 0;
+      const behind = status.behind ?? 0;
+      if (ahead || behind) {
+        const sync = chip(`↑${ahead} ↓${behind}`);
+        sync.title = `${plural(ahead, 'commit')} to push, ${plural(behind, 'commit')} to pull`;
+        parts.push(sync);
+      }
+      if (!parts.length) continue;
+      slot.replaceChildren(...parts);
+      slot.hidden = false;
+    }
+  }
+
+  async function openChat(chatId: string): Promise<void> {
+    try {
+      const [{ switchChat }, { navigateToCodeChat }] = await Promise.all([import('./sidebar'), import('../os/router')]);
+      navigateToCodeChat();
+      await switchChat(chatId);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not open the chat', 'error');
+    }
   }
 
   async function remove(path: string, workspace: string): Promise<void> {
-    const confirmed = await appConfirm(`Remove the worktree at ${path}?`, {
+    const bound = chatsBoundToWorktree(path);
+    const names = bound.map((chat) => chat.name || 'Untitled chat');
+    const chatsLine = bound.length
+      ? ` ${bound.length === 1 ? '1 chat uses' : `${bound.length} chats use`} it (${names.slice(0, 3).join(', ')}${names.length > 3 ? ', …' : ''}); ${bound.length === 1 ? 'it returns' : 'they return'} to Local.`
+      : '';
+    const confirmed = await appConfirm(`Remove the worktree at ${path}?${chatsLine}`, {
       title: 'Remove worktree',
       confirmLabel: 'Remove',
       danger: true,
     });
     if (!confirmed) return;
 
-    const from = ctx.getCwd();
-    if (panelPathsEqual(path, from ?? workspace)) options.onSelectWorktree(undefined);
-
-    const removed = await run(
-      () => gitWorktreeRemove({ path, cwd: workspace || undefined }),
-      ctx,
-      'Worktree removed',
+    const attempt = (force: boolean) => runGitUiOp(
+      () => gitWorktreeRemove({ path, cwd: workspace || undefined, ...(force ? { force: true } : {}) }),
+      {
+        label: 'Removing worktree…',
+        successMessage: 'Worktree removed',
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+        // Only a dirty tree is offered --force below; every other refusal is shown as is.
+        handlesError: (failed) => !force && failed.code === 'dirty',
+      },
     );
-    if (removed) return;
+    let result = await attempt(false);
+    if (!result.ok && result.code === 'dirty') {
+      const force = await appConfirm('That worktree has uncommitted or untracked files. Force remove deletes them permanently.', {
+        title: 'Force remove worktree',
+        confirmLabel: 'Force remove',
+        danger: true,
+      });
+      if (!force) return;
+      result = await attempt(true);
+    }
+    if (!result.ok) return;
 
-    const force = await appConfirm('That worktree has uncommitted changes. Remove it anyway?', {
-      title: 'Force remove worktree',
-      confirmLabel: 'Force remove',
-      danger: true,
-    });
-    if (!force) return;
-    await run(
-      () => gitWorktreeRemove({ path, force: true, cwd: workspace || undefined }),
-      ctx,
-      'Worktree removed',
-    );
+    // Move off the removed checkout only once it is actually gone.
+    if (panelPathsEqual(path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(undefined);
+    const failed = await detachChatsFromRemovedWorktree(bound);
+    if (failed.length) showToast(`Could not return ${failed.join(', ')} to Local. Choose a checkout in the chat.`, 'error');
+    await ctx.refreshAll();
   }
 
   const navigate = listNavigator({ getRows: () => [...body.querySelectorAll<HTMLElement>('.scc-refrow')] });

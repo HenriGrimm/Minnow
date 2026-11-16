@@ -14,12 +14,16 @@ import {
   isChatWorktreeMode,
   type ChatRunTargetChoice,
 } from '../state/chat-worktree.ts';
-import { gitBranches, gitCheckout } from '../state/git-api.ts';
+import { gitBranches } from '../state/git-api.ts';
+import { parseGitError } from '../lib/git-error-parse.ts';
 import { getActiveChat, isExpertChat, scheduleSaveSessions, sessionState, touchChat } from '../state/sessions.ts';
 import { isLocalServerAvailable } from '../tools/config.ts';
 import { listWorktrees } from '../state/worktree-service.ts';
 import type { Chat } from '../types.ts';
 import { isComposerRecoveryBlocked } from './composer-send.ts';
+import { runCheckoutFlow } from './git-checkout-confirm.ts';
+import { otherChatsInCheckout, sharedFolderGuard } from './chat-checkout-guard.ts';
+import { getLiveCheckoutBranch, refreshSidebarGitFacts, subscribeSidebarGitState } from './sidebar-git-state.ts';
 import { createGitWorktreeIcon } from './git-worktree-icons.ts';
 import {
   closeGitPanelNamePopover,
@@ -317,17 +321,35 @@ async function applyBranchCheckout(branch: string, chat = getActiveChat()): Prom
   busyChats.add(chat.id);
   refreshComposerRunTargetDisabled();
   try {
-    const res = await gitCheckout({ branch, cwd: chat.worktreeRoot?.trim() || chat.workspacePath?.trim() || composerGitRepoRoot() });
+    const workspace = chat.workspacePath?.trim() || composerGitRepoRoot();
+    const cwd = chat.worktreeRoot?.trim() || workspace;
+    const current = await gitBranches(cwd);
+    const expectedBranch = current.ok ? current.current?.trim() || undefined : undefined;
+    const input = { branch, cwd, expectedBranch };
+    // Same flow as the thread picker: shared-folder prompt, dirty-file choice,
+    // and routing to a worktree that already has the branch.
+    const res = await runCheckoutFlow(input, {
+      isCurrent: () => getActiveChat().id === chat.id,
+      shared: sharedFolderGuard(chat, cwd, workspace, input),
+      openWorktreeLabel: 'Use that checkout',
+      openWorktree: async (path) => {
+        const attached = await applyChatRunTargetChoice(chat, { kind: 'attach', path, branch });
+        if (!attached.ok) throw new Error(attached.error || 'Could not select the worktree.');
+      },
+    });
     if (!res.ok) {
-      setStatus('error', res.error ?? `Could not checkout ${branch}`);
+      if ((res.error ?? '').toLowerCase() !== 'cancelled') {
+        const parsed = parseGitError(res.error, `Could not check out ${branch}`, res.code);
+        setStatus('error', parsed.kind === 'generic' ? parsed.summary : `${parsed.title}. ${parsed.summary}`);
+      }
       return;
     }
-    chat.gitBranch = branch;
+    chat.gitBranch = res.branch ?? branch;
     touchChat(chat);
     scheduleSaveSessions();
     syncComposerRunTargetFromActiveChat();
     if (getActiveChat().id === chat.id) await refreshGitPanelFromComposer();
-    setStatus('ok', `Branch: ${branch}`);
+    setStatus('ok', res.location === 'worktree' ? `Worktree: ${chat.gitBranch}` : `Branch: ${chat.gitBranch}`);
   } catch (error) {
     setStatus('error', error instanceof Error ? error.message : String(error));
   } finally {
@@ -396,11 +418,37 @@ async function rebuildBranchMenu(): Promise<void> {
     if (name === current) item.setAttribute('aria-current', 'true');
     section.append(item);
   }
+  // Branches held by another worktree: use that checkout instead of a doomed switch.
+  const elsewhere = worktrees.filter((wt) => wt.branch && locked.has(wt.branch));
+  if (elsewhere.length) {
+    const held = menuSection('In other worktrees');
+    menu.append(held);
+    for (const wt of elsewhere) {
+      const leaf = wt.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || wt.path;
+      const item = menuItem(`${wt.branch} · ${leaf}`, () => {
+        void applyChoice({ kind: 'attach', path: wt.path, branch: wt.branch }, chat);
+      }, { icon: 'worktree' });
+      item.title = `Use the checkout at ${wt.path} for this chat`;
+      held.append(item);
+    }
+  }
 }
 
 function worktreeName(chat: Chat): string {
   const leaf = chat.worktreeRoot?.replace(/\\/g, '/').split('/').filter(Boolean).pop();
-  return ((chat.chatWorktreeManaged || leaf === chat.id) ? chat.gitBranch : leaf) || chat.gitBranch || 'Worktree';
+  const branch = liveBranch(chat);
+  return ((chat.chatWorktreeManaged || leaf === chat.id) ? branch : leaf) || branch || 'Worktree';
+}
+
+/** Folder this chat's tools run in. */
+function chatCheckoutPath(chat: Chat): string {
+  const workspace = chat.workspacePath?.trim() || composerGitRepoRoot();
+  return isChatWorktreeMode(chat) ? chat.worktreeRoot!.trim() : workspace;
+}
+
+/** What is checked out there now; the saved label only until the first read. */
+function liveBranch(chat: Chat): string | undefined {
+  return getLiveCheckoutBranch(chatCheckoutPath(chat)) ?? chat.gitBranch?.trim() ?? undefined;
 }
 
 function updateButtonLabels(chat: Chat): void {
@@ -408,16 +456,22 @@ function updateButtonLabels(chat: Chat): void {
   const enabled = chat.worktreeEnabled === true;
   const active = isChatWorktreeMode(chat);
   const name = worktreeName(chat);
+  const branch = liveBranch(chat);
+  const workspace = chat.workspacePath?.trim() || composerGitRepoRoot();
+  const sharing = active ? 0 : otherChatsInCheckout(chat, workspace, workspace).length;
+  const localWhere = `Local · workspace folder on ${branch || 'an unknown branch'}${sharing ? `, shared with ${sharing} other ${sharing === 1 ? 'chat' : 'chats'}` : ''}`;
   const label = runTargetBtn?.querySelector('.composer-run-target__label');
   if (label) label.textContent = busy ? 'Setting up…' : chat.worktreeSetupRequired ? 'Retry worktree' : active ? name : enabled ? 'Worktree' : '';
   runTargetBtn?.classList.toggle('composer-run-target-btn--local', !active && !enabled && !busy && !chat.worktreeSetupRequired);
-  runTargetBtn?.setAttribute('aria-label', busy ? 'Setting up worktree' : chat.worktreeSetupRequired ? 'Retry worktree setup' : active ? `Worktree: ${name}. Branch: ${chat.gitBranch || 'detached'}` : enabled ? 'Worktree enabled. Creates when you send a message' : 'Enable worktree');
+  runTargetBtn?.setAttribute('aria-label', busy ? 'Setting up worktree' : chat.worktreeSetupRequired ? 'Retry worktree setup' : active ? `Worktree: ${name}. Branch: ${branch || 'detached'}` : enabled ? 'Worktree enabled. Creates when you send a message' : 'Enable worktree');
+  if (!active && !busy) runTargetBtn?.setAttribute('aria-description', localWhere);
+  else runTargetBtn?.removeAttribute('aria-description');
   runTargetBtn?.setAttribute('aria-busy', String(busy));
   runTargetBtn?.setAttribute('aria-pressed', String(active || enabled));
   runTargetBtn?.setAttribute('title', active
-    ? `Worktree: ${chat.worktreeRoot}\nBranch: ${chat.gitBranch || 'detached'}\nChange branch, switch worktree, or return to Local`
-    : enabled ? 'Worktree enabled · Your next message creates and sets up an isolated checkout. Click for options.'
-    : 'Enable worktree · Set up an isolated checkout when you send a message');
+    ? `Worktree: ${chat.worktreeRoot}\nBranch: ${branch || 'detached'}\nChange branch, switch worktree, or return to Local`
+    : enabled ? `Worktree enabled · Your next message creates and sets up an isolated checkout. Click for options.\nNow: ${localWhere}`
+    : `Enable worktree · Set up an isolated checkout when you send a message\nNow: ${localWhere}`);
   refreshModeSelectorLayout();
 }
 
@@ -446,6 +500,8 @@ export function syncComposerRunTargetFromActiveChat(): void {
   wrap.classList.remove('hidden');
   updateButtonLabels(chat);
   refreshComposerRunTargetDisabled();
+  // Live HEAD for the label; honors the shared facts cache's freshness window.
+  refreshSidebarGitFacts(chatCheckoutPath(chat));
 
   if (!chat.gitBranch?.trim()) {
     void gitBranches(chat.worktreeRoot?.trim() || chat.workspacePath?.trim() || composerGitRepoRoot()).then((res) => {
@@ -468,4 +524,13 @@ subscribeChatWorktreeSetup(() => {
   if (!wrapEl?.isConnected || !sessionState) return;
   updateButtonLabels(getActiveChat());
   refreshComposerRunTargetDisabled();
+});
+
+subscribeSidebarGitState(() => {
+  if (!wrapEl?.isConnected || !sessionState) return;
+  const chat = getActiveChat();
+  const live = getLiveCheckoutBranch(chatCheckoutPath(chat));
+  // Record the branch the chat last saw (server-owned chats keep their own).
+  if (live && chat.chatCommandVersion !== 1 && chat.gitBranch !== live) chat.gitBranch = live;
+  updateButtonLabels(chat);
 });

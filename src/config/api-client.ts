@@ -140,7 +140,7 @@ export async function getSessionSummaries(
   signal?: AbortSignal,
   sinceRevision?: number,
 ): Promise<SessionSummariesState> {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ view: 'compact' });
   if (workspace != null && workspace !== '') {
     params.set('workspace', workspace);
   }
@@ -174,13 +174,20 @@ export async function getChatHistory(
 /**
  * What session summaries leave out of a chat: full runs (summaries carry stubs
  * without `outputMessages`/`snapshot`), sub-agent runs, terminal history,
- * injected context and runner timings.
+ * injected context, runner timings, and the full token ledger.
  */
-export type ChatDetail = Pick<Chat, 'injectedContext' | 'runnerTiming' | 'historyDigest' | 'historyRewriteRevision'> & {
+export type ChatDetail = Pick<Chat, 'injectedContext' | 'runnerTiming' | 'tokenLedger' | 'historyDigest' | 'historyRewriteRevision'> & {
   runs: NonNullable<Chat['runs']>;
   subAgentRuns: NonNullable<Chat['subAgentRuns']>;
   terminalHistory: NonNullable<Chat['terminalHistory']>;
 };
+
+export async function getSessionTokenLedgers(chatId?: string): Promise<Record<string, NonNullable<Chat['tokenLedger']>>> {
+  const path = '/api/config/sessions/usage' + (chatId ? `?chatId=${encodeURIComponent(chatId)}` : '');
+  const response = await fetch(path, { cache: 'no-store' });
+  const { ledgers } = await parseJsonResponse<{ ledgers: Record<string, NonNullable<Chat['tokenLedger']>> }>(response);
+  return ledgers;
+}
 
 /** GET /api/config/sessions/history/:chatId?detail=1 — the whole transcript plus {@link ChatDetail}. */
 export async function getChatTranscript(

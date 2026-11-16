@@ -57,7 +57,7 @@ export interface ChatCommandService {
   ordinaryEligibility(caller: ChatCaller, chatId: string): Promise<{ chatId: string; route: string; eligible: boolean; reason: string; revision: number }>;
   promote(caller: ChatCaller, input: { chatId: string; expectedRevision: number; clientRequestId: string }): Promise<{ chatId: string; disposition: string; revision: number; replayed: boolean }>;
   send(caller: ChatCaller, input: ChatSendInput): Promise<ChatCommandReceipt>;
-  chooseWorkspace(caller: ChatCaller, input: { chatId: string; action: 'retry' | 'local'; expectedIntentId: string; clientRequestId?: string }): Promise<{ chat: import('./repository.js').ChatShell }>;
+  chooseWorkspace(caller: ChatCaller, input: { chatId: string; action: 'retry' | 'local'; expectedIntentId: string | null; clientRequestId?: string }): Promise<{ chat: import('./repository.js').ChatShell }>;
   fork(caller: ChatCaller, input: {
     chatId: string; messageId: string; expectedRevision: number; message?: string; selection?: ModelSelection; clientRequestId: string;
   }): Promise<{ chatId: string; sourceChatId: string; sourceMessageId: string; commandId: string; revision: number;

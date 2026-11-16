@@ -12,10 +12,12 @@
  */
 
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
 import { sessionsDbPath, sessionsSnapshotsDir } from './sessions-paths.js';
+import { runSessionsMaintenance } from './sessions-maintenance.js';
 
 /** How many snapshots survive rotation. */
 const KEEP_SNAPSHOTS = 3;
@@ -28,6 +30,7 @@ const FREE_SPACE_FACTOR = 2;
 
 const SNAPSHOT_RE = /^sessions-.+\.db$/;
 const PARTIAL_SUFFIX = '.partial';
+const snapshotsInProgress = new Map();
 
 /** @param {string} filePath */
 function unlinkQuiet(filePath) {
@@ -43,6 +46,11 @@ function unlinkQuiet(filePath) {
  */
 function unlinkSnapshot(filePath) {
   for (const suffix of ['', '-wal', '-shm']) unlinkQuiet(`${filePath}${suffix}`);
+}
+
+async function removeSnapshot(filePath) {
+  await Promise.all([filePath, `${filePath}-wal`, `${filePath}-shm`].map(file =>
+    fsp.rm(file, { force: true }).catch(() => {})));
 }
 
 /**
@@ -69,9 +77,7 @@ export function listSessionsSnapshots() {
  * `pragma quick_check` on a finished snapshot. A snapshot of an already-corrupt
  * DB is worse than no snapshot — it looks like a valid restore source.
  *
- * This is synchronous, like the identical check `getSessionsDb()` already runs on
- * every open; it costs one extra pass over the copy, at most twice a day and well
- * after boot.
+ * Runtime snapshot creation and recovery run this check in a maintenance worker.
  * @param {string} filePath
  * @returns {boolean}
  */
@@ -109,17 +115,14 @@ export function rotateSessionsSnapshots(keep = KEEP_SNAPSHOTS) {
 }
 
 /** Drop leftovers from a snapshot that never finished. */
-function sweepPartialSnapshots() {
-  const dir = sessionsSnapshotsDir();
+async function sweepPartialSnapshots(dir) {
   let names;
   try {
-    names = fs.readdirSync(dir);
+    names = await fsp.readdir(dir);
   } catch {
     return;
   }
-  for (const name of names) {
-    if (name.endsWith(PARTIAL_SUFFIX)) unlinkQuiet(path.join(dir, name));
-  }
+  await Promise.all(names.filter(name => name.endsWith(PARTIAL_SUFFIX)).map(name => removeSnapshot(path.join(dir, name))));
 }
 
 /**
@@ -155,9 +158,17 @@ function snapshotStamp(now = new Date()) {
  * @param {{ force?: boolean, keep?: number, minAgeMs?: number }} [options]
  * @returns {Promise<{ ok: boolean, reason?: string, file?: string, removed?: string[] }>}
  */
-export async function snapshotSessionsDb(db, options = {}) {
-  const { force = false, keep = KEEP_SNAPSHOTS, minAgeMs = SNAPSHOT_MIN_AGE_MS } = options;
+export function snapshotSessionsDb(db, options = {}) {
   const dir = sessionsSnapshotsDir();
+  const pending = snapshotsInProgress.get(dir);
+  if (pending) return pending;
+  const snapshot = writeSessionsSnapshot(db, dir, options).finally(() => snapshotsInProgress.delete(dir));
+  snapshotsInProgress.set(dir, snapshot);
+  return snapshot;
+}
+
+async function writeSessionsSnapshot(db, dir, options) {
+  const { force = false, keep = KEEP_SNAPSHOTS, minAgeMs = SNAPSHOT_MIN_AGE_MS } = options;
 
   try {
     if (!force) {
@@ -185,7 +196,7 @@ export async function snapshotSessionsDb(db, options = {}) {
     }
 
     fs.mkdirSync(dir, { recursive: true });
-    sweepPartialSnapshots();
+    await sweepPartialSnapshots(dir);
 
     if (!(await hasFreeSpace(dir, dbBytes * FREE_SPACE_FACTOR))) {
       console.warn(
@@ -197,18 +208,29 @@ export async function snapshotSessionsDb(db, options = {}) {
 
     const finalPath = path.join(dir, `sessions-${snapshotStamp()}.db`);
     const partialPath = `${finalPath}${PARTIAL_SUFFIX}`;
-    unlinkQuiet(partialPath);
 
-    await db.backup(partialPath);
-
-    if (!verifySessionsSnapshot(partialPath)) {
-      unlinkSnapshot(partialPath);
+    let verified;
+    try {
+      const sourcePath = sessionsDbPath();
+      if (db.name === sourcePath) {
+        verified = await runSessionsMaintenance('snapshot', { filePath: partialPath, sourcePath });
+      } else {
+        await db.backup(partialPath);
+        verified = await runSessionsMaintenance('verify-snapshot', { filePath: partialPath });
+      }
+    } catch (error) {
+      await removeSnapshot(partialPath);
+      throw error;
+    }
+    if (!verified) {
+      await removeSnapshot(partialPath);
       console.warn('[sessions] snapshot discarded: quick_check failed on the copy.');
       return { ok: false, reason: 'quick_check_failed' };
     }
 
-    fs.renameSync(partialPath, finalPath);
-    const removed = rotateSessionsSnapshots(keep);
+    await fsp.rename(partialPath, finalPath);
+    const removed = listSessionsSnapshots().slice(Math.max(0, keep));
+    await Promise.all(removed.map(removeSnapshot));
     return { ok: true, file: finalPath, removed };
   } catch (err) {
     console.warn('[sessions] snapshot failed:', err);
@@ -229,8 +251,8 @@ export async function snapshotSessionsDbIfDue(options = {}) {
     if (!fs.existsSync(sessionsDbPath())) {
       return { ok: false, reason: 'no_db' };
     }
-    const { getSessionsDb } = await import('./sessions-db.js');
-    return await snapshotSessionsDb(getSessionsDb(), options);
+    const { initializeSessionsDb } = await import('./sessions-db.js');
+    return await snapshotSessionsDb(await initializeSessionsDb(), options);
   } catch (err) {
     console.warn('[sessions] snapshot failed:', err);
     return { ok: false, reason: 'error' };

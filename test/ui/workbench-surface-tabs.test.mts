@@ -34,6 +34,7 @@ test('files and browser pages retain their content across panel changes on New t
   const { showViewerSplit } = await import('../../src/ui/file-layout');
   const { listPreviewTabs, openPreviewTab } = await import('../../src/ui/preview-tab-store');
   const { resetFilePanelStateForTests } = await import('../../src/state/file-panel');
+  const { openDevServerScreen, closeDevServerScreen } = await import('../../src/ui/dev-server-screen');
   const turn = () => new Promise(resolve => setTimeout(resolve, 0));
 
   try {
@@ -142,7 +143,29 @@ test('files and browser pages retain their content across panel changes on New t
     assert.equal(side.contains(split), false);
     assert.ok(tabs(side).includes('other.md'));
     assert.equal(getViewerTab('notes.md')?.cachedEditorContent, 'unsaved text');
+
+    const bottomPreview = bottom.querySelector('.graphite-browser-host')!;
+    bottom.querySelector<HTMLElement>('[aria-label="Maximize"]')!.click();
+    assert.equal(stage.dataset.surfaceMax, 'bottom');
+    bottomPreview.querySelector<HTMLElement>('[aria-label="Manage dev servers"]')!.click();
+    assert.equal(win.location.hash, '#/app/code/dev-server');
+    await openDevServerScreen();
+    const devServers = stage.querySelector('#devServerScreenRoot')!;
+    assert.ok(devServers.querySelector('.dev-server-screen__toolbar'));
+    assert.equal(devServers.querySelector('[data-app-titlebar]'), null);
+    assert.equal(stage.dataset.surfaceMax, '');
+    assert.equal(bottom.querySelector('.graphite-browser-host'), bottomPreview);
+    assert.equal(JSON.parse(localStorage.getItem(savedKey)!).maximized, null);
+
+    // Manage dev servers can be invoked again from the preview on the same route.
+    bottom.querySelector<HTMLElement>('[aria-label="Maximize"]')!.click();
+    assert.equal(stage.dataset.surfaceMax, 'bottom');
+    await openDevServerScreen();
+    assert.equal(stage.dataset.surfaceMax, '');
+    assert.equal(stage.querySelector('#devServerScreenRoot'), devServers);
+    assert.equal(bottom.querySelector('.graphite-browser-host'), bottomPreview);
   } finally {
+    closeDevServerScreen({ skipNavigate: true, restoreChat: false });
     resetFilePanelStateForTests();
     setSessionStateForTests(null);
     await win.happyDOM.close();

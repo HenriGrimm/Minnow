@@ -9,6 +9,7 @@
  * Exits when stdin closes (the dev server went away).
  */
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +24,8 @@ if (!outDir) {
 
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 
+// A build can contain thousands of files. Clear the previous dev server's cache here.
+await fs.rm(outDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 const watcher = await build({
   root,
   configFile: path.join(root, 'vite.config.ts'),

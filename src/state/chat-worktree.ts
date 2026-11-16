@@ -281,8 +281,7 @@ export function deferredChatWorktreeChoice(chat: Chat): { kind: 'automatic' } | 
     ? { kind: 'automatic' } : undefined;
 }
 
-/** Retry/Local are canonical commands, never /api/worktree mutations or local
- * session metadata edits. A missing server capability fails closed. */
+/** The server confirms Local or retries a saved setup for a canonical chat. */
 async function applyManagedRunTarget(chat: Chat, kind: 'automatic' | 'local', retainedPath?: string): Promise<{ ok: boolean; error?: string }> {
   const endpoint = `/api/chats/${encodeURIComponent(chat.id)}`;
   const currentResponse = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
@@ -294,12 +293,12 @@ async function applyManagedRunTarget(chat: Chat, kind: 'automatic' | 'local', re
   if (retainedPath && !worktreePathsEqual(retainedPath, current.chat.workspacePreparation?.binding?.path ?? '')) {
     return { ok: false, error: 'This server-owned conversation can only return to its saved worktree. No checkout was changed.' };
   }
-  if (typeof intentId !== 'string' || !intentId) {
+  if ((kind !== 'local' || current.chat.workspacePreparation) && (typeof intentId !== 'string' || !intentId)) {
     return { ok: false, error: 'This server has no saved worktree setup intent. Send your message to start setup, or update Minnow.' };
   }
   const response = await fetch(`${endpoint}/workspace`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Minnow-Chat-Protocol': '1' },
-    body: JSON.stringify({ action: kind === 'automatic' ? 'retry' : 'local', expectedIntentId: intentId, clientRequestId: randomUUID() }),
+    body: JSON.stringify({ action: kind === 'automatic' ? 'retry' : 'local', expectedIntentId: intentId ?? null, clientRequestId: randomUUID() }),
     signal: AbortSignal.timeout(610_000),
   });
   const body = await response.json();

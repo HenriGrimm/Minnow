@@ -157,7 +157,6 @@ describe('settings page HTML', () => {
     assert.match(html, /id="settingsSearchInput"/);
     assert.match(html, /id="settingsSearchResults"/);
     assert.match(html, /class="settings-page-header"/);
-    assert.match(html, /id="btnSettingsPageBack"/);
     assert.match(html, /id="settingsPromptTokenEstimate"/);
   });
 

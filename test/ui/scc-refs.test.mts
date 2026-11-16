@@ -330,3 +330,71 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     await win.happyDOM.close();
   }
 });
+
+test('worktree rows show uncommitted and sync counts, offer Open chat, and only a dirty refusal offers Force remove', async () => {
+  const win = new Window();
+  installHappyDomGlobals(win);
+  setLocalServerAvailable(true);
+  const { resetAppDialogForTests } = await import('../../src/ui/app-dialog.ts');
+  resetAppDialogForTests();
+  const { createEmptyChatObject, setSessionStateForTests } = await import('../../src/state/sessions.ts');
+  const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+  setWorkspaceFromServer({ path: '/repo', label: 'repo', isDefault: false });
+  const bound = createEmptyChatObject('model', '/repo');
+  bound.name = 'Login fix';
+  bound.worktreeRoot = '/trees/a';
+  setSessionStateForTests({ chats: [bound], activeId: bound.id });
+  const calls: Record<string, any>[] = [];
+  let removal: object = { ok: false, code: 'locked', error: "fatal: '/trees/a' is locked" };
+  globalThis.fetch = (async (_url, init) => {
+    const args = JSON.parse(String(init?.body));
+    calls.push(args);
+    let result: object = { ok: true };
+    if (args.op === 'list') result = { ok: true, output: 'worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /trees/a\nHEAD abc\nbranch refs/heads/a\n' };
+    if (args.op === 'status') result = args.cwd === '/trees/a'
+      ? { ok: true, branch: 'a', ahead: 2, behind: 1, unstaged: [{ path: 'x.ts', status: 'M' }], untracked: [{ path: 'y.ts', status: '?' }] }
+      : { ok: true, branch: 'main' };
+    if (args.op === 'worktreeRemove') result = args.force ? { ok: true } : removal;
+    return new Response(JSON.stringify(result));
+  }) as typeof fetch;
+  let view: SccView | undefined;
+  const ctx: SccContext = {
+    getCwd: () => undefined, getBranch: () => 'main', refreshAll: async () => view?.refresh(),
+    refreshSection: async () => view?.refresh(), goTo() {}, setBadge() {},
+  };
+  const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((resolve) => setTimeout(resolve, 1)); };
+  const dialogButton = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('#appDialogPanel button')].find((b) => b.textContent === label);
+  try {
+    view = createWorktreesView(ctx, { onSelectWorktree() {} });
+    document.body.append(view.root);
+    await settle();
+    const row = [...view.root.querySelectorAll<HTMLElement>('.scc-refrow')].find((r) => r.querySelector('.scc-refrow__name')?.textContent === 'a')!;
+    assert.match(row.textContent ?? '', /2 changed/);
+    assert.match(row.textContent ?? '', /↑2 ↓1/);
+    assert.match(row.textContent ?? '', /1 chat/);
+    assert.ok([...row.querySelectorAll('button')].some((b) => b.textContent === 'Open chat'));
+
+    row.querySelector<HTMLButtonElement>('[title="Remove this worktree"]')!.click();
+    await settle();
+    assert.match(document.querySelector('#appDialogPanel')?.textContent ?? '', /1 chat uses it \(Login fix\); it returns to Local/);
+    dialogButton('Remove')!.click();
+    await settle();
+    assert.equal(dialogButton('Force remove'), undefined, 'a locked worktree is not offered --force');
+    assert.equal(calls.filter((c) => c.op === 'worktreeRemove').length, 1);
+    assert.equal(bound.worktreeRoot, '/trees/a', 'a failed removal leaves the chat bound');
+
+    removal = { ok: false, code: 'dirty', error: "fatal: '/trees/a' contains modified or untracked files, use --force to delete it" };
+    row.querySelector<HTMLButtonElement>('[title="Remove this worktree"]')!.click();
+    await settle();
+    dialogButton('Remove')!.click();
+    await settle();
+    dialogButton('Force remove')!.click();
+    await settle();
+    assert.deepEqual(calls.filter((c) => c.op === 'worktreeRemove').map((c) => Boolean(c.force)), [false, false, true]);
+    assert.equal(bound.worktreeRoot, undefined, 'the removed worktree\'s chat returns to Local');
+  } finally {
+    view?.destroy();
+    setSessionStateForTests(null as never);
+    await win.happyDOM.close();
+  }
+});

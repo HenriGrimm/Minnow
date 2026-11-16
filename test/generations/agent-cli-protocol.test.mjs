@@ -5,7 +5,7 @@ import { createAgentCliTranslator, mapClaudeRateLimit } from '../../server/gener
 import { buildAgentCliPrompt } from '../../server/generations/agent-cli/prompt.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from '../../server/generations/agent-cli/errors.js';
 import { buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bridge.js';
-import { admitAgentCli } from '../../server/generations/agent-cli/admission.js';
+import { admitAgentCli, tryAdmitAgentCliProbe } from '../../server/generations/agent-cli/admission.js';
 import { reasoningEffortToCompletionBody, thinkingToCompletionBody } from '../../server/runner/thinking-to-body.js';
 import { CLAUDE_OK_EVENTS, CLAUDE_AUTH_FAIL_EVENTS, CODEX_OK_EVENTS, CURSOR_CURRENT_EVENTS, CURSOR_OK_EVENTS } from '../fixtures/fake-agent-cli.mjs';
 
@@ -342,4 +342,20 @@ test('bare-name recovery preserves native-tool rejection and current catalog res
     if (body.tool_choice || body.tools[0].function.name !== 'browser_eval') forbidden.unshift('browser_eval');
     assert.deepEqual(emitted, forbidden.map(forbiddenTool => ({ forbiddenTool })));
   }
+});
+test('an idle account probe and concurrently admitted turns never overlap', async () => {
+  const providerId = 'fixture-probe';
+  const finishProbe = tryAdmitAgentCliProbe(providerId);
+  assert.ok(finishProbe);
+  assert.equal(tryAdmitAgentCliProbe(providerId), null);
+  let entered = 0;
+  const turns = Array.from({ length: 2 }, () => admitAgentCli(providerId, 2).then(release => { entered++; return release; }));
+  await Promise.resolve();
+  assert.equal(entered, 0);
+  finishProbe();
+  const releases = await Promise.all(turns);
+  assert.equal(entered, 2);
+  assert.equal(tryAdmitAgentCliProbe(providerId), null);
+  releases.forEach(release => release());
+  tryAdmitAgentCliProbe(providerId)();
 });

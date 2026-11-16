@@ -6,6 +6,8 @@
 | You have access to an agent CLI Minnow supports | Your account's eligible models and usage limits. Verify the connection in **Models → Subscriptions**. |
 | You want to pay an API provider for usage | Its current input, cached-input, and output prices for the exact model. Check minimum charges and account spending limits on the provider's dashboard. |
 
+For CLI subscriptions, open **Models → Subscriptions** or select **Usage** in the Code composer. During a usage-check outage, Minnow shows last-known usage and any reset time the provider reported. **Next usage check** is when Minnow can refresh the display.
+
 ## Measure one real task
 
 1. Connect your candidate in [Models](connect-a-model.md).

@@ -233,19 +233,31 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     return promise;
   }
   function chooseLocal({ chatId, expectedIntentId }) {
-    if (typeof expectedIntentId !== 'string' || !expectedIntentId) fail('invalid_request', 'A saved worktree setup identity is required');
+    if (expectedIntentId !== null && (typeof expectedIntentId !== 'string' || !expectedIntentId)) {
+      fail('invalid_request', 'A saved worktree setup identity is required');
+    }
     const result = repository.atomic(() => {
-      const current = read(chatId);
-      if (current?.intent?.id !== expectedIntentId) fail('stale_revision', 'Worktree setup changed. Refresh before choosing Local.');
+      const chat = repository.getChat(chatId);
+      const current = chat.workspacePreparation ?? null;
+      if (expectedIntentId === null ? current !== null : current?.intent?.id !== expectedIntentId) {
+        fail('stale_revision', 'Worktree setup changed. Refresh before choosing Local.');
+      }
       if (repository.getLease(chatId)?.state === 'active') fail('ownership_conflict', 'Stop the active setup or turn before choosing Local');
+      const localFlags = { worktreeEnabled: false, worktreeSetupRequired: false, chatWorktreeManaged: false };
+      if (current === null) {
+        // Before admission, Local only clears the deferred selection.
+        if (chat.worktreeRoot?.trim()) fail('workspace_denied', 'This conversation already has a worktree binding.');
+        if (!chat.worktreeEnabled && !chat.worktreeSetupRequired && !chat.chatWorktreeManaged) return chat;
+        write(chatId, null, localFlags);
+        return repository.getChat(chatId);
+      }
       for (const record of repository.listCommands({ chatId, states: pendingStates, limit: 1000 })) {
         if (record.captured.workspacePreparation?.id === expectedIntentId) repository.updateCommand(record.commandId,
           { state: 'cancelled', result: { disposition: 'worktree_detached' } });
       }
       db.prepare("UPDATE chats SET worktree_root='',git_branch='' WHERE id=?").run(chatId);
       write(chatId, { ...current, status: 'local', error: null,
-        retainedReady: current.status === 'ready' || current.status === 'local' && current.retainedReady === true },
-        { worktreeEnabled: false, worktreeSetupRequired: false, chatWorktreeManaged: false });
+        retainedReady: current.status === 'ready' || current.status === 'local' && current.retainedReady === true }, localFlags);
       return repository.getChat(chatId);
     });
     changed(chatId);
@@ -347,7 +359,8 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
       fail('caller_denied', 'Only a human may retry setup or explicitly choose Local');
     }
     if (!input || Object.keys(input).some(key => !['chatId', 'action', 'expectedIntentId', 'clientRequestId'].includes(key)) ||
-        !['retry', 'local'].includes(input.action) || typeof input.expectedIntentId !== 'string') {
+        !['retry', 'local'].includes(input.action) ||
+        (typeof input.expectedIntentId !== 'string' && !(input.action === 'local' && input.expectedIntentId === null))) {
       fail('invalid_request', 'Invalid worktree recovery choice');
     }
     const target = await context.resolveTarget(input.chatId);

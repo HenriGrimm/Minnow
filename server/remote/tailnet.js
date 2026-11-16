@@ -8,7 +8,7 @@
  *   stdout: one JSON event per line — starting | needs-login | needs-approval | ready | error | stopped
  *   stdin:  {"cmd":"logout"}; EOF means shut down
  *   proxy:  every request carries X-Minnow-Ingress-Secret, X-Minnow-Ingress (funnel|tailnet),
- *           X-Forwarded-For, and for tailnet peers X-Minnow-Tailnet-User.
+ *           X-Forwarded-For.
  */
 
 import { spawn } from 'node:child_process';

@@ -33,8 +33,9 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     { applyMinnowMiddlewares },
     { resolveSafePath, runWithPathAccess },
     { attachMinnowWebSockets },
-    { tagServerIngress },
+    { getRequestIngress, tagServerIngress },
     { configureRemoteIngress, applyRemoteConfigAtBoot, shutdownRemoteIngress },
+    { createBundleAssetMiddleware },
     { flushDeviceActivity },
     { getAppRoot },
     { createSpaAuthHtmlMiddleware },
@@ -58,6 +59,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     }>('runtime/path-access.js'),
     importServerModule<{ attachMinnowWebSockets: (server: http.Server) => void }>('runtime/ws-attach.js'),
     importServerModule<{
+      getRequestIngress: (req: http.IncomingMessage) => 'loopback' | 'lan' | 'tailnet' | 'funnel';
       tagServerIngress: (server: http.Server, kind: 'loopback') => http.Server;
     }>('network/ingress.js'),
     importServerModule<{
@@ -65,6 +67,9 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       applyRemoteConfigAtBoot: () => Promise<void>;
       shutdownRemoteIngress: () => Promise<void>;
     }>('remote/ingress-manager.js'),
+    importServerModule<{
+      createBundleAssetMiddleware: (opts: { outDir: string; assetsOnly: boolean }) => connect.NextHandleFunction;
+    }>('remote/bundle-assets.js'),
     importServerModule<{ flushDeviceActivity: () => void }>('auth/device-store.js'),
     importServerModule<{ getAppRoot: () => string }>('workspace/root.js'),
     importServerModule<{
@@ -100,6 +105,11 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     }),
   );
 
+  const remoteAssets = createBundleAssetMiddleware({ outDir: distDir, assetsOnly: true });
+  connectApp.use((req, res, next) => {
+    if (getRequestIngress(req) === 'loopback') return next();
+    return remoteAssets(req, res, next);
+  });
   connectApp.use(
     sirv(distDir, {
       single: true,

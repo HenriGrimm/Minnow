@@ -33,11 +33,6 @@
   background: var(--mn-surface-0);
 }
 
-.settings-page-header > .icon-btn {
-  justify-self: start;
-  margin: 6px 0 6px 8px;
-}
-
 .settings-search-finder-slot {
   min-width: 0;
   width: 100%;
@@ -2081,12 +2076,6 @@ html.mn-phone .settings-content {
 html.mn-phone .settings-page-header {
   grid-template-columns: auto minmax(0, 1fr) auto;
   padding: 0 var(--mn-phone-pad-right, 14px) 0 4px;
-}
-
-html.mn-phone .settings-page-header > .icon-btn {
-  margin-left: 0;
-  min-width: var(--touch-min);
-  min-height: var(--touch-min);
 }
 
 /* The window sheet already frames the app; a second inset card just eats

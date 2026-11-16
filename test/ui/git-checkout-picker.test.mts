@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
-import { createGitCheckoutPicker, type CheckoutPickerState } from '../../src/ui/git-checkout-picker.ts';
+import { createGitCheckoutPicker, resetRecentCheckoutsForTests, type CheckoutPickerState } from '../../src/ui/git-checkout-picker.ts';
 import type { GitCheckoutSwitchInput, GitOpResult } from '../../src/state/git-api.ts';
 import { isLocalServerAvailable, setLocalServerAvailable } from '../../src/tools/config.ts';
 
@@ -23,6 +23,7 @@ const click = (text: string) => {
 beforeEach(() => {
   win = new Window();
   Object.assign(globalThis, { window: win, document: win.document });
+  resetRecentCheckoutsForTests();
   calls = []; worktrees = []; restores = []; resolveSwitch = undefined;
   result = { ok: false, needsChoice: true, branch: 'main', fileCount: 3 };
   state = {
@@ -167,11 +168,78 @@ test('pull requests load on demand, keep search focus, and switch by PR identity
   click('#42 Fix keyboard focus'); await tick();
   assert.equal(document.querySelector('.git-checkout__heading')?.textContent, 'Switch to PR #42?');
   assert.deepEqual(calls[0], {
-    branch: 'feature', cwd: '/workspace', expectedBranch: 'main', pullRequest: { number: 42, url },
+    branch: 'feature', cwd: '/workspace', expectedBranch: 'main', pullRequest: { number: 42, url, headRef: 'feature' },
   });
   click('Leave changes on main'); await tick();
   assert.deepEqual(calls[1], { ...calls[0], dirtyHandling: 'leave' });
   assert.equal(list.mock.callCount(), 1);
+});
+
+test('a PR whose branch lives in another worktree routes there; a fork PR found by the server offers to open it', async (t) => {
+  const available = isLocalServerAvailable();
+  setLocalServerAvailable(true);
+  t.after(() => setLocalServerAvailable(available));
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ ok: true, prs: [
+    { number: 7, title: 'Occupied work', headRef: 'occupied', url: 'https://github.com/owner/repo/pull/7' },
+    { number: 8, title: 'Fork work', headRef: 'main', crossRepository: true, url: 'https://github.com/owner/repo/pull/8' },
+  ] }));
+  click('main'); click('Pull requests'); await tick();
+  assert.match(document.querySelector('.git-checkout__list')?.textContent ?? '', /occupied · Open in other/);
+  assert.match(document.querySelector('.git-checkout__list')?.textContent ?? '', /Fork/);
+  click('#7 Occupied work');
+  assert.deepEqual(worktrees, ['/other']); assert.equal(calls.length, 0);
+
+  // A fork head named `main` is not this checkout's main branch.
+  click('main'); click('Pull requests'); await tick();
+  result = { ok: false, code: 'in_worktree', worktreePath: '/other', branch: 'main', error: 'PR #8 is already checked out' };
+  click('#8 Fork work'); await tick();
+  assert.equal(calls.at(-1)?.pullRequest?.crossRepository, true);
+  assert.match(document.querySelector('.git-checkout__notices')?.textContent ?? '', /PR #8 is open in other/);
+  click('Open worktree');
+  await tick();
+  assert.deepEqual(worktrees, ['/other', '/other']);
+});
+
+test('known checkout failures read as plain language with technical details', async () => {
+  result = { ok: false, code: 'overwrite', branch: 'main', error: 'error: Your local changes would be overwritten by checkout:\n\ta.txt' };
+  click('main'); click('feature'); await tick();
+  assert.match(document.querySelector('.git-checkout__error')?.textContent ?? '', /^Local changes would be overwritten\./);
+  assert.match(document.querySelector('.git-checkout__details pre')?.textContent ?? '', /a\.txt/);
+});
+
+test('recent branches lead the list after a switch and hide while searching; keyboard hints are shown', async () => {
+  result = { ok: true, branch: 'feature' };
+  click('main'); click('feature'); await tick();
+  picker.update({ ...state, branch: 'feature' });
+  click('feature');
+  const list = document.querySelector('.git-checkout__list')!;
+  const labels = [...list.children].map((node) => node.querySelector('.git-checkout__branch')?.textContent ?? node.textContent);
+  assert.deepEqual(labels.slice(0, 3), ['Recent', 'main', 'All branches'], 'the branch just left is one click away');
+  assert.match(document.querySelector('.git-checkout__hint')?.textContent ?? '', /Enter switch/);
+  const input = document.querySelector('input')!;
+  input.value = 'mai';
+  input.dispatchEvent(new win.Event('input') as unknown as Event);
+  assert.equal(document.querySelector('.git-checkout__group'), null);
+});
+
+test('a checkout held by a local action names it and can stop it, then switch', async (t) => {
+  const available = isLocalServerAvailable();
+  setLocalServerAvailable(true);
+  t.after(() => setLocalServerAvailable(available));
+  const cancels: unknown[] = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    cancels.push(JSON.parse(init.body));
+    return Response.json({ ok: true });
+  });
+  result = { ok: false, code: 'busy', busyRunId: 'local-1', busyLabel: 'Unit tests', error: 'A local action is running in this worktree.' };
+  click('main'); click('feature'); await tick();
+  assert.match(document.querySelector('.git-checkout__notices')?.textContent ?? '', /Waiting for Unit tests/);
+  assert.equal(document.querySelector('.git-checkout__error'), null, 'no raw lock error');
+  result = { ok: true, branch: 'feature' };
+  click('Stop and switch'); await tick(); await tick();
+  assert.deepEqual(cancels, [{ op: 'localRunCancel', cwd: '/workspace', id: 'local-1' }]);
+  assert.equal(calls.length, 2);
+  assert.doesNotMatch(document.querySelector('.git-checkout__notices')?.textContent ?? '', /Waiting for/);
 });
 
 test('branch search keeps main first and orders the other names naturally', () => {

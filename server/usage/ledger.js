@@ -126,9 +126,8 @@ function recordTokenUsage(chat, input) {
 function sumSessionLedgerTotals(chats) {
   let acc = { ...EMPTY_LEDGER_TOTALS };
   for (const chat of chats) {
-    const ledger = chat.tokenLedger;
-    if (!ledger?.totals) continue;
-    const t = ledger.totals;
+    const t = chat.tokenLedger?.totals ?? chat.tokenLedgerTotals;
+    if (!t) continue;
     acc = {
       promptTokens: acc.promptTokens + (t.promptTokens ?? 0),
       completionTokens: acc.completionTokens + (t.completionTokens ?? 0),

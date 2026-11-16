@@ -587,21 +587,36 @@ async function startApp(): Promise<void> {
   }
   if (!(await initializeCompanionAccess())) return;
   initShellHandlers();
-  const { initShellKeyboardHelp } = await import('./ui/shell-keyboard-help');
+  // Fetch independent startup modules together, then initialize them in order.
+  const [
+    { initShellKeyboardHelp },
+    { initShellCommands },
+    { initCommandPalette },
+    { initCaptureDragLayer },
+    { initIssueCaptureMenus },
+    { wireCaptureAccessors },
+    { initCaptureSurfaceMenus },
+    { initIssueAgentWatcher },
+    { installAppearancePersistence, hydrateAppearanceFromServer },
+  ] = await Promise.all([
+    import('./ui/shell-keyboard-help'),
+    import('./ui/shell-commands'),
+    import('./ui/command-palette'),
+    import('./ui/capture-drag'),
+    import('./ui/issue-capture'),
+    import('./ui/issue-capture-wiring'),
+    import('./ui/capture-surface-menus'),
+    import('./chat/issues/agent-watch'),
+    import('./appearance/persist'),
+    detectConfigServer(),
+  ]);
   initShellKeyboardHelp();
-  const { initShellCommands } = await import('./ui/shell-commands');
-  const { initCommandPalette } = await import('./ui/command-palette');
   initShellCommands();
   initCommandPalette();
-  const { initCaptureDragLayer } = await import('./ui/capture-drag');
-  const { initIssueCaptureMenus } = await import('./ui/issue-capture');
-  const { wireCaptureAccessors } = await import('./ui/issue-capture-wiring');
-  const { initCaptureSurfaceMenus } = await import('./ui/capture-surface-menus');
   initCaptureDragLayer();
   initIssueCaptureMenus();
   initCaptureSurfaceMenus();
   wireCaptureAccessors();
-  const { initIssueAgentWatcher } = await import('./chat/issues/agent-watch');
   initIssueAgentWatcher();
   installScopedSelectAllHandler();
   applyAppWindowBoot();
@@ -612,10 +627,6 @@ async function startApp(): Promise<void> {
   installRendererDiagnostics();
   installLongTaskObserver();
   initNotificationAudioUnlock();
-  await detectConfigServer();
-  const { installAppearancePersistence, hydrateAppearanceFromServer } = await import(
-    './appearance/persist'
-  );
   installAppearancePersistence();
   const appearanceChanged = await hydrateAppearanceFromServer();
   if (appearanceChanged) {

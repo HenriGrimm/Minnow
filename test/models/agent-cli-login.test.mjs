@@ -33,6 +33,8 @@ test('login links only allow vendor HTTPS origins', () => {
     assert.equal(agentCliLoginUrl('claude', url), null);
   }
   assert.equal(agentCliLoginUrl('claude', 'https://claude.ai/oauth/authorize?state=test'), 'https://claude.ai/oauth/authorize?state=test');
+  assert.equal(agentCliLoginUrl('claude', 'https://claude.com/cai/oauth/authorize?state=test'), 'https://claude.com/cai/oauth/authorize?state=test');
+  assert.equal(agentCliLoginUrl('claude', 'https://claude.com/download'), null);
 });
 
 test('one bounded process per kind; fixed argv, normalized output, completion verified', async () => {
@@ -60,6 +62,19 @@ test('one bounded process per kind; fixed argv, normalized output, completion ve
   assert.equal(service.poll('claude', a.id).state, 'signed-in');
   assert.equal(service.poll('claude', a.id).verificationUrl, null);
   assert.deepEqual(signedIn, ['claude']);
+});
+
+test('Claude exposes the complete authorization URL despite interleaved output', async () => {
+  const { service, children } = harness();
+  const { id } = await service.start('claude');
+  children[0].stdout.write('Visit: https://claude.com/cai/oauth/authorize?code=true&sta');
+  assert.equal(service.poll('claude', id).verificationUrl, null);
+  children[0].stderr.write('Warning\n');
+  children[0].stdout.write('te=nonce&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback\n');
+  children[0].stdout.write('Help: https://claude.com/download\n');
+  assert.equal(service.poll('claude', id).verificationUrl,
+    'https://claude.com/cai/oauth/authorize?code=true&state=nonce&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback');
+  await service.cancel('claude', id);
 });
 
 test('cancel rejects stale attempts, kills process and ignores late completion', async () => {

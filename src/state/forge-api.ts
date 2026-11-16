@@ -42,6 +42,8 @@ export interface PullRequestSummary {
   draft: boolean;
   author: string;
   headRef: string;
+  headRefOid?: string;
+  crossRepository?: boolean;
   baseRef: string;
   createdAt: string;
   updatedAt: string;

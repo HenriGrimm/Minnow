@@ -92,8 +92,9 @@ export function createAccountUsageTrigger() {
         visible: () => button.isConnected && Boolean(button.getClientRects().length)
           && Boolean(button.closest('.composer-model-trigger-wrap')?.getClientRects().length),
         onChange(usage) {
-          button.textContent = usage?.windows.length ? accountUsageSummary(usage).replace(' · last known', '*') : 'Usage';
-          button.title = `${name} account usage: ${accountUsageSummary(usage)}`;
+          const summary = accountUsageSummary(usage);
+          button.textContent = summary === 'Usage unavailable' ? 'Usage' : summary.replace(' · last known', '*');
+          button.title = `${name} account usage: ${summary}`;
         },
       });
       popover.append(view.root);

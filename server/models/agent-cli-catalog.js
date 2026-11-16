@@ -33,7 +33,7 @@ export const AGENT_CLI_DEFINITIONS = Object.freeze({
     loginCommand: 'claude auth login',
     updateCommand: 'claude update',
     versionArgs: ['--version'],
-    authArgs: ['auth', 'status', '--json'],
+    authArgs: ['auth', 'status'],
   }),
   codex: Object.freeze({
     kind: 'codex',

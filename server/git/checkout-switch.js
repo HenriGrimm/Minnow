@@ -3,13 +3,110 @@ import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { runProcess } from '../process-runner.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
-import { withWorktreeMutation } from './action-run-lock.js';
+import { actionWorktreeOwner, assertActionWorktreeIdle, withWorktreeMutation } from './action-run-lock.js';
 import { checkoutForgePullRequest, requireForge } from './forge-ops.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
 
 const PREFIX = '[minnow-checkout:';
 const git = (cwd, args) => runProcess('git', args, { cwd, timeout: 120_000 });
 const error = (r) => `${r.stdout ?? ''}\n${r.stderr ?? ''}`.trim() || `Git exited with code ${r.code}`;
+const pathKey = (p) => {
+  const resolved = path.resolve(String(p ?? '')).replace(/[\\/]+$/, '');
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+};
+
+/**
+ * Stable failure codes so clients offer recovery instead of matching English
+ * Git output. `worktreePath` accompanies `in_worktree`.
+ * @param {string} text
+ * @returns {{ code?: string, worktreePath?: string }}
+ */
+export function classifyCheckoutFailure(text) {
+  const value = String(text ?? '');
+  const inUse = /(?:already (?:used by|checked out at) worktree at|is already checked out at)\s+'([^']+)'/i.exec(value);
+  if (inUse) return { code: 'in_worktree', worktreePath: inUse[1] };
+  if (/already used by worktree|is already checked out at/i.test(value)) return { code: 'in_worktree' };
+  if (/would be overwritten by checkout|Please commit your changes or stash them/i.test(value)) return { code: 'overwrite' };
+  if (/index\.lock|Unable to create '.*\.lock'/i.test(value)) return { code: 'lock_file' };
+  if (/did not match any file\(s\) known to git|invalid reference|not a valid (?:object name|ref)|unknown revision/i.test(value)) {
+    return { code: 'missing_ref' };
+  }
+  return {};
+}
+
+/** Linked worktrees from porcelain output: path, HEAD sha and short branch. */
+async function listWorktreeEntries(cwd) {
+  const listed = await git(cwd, ['worktree', 'list', '--porcelain']);
+  if (listed.code !== 0) return [];
+  const entries = [];
+  let current = null;
+  for (const raw of listed.stdout.split('\n')) {
+    const line = raw.trimEnd();
+    if (line.startsWith('worktree ')) {
+      current = { path: line.slice('worktree '.length), head: '', branch: '' };
+      entries.push(current);
+    } else if (current && line.startsWith('HEAD ')) {
+      current.head = line.slice('HEAD '.length);
+    } else if (current && line.startsWith('branch ')) {
+      current.branch = line.slice('branch '.length).replace(/^refs\/heads\//, '');
+    }
+  }
+  return entries;
+}
+
+/** Local branches whose upstream is this pull request (`gh pr checkout` on forks). */
+async function branchesTrackingPull(cwd, number) {
+  const config = await git(cwd, ['config', '--get-regexp', '^branch\\..*\\.merge$']);
+  if (config.code !== 0) return new Set();
+  const names = new Set();
+  for (const line of config.stdout.split('\n')) {
+    const match = /^branch\.(.+)\.merge\s+(\S+)$/.exec(line.trim());
+    if (match && match[2] === `refs/pull/${number}/head`) names.add(match[1]);
+  }
+  return names;
+}
+
+/**
+ * Another worktree that already has the branch or pull request checked out.
+ * Git refuses a second checkout of one branch; callers route there instead.
+ */
+async function findOwningWorktree(ctx, { branch, pullRequest }) {
+  const entries = await listWorktreeEntries(ctx.cwd);
+  const here = pathKey(ctx.cwd);
+  // A fork PR's head name (often `main`) says nothing about local branches;
+  // only its tracking ref or head commit identify it.
+  const byName = !pullRequest?.crossRepository;
+  const names = new Set(branch && byName ? [branch] : []);
+  if (pullRequest) {
+    if (pullRequest.headRef && byName) names.add(String(pullRequest.headRef));
+    for (const name of await branchesTrackingPull(ctx.cwd, pullRequest.number)) names.add(name);
+  }
+  const oid = typeof pullRequest?.headRefOid === 'string' && /^[a-f\d]{40}$/i.test(pullRequest.headRefOid)
+    ? pullRequest.headRefOid.toLowerCase() : '';
+  for (const entry of entries) {
+    if (pathKey(entry.path) === here) continue;
+    if (entry.branch && names.has(entry.branch)) return { worktreePath: path.normalize(entry.path), worktreeBranch: entry.branch };
+    if (oid && entry.head.toLowerCase() === oid) return { worktreePath: path.normalize(entry.path), worktreeBranch: entry.branch || undefined };
+  }
+  return null;
+}
+
+async function busyState(cwd) {
+  try {
+    assertActionWorktreeIdle(cwd);
+    return null;
+  } catch (err) {
+    const owner = actionWorktreeOwner(cwd);
+    const runId = typeof owner === 'string' && owner.startsWith('local-') ? owner : undefined;
+    // Loaded only when busy: the action module pulls in the terminal stack.
+    const label = runId ? (await import('./local-action-ops.js')).activeLocalRunLabel(runId) : undefined;
+    return {
+      error: err instanceof Error ? err.message : String(err),
+      ...(runId ? { runId } : {}),
+      ...(label ? { label: String(label) } : {}),
+    };
+  }
+}
 
 async function context(cwd) {
   const resolved = cwd?.trim() || getEffectiveWorkspaceRoot();
@@ -70,6 +167,34 @@ export async function checkoutSavedChanges({ cwd } = {}) {
   return { ok: true, savedChanges: await savedEntries(ctx.cwd, ctx.worktree) };
 }
 
+/**
+ * Read-only pre-flight: where the target lives and what switching would cost.
+ * `location` is `current` (already here), `worktree` (checked out elsewhere)
+ * or `here` (a switch in this checkout).
+ */
+export async function checkoutPlan({ cwd, branch, pullRequest } = {}) {
+  const ctx = await context(cwd);
+  const isPull = pullRequest !== undefined;
+  if (isPull && (!Number.isSafeInteger(pullRequest?.number) || pullRequest.number <= 0)) {
+    return { ok: false, error: 'A valid pull request is required' };
+  }
+  const target = typeof branch === 'string' ? branch.trim() : '';
+  if (!isPull && (!target || target.startsWith('-'))) return { ok: false, error: 'A valid branch is required' };
+  const state = await inspect(ctx.cwd);
+  const busy = await busyState(ctx.cwd);
+  const tracking = isPull ? await branchesTrackingPull(ctx.cwd, pullRequest.number) : new Set();
+  const isCurrent = (!pullRequest?.crossRepository && target === state.branch) || tracking.has(state.branch);
+  const owner = isCurrent ? null : await findOwningWorktree(ctx, { branch: target, pullRequest });
+  return {
+    ok: true,
+    branch: state.branch,
+    fileCount: state.fileCount,
+    location: isCurrent ? 'current' : owner ? 'worktree' : 'here',
+    ...(owner ?? {}),
+    ...(busy ? { busy: true, busyReason: busy.error, ...(busy.runId ? { busyRunId: busy.runId } : {}), ...(busy.label ? { busyLabel: busy.label } : {}) } : {}),
+  };
+}
+
 /** A dirty checkout always asks first unless the caller supplies an explicit choice. */
 export async function checkoutSwitch({ cwd, branch, pullRequest, create, startPoint, dirtyHandling, expectedBranch } = {}) {
   const ctx = await context(cwd);
@@ -93,14 +218,30 @@ export async function checkoutSwitch({ cwd, branch, pullRequest, create, startPo
     }
   }
   const target = isPull ? '' : create ? slugifyGitRefName(branch, 'branch') : branch.trim();
+  const busy = await busyState(ctx.cwd);
+  if (busy) {
+    return { ok: false, code: 'busy', error: busy.error, ...(busy.runId ? { busyRunId: busy.runId } : {}), ...(busy.label ? { busyLabel: busy.label } : {}) };
+  }
   return withWorktreeMutation(ctx.cwd, async () => {
     const state = await inspect(ctx.cwd);
     if (expectedBranch && state.branch !== expectedBranch) {
-      return { ok: false, error: 'The current branch changed. Choose the branch again.' };
+      return { ok: false, code: 'stale_branch', branch: state.branch, error: 'The current branch changed. Choose the branch again.' };
     }
     if (!create && target === state.branch) return { ok: true, branch: target };
+    if (!create) {
+      // Git refuses a branch another worktree has checked out. Report where it
+      // lives before anything is stashed or handed to gh.
+      const owner = await findOwningWorktree(ctx, { branch: isPull ? String(branch ?? '').trim() : target, pullRequest });
+      if (owner) {
+        const label = isPull ? `PR #${pullRequest.number}` : target;
+        return {
+          ok: false, code: 'in_worktree', ...owner, branch: state.branch,
+          error: `${label} is already checked out in another worktree at ${owner.worktreePath}.`,
+        };
+      }
+    }
     if (state.fileCount && !['bring', 'leave'].includes(dirtyHandling)) {
-      return { ok: false, needsChoice: true, ...state };
+      return { ok: false, needsChoice: true, code: 'needs_choice', ...state };
     }
     if (state.branch === 'HEAD' && state.fileCount && dirtyHandling === 'leave') {
       return { ok: false, error: 'Create a branch before leaving changes from a detached HEAD.' };
@@ -125,17 +266,18 @@ export async function checkoutSwitch({ cwd, branch, pullRequest, create, startPo
     if (!result.ok) {
       if (gate && checkedOutBranch !== state.branch) {
         const stash = saved ? ` Your changes remain saved on ${state.branch}.` : '';
-        return { ok: false, branch: checkedOutBranch, error: `${result.error}\nGit switched to ${checkedOutBranch} before checkout finished.${stash}` };
+        return { ok: false, code: 'partial', branch: checkedOutBranch, error: `${result.error}\nGit switched to ${checkedOutBranch} before checkout finished.${stash}` };
       }
+      const failure = classifyCheckoutFailure(result.error);
       if (saved) {
         const rollback = await git(ctx.cwd, ['stash', 'apply', '--index', saved.sha]);
         if (rollback.code === 0) {
           await dropSaved(ctx, saved.sha);
         } else {
-          return { ok: false, error: `${result.error}\nYour changes remain saved in Git stash (${saved.sha}). Restoring them also failed: ${error(rollback)}` };
+          return { ok: false, ...failure, error: `${result.error}\nYour changes remain saved in Git stash (${saved.sha}). Restoring them also failed: ${error(rollback)}` };
         }
       }
-      return { ok: false, error: result.error };
+      return { ok: false, ...failure, error: result.error };
     }
     return { ok: true, branch: checkedOutBranch };
   });

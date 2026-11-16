@@ -11,7 +11,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   if (!browser.available) return t.skip(browser.detail);
   const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'sidebar', 'graphite-workspace', 'thread-card',
     'settings-page', 'source-control-center', 'models-page', 'brain-page', 'brain-graph', 'scheduler-page',
-    'issues', 'dev-server-screen', 'orchestrator-boards', 'product-wiki', 'graphite-apps'].map(name =>
+    'issues', 'dev-server-screen', 'orchestrator-boards', 'product-wiki', 'graphite-apps', 'surfaces'].map(name =>
     readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-sidebar-'));
   const server = http.createServer((_request, response) => {
@@ -54,6 +54,16 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
                     <div class="graphite-thread-header__panel-toggles"><button id="btnSurfaceBottom">Bottom panel</button></div>
                   </div>
                 </header>
+                <div id="devServerWorkbench" class="workspace-split graphite-surfaces" data-surface-side="true" hidden>
+                  <div class="main-column">
+                    <header class="dev-server-screen__toolbar"><strong>Dev servers</strong><button id="addServer">Add server</button></header>
+                  </div>
+                  <section class="graphite-surface-panel graphite-surface-panel--side">
+                    <header class="graphite-surface-header">
+                      <span>Preview</span><div class="graphite-surface-controls"><button id="previewControl">Hide panel</button></div>
+                    </header>
+                  </section>
+                </div>
               </div>
               <div class="mn-os-app-layer settings-page" id="settingsApp">
                 <header class="settings-page-header" data-app-titlebar>
@@ -190,7 +200,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   assert.ok(grip.gripDraggable);
   assert.ok(grip.toggleClickable);
 
-  const { start, during, end, withoutThread, appHeaders } = await session.evaluate(`(() => {
+  const { start, during, end, withoutThread, devServerLayouts, appHeaders } = await session.evaluate(`(() => {
     const stage = document.getElementById('osStage');
     const rail = document.getElementById('osAppRail');
     const bounds = selector => document.querySelector(selector).getBoundingClientRect();
@@ -246,6 +256,26 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     document.getElementById('graphiteThreadHeader').hidden = true;
     document.documentElement.classList.add('mn-graphite-sidebar-open');
     const withoutThread = measure();
+    const workbench = document.getElementById('devServerWorkbench');
+    workbench.hidden = false;
+    const devServerLayouts = [true, false].flatMap(sidebarOpen => ['', 'side'].map(maximized => {
+      document.documentElement.classList.toggle('mn-graphite-sidebar-open', sidebarOpen);
+      workbench.dataset.surfaceMax = maximized;
+      const clickable = id => {
+        const button = document.getElementById(id);
+        const { x, y, width, height } = button.getBoundingClientRect();
+        return width > 0 && button.contains(document.elementFromPoint(x + width / 2, y + height / 2));
+      };
+      return {
+        sidebarOpen, maximized,
+        previewTop: bounds('.graphite-surface-header').top,
+        captionBottom: bounds('.mn-os-mb-window-controls').bottom,
+        closeClickable: clickable('close'),
+        previewControlClickable: clickable('previewControl'),
+        addServerClickable: clickable('addServer'),
+      };
+    }));
+    workbench.hidden = true;
     document.getElementById('code').classList.remove('is-active');
     const appHeaders = ['settingsApp', 'sourceControl', 'models', 'scheduler', 'issues', 'brain', 'devServers', 'boards', 'wiki'].flatMap(id => [true, false].map(sidebarOpen => {
       const app = document.getElementById(id);
@@ -267,7 +297,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
       app.classList.toggle(id === 'wiki' ? 'hidden' : 'is-active', id === 'wiki');
       return snapshot;
     }));
-    return { start, during, end, withoutThread, appHeaders };
+    return { start, during, end, withoutThread, devServerLayouts, appHeaders };
   })()`);
 
   assert.equal(start.left, start.railRight);
@@ -292,6 +322,11 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   assert.ok(withoutThread.gapDraggable, 'the titlebar above apps without a thread header should be draggable');
   assert.deepEqual(withoutThread.sidebarToggle, start.sidebarToggle);
   assert.equal(withoutThread.sidebarToggleRegion, 'no-drag');
+  for (const frame of devServerLayouts) {
+    assert.ok(frame.previewTop >= frame.captionBottom, JSON.stringify(frame));
+    assert.ok(frame.previewControlClickable && frame.closeClickable, JSON.stringify(frame));
+    assert.equal(frame.addServerClickable, !frame.maximized, JSON.stringify(frame));
+  }
   for (const frame of [start, ...during, end, withoutThread, ...appHeaders]) {
     assert.deepEqual(frame.controls, end.controls);
     assert.equal(frame.dividerWidth, '1px');

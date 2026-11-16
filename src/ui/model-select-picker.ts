@@ -83,6 +83,7 @@ const HOST_FILTER_CHOICES: { id: ModelHostFilter; label: string }[] = [
 
 let pickerBound = false;
 let open = false;
+let menuSyncQueued = false;
 let hostFilter: ModelHostFilter = loadModelHostFilter();
 let localLoadFilter: ModelLocalLoadFilter = loadModelLocalLoadFilter();
 let libraryFilter: ModelLibraryFilter = loadModelLibraryFilter();
@@ -1687,8 +1688,8 @@ export function syncModelSelectPicker(): void {
 
   const selectedValue = sel.value;
   const selectedOpt = sel.options[sel.selectedIndex];
-  triggerText.textContent =
-    selectedOpt?.text?.trim() || selectedOpt?.label?.trim() || 'Select model';
+  const nextText = selectedOpt?.text?.trim() || selectedOpt?.label?.trim() || 'Select model';
+  if (triggerText.textContent !== nextText) triggerText.textContent = nextText;
 
   const triggerTitle =
     selectedOpt?.title?.trim() || selectedValue.trim() || '';
@@ -1699,10 +1700,21 @@ export function syncModelSelectPicker(): void {
     [...sel.options].some((o) => o.value.trim() !== '') && !sel.disabled;
   trigger.disabled = !hasSelectable;
 
-  renderModelSelectMenuRows(menu, sel);
+  queueOpenModelMenuSync();
   syncAllModelMenuReasoningDefaults();
   const CustomEventCtor = document.defaultView?.CustomEvent ?? CustomEvent;
   document.dispatchEvent(new CustomEventCtor('minnow:model-select-synced'));
+}
+
+function queueOpenModelMenuSync(): void {
+  if (!open || menuSyncQueued) return;
+  menuSyncQueued = true;
+  queueMicrotask(() => {
+    menuSyncQueued = false;
+    if (!open) return;
+    const { menu, sel } = getElements();
+    if (menu && sel) renderModelSelectMenuRows(menu, sel);
+  });
 }
 
 /** Bind trigger, outside click, and escape for the model combobox. */
@@ -1722,8 +1734,7 @@ function ensureTopBarHostFilterBar(): void {
       if (sel && menuEl) renderModelSelectMenuRows(menuEl, sel);
     },
     onAfterRefresh: () => {
-      const { sel, menu: menuEl } = getElements();
-      if (sel && menuEl) renderModelSelectMenuRows(menuEl, sel);
+      queueOpenModelMenuSync();
     },
   });
 

@@ -135,6 +135,29 @@ describe('session summaries and chat detail', () => {
     assert.equal(detail.subAgentRuns[0].runId, 'sub-1');
     assert.deepEqual(detail.injectedContext, { 'code-map': 'map body' });
     assert.equal(detail.runnerTiming.startedAt, 1);
+    assert.deepEqual(detail.tokenLedger, seedChat().tokenLedger);
+  });
+
+  test('compact full and delta summaries preserve totals while Usage reads the saved ledger', async () => {
+    const before = await httpRequest(baseUrl, 'GET', '/api/config/sessions/summaries?view=compact');
+    assert.equal(before.status, 200);
+    const chat = before.json.chats.find(item => item.id === CHAT);
+    assert.equal('tokenLedger' in chat, false);
+    assert.deepEqual(chat.tokenLedgerTotals, seedChat().tokenLedger.totals);
+    assert.deepEqual(chat.tokenLedgerPreview.latest, seedChat().tokenLedger.entries[0]);
+
+    const patch = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
+      baseVersion: 6,
+      chats: [summaryWrite(chat, { composerDraft: 'still editing' })],
+    });
+    assert.equal(patch.status, 200);
+    const delta = await httpRequest(baseUrl, 'GET', `/api/config/sessions/summaries?view=compact&sinceRevision=${before.json.revision}`);
+    assert.equal(delta.json.delta, true);
+    assert.equal('tokenLedger' in delta.json.chats[0], false);
+    assert.deepEqual(delta.json.chats[0].tokenLedgerTotals, seedChat().tokenLedger.totals);
+    const usage = await httpRequest(baseUrl, 'GET', `/api/config/sessions/usage?chatId=${CHAT}`);
+    assert.deepEqual(usage.json.ledgers, { [CHAT]: seedChat().tokenLedger });
+    assert.equal((await stored()).history.length, 2);
   });
 
   test('saving an unopened chat from its summary keeps every stored record', async () => {

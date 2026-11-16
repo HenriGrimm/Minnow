@@ -1,7 +1,6 @@
 import { appConfirm } from './app-dialog';
 import {
   forgeRefresh,
-  prCheckout,
   prClose,
   prCreate,
   prList,
@@ -11,7 +10,10 @@ import {
   type PullRequestDetail,
   type PullRequestSummary,
 } from '../state/forge-api';
-import { gitBranches } from '../state/git-api';
+import { gitBranches, gitCheckoutPlan, type GitCheckoutSwitchInput } from '../state/git-api';
+import { listWorktrees } from '../state/worktree-service';
+import { parseWorktreeListPorcelain, worktreePathsEqual, type ParsedWorktree } from '../lib/worktree-list-parse';
+import { checkoutRecoveryActions, runCheckoutFlow } from './git-checkout-confirm';
 import { getWorkspacePath } from '../state/workspace';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { getPrReview, subscribePrReviews } from '../state/pr-review-store';
@@ -74,6 +76,26 @@ export function createPullsView(
   let filter: PrFilter = 'open';
   let selectedNumber: number | null = null;
   let cache: PullRequestSummary[] = [];
+  /** Linked worktrees at the last list load, to say where each PR lives. */
+  let worktrees: ParsedWorktree[] = [];
+
+  /**
+   * Same-repo PRs check out under their head name. A fork's head name says
+   * nothing about local branches, so fork rows are only tagged Fork here; the
+   * detail button asks the server (tracking ref / head commit).
+   */
+  function prLocation(pr: PullRequestSummary): { kind: 'here' } | { kind: 'worktree'; path: string; name: string } | { kind: 'none' } {
+    if (pr.crossRepository) return { kind: 'none' };
+    if (pr.headRef && pr.headRef === ctx.getBranch()) return { kind: 'here' };
+    if (pr.state !== 'open') return { kind: 'none' };
+    const here = ctx.getCwd() ?? getWorkspacePath();
+    const held = worktrees.find((wt) => wt.branch === pr.headRef && !worktreePathsEqual(wt.path, here));
+    if (!held) return { kind: 'none' };
+    const name = worktreePathsEqual(held.path, getWorkspacePath())
+      ? 'workspace'
+      : held.path.split(/[\\/]/).filter(Boolean).pop() ?? held.path;
+    return { kind: 'worktree', path: held.path, name };
+  }
   let reviewHost: HTMLElement | null = null;
   let detailData: PullRequestDetail | null = null;
   let activeTab: PrDetailTab = 'overview';
@@ -154,8 +176,13 @@ export function createPullsView(
 
     if (listBody.childElementCount === 0) listBody.appendChild(skeletonRows(6));
 
-    const result = await prList({ cwd, state: filter });
+    const [result, listed] = await Promise.all([
+      prList({ cwd, state: filter }),
+      // One local read places every row: no per-PR gh call.
+      listWorktrees(cwd ?? getWorkspacePath()).catch(() => null),
+    ]);
     if (destroyed || request !== listRequest || cwd !== ctx.getCwd()) return;
+    worktrees = listed?.ok ? listed.worktrees ?? parseWorktreeListPorcelain(listed.output ?? '') : [];
 
     if (!result.ok) {
       listBody.replaceChildren(
@@ -269,7 +296,14 @@ export function createPullsView(
       el('span', 'scc-prrow__number', `#${pr.number}`),
       chip(prStateLabel(pr), pr.state === 'open' && pr.draft ? 'draft' : pr.state),
     );
-    if (pr.headRef === ctx.getBranch()) top.appendChild(el('span', 'scc-prrow__current', 'Current branch'));
+    const where = prLocation(pr);
+    if (where.kind === 'here') top.appendChild(el('span', 'scc-prrow__current', 'Checked out here'));
+    else if (where.kind === 'worktree') {
+      const tag = el('span', 'scc-prrow__current', `In ${where.name}`);
+      tag.title = `Checked out at ${where.path}`;
+      top.appendChild(tag);
+    }
+    if (pr.crossRepository) top.appendChild(chip('Fork'));
     const age = relativeTime(pr.updatedAt);
     if (age) top.appendChild(el('span', 'scc-prrow__age', age === 'now' ? 'just now' : `${age} ago`));
 
@@ -416,13 +450,14 @@ export function createPullsView(
     if (review?.status === 'running') reviewBtn.disabled = true;
     bar.appendChild(reviewBtn);
 
-    bar.appendChild(
-      button({
-        label: 'Check out',
-        icon: 'gitBranch',
-        onClick: () => void checkout(pr.number),
-      }),
-    );
+    const checkoutBtn = button({
+      label: 'Check out',
+      icon: 'gitBranch',
+      className: 'scc-prdetail__checkout-btn',
+      onClick: () => void checkout(pr),
+    });
+    bar.appendChild(checkoutBtn);
+    void paintCheckoutLocation(pr, checkoutBtn);
 
     if (pr.state === 'open' && pr.draft) {
       bar.appendChild(
@@ -578,14 +613,55 @@ export function createPullsView(
     await ctx.refreshAll();
   }
 
-  async function checkout(number: number): Promise<void> {
-    const result = await runGitUiOp(() => prCheckout({ cwd: ctx.getCwd(), number }), {
+  function checkoutInput(pr: PullRequestSummary): GitCheckoutSwitchInput {
+    return {
+      cwd: ctx.getCwd() ?? getWorkspacePath(),
+      branch: pr.headRef,
+      expectedBranch: ctx.getBranch() || undefined,
+      pullRequest: {
+        number: pr.number, url: pr.url, headRef: pr.headRef,
+        ...(pr.headRefOid ? { headRefOid: pr.headRefOid } : {}),
+        ...(pr.crossRepository !== undefined ? { crossRepository: pr.crossRepository } : {}),
+      },
+    };
+  }
+
+  /** Say where the PR already lives so the button routes instead of failing. */
+  async function paintCheckoutLocation(pr: PullRequestSummary, btn: HTMLButtonElement): Promise<void> {
+    const input = checkoutInput(pr);
+    const plan = await gitCheckoutPlan({ cwd: input.cwd, branch: input.branch, pullRequest: input.pullRequest });
+    if (destroyed || !btn.isConnected || !plan.ok) return;
+    const label = btn.querySelector('.scc-btn__label');
+    if (plan.location === 'current') {
+      if (label) label.textContent = 'Update checkout';
+      btn.title = `#${pr.number} is checked out here. Pull its latest commits.`;
+    } else if (plan.location === 'worktree' && plan.worktreePath && ctx.openWorktree) {
+      const path = plan.worktreePath;
+      btn.replaceWith(button({
+        label: 'Open worktree', icon: 'gitWorktree', className: 'scc-prdetail__checkout-btn',
+        title: `#${pr.number} is checked out at ${path}`,
+        onClick: () => void ctx.openWorktree!(path).then(() => ctx.refreshAll()),
+      }));
+    }
+  }
+
+  async function checkout(pr: PullRequestSummary): Promise<void> {
+    const input = checkoutInput(pr);
+    const result = await runGitUiOp(() => runCheckoutFlow(input, {
+      isCurrent: () => !destroyed,
+      openWorktree: ctx.openWorktree,
+    }), {
       label: 'Checking out pull request…',
-      successMessage: `Checked out #${number}`,
+      successMessage: `Checked out #${pr.number}`,
       chatKind: 'pr',
       ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+      recoveryActions: (failed) => checkoutRecoveryActions(failed, { cwd: input.cwd, openWorktree: ctx.openWorktree }),
     });
-    if (!result.ok) return;
+    if (!result.ok) {
+      // gh can move the branch before its update fails; reflect the new checkout.
+      if (result.code === 'partial') await ctx.refreshAll();
+      return;
+    }
     await ctx.refreshAll();
   }
 

@@ -15,9 +15,13 @@ import {
 } from './sessions-schema.js';
 import { importJsonSessionsIfNeeded } from './sessions-import.js';
 import { restoreSessionsDbFromNewestSnapshot } from './sessions-snapshot.js';
+import { runSessionsMaintenance } from './sessions-maintenance.js';
+import { checkMappedSessionsIntegrity } from './sessions-integrity.js';
 
 /** @type {Map<string, import('better-sqlite3').Database>} */
 const dbByCacheKey = new Map();
+const initializationByCacheKey = new Map();
+const MAPPED_CHECK_MIN_BYTES = 256 * 1024 * 1024;
 
 export {
   ensureColumn,
@@ -30,19 +34,84 @@ function sessionsDbCacheKey() {
   return `${getMinnowHome()}\0sessions`;
 }
 
-function openSessionsDatabase() {
+function openSessionsDatabase({ prepared = false } = {}) {
   fs.mkdirSync(sessionsRootDir(), { recursive: true });
   const db = new Database(sessionsDbPath());
   try {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     db.pragma('busy_timeout = 5000');
-    initSessionsSchema(db);
+    if (!prepared) initSessionsSchema(db);
     return db;
   } catch (error) {
     db.close();
     throw error;
   }
+}
+
+/** Prepare and recover the store before synchronous repository consumers start. */
+export function initializeSessionsDb() {
+  const cacheKey = sessionsDbCacheKey();
+  const existing = dbByCacheKey.get(cacheKey);
+  if (existing) return Promise.resolve(existing);
+  const pending = initializationByCacheKey.get(cacheKey);
+  if (pending) return pending;
+
+  const initialization = runSessionsMaintenance('initialize').then(() => {
+    const db = openSessionsDatabase({ prepared: true });
+    dbByCacheKey.set(cacheKey, db);
+    return db;
+  }).finally(() => initializationByCacheKey.delete(cacheKey));
+  initializationByCacheKey.set(cacheKey, initialization);
+  return initialization;
+}
+
+/** Attach a maintenance worker to an already initialized store for a consistent read. */
+export function openSessionsDbForRead() {
+  const db = new Database(sessionsDbPath(), { readonly: true, fileMustExist: true });
+  db.pragma('busy_timeout = 5000');
+  dbByCacheKey.set(sessionsDbCacheKey(), db);
+  return db;
+}
+
+/** Materialize the store in the maintenance worker before the host can use it. */
+export async function prepareSessionsDb() {
+  const filePath = sessionsDbPath();
+  if ((process.arch === 'x64' || process.arch === 'arm64')
+    && (fs.statSync(filePath, { throwIfNoEntry: false })?.size ?? 0) >= MAPPED_CHECK_MIN_BYTES
+    && await prepareWithMappedCheck(filePath)) return;
+
+  getSessionsDb();
+  closeSessionsDb();
+}
+
+async function prepareWithMappedCheck(filePath) {
+  let db;
+  try {
+    db = openSessionsDatabase();
+    // The child reads a committed WAL snapshot. Fence other SQLite writers until it reports.
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const before = fs.statSync(filePath, { bigint: true, throwIfNoEntry: false });
+      if (!before || !await checkMappedSessionsIntegrity(filePath)) return false;
+      const after = fs.statSync(filePath, { bigint: true, throwIfNoEntry: false });
+      if (!after || before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+        || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) return false;
+    } finally {
+      db.exec('ROLLBACK');
+    }
+    importJsonSessionsIfNeeded(db);
+    return true;
+  } catch (error) {
+    if (!isSessionsCorruption(error)) throw error;
+    return false;
+  } finally {
+    db?.close();
+  }
+}
+
+function isSessionsCorruption(error) {
+  return error.code === 'SQLITE_NOTADB' || /^SQLITE_CORRUPT(?:_|$)/.test(error.code);
 }
 
 /**
@@ -75,6 +144,9 @@ export function getSessionsDb() {
   if (existing) {
     return existing;
   }
+  if (initializationByCacheKey.has(cacheKey)) {
+    throw new Error('The sessions database is still being initialized');
+  }
 
   let db;
   let quickCheck;
@@ -84,7 +156,7 @@ export function getSessionsDb() {
   } catch (error) {
     db?.close();
     db = null;
-    if (error.code !== 'SQLITE_NOTADB' && !/^SQLITE_CORRUPT(?:_|$)/.test(error.code)) throw error;
+    if (!isSessionsCorruption(error)) throw error;
     quickCheck = error.code;
   }
   if (quickCheck !== 'ok') {
@@ -121,6 +193,9 @@ export function closeSessionsDb() {
 }
 
 export function deleteSessionsDb() {
+  if (initializationByCacheKey.has(sessionsDbCacheKey())) {
+    throw new Error('Cannot delete the sessions database during initialization');
+  }
   closeSessionsDb();
   const base = sessionsDbPath();
   let removed = false;

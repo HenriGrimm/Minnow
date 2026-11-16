@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { Window } from 'happy-dom';
+import type { GitLogResult } from '../../src/state/git-api.ts';
 
 const unused = async () => ({ ok: true });
 let confirmed = true;
@@ -12,10 +13,11 @@ let savedChanges: { sha: string; branch: string; fileCount: number; createdAt: s
 let statusResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
 let pullResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
 let commitResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
+let historyResult: (input: { cwd?: string; ref?: string; skip?: number; ifHistoryKey?: string }) => GitLogResult;
 mock.module('../../src/ui/git-commit-diff-panel.ts', { namedExports: {
   closeGitCommitDiffPanel() {}, getOpenGitCommitDiffSha: () => null,
   GIT_COMMIT_DIFF_CLOSED_EVENT: 'minnow:git-commit-diff-closed',
-  openGitCommitDiffPanel: unused,
+  openGitCommitDiffPanel: async (input: unknown) => { calls.push(['review', input]); return { ok: true }; },
 } });
 mock.module('../../src/ui/git-file-editor.ts', { namedExports: {
   openGitFileEditor: async (options: unknown) => { calls.push(['diff', options]); return { ok: true }; },
@@ -33,10 +35,6 @@ mock.module('../../src/state/worktree-service.ts', { namedExports: {
     `worktree /workspace\nHEAD abc\nbranch refs/heads/${workspaceBranch}\n\n` +
     (featureWorktreeExists ? 'worktree /selected-worktree\nHEAD def\nbranch refs/heads/feature\n\n' : ''),
   }),
-} });
-mock.module('../../src/ui/git-graph.ts', { namedExports: {
-  extractLocalBranchRefs: () => [],
-  renderGitGraph: () => ({ refresh: unused, destroy() {}, setSelectedCommit() {} }),
 } });
 mock.module('../../src/state/git-api.ts', { namedExports: {
   gitCheckoutSwitch: async (input: { branch: string; cwd?: string; dirtyHandling?: string }) => {
@@ -73,13 +71,14 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
     featureWorktreeExists = false;
     return { ok: true };
   },
-  gitLog: async (input: unknown) => { calls.push(['log', input]); return { ok: true, commits: [] }; },
+  gitLog: async (input: Parameters<typeof historyResult>[0]) => { calls.push(['log', input]); return historyResult(input); },
   gitShow: unused, gitMerge: unused, gitRemoteUrl: unused,
   gitStageAll: unused, gitFetch: unused, gitCheckoutDetach: unused, gitCreateTag: unused,
   gitDeleteRemoteBranch: unused, gitDiffSummary: unused, gitRebase: unused,
   gitStashList: unused, gitStashPush: unused, gitStashPop: unused, gitStashApply: unused,
   gitStashDrop: unused, gitCherryPick: unused, gitSnapshotCreate: unused,
   gitSnapshotRestore: unused, gitSnapshotDiff: unused,
+  gitCheckoutPlan: async () => ({ ok: true, location: 'here' }),
   gitBranchTree: async (cwd?: string) => {
     calls.push(['inspect', cwd]);
     return { ok: true, current: 'feature', branches: [{ name: 'feature', upstream: null }] };
@@ -124,6 +123,7 @@ beforeEach(() => {
   statusResult = { ok: true };
   pullResult = { ok: true };
   commitResult = { ok: true };
+  historyResult = () => ({ ok: true, commits: [] });
   workspace.setWorkspaceFromServer({ path: '/workspace', isDefault: false, label: 'Workspace' });
   panel.initGitPanel();
   panel.setGitPanelCwd('/selected-worktree');
@@ -149,6 +149,15 @@ test('Graphite opens workspace changes from a worktree thread and loads history 
   assert.equal(panel.getGitPanelCwd(), '/workspace');
   assert.equal(panel.getGitPanelFileBrowseCwd(), '/selected-worktree');
   const root = document.getElementById('gitSidePanel')!;
+  const toolbar = root.querySelector('.git-panel-toolbar')!;
+  const gitActions = [...toolbar.querySelectorAll<HTMLButtonElement>('[aria-label="Git actions"] > button')];
+  assert.deepEqual(gitActions.map(button => button.getAttribute('aria-label')), [
+    'Refresh source control', 'Pull', 'Push', 'Merge to main', 'Open Source Control', 'How worktrees and branches work',
+  ]);
+  assert.ok(gitActions.every(button => button.querySelector('.icon-svg') && !button.textContent));
+  const merge = toolbar.querySelector<HTMLButtonElement>('[data-git-action="merge"]')!;
+  assert.equal(merge.hidden, false);
+  assert.equal(merge.disabled, true);
   assert.equal(root.dataset.gitView, 'changes');
   assert.equal(root.lastElementChild?.className, 'git-panel-commit-box');
   assert.equal(calls.some(call => Array.isArray(call) && call[0] === 'log'), false);
@@ -162,18 +171,69 @@ test('Graphite opens workspace changes from a worktree thread and loads history 
   filename.click();
   assert.equal(root.querySelector('.graphite-git-patch'), null);
   root.querySelector<HTMLButtonElement>('[data-git-view-choice="history"]')!.click();
-  await waitForPanel(() => root.querySelector('#gitGraphMount')?.textContent === 'No commits yet');
+  await waitForPanel(() => root.querySelector('#gitGraphMount .git-panel-empty')?.textContent === 'No commits yet');
   assert.equal(root.dataset.gitView, 'history');
-  assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'log'), ['log', { cwd: undefined, count: 12 }]);
+  assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'log'), ['log', {
+    cwd: '/workspace', count: 100, skip: 0, fullRefs: true, ref: undefined, historyKey: null, ifHistoryKey: null,
+  }]);
 
   await panel.openGitSurfaceTarget(chat, 'changes');
   assert.equal(root.dataset.gitView, 'changes');
   assert.equal(panel.getGitPanelCwd(), '/selected-worktree');
-  await waitForPanel(() => Boolean(root.querySelector('.git-panel-file-path')));
+  await waitForPanel(() => Boolean(root.querySelector('.git-panel-file-path')) && !merge.disabled);
 
   panel.setGitPanelCwd('/workspace');
   await panel.openGitSurfaceTarget(chat, 'commit');
   assert.equal(panel.getGitPanelCwd(), '/selected-worktree');
+});
+
+test('Diff history graphs branches, keeps older pages on refresh, and browses remote refs without checkout', async () => {
+  const hash = (n: number) => n.toString(16).padStart(40, '0');
+  const remote = 'refs/remotes/upstream/topic';
+  const commits = Array.from({ length: 102 }, (_, i) => ({
+    hash: hash(102 - i), parents: i === 0 ? [hash(101), hash(100)] : i < 101 ? [hash(i === 1 ? 99 : 101 - i)] : [],
+    subject: `Commit ${102 - i}`, author: 'Tester', relativeTime: 'now',
+    refs: i === 0 ? ['HEAD -> refs/heads/feature', 'tag: refs/tags/v1'] : i === 2 ? [remote] : [],
+  }));
+  historyResult = ({ ref, skip = 0, ifHistoryKey }) => {
+    if (ifHistoryKey === 'snapshot') return { ok: true, historyUnchanged: true };
+    return { ok: true, commits: ref === remote ? commits.slice(2) : commits.slice(skip, skip + 100),
+      historyBranches: ['refs/heads/main', 'refs/heads/feature', remote], historyKey: ref ?? 'snapshot',
+      hasMore: !ref && skip === 0, nextSkip: !ref && skip === 0 ? 100 : null };
+  };
+  panel.setGitSurfaceVisible(true);
+  const root = document.getElementById('gitSidePanel')!;
+  root.querySelector<HTMLButtonElement>('[data-git-view-choice="history"]')!.click();
+  const rows = () => root.querySelectorAll<HTMLElement>('.git-graph__row');
+  await waitForPanel(() => rows().length === 100);
+  assert.ok(rows()[0].querySelector('svg path'));
+  assert.match(rows()[0].textContent!, /HEAD.*feature.*Tag: v1/);
+  assert.match(rows()[2].textContent!, /upstream\/topic \(remote\)/);
+  const first = rows()[0];
+  first.focus();
+  first.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  assert.equal(document.activeElement, rows()[1]);
+  const more = [...root.querySelectorAll<HTMLButtonElement>('.git-history-browser__footer button')][0];
+  more.click();
+  await waitForPanel(() => rows().length === 102);
+  assert.equal(document.activeElement, rows()[1]);
+  const previousFirst = rows()[0];
+  await panel.refreshGitPanel();
+  assert.equal(rows()[0], previousFirst);
+  assert.equal(rows().length, 102);
+  assert.ok(calls.some(call => Array.isArray(call) && call[0] === 'log' && call[1].skip === 100 && call[1].historyKey === 'snapshot'));
+
+  const branch = root.querySelector<HTMLSelectElement>('.git-history-browser__branch')!;
+  branch.value = remote;
+  branch.dispatchEvent(new win.Event('change'));
+  await waitForPanel(() => rows()[0]?.dataset.sha === hash(100));
+  assert.equal(panel.getGitPanelCwd(), '/selected-worktree');
+  assert.ok(!calls.some(call => Array.isArray(call) && call[0] === 'switch'));
+  rows()[0].click();
+  await waitForPanel(() => rows()[0]?.getAttribute('aria-pressed') === 'true');
+  assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'review'), [
+    'review', { sha: hash(100), cwd: '/selected-worktree' },
+  ]);
 });
 
 test('removing the active worktree selects the workspace HEAD while retaining the removed branch', async () => {

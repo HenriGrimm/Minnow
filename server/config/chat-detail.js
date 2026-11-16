@@ -5,15 +5,13 @@
  * phone booting over Tailscale never finished the download.
  *
  * Summaries keep each run as a stub (status, ids, timestamps) so the sidebar,
- * activity feed and notifications still see running and failed turns. Token
- * ledgers stay too: Usage totals every chat, and the client gives an unopened
- * chat an empty ledger that a save would otherwise write over the real one. A chat
- * the client never opened is saved without history; those writes, and any run
- * that arrives as a stub, must keep the stored detail instead of erasing it.
+ * activity feed and notifications still see running and failed turns. Compact
+ * summaries carry token totals for workspace chrome. Full ledgers load with an
+ * opened chat or in Usage, and an omitted ledger is preserved on save.
  */
 
 /** Chat meta fields that only an opened chat needs. */
-export const CHAT_DETAIL_META_KEYS = Object.freeze(['injectedContext', 'runnerTiming']);
+export const CHAT_DETAIL_META_KEYS = Object.freeze(['injectedContext', 'runnerTiming', 'tokenLedger']);
 
 /** Child records left out of summaries entirely. */
 export const CHAT_DETAIL_CHILD_KEYS = Object.freeze(['subAgentRuns', 'terminalHistory']);
@@ -48,10 +46,18 @@ export function toRunStub(run) {
  * Strip a full chat (or summary) down to what the summaries endpoint sends.
  * @param {Record<string, unknown>} chat
  */
-export function slimChatSummary(chat) {
+export function slimChatSummary(chat, { compact = false } = {}) {
   /** @type {Record<string, unknown>} */
   const slim = {};
   for (const [key, value] of Object.entries(chat)) {
+    if (key === 'tokenLedger') {
+      if (!compact) slim[key] = value;
+      else if (value?.totals) {
+        slim.tokenLedgerTotals = value.totals;
+        slim.tokenLedgerPreview = { bySource: value.bySource, latest: Array.isArray(value.entries) ? value.entries.at(-1) ?? null : null };
+      }
+      continue;
+    }
     if (CHAT_DETAIL_META_KEYS.includes(key) || CHAT_DETAIL_CHILD_KEYS.includes(key)) continue;
     slim[key] = key === 'runs' && Array.isArray(value)
       ? value.map((run) => (isRecord(run) ? toRunStub(run) : run))

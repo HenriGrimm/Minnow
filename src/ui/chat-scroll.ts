@@ -61,7 +61,7 @@ function updateJumpChipVisibility(): void {
   const chatApp = isChatAppForeground();
   const board = !getSharedChatHost()
     && document.getElementById('mainColumn')?.classList.contains('main-column--board-view');
-  const show = !board && root.scrollHeight > root.clientHeight && !getTranscriptScroller(root).isPinned();
+  const show = !board && !getTranscriptScroller(root).isPinned() && root.scrollHeight > root.clientHeight;
   jumpChipEl?.classList.toggle('hidden', chatApp || !show);
   chatAppJumpChipEl?.classList.toggle('hidden', !chatApp || !show);
 }

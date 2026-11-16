@@ -190,16 +190,32 @@ export function initChatConversationSchema(db) {
   db.exec("UPDATE chat_activity_reads SET execution_id=NULL WHERE EXISTS (SELECT 1 FROM chat_executions e WHERE e.execution_id=chat_activity_reads.execution_id AND e.status NOT IN ('completed','failed','stopped','recovery_required'))");
 }
 
+const conversationReads = new WeakMap();
+
+function getConversationReads(db) {
+  let reads = conversationReads.get(db);
+  if (!reads) {
+    reads = {
+      managed: db.prepare('SELECT 1 FROM chat_conversation_state WHERE chat_id = ?'),
+      relation: db.prepare('SELECT payload_json, parent_chat_id FROM chat_relations WHERE chat_id = ?'),
+      chat: db.prepare('SELECT 1 FROM chats WHERE id = ?'),
+    };
+    conversationReads.set(db, reads);
+  }
+  return reads;
+}
+
 export function isManagedConversation(db, chatId) {
-  return Boolean(db.prepare('SELECT 1 FROM chat_conversation_state WHERE chat_id = ?').get(chatId));
+  return Boolean(getConversationReads(db).managed.get(chatId));
 }
 
 /** The projection omits prompt/profile/command bodies, even on summary reads. */
 export function readAgentConversationProjection(db, chatId) {
-  const row = db.prepare('SELECT payload_json, parent_chat_id FROM chat_relations WHERE chat_id = ?').get(chatId);
+  const reads = getConversationReads(db);
+  const row = reads.relation.get(chatId);
   if (!row) return undefined;
   const relation = JSON.parse(row.payload_json);
-  if (row.parent_chat_id && !db.prepare('SELECT 1 FROM chats WHERE id = ?').get(row.parent_chat_id)) {
+  if (row.parent_chat_id && !reads.chat.get(row.parent_chat_id)) {
     relation.missingParent = true;
   }
   return relation;

@@ -103,3 +103,35 @@ test('failed polling shows a retry and cancels the background attempt', async ()
   [...view.root.querySelectorAll('button')].find(button => button.textContent === 'Try again')!.click();
   assert.equal(retries, 1);
 });
+
+test('browser open failure offers the same full URL and one failed poll keeps the login running', async () => {
+  let polls = 0;
+  let cancelled = false;
+  let complete!: (value: AgentCliLogin) => void;
+  const authorization = 'https://claude.com/cai/oauth/authorize?code=true&state=test';
+  Object.defineProperty(win, 'minnow', { value: { app: { openExternal: async (url: string) => {
+    assert.equal(url, authorization);
+    throw new Error('no default browser');
+  } } } });
+  let copied;
+  Object.defineProperty(win.navigator, 'clipboard', { value: { writeText: async (text: string) => { copied = text; } } });
+  view = createAgentCliSignIn('claude', 'Claude Code', { retry() {}, request: async (_kind, action) => {
+    if (action === 'start') return flow({ verificationUrl: authorization });
+    if (action === 'cancel') { cancelled = true; return flow({ state: 'cancelled' }); }
+    if (++polls === 1) throw new Error('temporary disconnect');
+    return new Promise(resolve => { complete = resolve; });
+  } });
+  document.body.append(view.root);
+  const result = view.start();
+  await tick();
+  view.root.querySelector('a')!.click();
+  await tick();
+  assert.match(view.root.textContent!, /Could not open your browser/);
+  [...view.root.querySelectorAll('button')].find(button => button.textContent === 'Copy link')!.click();
+  await tick();
+  assert.equal(copied, authorization);
+  await new Promise(resolve => setTimeout(resolve, 1050));
+  complete(flow({ state: 'signed-in', verificationUrl: null }));
+  assert.equal(await result, true);
+  assert.equal(cancelled, false);
+});

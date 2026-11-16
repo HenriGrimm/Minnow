@@ -12,6 +12,7 @@ import { closeSessionsDb, getSessionsDb, writeSessionMeta } from '../../server/c
 import {
   readWholeSessionState,
   resolveChatWorktreeContext,
+  serializeSessionSummaries,
 } from '../../server/config/sessions-repo.js';
 import { rmTestHome, setTestHome } from './test-helpers.js';
 
@@ -146,5 +147,13 @@ describe('sessions SQLite narrow-query perf (A.3)', () => {
       p50 < WHOLE_BLOB_MS,
       `readWholeSessionState p50=${p50.toFixed(1)}ms (limit ${WHOLE_BLOB_MS}ms, samples: ${samples.map(ms => ms.toFixed(1)).join(', ')})`,
     );
+  });
+
+  test('large compact summary reads the committed catalog through the maintenance worker', async () => {
+    const catalog = JSON.parse(await serializeSessionSummaries({ compact: true }));
+    assert.equal(catalog.chats.length, CHAT_COUNT);
+    assert.equal(catalog.activeId, probeChatId);
+    assert.equal(catalog.chats[0].messageCount, MESSAGES_PER_CHAT);
+    assert.equal('history' in catalog.chats[0], false);
   });
 });

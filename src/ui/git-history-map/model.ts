@@ -35,7 +35,7 @@ export interface GitHistoryModel {
   hiddenCount: number;
 }
 
-function parseRefs(commit: GitCommitEntry): GitHistoryRef[] {
+export function parseGitHistoryRefs(commit: GitCommitEntry): GitHistoryRef[] {
   return commit.refs.flatMap((raw): GitHistoryRef[] => {
     const ref = raw.trim();
     const hash = commit.hash;
@@ -45,6 +45,7 @@ function parseRefs(commit: GitCommitEntry): GitHistoryRef[] {
       { name: ref.slice(8).replace(/^refs\/heads\//, ''), kind: 'local', hash },
     ];
     if (ref.startsWith('tag: ')) return [{ name: ref.slice(5).replace(/^refs\/tags\//, ''), kind: 'tag', hash }];
+    if (/^(refs\/)?remotes\/[^/]+\/HEAD$/.test(ref)) return [];
     if (/^(refs\/)?remotes\//.test(ref)) return [{ name: ref.replace(/^(refs\/)?remotes\//, ''), kind: 'remote', hash }];
     if (ref.startsWith('refs/heads/')) return [{ name: ref.slice(11), kind: 'local', hash }];
     return ref ? [{ name: ref, kind: ref.startsWith('origin/') ? 'remote' : 'local', hash }] : [];
@@ -63,7 +64,7 @@ export function buildGitHistoryModel(commits: GitCommitEntry[]): GitHistoryModel
     return index < 0 ? lanes.length : index;
   };
   for (const commit of unique) {
-    const refs = parseRefs(commit);
+    const refs = parseGitHistoryRefs(commit);
     const waiting: number[] = [];
     lanes.forEach((slot, lane) => { if (slot?.hash === commit.hash) waiting.push(lane); });
     const lane = waiting[0] ?? free();

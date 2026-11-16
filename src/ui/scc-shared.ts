@@ -15,6 +15,8 @@ export interface SccContext {
   goTo: (section: SccSectionId) => void;
   /** Publish a count or state marker onto the rail. */
   setBadge: (section: SccSectionId, badge: SccBadge | null) => void;
+  /** Point the center at a worktree that already has a branch or PR checked out. */
+  openWorktree?: (path: string) => Promise<void>;
 }
 
 export type SccSectionId =

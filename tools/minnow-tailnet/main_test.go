@@ -15,12 +15,12 @@ import (
 	"time"
 )
 
-func proxyTo(t *testing.T, upstream http.Handler, info ConnInfo, whoIs WhoIsFunc) *httptest.Server {
+func proxyTo(t *testing.T, upstream http.Handler, info ConnInfo) *httptest.Server {
 	t.Helper()
 	backend := httptest.NewServer(upstream)
 	t.Cleanup(backend.Close)
 	target, _ := url.Parse(backend.URL)
-	proxy := NewProxy(target, "per-boot-secret", whoIs)
+	proxy := NewProxy(target, "per-boot-secret")
 	front := httptest.NewUnstartedServer(proxy)
 	front.Config.ConnContext = func(ctx context.Context, _ net.Conn) context.Context { return WithConnInfo(ctx, info) }
 	front.Start()
@@ -34,7 +34,7 @@ func TestProxyReplacesClientSuppliedSecretAndMarksFunnel(t *testing.T) {
 	front := proxyTo(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Clone()
 		host = r.Host
-	}), ConnInfo{Funnel: true, ClientIP: "203.0.113.7"}, nil)
+	}), ConnInfo{Funnel: true, ClientIP: "203.0.113.7"})
 
 	req, _ := http.NewRequest(http.MethodGet, front.URL+"/api/auth/host-info", nil)
 	req.Host = "minnow-studio.tail1.ts.net"
@@ -71,13 +71,11 @@ func TestProxyReplacesClientSuppliedSecretAndMarksFunnel(t *testing.T) {
 	}
 }
 
-func TestProxyTagsTailnetPeersWithTheirLogin(t *testing.T) {
+func TestProxyTagsTailnetPeersWithTheirAddress(t *testing.T) {
 	var got http.Header
 	front := proxyTo(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Clone()
-	}), ConnInfo{Funnel: false, ClientIP: "100.101.102.103"}, func(context.Context, string) string {
-		return "henri@example.com"
-	})
+	}), ConnInfo{Funnel: false, ClientIP: "100.101.102.103"})
 	res, err := http.Get(front.URL + "/")
 	if err != nil {
 		t.Fatal(err)
@@ -86,8 +84,8 @@ func TestProxyTagsTailnetPeersWithTheirLogin(t *testing.T) {
 	if v := got.Get("X-Minnow-Ingress"); v != "tailnet" {
 		t.Fatalf("ingress = %q", v)
 	}
-	if v := got.Get("X-Minnow-Tailnet-User"); v != "henri@example.com" {
-		t.Fatalf("user = %q", v)
+	if v := got.Get("X-Forwarded-For"); v != "100.101.102.103" {
+		t.Fatalf("forwarded-for = %q", v)
 	}
 }
 
@@ -99,7 +97,7 @@ func TestProxyStreamsServerSentEvents(t *testing.T) {
 		w.(http.Flusher).Flush()
 		<-release
 		fmt.Fprint(w, "data: second\n\n")
-	}), ConnInfo{Funnel: true}, nil)
+	}), ConnInfo{Funnel: true})
 
 	res, err := http.Get(front.URL + "/api/stream")
 	if err != nil {

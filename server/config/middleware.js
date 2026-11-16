@@ -34,7 +34,8 @@ import {
   readChatHistory,
   recallChatHistory,
   readSessionRevision,
-  readSessionSummariesState,
+  serializeSessionSummaries,
+  readSessionTokenLedgers,
   searchSessionChats,
   useJsonSessionsStore,
 } from './sessions-repo.js';
@@ -90,7 +91,10 @@ const gzipAsync = promisify(zlib.gzip);
  * @param {unknown} payload
  */
 async function sendJsonCompressed(req, res, status, payload) {
-  const body = JSON.stringify(payload);
+  return sendSerializedJsonCompressed(req, res, status, JSON.stringify(payload));
+}
+
+async function sendSerializedJsonCompressed(req, res, status, body) {
   const accepts = /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''));
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
@@ -335,10 +339,11 @@ export async function handleConfigRequest(req, res, pathname) {
     }
 
     if (pathname === '/api/config/sessions/summaries' && req.method === 'GET') {
-      await ensureMinnowLayout();
+      await ensureMinnowLayoutInitialized();
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const compact = url.searchParams.get('view') === 'compact';
       if (useJsonSessionsStore()) {
         const full = (await readConfigJson('sessions/state.json')) ?? (await readResource('sessions'));
-        const url = new URL(req.url ?? '', 'http://localhost');
         const workspace = url.searchParams.get('workspace') ?? '';
         const chats = Array.isArray(full?.chats) ? full.chats : [];
         const summaries = chats
@@ -354,7 +359,7 @@ export async function handleConfigRequest(req, res, pathname) {
             if (last && typeof last === 'object' && typeof last.content === 'string') {
               lastMessagePreview = last.content.slice(0, 240);
             }
-            const { history: _drop, ...rest } = slimChatSummary(chat);
+            const { history: _drop, ...rest } = slimChatSummary(chat, { compact });
             return {
               ...rest,
               messageCount: history.length,
@@ -364,17 +369,33 @@ export async function handleConfigRequest(req, res, pathname) {
         await sendJsonCompressed(req, res, 200, { ...full, chats: summaries });
         return true;
       }
-      const url = new URL(req.url ?? '', 'http://localhost');
       const workspace = url.searchParams.get('workspace') ?? undefined;
       const sinceRaw = url.searchParams.get('sinceRevision');
       const sinceRevision = sinceRaw && /^\d+$/.test(sinceRaw) ? Number(sinceRaw) : undefined;
-      await sendJsonCompressed(req, res, 200, readSessionSummariesState({ workspace, sinceRevision }));
+      const body = await serializeSessionSummaries({ workspace, sinceRevision, compact });
+      await sendSerializedJsonCompressed(req, res, 200, body);
+      return true;
+    }
+
+    if (pathname === '/api/config/sessions/usage' && req.method === 'GET') {
+      await ensureMinnowLayoutInitialized();
+      const chatId = new URL(req.url ?? '', 'http://localhost').searchParams.get('chatId')?.trim();
+      let ledgers;
+      if (useJsonSessionsStore()) {
+        const full = (await readConfigJson('sessions/state.json')) ?? (await readResource('sessions'));
+        ledgers = Object.fromEntries((full?.chats ?? [])
+          .filter((chat) => chat?.tokenLedger && (!chatId || chat.id === chatId))
+          .map((chat) => [chat.id, chat.tokenLedger]));
+      } else {
+        ledgers = readSessionTokenLedgers(chatId);
+      }
+      await sendJsonCompressed(req, res, 200, { ledgers });
       return true;
     }
 
     const historyMatch = pathname.match(/^\/api\/config\/sessions\/history\/([^/]+)$/);
     if (historyMatch && req.method === 'GET') {
-      await ensureMinnowLayout();
+      await ensureMinnowLayoutInitialized();
       const chatId = decodeURIComponent(historyMatch[1] ?? '').trim();
       const url = new URL(req.url ?? '', 'http://localhost');
       const offsetRaw = url.searchParams.get('offset');

@@ -18,6 +18,7 @@ import { appendDiagnosticEntry } from '../../diagnostics/ring-log.js';
 import { assertMinnowToolMode, isMinnowCodexItem } from '../../models/agent-cli-native.js';
 import { assertCodexNativeExecution, isCodexCodingItem, nativeMeta, queueNativeRecord, nativeApproval, pauseNativeTurn } from './native.js';
 import { getNativeExecutionContext } from '../native-execution-context.js';
+import { normalizeCodexUsage } from '../../models/cli-usage-normalize.js';
 
 const append = (state, row) => appendChunk(state, Buffer.from(`data: ${JSON.stringify(row)}\n\n`));
 const MAX_HANDOFF_CALLS = 8;
@@ -27,9 +28,17 @@ function failure(session, error) {
   if (session.nativePolicy) void quarantineCodexSession(session).catch(() => {});
   session.round?.finish('error', error); void closeCodexSession(session).catch(() => {});
 }
+function codexTurnError(error, fallback) {
+  return Object.assign(new Error(error?.message ?? fallback), { quotaExceeded: error?.codexErrorInfo === 'usageLimitExceeded' });
+}
 function onEvent(session, event) {
   const p = event.params ?? {};
-  if (p.threadId !== session.threadId || session.closed) return;
+  if (session.closed) return;
+  if (event.method === 'account/rateLimits/updated') {
+    if (!session.round?.finished) session.round?.reportUsage?.(normalizeCodexUsage(p));
+    return;
+  }
+  if (p.threadId !== session.threadId) return;
   if (event.method === 'turn/started' && session.starting) { session.turnId = p.turn.id; session.starting = false; }
   if (p.turnId && p.turnId !== session.turnId) return;
   if (event.method === 'turn/completed' && p.turn.id !== session.turnId) return;
@@ -106,9 +115,9 @@ function onEvent(session, event) {
     round.translate(event);
     if (event.method === 'turn/completed') {
       if (p.turn.status === 'completed') round.finish('stop');
-      else round.finish('error', new Error(p.turn.error?.message ?? `Codex turn ${p.turn.status}.`));
+      else round.finish('error', codexTurnError(p.turn.error, `Codex turn ${p.turn.status}.`));
     }
-    if (event.method === 'error' && !p.willRetry) round.finish('error', new Error(p.error?.message ?? 'Codex model error.'));
+    if (event.method === 'error' && !p.willRetry) round.finish('error', codexTurnError(p.error, 'Codex model error.'));
   } catch (error) { failure(session, error); }
 }
 function onRequest(session, request) {
@@ -185,7 +194,7 @@ export async function pumpCodexAppServer(input) {
 }
 
 /** One native turn can span multiple ordinary Minnow generation/tool rounds. */
-async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleMs, maxMs, canFailover, nativeExecution, nativePolicy }) {
+async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleMs, maxMs, canFailover, nativeExecution, nativePolicy, reportUsage }) {
   const startedAt = performance.now();
   const controller = new AbortController();
   state.upstreamController = controller;
@@ -256,6 +265,7 @@ async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleM
     let resolveRound, publishNativeCompletion;
     const done = new Promise(resolve => { resolveRound = resolve; });
     round = {
+      reportUsage,
       generationId: state.id, calls: [], content: '', reasoning: '', emitted: false, finished: false, idleTimer: null, batchTimer: null, batchStartedAt: null, handoffReady: false, bytes: 0,
       choose() { if (!this.emitted) { this.emitted = true; noteGenerationCandidateChosen(state, { ...candidate, index }); } },
       activity() {

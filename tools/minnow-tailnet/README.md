@@ -40,7 +40,6 @@ The per-boot secret arrives in the `MINNOW_INGRESS_SECRET` environment variable,
 - `X-Minnow-Ingress-Secret`: the per-boot secret. Minnow's trusted listener rejects anything without it.
 - `X-Minnow-Ingress`: `funnel` (public internet) or `tailnet` (a device with the Tailscale app).
 - `X-Forwarded-For`: the real client address, used for rate limiting.
-- `X-Minnow-Tailnet-User`: the login of a tailnet peer, when known.
 
 Server-sent events and WebSocket upgrades stream through unbuffered.
 

@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { after, before, describe, test } from 'node:test';
+import sirv from 'sirv';
+import { createBundleAssetMiddleware } from '../../server/remote/bundle-assets.js';
 import { createDevRemoteBundle } from '../../server/remote/dev-remote-bundle.js';
 import { createDevRemoteHandler } from '../../server/remote/dev-remote-filter.js';
 
@@ -32,14 +34,14 @@ process.stdin.resume();
 process.stdin.on('end', () => process.exit(0));
 `);
 
-function request(server, pathname, headers = {}) {
+function request(server, pathname, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
     const { port } = server.address();
-    http.get({ host: '127.0.0.1', port, path: pathname, headers }, (res) => {
+    http.request({ host: '127.0.0.1', port, path: pathname, headers, method }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
-    }).on('error', reject);
+    }).on('error', reject).end();
   });
 }
 
@@ -68,13 +70,25 @@ describe('dev remote bundle', () => {
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
-  test('the first page load waits for the build, then gets the bundled shell', async () => {
+  test('only the first app navigation starts the build and receives the bundled shell', async () => {
+    const whenReady = bundle.whenReady;
+    let buildRequests = 0;
+    bundle.whenReady = (...args) => {
+      buildRequests++;
+      return whenReady(...args);
+    };
     assert.equal(bundle.isReady(), false);
+    assert.equal((await request(server, '/.DS_Store', { Accept: 'text/html' })).status, 404);
+    assert.equal((await request(server, '/assets/app-abc123.js')).status, 404);
+    assert.equal((await request(server, '/', {}, 'HEAD')).status, 200);
+    liveCalls.length = 0;
+    assert.equal(buildRequests, 0);
     const res = await request(server, '/connect', { Accept: 'text/html' });
     assert.equal(res.status, 200);
     assert.match(res.body.toString(), /bundled shell/);
     assert.equal(res.headers['cache-control'], 'no-store');
     assert.equal(bundle.isReady(), true);
+    assert.equal(buildRequests, 1);
   });
 
   test('hashed assets are gzipped and cached as immutable; other files revalidate', async () => {
@@ -103,6 +117,50 @@ describe('dev remote bundle', () => {
     assert.deepEqual(JSON.parse(res.body.toString()), { live: true });
     assert.deepEqual(liveCalls, ['/api/auth/session']);
   });
+
+  test('packaged assets support gzip, identity and HEAD while sirv handles ranges and public files', async () => {
+    const serveAssets = createBundleAssetMiddleware({ outDir, assetsOnly: true });
+    const serveStatic = sirv(outDir);
+    const packaged = http.createServer((req, res) => {
+      void serveAssets(req, res, (error) => {
+        if (error) {
+          res.statusCode = 500;
+          res.end();
+        } else {
+          serveStatic(req, res);
+        }
+      });
+    });
+    await new Promise((resolve) => packaged.listen(0, '127.0.0.1', resolve));
+    try {
+      const assetPath = '/assets/app-abc123.js';
+      const gzipHeaders = { 'Accept-Encoding': 'gzip' };
+      const [compressed, identity, head, range, sw] = await Promise.all([
+        request(packaged, assetPath, gzipHeaders),
+        request(packaged, assetPath, { 'Accept-Encoding': 'gzip;q=0, *;q=1' }),
+        request(packaged, assetPath, gzipHeaders, 'HEAD'),
+        request(packaged, assetPath, { ...gzipHeaders, Range: 'bytes=1-4' }),
+        request(packaged, '/sw.js', gzipHeaders),
+      ]);
+      assert.equal(compressed.status, 200);
+      assert.equal(compressed.headers['content-encoding'], 'gzip');
+      assert.equal(compressed.headers['cache-control'], 'public, max-age=31536000, immutable');
+      assert.equal(identity.status, 200);
+      assert.equal(identity.headers['content-encoding'], undefined);
+      assert.equal(identity.headers.vary, 'Accept-Encoding');
+      assert.deepEqual(zlib.gunzipSync(compressed.body), identity.body);
+      assert.equal(head.status, 200);
+      assert.equal(head.headers['content-length'], compressed.headers['content-length']);
+      assert.equal(head.body.length, 0);
+      assert.equal(range.status, 206);
+      assert.equal(range.headers['content-encoding'], undefined);
+      assert.deepEqual(range.body, identity.body.subarray(1, 5));
+      assert.equal(sw.headers['content-encoding'], undefined);
+      assert.equal(sw.body.toString(), 'self.x = 1;');
+    } finally {
+      await new Promise((resolve) => packaged.close(resolve));
+    }
+  });
 });
 
 describe('dev remote bundle fallback', () => {
@@ -118,8 +176,9 @@ describe('dev remote bundle fallback', () => {
     const server = http.createServer(createDevRemoteHandler((req, res) => res.end(`live ${req.url}`), { root: appRoot, bundle }));
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     try {
-      const res = await request(server, '/src/main.ts');
-      assert.equal(res.body.toString(), 'live /src/main.ts');
+      const res = await request(server, '/');
+      assert.equal(res.body.toString(), 'live /');
+      assert.equal(bundle.isReady(), false);
     } finally {
       await bundle.stop();
       await new Promise((resolve) => server.close(resolve));

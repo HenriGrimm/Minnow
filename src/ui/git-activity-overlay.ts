@@ -9,7 +9,7 @@ import {
   type GitErrorChatContext,
   type GitErrorChatKind,
 } from './git-error-to-chat';
-import { notify, showToast, type NotifyHandle } from './toast';
+import { notify, showToast, type NotifyAction, type NotifyHandle } from './toast';
 
 /** Wait this long before showing progress so instant ops do not flash. */
 export const GIT_ACTIVITY_SHOW_DELAY_MS = 180;
@@ -24,8 +24,12 @@ export interface BeginGitActivityOptions {
 
 export interface GitActivityErrorOptions {
   error: string;
+  /** Server outcome code (`in_worktree`, `busy`, …); wins over text matching. */
+  code?: string;
   chatKind?: GitErrorChatKind;
   ctx?: GitErrorChatContext;
+  /** Recovery actions shown before Send to chat (Open worktree, Stop action…). */
+  actions?: NotifyAction[];
 }
 
 const ROOT_CLASS = 'mn-git-activity';
@@ -124,7 +128,8 @@ function dismissErrorCard(): void {
 }
 
 function showErrorCard(options: GitActivityErrorOptions): void {
-  const parsed = parseGitError(options.error);
+  const parsed = parseGitError(options.error, undefined, options.code);
+  const recovery = options.actions ?? [];
   const chatKind = options.chatKind ?? 'generic';
   const chatCtx: GitErrorChatContext = {
     ...options.ctx,
@@ -147,9 +152,10 @@ function showErrorCard(options: GitActivityErrorOptions): void {
     },
     openLabel: 'Open Source Control',
     actions: [
+      ...recovery,
       {
         label: 'Send to chat',
-        variant: 'primary',
+        variant: recovery.length ? undefined : 'primary',
         ariaLabel: 'Send git error to chat',
         run: async () => {
           await sendGitErrorToChat(chatKind, parsed.details, chatCtx);

@@ -744,6 +744,33 @@ html:not(.mn-phone) .graphite-browser-host .preview-go {
   right: 34px;
 }
 
+.graphite-files-host .file-tree-search-wrap > .file-tree-refresh {
+  width: var(--mn-control-h-sm);
+  height: var(--mn-control-h-sm);
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--mn-fg-muted);
+}
+
+.graphite-files-host .file-tree-refresh .icon-svg {
+  --mn-icon-size: var(--mn-icon-sm);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .graphite-files-host .file-tree-search-wrap > .file-tree-refresh:hover {
+    background: var(--mn-sel, var(--mn-surface-2));
+    color: var(--mn-fg);
+  }
+}
+
+@media (pointer: coarse) {
+  .graphite-files-host .file-tree-search-wrap > .file-tree-refresh {
+    width: var(--touch-min);
+    height: var(--touch-min);
+  }
+}
+
 .graphite-files-host .file-tree-host {
   padding: 2px 6px 10px;
 }

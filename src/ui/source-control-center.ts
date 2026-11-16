@@ -28,7 +28,7 @@ import { createBackToChatButton } from './back-to-chat';
 import { getForegroundAppId } from '../os/instances';
 import { showToast } from './toast';
 import { revealInTabStrip } from './mobile-layout';
-import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
+import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure, type RunGitUiOpOptions } from './git-ui-op';
 import {
   openCherryPickDialog,
   openMergeDialog,
@@ -36,13 +36,14 @@ import {
   openStashMenuDialog,
   openStashPushDialog,
 } from './git-advanced-actions';
-import { checkoutBranchWithChoice } from './git-checkout-confirm';
+import { checkoutBranchWithChoice, checkoutRecoveryActions } from './git-checkout-confirm';
 import {
   isMissingGitRepositoryError,
   renderGitNoRepositoryState,
 } from './git-no-repo-state';
 import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-name-popover';
-import { resolvePanelWorktreeCwd } from './panel-worktree-cwd';
+import { resolvePanelBrowseCwd, resolvePanelWorktreeCwd } from './panel-worktree-cwd';
+import { getActiveChat, sessionState } from '../state/sessions';
 import { createChangesView, focusCommitMessage } from './scc-changes';
 import { pushWithPublishPrompt } from './git-publish-push';
 import { createActionsView } from './scc-actions';
@@ -119,6 +120,7 @@ function refreshActiveView(): Promise<void> {
 let repoNameEl: HTMLElement | null = null;
 let branchBtn: HTMLButtonElement | null = null;
 let worktreeBtn: HTMLButtonElement | null = null;
+let followChatBtn: HTMLButtonElement | null = null;
 let forgeChipEl: HTMLElement | null = null;
 let pullBtn: HTMLButtonElement | null = null;
 let pushBtn: HTMLButtonElement | null = null;
@@ -209,6 +211,7 @@ const context: SccContext = {
   },
   goTo: (section) => void showSection(section),
   setBadge: (section, badge) => applyRailBadge(section, badge),
+  openWorktree: (path) => setCwd(worktreePathsEqual(path, getWorkspacePath()) ? undefined : path),
 };
 
 function buildShell(): HTMLElement {
@@ -257,7 +260,19 @@ function buildHeader(): HTMLElement {
 
   forgeChipEl = el('span', 'scc-head__forge');
   forgeChipEl.hidden = true;
-  repoContext.append(repoNameEl, branchBtn, worktreeBtn, forgeChipEl);
+  followChatBtn = button({
+    icon: 'appChat',
+    label: 'Follow chat',
+    variant: 'ghost',
+    title: 'Show the checkout the active chat uses',
+    className: 'scc-head__follow',
+    onClick: () => {
+      const chatCwd = activeChatCheckout();
+      if (chatCwd !== null) void setCwd(chatCwd);
+    },
+  });
+  followChatBtn.hidden = true;
+  repoContext.append(repoNameEl, branchBtn, worktreeBtn, followChatBtn, forgeChipEl);
 
   const sync = el('div', 'scc-head__sync');
   sync.setAttribute('role', 'group');
@@ -510,6 +525,30 @@ function paintHeader(): void {
     worktreeBtn.classList.toggle('is-secondary-worktree', Boolean(cwd && !worktreePathsEqual(cwd, getWorkspacePath())));
     worktreeBtn.title = cwd ? `Working in ${cwd}` : 'Working in the main worktree';
   }
+
+  if (followChatBtn && worktreeBtn) {
+    // Say when Source Control is not looking at the active chat's checkout.
+    const chatCwd = activeChatCheckout();
+    const viewing = panelCwd;
+    const differs = chatCwd !== null && !(chatCwd === undefined
+      ? viewing === undefined || worktreePathsEqual(viewing, workspace)
+      : viewing !== undefined && worktreePathsEqual(viewing, chatCwd));
+    followChatBtn.hidden = !differs;
+    if (differs) {
+      const chatName = sessionState ? getActiveChat().name || 'The active chat' : 'The active chat';
+      const where = chatCwd ? chatCwd.split(/[\\/]/).filter(Boolean).pop() ?? chatCwd : 'the main worktree';
+      followChatBtn.title = `${chatName} uses ${where}. Show that checkout.`;
+      worktreeBtn.title = `${worktreeBtn.title}\n${chatName} uses ${where}, not this checkout.`;
+    }
+  }
+}
+
+/** Checkout the active chat runs in: undefined for the workspace, null without a chat. */
+function activeChatCheckout(): string | undefined | null {
+  if (!sessionState) return null;
+  const chat = getActiveChat();
+  const cwd = resolvePanelWorktreeCwd(resolvePanelBrowseCwd({ chat, groups: sessionState.groups }));
+  return cwd && !worktreePathsEqual(cwd, getWorkspacePath()) ? cwd : undefined;
 }
 
 function paintSyncCount(action: HTMLButtonElement | null, label: 'Pull' | 'Push', count: number): void {
@@ -561,7 +600,11 @@ async function refreshAll(): Promise<void> {
   await refreshActiveView();
 }
 
-async function runOp(fn: () => Promise<GitOpResult>, successMessage?: string): Promise<boolean> {
+async function runOp(
+  fn: () => Promise<GitOpResult>,
+  successMessage?: string,
+  recoveryActions?: RunGitUiOpOptions['recoveryActions'],
+): Promise<boolean> {
   if (busy) return false;
   busy = true;
   root?.classList.add('is-busy');
@@ -570,6 +613,7 @@ async function runOp(fn: () => Promise<GitOpResult>, successMessage?: string): P
       label: inferGitUiLabel(successMessage),
       successMessage,
       ctx: gitUiCtx(effectiveCwd(), currentBranch),
+      recoveryActions,
     });
     if (!result.ok) return false;
     await refreshAll();
@@ -614,8 +658,10 @@ function openBranchSwitcher(): void {
         () => checkoutBranchWithChoice(
           { branch: name, create: kind !== 'local', startPoint, cwd, expectedBranch },
           () => worktreePathsEqual(cwd, effectiveCwd() ?? getWorkspacePath()),
+          { openWorktree: context.openWorktree },
         ),
         kind === 'local' ? `Switched to ${name}` : `Created and checked out ${name}`,
+        (failed) => checkoutRecoveryActions(failed, { cwd, openWorktree: context.openWorktree }),
       );
     },
   });

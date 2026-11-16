@@ -30,14 +30,13 @@ func connInfoFrom(ctx context.Context) ConnInfo {
 	return info
 }
 
-// WhoIsFunc resolves a tailnet peer's login name (empty when unknown).
-type WhoIsFunc func(ctx context.Context, remoteAddr string) string
-
 // NewProxy forwards every request to Minnow's trusted loopback listener. It
 // strips anything a client might send to impersonate this proxy, then adds the
 // per-boot secret and the ingress kind so Minnow can tell Funnel from tailnet
 // traffic. The browser's Host header is preserved; Minnow validates it.
-func NewProxy(target *url.URL, secret string, whoIs WhoIsFunc) http.Handler {
+// ReverseProxy flushes SSE and unknown-length streams immediately and leaves
+// ordinary responses to the HTTP writer.
+func NewProxy(target *url.URL, secret string) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
@@ -62,14 +61,7 @@ func NewProxy(target *url.URL, secret string, whoIs WhoIsFunc) http.Handler {
 			if info.ClientIP != "" {
 				pr.Out.Header.Set("X-Forwarded-For", info.ClientIP)
 			}
-			if !info.Funnel && whoIs != nil {
-				if login := whoIs(pr.In.Context(), pr.In.RemoteAddr); login != "" {
-					pr.Out.Header.Set("X-Minnow-Tailnet-User", login)
-				}
-			}
 		},
-		// Stream server-sent events and token streams without buffering.
-		FlushInterval: -1,
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
 			w.WriteHeader(http.StatusBadGateway)
 			_, _ = w.Write([]byte("Minnow is not responding"))

@@ -17,6 +17,13 @@ export type GitErrorKind =
   | 'timeout'
   | 'network'
   | 'nothing_to_commit'
+  | 'worktree_in_use'
+  | 'overwrite'
+  | 'missing_ref'
+  | 'lock_file'
+  | 'busy'
+  | 'stale'
+  | 'partial'
   | 'server_off'
   | 'generic';
 
@@ -77,6 +84,45 @@ const KIND_COPY: Record<
     title: 'Nothing to commit',
     summary: 'There are no staged changes to commit.',
   },
+  worktree_in_use: {
+    title: 'Checked out in another worktree',
+    summary: 'Git allows a branch in one worktree at a time. Open that worktree, or use it for this chat.',
+  },
+  overwrite: {
+    title: 'Local changes would be overwritten',
+    summary: 'Some uncommitted files differ on the target branch. Leave your changes on this branch, or commit them first.',
+  },
+  missing_ref: {
+    title: 'Branch not found',
+    summary: 'Git could not find that branch or commit here. Fetch from the remote and try again.',
+  },
+  lock_file: {
+    title: 'Git is busy in this checkout',
+    summary: 'Another Git process holds the index lock. Wait for it to finish; remove .git/index.lock only if no Git command is running.',
+  },
+  busy: {
+    title: 'A local action is using this checkout',
+    summary: 'Stop the action or wait for it to finish, then try again.',
+  },
+  stale: {
+    title: 'The branch changed',
+    summary: 'This checkout moved to another branch since you opened the picker. Choose again.',
+  },
+  partial: {
+    title: 'Switched, but the update failed',
+    summary: 'The pull request branch is checked out, but GitHub could not finish updating it. Pull to retry; any saved changes stay on the previous branch.',
+  },
+};
+
+/** Server `code` → error kind; codes win over English pattern matching. */
+const CODE_KIND: Partial<Record<string, GitErrorKind>> = {
+  in_worktree: 'worktree_in_use',
+  overwrite: 'overwrite',
+  missing_ref: 'missing_ref',
+  lock_file: 'lock_file',
+  busy: 'busy',
+  stale_branch: 'stale',
+  partial: 'partial',
 };
 
 /** True when the line is git/gh noise, not a useful first-line summary. */
@@ -147,7 +193,8 @@ function classify(text: string): GitErrorKind {
     /pull request.+not mergeable.+(?:conflict|cannot be cleanly)/is.test(text) ||
     /mergeable:\s*CONFLICTING/i.test(text) ||
     /unmerged paths/i.test(text) ||
-    /fix conflicts/i.test(text)
+    // Git's own hint, not any line that mentions the words (e.g. a commit subject).
+    /\bfix conflicts and then commit\b/i.test(text)
   ) {
     return 'conflict';
   }
@@ -167,7 +214,8 @@ function classify(text: string): GitErrorKind {
   ) {
     return 'permission';
   }
-  if (/timed out/i.test(text) || /\btimeout\b/i.test(text)) {
+  // A bare "timeout" also appears in file names, options and hook output.
+  if (/timed out/i.test(text) || /\bETIMEDOUT\b/.test(text) || /\b(?:operation|connection|request|gateway|read) timeout\b/i.test(text)) {
     return 'timeout';
   }
   if (
@@ -181,13 +229,19 @@ function classify(text: string): GitErrorKind {
   if (/nothing to commit/i.test(text) || /nothing added to commit/i.test(text)) {
     return 'nothing_to_commit';
   }
+  if (/already used by worktree|is already checked out at/i.test(text)) return 'worktree_in_use';
+  if (/would be overwritten by checkout/i.test(text)) return 'overwrite';
+  if (/index\.lock/i.test(text)) return 'lock_file';
+  if (/A local action is running in this worktree/i.test(text)) return 'busy';
+  // `missing_ref` comes only from the server code: the same pathspec text is
+  // emitted by `git add` for missing files.
   return 'generic';
 }
 
 /** Parse git/`gh` stderr into structured copy for the error popover. */
-export function parseGitError(error: string | undefined, fallback = 'Git operation failed'): ParsedGitError {
+export function parseGitError(error: string | undefined, fallback = 'Git operation failed', code?: string): ParsedGitError {
   const details = (error ?? '').trim() || fallback;
-  const kind = classify(details);
+  const kind = (code && CODE_KIND[code]) || classify(details);
 
   if (kind === 'server_off') {
     return {

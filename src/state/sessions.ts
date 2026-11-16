@@ -287,7 +287,7 @@ function dirtyTrackingSampleSize(): number {
 
 /** Copy chat fields for wire/shadow serialization without tripping lazy-history traps. */
 function copyChatFieldsWithoutLazyHistory(chat: Chat, includeHistory: boolean): Record<string, unknown> {
-  const omit = new Set(['historyLoaded', 'messageCount']);
+  const omit = new Set(['historyLoaded', 'messageCount', 'tokenLedgerTotals', 'tokenLedgerPreview']);
   if (!includeHistory) omit.add('history');
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(chat)) {
@@ -884,6 +884,7 @@ export function applyChatDetail(chat: Chat, detail: ChatDetail): void {
     chat.injectedContext = detail.injectedContext;
   }
   if (chat.runnerTiming === undefined && detail.runnerTiming !== undefined) chat.runnerTiming = detail.runnerTiming;
+  if (chat.tokenLedger === undefined && detail.tokenLedger !== undefined) chat.tokenLedger = detail.tokenLedger;
 }
 
 /** Mark every chat as fully loaded (whole-blob boot / flag-off path). */
@@ -921,6 +922,9 @@ function sessionStateFromSummaries(remote: SessionSummariesState): SessionState 
       continue;
     }
     chat.historyLoaded = false;
+    if (summary.tokenLedger === undefined) delete chat.tokenLedger;
+    if (summary.tokenLedgerTotals) chat.tokenLedgerTotals = summary.tokenLedgerTotals;
+    if (summary.tokenLedgerPreview) chat.tokenLedgerPreview = summary.tokenLedgerPreview;
     if (!Array.isArray(chat.history)) chat.history = [];
     const count = summary.messageCount;
     chat.messageCount =
@@ -1962,12 +1966,11 @@ export function markChatDirty(chat: Chat): void {
 export function setActiveGoal(chat: Chat, conditionText: string): void {
   const trimmed = conditionText.trim().slice(0, MAX_GOAL_CONDITION_CHARS);
   if (!trimmed) return;
-  ensureTokenLedger(chat);
   chat.activeGoal = {
     conditionText: trimmed,
     startedAt: Date.now(),
     turnCount: 0,
-    tokenBaseline: chat.tokenLedger?.totals.totalTokens ?? 0,
+    tokenBaseline: chat.tokenLedger?.totals.totalTokens ?? chat.tokenLedgerTotals?.totalTokens ?? 0,
   };
   touchChat(chat);
   scheduleSaveSessions();
@@ -2491,9 +2494,13 @@ export async function persistSessionsBeforeDeliveryAck(chatId?: string): Promise
   return false;
 }
 
-export function scheduleSaveSessions(hint?: { chatId?: string; groupId?: string }): void {
+export function scheduleSaveSessions(hint?: { chatId?: string; groupId?: string; metadataOnly?: boolean }): void {
   if (hint?.chatId?.trim()) {
-    addDirtyChatId(hint.chatId.trim());
+    const id = hint.chatId.trim();
+    const canOmitHistory = hint.metadataOnly && chatRevisions.has(id)
+      && (!dirtyChatIds.has(id) || patchHistoryOmittedChatIds.has(id));
+    addDirtyChatId(id);
+    if (canOmitHistory) patchHistoryOmittedChatIds.add(id);
     bumpSessionDirtyEpoch();
   }
   if (hint?.groupId?.trim()) markGroupDirty(hint.groupId.trim());

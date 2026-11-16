@@ -7,7 +7,7 @@ import type { ModeId } from './chat/modes/types';
 import type { ContextEnforcementPolicy } from './chat/context-budget';
 import type { SuperPlanChatSummary } from './chat/super-plan/types';
 import type { PinnedSkillState } from './skills/types';
-import type { ChatTokenLedger } from './usage/types';
+import type { ChatTokenLedger, TokenLedgerEntry, TokenLedgerTotals } from './usage/types';
 import type {
   SubAgentBudgetEvent,
   SubAgentStructuredOutcome,
@@ -1430,6 +1430,9 @@ export interface Chat {
   permissionGrants?: string[];
   /** Cumulative token usage and optional USD cost (Feature #14). */
   tokenLedger?: ChatTokenLedger;
+  /** Compact summary totals until this renderer loads the full ledger. */
+  tokenLedgerTotals?: TokenLedgerTotals;
+  tokenLedgerPreview?: { bySource?: ChatTokenLedger['bySource'] | null; latest: TokenLedgerEntry | null };
   /** Bounded, payload-free local runner timings; never part of the model prompt. */
   runnerTiming?: {
     startedAt: number;
