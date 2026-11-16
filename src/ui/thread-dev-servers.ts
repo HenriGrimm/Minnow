@@ -4,7 +4,9 @@ import {
   fetchNextFreePort, postDevServerStartById, postDevServerStopById, updateDevServerApi,
   type DevServerListItem,
 } from '../config/dev-servers-api';
-import { formatWorktreeOptionLabel, getPrincipalWorktree, parseWorktreeListPorcelain } from '../lib/worktree-list-parse';
+import { getPrincipalWorktree, parseWorktreeListPorcelain } from '../lib/worktree-list-parse';
+import { formatWorktreeOptionLabel } from '../lib/worktree-title';
+import { displayWorktreeTitle, worktreeChatTitle } from './worktree-display';
 import { listWorktrees } from '../state/worktree-service';
 import { createButton, createIconButton } from './components/button';
 import { openDevServerFormPopover } from './dev-server-form-popover';
@@ -68,7 +70,7 @@ export function mountThreadDevServers(options: ThreadDevServersOptions): void {
     const rows = managing ? servers : servers.filter(server =>
       inCheckout(server.def?.worktreeRoot) || (server.runId && inCheckout(server.worktreeRoot)));
     for (const server of rows) {
-      const view = deriveDevServerRowView(true, server, workspace);
+      const view = deriveDevServerRowView(true, server, workspace, (path) => displayWorktreeTitle({ path }));
       const row = document.createElement('div');
       row.className = 'graphite-thread-card__row';
       const identity = document.createElement('span');
@@ -210,7 +212,7 @@ export function mountThreadDevServers(options: ThreadDevServersOptions): void {
       anchor, existing, workspacePath: workspace,
       inline: { host: form, worktreeRoot: checkout, reposition },
       worktrees: worktrees.length ? worktrees.map(wt => ({
-        value: wt.path, label: formatWorktreeOptionLabel(wt, workspace, { principalPath: principal?.path }),
+        value: wt.path, label: formatWorktreeOptionLabel(wt, workspace, { principalPath: principal?.path, chatTitleFor: worktreeChatTitle }),
       })) : [{ value: workspace, label: 'Workspace' }],
       getPorts: () => ports,
       nextFreePort: fetchNextFreePort,

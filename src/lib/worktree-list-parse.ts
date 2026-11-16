@@ -108,39 +108,6 @@ export function isPrincipalWorktreePath(
   return worktreePathsEqual(worktreePath, principal.path);
 }
 
-export interface FormatWorktreeOptionLabelOptions {
-  /** Absolute path of the git principal worktree (first porcelain entry). */
-  principalPath?: string;
-}
-
-/** Compact label for a worktree row in the git panel cwd dropdown. */
-export function formatWorktreeOptionLabel(
-  wt: ParsedWorktree,
-  workspaceRoot: string,
-  options?: FormatWorktreeOptionLabelOptions,
-): string {
-  const branchLabel = wt.branch
-    ? wt.branch
-    : wt.detached
-      ? '(detached)'
-      : '(unknown)';
-
-  if (worktreePathsEqual(wt.path, workspaceRoot)) {
-    return `${branchLabel} — workspace`;
-  }
-
-  if (options?.principalPath && worktreePathsEqual(wt.path, options.principalPath)) {
-    return `${branchLabel} — main worktree`;
-  }
-
-  const normPath = normalizeWorktreePath(wt.path);
-  const leaf = normPath.split('/').pop() ?? normPath;
-  if (wt.branch && isMinnowBoardBranch(wt.branch) && wt.branch.split('/').pop() === leaf) {
-    return branchLabel;
-  }
-  return `${branchLabel} — ${leaf}`;
-}
-
 /** Minnow orchestration branches created for board worktrees. */
 export function isMinnowBoardBranch(name: string): boolean {
   return name.startsWith('minnow/board/');

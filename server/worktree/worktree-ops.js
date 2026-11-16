@@ -1319,7 +1319,10 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
         return { ok: false, error: 'Worktrees need a Git repository with at least one commit. Create the first commit in Source Control, then retry.' };
       }
       const slug = slugifyGitRefName(typeof title === 'string' ? title : '', 'worktree').slice(0, 48).replace(/[./-]+$/, '') || 'worktree';
-      const suffix = createHash('sha256').update(chatId).digest('hex').slice(0, 10);
+      // Short stable numeric suffix keeps same-titled chats apart; UI titles
+      // recognise and hide it (src/lib/worktree-title.ts, MIN-14).
+      const digest = parseInt(createHash('sha256').update(chatId).digest('hex').slice(0, 8), 16);
+      const suffix = String(digest % 1_000_000).padStart(6, '0');
       const stem = `minnow/${slug}-${suffix}`;
       branch = stem;
       for (let i = 2; await branchExists(branch); i++) branch = `${stem}-${i}`;

@@ -43,6 +43,7 @@ import {
 } from './git-no-repo-state';
 import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-name-popover';
 import { resolvePanelBrowseCwd, resolvePanelWorktreeCwd } from './panel-worktree-cwd';
+import { displayWorktreeTitle } from './worktree-display';
 import { getActiveChat, sessionState } from '../state/sessions';
 import { createChangesView, focusCommitMessage } from './scc-changes';
 import { pushWithPublishPrompt } from './git-publish-push';
@@ -520,7 +521,9 @@ function paintHeader(): void {
   if (worktreeBtn) {
     const label = worktreeBtn.querySelector('.scc-btn__label');
     const cwd = panelCwd;
-    const name = cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd) : 'Main worktree';
+    const name = cwd && !worktreePathsEqual(cwd, workspace)
+      ? displayWorktreeTitle({ path: cwd, branch: currentBranch || undefined })
+      : 'Main worktree';
     if (label) label.textContent = name;
     worktreeBtn.classList.toggle('is-secondary-worktree', Boolean(cwd && !worktreePathsEqual(cwd, getWorkspacePath())));
     worktreeBtn.title = cwd ? `Working in ${cwd}` : 'Working in the main worktree';
@@ -536,7 +539,7 @@ function paintHeader(): void {
     followChatBtn.hidden = !differs;
     if (differs) {
       const chatName = sessionState ? getActiveChat().name || 'The active chat' : 'The active chat';
-      const where = chatCwd ? chatCwd.split(/[\\/]/).filter(Boolean).pop() ?? chatCwd : 'the main worktree';
+      const where = chatCwd ? displayWorktreeTitle({ path: chatCwd }) : 'the main worktree';
       followChatBtn.title = `${chatName} uses ${where}. Show that checkout.`;
       worktreeBtn.title = `${worktreeBtn.title}\n${chatName} uses ${where}, not this checkout.`;
     }

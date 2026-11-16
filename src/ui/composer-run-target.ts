@@ -16,6 +16,7 @@ import {
 } from '../state/chat-worktree.ts';
 import { gitBranches } from '../state/git-api.ts';
 import { parseGitError } from '../lib/git-error-parse.ts';
+import { worktreeBranchDetail } from '../lib/worktree-title.ts';
 import { getActiveChat, isExpertChat, scheduleSaveSessions, sessionState, touchChat } from '../state/sessions.ts';
 import { isLocalServerAvailable } from '../tools/config.ts';
 import { listWorktrees } from '../state/worktree-service.ts';
@@ -25,6 +26,7 @@ import { runCheckoutFlow } from './git-checkout-confirm.ts';
 import { otherChatsInCheckout, sharedFolderGuard } from './chat-checkout-guard.ts';
 import { getLiveCheckoutBranch, refreshSidebarGitFacts, subscribeSidebarGitState } from './sidebar-git-state.ts';
 import { createGitWorktreeIcon } from './git-worktree-icons.ts';
+import { displayWorktreeTitle } from './worktree-display.ts';
 import {
   closeGitPanelNamePopover,
 } from './git-panel-name-popover.ts';
@@ -424,20 +426,23 @@ async function rebuildBranchMenu(): Promise<void> {
     const held = menuSection('In other worktrees');
     menu.append(held);
     for (const wt of elsewhere) {
-      const leaf = wt.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || wt.path;
-      const item = menuItem(`${wt.branch} · ${leaf}`, () => {
+      const title = displayWorktreeTitle(wt);
+      const detail = worktreeBranchDetail(wt, title);
+      const item = menuItem(detail ? `${title} · ${detail}` : title, () => {
         void applyChoice({ kind: 'attach', path: wt.path, branch: wt.branch }, chat);
       }, { icon: 'worktree' });
-      item.title = `Use the checkout at ${wt.path} for this chat`;
+      item.title = `Use the checkout on ${wt.branch} at ${wt.path} for this chat`;
       held.append(item);
     }
   }
 }
 
 function worktreeName(chat: Chat): string {
-  const leaf = chat.worktreeRoot?.replace(/\\/g, '/').split('/').filter(Boolean).pop();
-  const branch = liveBranch(chat);
-  return ((chat.chatWorktreeManaged || leaf === chat.id) ? branch : leaf) || branch || 'Worktree';
+  // The chat's own managed checkout reads as its branch title, not the chat name again.
+  return displayWorktreeTitle(
+    { path: chat.worktreeRoot, branch: liveBranch(chat) },
+    { ignoreChatTitle: chat.chatWorktreeManaged === true },
+  );
 }
 
 /** Folder this chat's tools run in. */
