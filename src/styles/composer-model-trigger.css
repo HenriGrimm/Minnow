@@ -429,6 +429,8 @@
 .composer-model-reasoning { flex-shrink: 0; padding: 10px 12px; border-top: 1px solid var(--mn-border); }
 .composer-model-reasoning__heading { margin-bottom: 8px; color: var(--mn-fg-muted); font-size: 11px; }
 .composer-model-reasoning__choices { display: flex; flex-wrap: wrap; gap: 4px; }
+.composer-model-reasoning__option { display: flex; flex: 1 0 auto; align-items: stretch; gap: 2px; min-width: 0; }
+.composer-model-reasoning__option > .composer-model-reasoning__choice { flex: 1 1 auto; }
 .composer-model-reasoning__choice {
   display: flex;
   align-items: center;
@@ -449,6 +451,30 @@
 .composer-model-reasoning__choice:hover:not(:disabled) { background: var(--mn-surface-2); color: var(--mn-fg); }
 .composer-model-reasoning__choice:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 1px; }
 .composer-model-reasoning__choice:disabled { opacity: 0.45; cursor: default; }
+.composer-model-reasoning__favorite {
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  cursor: pointer;
+}
+.composer-model-reasoning__favorite .icon-svg { --mn-icon-size: 12px; }
+.composer-model-reasoning__favorite[aria-pressed='true'] { color: var(--mn-accent-ink); }
+.composer-model-reasoning__favorite:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 1px; }
+.composer-model-reasoning__favorite:disabled { opacity: 0.45; cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  .composer-model-reasoning__favorite:hover:not(:disabled) { background: var(--mn-surface-2); color: var(--mn-fg); }
+  .composer-model-reasoning__favorite[aria-pressed='false'] { opacity: 0; }
+  .composer-model-reasoning__option:is(:hover, :focus-within) .composer-model-reasoning__favorite { opacity: 1; }
+}
+@media (pointer: coarse) {
+  .composer-model-reasoning__favorite { flex-basis: 44px; }
+}
 
 @media (pointer: fine) {
   .composer-model-menu .model-select-host-filter { gap: 4px; padding-block: 7px; }

@@ -24,8 +24,8 @@ import { syncComposerBrainNotesFromActiveChat } from './composer-brain-notes';
 import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
 import { isComposerRecoveryBlocked } from './composer-send';
 import { modelCache } from '../app-state';
-import { getModelReasoningDefault } from '../config/model-reasoning-defaults';
-import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
+import { decodeModelSelectKey } from '../lib/model-select-key';
+import { favoriteReasoningLevel, savedReasoningFavorite, saveReasoningFavorite } from '../models/reasoning-favorite';
 import { cursorVariantFamilyKey, cursorVariantParts, resolveCursorVariantId } from '../models/cursor-variants.mjs';
 import { syncComposerModelTriggers } from './composer-model-trigger';
 import { configureManagedChatModel, isManagedModelBusy, managedChatModelSelection, managedModelReadOnlyReason, managedReasoningSelection } from './managed-chat-model';
@@ -133,6 +133,8 @@ function onSegmentClick(event: Event): void {
 export interface ComposerReasoningChoice {
   value: EffortOption | 'inherit';
   label: string;
+  /** Effort levels can be starred as the model's favorite. */
+  level?: EffortOption;
 }
 
 /** Current chat reasoning, shared by the model label and its menu. */
@@ -151,7 +153,7 @@ export function getComposerReasoningState() {
     choices.push({ value: 'inherit', label: 'Default' });
     if (toggle) choices.push({ value: 'off', label: 'Off' });
     if (levels.length) {
-      choices.push(...levels.map(value => ({ value, label: formatReasoningEffortLabel(value) })));
+      choices.push(...levels.map(value => ({ value, label: formatReasoningEffortLabel(value), level: value })));
     } else {
       choices.push({ value: 'on', label: 'On' });
     }
@@ -162,23 +164,24 @@ export function getComposerReasoningState() {
   return {
     label: choices.length && (caps?.reasoning === true || getAllowedOptions().length || chat.thinkingMode || chat.reasoningEffort) ? label : '', choices,
     selected: (chat.reasoningEffort ?? chat.thinkingMode ?? 'inherit') as ComposerReasoningChoice['value'],
+    favorite: levels.length ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined,
     disabled: (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked(),
   };
 }
 
-/** Apply a chat override without changing the model's saved default. */
+/** Apply a chat override without changing the model's favorite. "Default" uses the favorite. */
 export function setComposerReasoningChoice(value: string): void {
   const state = getComposerReasoningState();
   if (state.disabled || !state.choices.some(choice => choice.value === value)) return;
   const chat = getActiveChat();
   if (chat.chatCommandVersion === 1) {
-    void configureManagedChatModel(chat, managedReasoningSelection(chat, value, getLevelOptions().length > 0))
+    const target = value === 'inherit' ? state.favorite ?? value : value;
+    void configureManagedChatModel(chat, managedReasoningSelection(chat, target, getLevelOptions().length > 0))
       .catch(error => showToast(String(error?.message || error), 'error')).finally(syncComposerReasoningEffortFromActiveChat);
     syncComposerReasoningEffortFromActiveChat(); return;
   }
   if (value === 'inherit') {
-    const saved = chat.providerId && chat.modelId
-      ? getModelReasoningDefault(encodeModelSelectKey(chat.providerId, chat.modelId)) : undefined;
+    const saved = savedReasoningFavorite(chat.providerId, chat.modelId);
     if (saved) chat.reasoningEffort = saved;
     else delete chat.reasoningEffort;
     delete chat.thinkingMode;
@@ -191,6 +194,22 @@ export function setComposerReasoningChoice(value: string): void {
   touchChat(chat);
   scheduleSaveSessions();
   syncComposerReasoningEffortFromActiveChat();
+}
+
+/**
+ * Star (or unstar) a level as the active model's favorite. A chat still on
+ * "Default" adopts a newly starred level; explicit chat choices are left alone.
+ */
+export function toggleComposerReasoningFavorite(level: string): void {
+  const state = getComposerReasoningState();
+  const choice = state.choices.find(entry => entry.level === level);
+  if (!choice?.level) return;
+  const chat = getActiveChat();
+  const next = state.favorite === choice.level ? null : choice.level;
+  void saveReasoningFavorite(chat.providerId, chat.modelId, next)
+    .catch(error => showToast(`Could not save favorite reasoning: ${String(error?.message || error)}`, 'error'));
+  if (next && state.selected === 'inherit' && !state.disabled) setComposerReasoningChoice('inherit');
+  else syncComposerReasoningEffortFromActiveChat();
 }
 
 function onSelectChange(): void {
