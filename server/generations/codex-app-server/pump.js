@@ -394,10 +394,14 @@ async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleM
     };
     round.translate = createCodexTranslator((delta, reasoningFormat) => {
       if (round.finished || controller.signal.aborted) return;
-      if (metrics.first_delta_ms == null) metrics.first_delta_ms = performance.now() - initializedAt;
-      const forwardingAt = performance.now();
       round.bytes += Buffer.byteLength(JSON.stringify(delta));
       if (round.bytes > 16 * 1024 * 1024) throw new Error('Codex output exceeded 16 MB.');
+      if (delta.activity) {
+        if (body.stream !== false) append(state, { choices: [{ index: 0, delta: {} }], minnow_agent_cli: delta.activity });
+        return;
+      }
+      if (metrics.first_delta_ms == null) metrics.first_delta_ms = performance.now() - initializedAt;
+      const forwardingAt = performance.now();
       if (typeof delta.content_snapshot === 'string') {
         round.content = delta.content_snapshot;
         round.choose();

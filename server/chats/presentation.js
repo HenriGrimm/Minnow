@@ -39,6 +39,9 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
         lastDelta: state.text, lastThinking: state.thinking, toolCallCount: state.toolCount,
         phase: state.phase, currentTool: state.tool,
       } : null };
+    if (running && state?.executionId === execution?.executionId && state.completedModelRounds) {
+      result.completedModelRounds = state.completedModelRounds;
+    }
     if (!metadata) return result;
     const chat = repository.getChat(chatId);
     const output = Object.fromEntries(fields.map(name => [name, chat[name] ?? null]));
@@ -128,11 +131,12 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
       let state = live.get(chatId);
       if (!state || state.executionId !== executionId) {
         if (activity(chatId)?.agentExecution?.executionId !== executionId) return;
-        state = { executionId, text: '', thinking: '', phase: 'generating', tool: null, toolCount: 0, roundOpen: false };
+        state = { executionId, text: '', thinking: '', phase: 'generating', tool: null, toolCount: 0,
+          roundOpen: false, completedModelRounds: 0 };
         live.set(chatId, state);
       }
       if (event.type === 'round_start' || event.type === 'response_restart') {
-        Object.assign(state, { text: '', thinking: '', tool: null, toolCount: 0, roundOpen: true });
+        Object.assign(state, { text: '', thinking: '', phase: 'generating', tool: null, toolCount: 0, roundOpen: true });
       } else if (event.type === 'delta') state.text = event.text;
       else if (event.type === 'thinking') state.thinking = event.text;
       else if (event.type === 'phase') state.phase = event.phase;
@@ -140,7 +144,12 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
       else if (event.type === 'tool_call') { state.tool = event.name; state.toolCount++; }
       else if (event.type === 'tool_streaming') state.tool = event.name;
       else if (event.type === 'tool_result') state.tool = null;
-      else if (event.type === 'round_end') { state.roundOpen = false; state.tool = null; }
+      else if (event.type === 'round_end') {
+        // Short native rounds can open and close within one presentation frame.
+        if (state.roundOpen && (event.text || event.reasoning || event.toolCallCount > 0)) state.completedModelRounds++;
+        state.roundOpen = false;
+        state.tool = null;
+      }
       changed(chatId, event.type === 'round_end' || event.type === 'round_start');
     },
     onServiceEvent(event) {

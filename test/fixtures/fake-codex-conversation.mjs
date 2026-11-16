@@ -19,6 +19,7 @@ async function step(tid, turnId) {
   if (script.nativeItem) { event('item/started', { threadId: tid, turnId, item: script.nativeItem }); return; }
   if (script.reasoning) {
     const itemId = `reasoning-${turnId}-${steps}`;
+    event('item/started', { threadId: tid, turnId, item: { id: itemId, type: 'reasoning', summary: [] } });
     event('item/reasoning/summaryTextDelta', { threadId: tid, turnId, itemId, delta: script.reasoning });
     event('item/completed', { threadId: tid, turnId, item: { id: itemId, type: 'reasoning', summary: [script.reasoningSnapshot ?? script.reasoning] } });
   }

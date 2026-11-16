@@ -279,6 +279,7 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
       }
     }
     const next = { ...existing?.frame, ...frame };
+    if (next.epoch !== existing?.frame.epoch) next.completedModelRounds = frame.completedModelRounds;
     if (frame.liveAppend) {
       const before = existing?.frame.live;
       const append = frame.liveAppend;
@@ -293,7 +294,7 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     setRemoteChatRunning(frame.chatId, frame.running, frame.hostId === 'minnow-server' ? 'managed' : 'legacy');
     const applied = applySharedChatFrame(frame.chatId, frame.fields, frame.history);
     if (!applied) throw new Error('Transcript prefix has not arrived yet.');
-    const liveChanged = next.live !== existing?.frame.live;
+    const liveChanged = next.live !== existing?.frame.live || next.completedModelRounds !== existing?.frame.completedModelRounds;
     state.frame = next;
     observed.set(frame.chatId, state);
     registerStreamDomRemount(frame.chatId, next.running && next.live ? row => {
@@ -303,8 +304,14 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     paint(state, receivedAt);
     syncComposerFromStreamingState();
     // Observed turns have no local painter to publish activity for the composer.
-    if (next.running && next.live && !state.unregisterStreamText) {
-      state.unregisterStreamText = registerChatStreamText(frame.chatId, () => state.frame.live ?? null);
+    if (next.running && (next.live || next.completedModelRounds) && !state.unregisterStreamText) {
+      state.unregisterStreamText = registerChatStreamText(frame.chatId, () => {
+        const { live, completedModelRounds, epoch } = state.frame;
+        if (live || completedModelRounds) return {
+          ...(live ?? { lastDelta: '', lastThinking: '', toolCallCount: 0 }), epoch, completedModelRounds,
+        };
+        return null;
+      });
     }
     if (state.unregisterStreamText && (!next.running || liveChanged)) {
       if (!next.running) {

@@ -91,7 +91,9 @@ test('changed reasoning still hands off a tool and completes the same native tur
   setup([{ reasoning: 'Original reasoning.', reasoningSnapshot: 'Revised summary.', calls: [{ id: 'read', name: 'mn_tool_0' }] }, { text: 'Done.' }]);
   const messages = [{ role: 'user', content: 'Read.' }];
   const first = await generate(messages);
-  assert.equal(first.state.status, 'complete');
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  const thinking = first.rows.findIndex(row => row.minnow_agent_cli?.phase === 'thinking');
+  assert.ok(thinking >= 0 && thinking < first.rows.findIndex(row => row.choices?.[0]?.delta?.reasoning));
   assert.equal(first.rows.map(row => row.choices?.[0]?.delta?.reasoning ?? '').join(''), 'Original reasoning.');
   const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
   assert.equal(calls.length, 1);
@@ -99,6 +101,8 @@ test('changed reasoning still hands off a tool and completes the same native tur
   const next = await generate(messages);
   assert.equal(next.state.status, 'complete');
   assert.equal(processes, 1);
+  const generating = next.rows.findIndex(row => row.minnow_agent_cli?.phase === 'generating');
+  assert.ok(generating >= 0 && generating < next.rows.findIndex(row => row.choices?.[0]?.delta?.content));
   assert.equal(next.rows.map(row => row.choices?.[0]?.delta?.content ?? '').join(''), 'Done.');
 });
 

@@ -25,6 +25,7 @@ import { setChatMode } from '../../src/ui/mode-selector';
 import { hasCurrentChatSurface } from '../../src/ui/chat-surface-state';
 import { initChatScroll } from '../../src/ui/chat-scroll';
 import { refreshRemoteChatTurns } from '../../src/chat/turn-ownership';
+import { createComposerWave } from '../../src/ui/composer-wave';
 
 const CHAT = '11111111-1111-1111-1111-111111111111';
 const originalFetch = globalThis.fetch;
@@ -95,23 +96,23 @@ test('managed live frames feed the composer wave activity until the turn settles
     if (id === CHAT) activity.push(readChatStreamText(id));
   });
   const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'turn',
-    running: true, live: { lastDelta: '', lastThinking: 'Plan', toolCallCount: 0 } };
+    running: true, live: { lastDelta: '', lastThinking: '', toolCallCount: 0, phase: 'thinking' } };
   try {
     await observer.receive(frame);
-    assert.deepEqual(activity, [frame.live]);
+    assert.deepEqual(activity, [{ ...frame.live, epoch: 'turn', completedModelRounds: undefined }]);
     assert.equal(document.querySelector('#sendBtn .composer-wave')?.getAttribute('data-tone'), 'live');
 
     const live = { lastDelta: 'Done', lastThinking: 'Plan ahead', toolCallCount: 1 };
     await observer.receive({ ...frame, sequence: 2, live });
-    assert.deepEqual(activity, [frame.live, live]);
+    assert.deepEqual(activity.at(-1), { ...live, epoch: 'turn', completedModelRounds: undefined });
 
-    await observer.receive({ ...frame, sequence: 3, live: null });
-    assert.equal(activity.at(-1), null, 'closing a round clears the previous wave input');
+    await observer.receive({ ...frame, sequence: 3, live: null, completedModelRounds: 1 });
+    assert.deepEqual(activity.at(-1), { lastDelta: '', lastThinking: '', toolCallCount: 0, epoch: 'turn', completedModelRounds: 1 });
     assert.equal(document.querySelector('#sendBtn .composer-wave')?.getAttribute('data-tone'), 'live');
 
     const nextRound = { lastDelta: 'Next step', lastThinking: '', toolCallCount: 0 };
-    await observer.receive({ ...frame, sequence: 4, live: nextRound });
-    assert.equal(activity.at(-1), nextRound);
+    await observer.receive({ ...frame, sequence: 4, live: nextRound, completedModelRounds: 1 });
+    assert.deepEqual(activity.at(-1), { ...nextRound, epoch: 'turn', completedModelRounds: 1 });
 
     await observer.receive({ ...frame, sequence: 5, running: false, live: null });
     assert.equal(readChatStreamText(CHAT), null);
@@ -120,6 +121,37 @@ test('managed live frames feed the composer wave activity until the turn settles
     unsubscribe();
     observer.dispose();
   }
+});
+
+test('the stop rim ripples for phase-only starts, coalesced rounds and streamed text', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const paths = new Map<HTMLCanvasElement, number[][]>();
+  const prototype = Object.getPrototypeOf(document.createElement('canvas'));
+  t.mock.method(prototype, 'getBoundingClientRect', () => new window.DOMRect(0, 0, 70, 70));
+  t.mock.method(prototype, 'getContext', function (this: HTMLCanvasElement) {
+    const points: number[][] = [];
+    paths.set(this, points);
+    return {
+      clearRect() { points.length = 0; }, setTransform() {}, beginPath() {}, closePath() {}, moveTo() {},
+      quadraticCurveTo(...point: number[]) { points.push(point); }, fill() {}, stroke() {}, fillRect() {},
+      getImageData: () => ({ data: [158, 197, 167, 255] }),
+    };
+  });
+  const empty = { lastDelta: '', lastThinking: '', toolCallCount: 0 };
+  const samples = [empty, { ...empty, phase: 'thinking' }, { ...empty, phase: 'generating' },
+    { ...empty, completedModelRounds: 1 }, { ...empty, lastDelta: 'Streamed reply' }];
+  const waves = samples.map(sample => {
+    const button = document.body.appendChild(document.createElement('button'));
+    button.style.borderRadius = '23px';
+    const wave = createComposerWave(button);
+    wave.setLive(true);
+    wave.feed(sample, empty);
+    t.after(() => { wave.dispose(); button.remove(); });
+    return paths.get(button.querySelector('canvas')!);
+  });
+  t.mock.timers.tick(34);
+  assert.ok(waves[0]?.length);
+  for (const path of waves.slice(1)) assert.notDeepEqual(path, waves[0]);
 });
 
 test('Graphite New thread keeps the wired composer outside the hidden transcript', () => {

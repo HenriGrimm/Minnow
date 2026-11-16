@@ -543,8 +543,8 @@ function createTurnRunner(deps) {
     const sseBuffer = createSseEventBuffer();
     function handleChunk(chunk) {
       const cliActivity = chunk.minnow_agent_cli;
-      if (cliActivity?.phase === 'thinking') {
-        onTurnEvent?.({ type: 'phase', phase: 'thinking' });
+      if (cliActivity?.phase === 'thinking' || cliActivity?.phase === 'generating') {
+        onTurnEvent?.({ type: 'phase', phase: cliActivity.phase });
       }
       const cliToolName = typeof cliActivity?.toolName === 'string'
         ? cliActivity.toolName.trim()

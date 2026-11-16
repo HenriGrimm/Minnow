@@ -36,6 +36,10 @@ export function createCodexTranslator(emit, { onDivergence = () => {} } = {}) {
   }
   return event => {
     const p = event.params;
+    if (event.method === 'item/started') {
+      if (p.item.type === 'reasoning') emit({ activity: { phase: 'thinking' } });
+      if (p.item.type === 'agentMessage') emit({ activity: { phase: 'generating' } });
+    }
     if (event.method === 'item/agentMessage/delta') append(p.itemId, 'content', p.delta);
     if (event.method === 'item/reasoning/summaryTextDelta') append(`${p.itemId}:summary:${p.summaryIndex ?? 0}`, 'reasoning', p.delta);
     if (event.method === 'item/reasoning/textDelta') append(`${p.itemId}:content:${p.contentIndex ?? 0}`, 'reasoning', p.delta);

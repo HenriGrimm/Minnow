@@ -93,6 +93,8 @@ export interface ChatStreamText {
   reasoningFormat?: 'summary';
   phase?: string;
   currentTool?: string | null;
+  epoch?: string;
+  completedModelRounds?: number;
 }
 
 const streamTextReaders = new Map<string, () => ChatStreamText | null>();

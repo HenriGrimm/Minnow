@@ -12,6 +12,19 @@ function stream() {
   };
 }
 
+test('native item starts announce model phases before their first text delta', () => {
+  const chunks = [];
+  const translate = createCodexTranslator(delta => chunks.push(delta));
+  translate({ method: 'item/started', params: { item: { type: 'reasoning' } } });
+  translate({ method: 'item/reasoning/summaryTextDelta', params: { itemId: 'r1', delta: 'Checking.' } });
+  translate({ method: 'item/started', params: { item: { type: 'agentMessage' } } });
+  translate({ method: 'item/agentMessage/delta', params: { itemId: 'm1', delta: 'Done.' } });
+  assert.deepEqual(chunks, [
+    { activity: { phase: 'thinking' } }, { reasoning: 'Checking.' },
+    { activity: { phase: 'generating' } }, { content: 'Done.' },
+  ]);
+});
+
 test('summary deltas and completed snapshots identify their format independently of raw content', () => {
   const chunks = [];
   const translate = createCodexTranslator((delta, format) => chunks.push({ delta, format }));

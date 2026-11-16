@@ -195,6 +195,26 @@ test('pool selection and failover emit actual model assignments without evaluato
   });
 });
 
+test('CLI phase hints reach the runner presentation before streamed model text', async () => {
+  const phase = value => `data: ${JSON.stringify({ minnow_agent_cli: { phase: value }, choices: [{ delta: {} }] })}\n\n`;
+  const events = [];
+  const result = await runTurn({ chatId: CHAT_UUID, seed: 'Build', tools: [],
+    model: { providerId: 'codex-cli', id: 'fixture' }, injectReportTool: false,
+    nudgeToolUse: false, finalizeStructuredOutcome: false,
+    deps: stubDeps('', {
+      resolveProvider: async () => ({ id: 'codex-cli', apiKind: 'agent-cli-v1' }),
+      postChatCompletions: async () => new Response([phase('thinking'), phase('generating'), ...proseSseChunks('Done.')].join(''), {
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    }),
+    onEvent: event => events.push(event),
+  });
+  assert.equal(result.outcome, 'no_report', result.error);
+  const thinking = events.findIndex(event => event.type === 'phase' && event.phase === 'thinking');
+  const generating = events.findIndex((event, index) => index > thinking && event.type === 'phase' && event.phase === 'generating');
+  assert.ok(thinking >= 0 && thinking < generating && generating < events.findIndex(event => event.type === 'delta'));
+});
+
 test('prose snapshots replace cumulative text while preserving reasoning, tools and persisted history', async () => {
   const delta = value => `data: ${JSON.stringify({ choices: [{ delta: value }] })}\n\n`;
   const snapshot = `data: ${JSON.stringify({ minnow_text_snapshot: { version: 1, content: 'Correct.' } })}\n\n`;

@@ -1,3 +1,4 @@
+import { getMainTurnActivity } from '../chat/main-turn-activity';
 import {
   isActiveChatStreaming,
   readChatStreamText,
@@ -38,10 +39,18 @@ export function createComposerWave(button: HTMLElement) {
       rim.set(live ? 'live' : 'idle');
     },
     feed(text: ChatStreamText, before?: ChatStreamText) {
-      rim.feed(added(text.lastThinking, before?.lastThinking), 0.7);
-      rim.feed(added(text.lastDelta, before?.lastDelta));
-      const tools = text.toolCallCount - (before?.toolCallCount ?? 0);
+      if (text.epoch !== before?.epoch) before = undefined;
+      const roundCompleted = (text.completedModelRounds ?? 0) > (before?.completedModelRounds ?? 0);
+      const previousRound = roundCompleted ? undefined : before;
+      const thinking = added(text.lastThinking, previousRound?.lastThinking);
+      const prose = added(text.lastDelta, previousRound?.lastDelta);
+      rim.feed(thinking, 0.7);
+      rim.feed(prose);
+      const tools = text.toolCallCount - (previousRound?.toolCallCount ?? 0);
       for (let index = 0; index < Math.min(tools, 4); index++) rim.pulse(0.9);
+      // CLI providers can announce a stage before any reasoning or prose arrives.
+      const modelStarted = text.phase !== before?.phase && (text.phase === 'thinking' || text.phase === 'generating');
+      if (!thinking && !prose && tools <= 0 && (roundCompleted || modelStarted)) rim.pulse(0.9);
     },
     dispose() {
       hoverEvents.abort();
@@ -58,13 +67,14 @@ function added(now: string, before: string | undefined): string {
 }
 
 function hear(chatId: string): void {
-  const text = readChatStreamText(chatId);
-  if (!text) {
+  const snapshot = readChatStreamText(chatId);
+  if (!snapshot) {
     heard.delete(chatId);
     return;
   }
+  const text = { ...snapshot, phase: snapshot.phase ?? getMainTurnActivity(chatId)?.phase };
   const before = heard.get(chatId);
-  heard.set(chatId, { ...text });
+  heard.set(chatId, text);
   // Background turns keep their place, so switching to one doesn't replay its whole reply.
   if (chatId === getActiveChat().id) activeWave?.feed(text, before);
 }

@@ -205,6 +205,26 @@ test('live token bursts are coalesced for scoped observers and never become cano
   Object.assign(f.repository, originals); liveOnly.dispose();
 });
 
+test('coalesced model rounds keep their activity after the transcript row closes', async t => {
+  const f = fixture(t), fence = f.claim();
+  const event = value => f.presentation.onEvent({ chatId: 'chat', executionId: fence.executionId, event: value });
+  const delivered = notification(f.presentation, { projectId: 'project', chatId: 'chat' }, value => !value.baseline);
+  event({ type: 'round_start' });
+  event({ type: 'phase', phase: 'thinking' });
+  event({ type: 'thinking', text: 'Check the file.' });
+  event({ type: 'round_end', reasoning: 'Check the file.', toolCallCount: 1 });
+  const frame = (await delivered.promise).frame;
+  delivered.dispose();
+  assert.equal(frame.live, null);
+  assert.equal(frame.completedModelRounds, 1);
+  event({ type: 'round_start' });
+  const nextRound = f.presentation.frame('chat');
+  assert.equal(nextRound.live.phase, 'generating');
+  assert.equal(nextRound.completedModelRounds, 1);
+  f.settle(fence);
+  assert.equal(f.presentation.frame('chat').completedModelRounds, undefined);
+});
+
 test('paused and stopping executions carry explicit activity without a generating spinner or stale live prose', t => {
   const f = fixture(t), fence = f.claim();
   const event = value => f.presentation.onEvent({ chatId: 'chat', executionId: fence.executionId, event: value });
