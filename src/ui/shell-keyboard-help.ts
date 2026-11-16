@@ -3,6 +3,7 @@ import { isDeveloperReleased } from '../os/app-registry';
 import type { AppId } from '../os/types';
 import { isTypingTarget } from './a11y/typing-target';
 import { createIcon } from './icon';
+import { getInputBindingStore, inputLabel } from './input-bindings';
 
 export interface ShortcutDoc {
   keys: string;
@@ -95,11 +96,13 @@ export const GLOBAL_KEYBOARD_SHORTCUTS: ShortcutDoc[] = ALL_KEYBOARD_SHORTCUTS;
 
 /** Shortcuts shown in the `?` overlay — omits unreleased apps. */
 export function getVisibleKeyboardShortcuts(): ShortcutDoc[] {
-  return ALL_KEYBOARD_SHORTCUTS.filter((row) => !row.appId || isDeveloperReleased(row.appId));
+  const defaults = ALL_KEYBOARD_SHORTCUTS.filter((row) => !row.appId || isDeveloperReleased(row.appId));
+  const overrides = typeof window === 'undefined' ? [] : getInputBindingStore().bindings;
+  return [...overrides.map((row) => ({ section: 'Your bindings', keys: inputLabel(row.input), label: `Replaces ${inputLabel(row.target)} in its active context` })), ...defaults];
 }
 
 function keyboardHelpIntro(): string {
-  return 'Shortcuts are suppressed while you type in a text field.';
+  return 'Customize inputs in Settings → Keyboard shortcuts. The list below documents defaults; your overrides appear first. Unmodified shortcuts are suppressed while typing unless enabled.';
 }
 
 let sheetOpen = false;

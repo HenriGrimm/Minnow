@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="swamp-dark">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Keyboard shortcuts acceptance fixture</title></head>
+<body>
+  <main id="settingsView" class="settings-page settings-page--graphite is-open">
+    <div class="settings-content">
+      <section id="settingsSection-keyboard-shortcuts" class="settings-section settings-area is-active">
+        <h2>Keyboard shortcuts</h2><div id="settingsKeyboardShortcutsBody" class="settings-section-body"></div>
+      </section>
+    </div>
+  </main>
+  <script type="module">
+    import '/src/styles/tokens.css';
+    import '/src/styles/graphite-fonts.css';
+    import '/src/styles/global.css';
+    import '/src/styles/settings-page.css';
+    import '/src/styles/settings-graphite.css';
+    import { renderShortcutSettings } from '/src/ui/settings-shortcuts.ts';
+    import { installInputBindings } from '/src/ui/input-bindings.ts';
+    installInputBindings();
+    renderShortcutSettings(document.getElementById('settingsKeyboardShortcutsBody'));
+  </script>
+</body>
+</html>

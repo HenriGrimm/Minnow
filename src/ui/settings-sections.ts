@@ -1570,6 +1570,11 @@ export async function refreshSettingsSection(
   section: SettingsSectionId,
 ): Promise<void> {
   switch (section) {
+    case 'keyboard-shortcuts': {
+      const mount = document.getElementById('settingsKeyboardShortcutsBody');
+      if (mount) (await import('./settings-shortcuts')).renderShortcutSettings(mount);
+      break;
+    }
     case 'external-connections': {
       const mount = document.getElementById('settingsExternalConnectionsBody');
       if (mount) {

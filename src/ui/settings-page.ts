@@ -8,6 +8,7 @@ import { createBackToChatButton } from './back-to-chat';
 import { refreshSettingsSection } from './settings-sections';
 import { closeProviderEditor } from './settings-providers';
 import { disposeAppUpdatesSettings } from './settings-updates';
+import { disposeShortcutSettings } from './settings-shortcuts-lifecycle';
 import {
   initSettingsPromptEstimate,
   refreshPromptTokenEstimate,
@@ -204,6 +205,7 @@ export function setActiveArea(
   const resolved = resolveSettingsSectionNavigation(area, options?.searchKey);
   area = resolved.sectionId;
   if (area !== 'updates') disposeAppUpdatesSettings();
+  if (area !== 'keyboard-shortcuts') disposeShortcutSettings();
   options = { ...options, searchKey: resolved.searchKey };
   activeArea = area;
   const category = categoryForArea(area);
@@ -274,6 +276,7 @@ function setActiveIntegrationsHub(hubId: SettingsIntegrationsHubId): void {
 
   disposeAppUpdatesSettings();
   activeArea = firstArea;
+  disposeShortcutSettings();
   activeCategory = 'integrations';
 
   for (const cat of CATEGORIES) {
@@ -504,6 +507,7 @@ export function openSettings(
 
 /** Close settings and return to Code, the window stack, or desktop. */
 export function closeSettings(options?: { skipNavigate?: boolean }): void {
+  disposeShortcutSettings();
   closeProviderEditor();
   disposeAppUpdatesSettings();
   shellOverlayClosed('settings');

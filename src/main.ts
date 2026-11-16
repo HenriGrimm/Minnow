@@ -80,6 +80,7 @@ import { installThemedSelects } from './ui/themed-selects';
 import { initMobileLayout } from './ui/mobile-layout';
 import { initAttachments } from './attachments/store';
 import { initShellHandlers } from './ui/shell-handlers';
+import { installInputBindings } from './ui/input-bindings';
 import { installScopedSelectAllHandler } from './ui/scoped-select-all';
 import { initComposerDrop } from './ui/composer-drop';
 import { initComposerPaste } from './ui/composer-paste';
@@ -586,6 +587,7 @@ async function startApp(): Promise<void> {
     return;
   }
   if (!(await initializeCompanionAccess())) return;
+  installInputBindings();
   initShellHandlers();
   // Fetch independent startup modules together, then initialize them in order.
   const [

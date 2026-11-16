@@ -22,6 +22,7 @@ const MODEL_ICONS: Partial<Record<string, IconName>> = {
 const SETTINGS_ICONS: Partial<Record<string, IconName | 'githubMark'>> = {
   general: 'power',
   appearance: 'palette',
+  'keyboard-shortcuts': 'keyboard',
   notifications: 'bell',
   audio: 'speaker',
   devices: 'devices',
