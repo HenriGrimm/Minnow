@@ -290,7 +290,7 @@ Stall, heartbeat, and loop detection are **not** here — see [Watchdog](#watchd
 
 **Types (10):** `generalPurpose`, `explore`, `researcher`, `shell`, `explorer`, `debugger`, `bug-planner`, `issue-writer`, `plan-reviewer`, `pr-reviewer`
 
-Per type: enabled, max concurrent, max input tokens, context policy, summary schema, allowed/denied tools, sampler, thinking, provider/model.
+Per type: enabled, max concurrent, max input tokens, context policy, summary schema, allowed/denied tools, sampler, thinking, provider/model. `generalPurpose` (the default type) has no per-type max concurrent and runs up to the global cap; other types keep their per-type limits.
 
 ### Autopilot (`config.autopilot`)
 

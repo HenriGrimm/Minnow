@@ -75,7 +75,8 @@ function capOf(value, fallback) {
 }
 
 /**
- * Per-type cap for this run. Missing keys use the shipped default of 2.
+ * Per-type cap for this run. A type without an explicit per-type cap is
+ * bounded only by the global cap.
  *
  * @param {import('./types').Caps | null | undefined} caps
  * @param {string} agentType
@@ -86,7 +87,7 @@ export function typeCap(caps, agentType) {
   if (byType && Number.isSafeInteger(byType[agentType])) {
     return capOf(byType[agentType], DEFAULT_TYPE_MAX_CONCURRENT);
   }
-  return DEFAULT_TYPE_MAX_CONCURRENT;
+  return capOf(caps?.globalMaxConcurrent, DEFAULT_GLOBAL_MAX_CONCURRENT);
 }
 
 /**

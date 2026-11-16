@@ -108,7 +108,7 @@ function checkStartGate(state, desired, caps) {
     const typeCap =
       caps.maxConcurrentByType && Number.isSafeInteger(caps.maxConcurrentByType[agentType])
         ? Math.max(0, caps.maxConcurrentByType[agentType])
-        : 2;
+        : globalCap;
     const live = openByType.get(agentType) ?? 0;
     if (live + n > typeCap) {
       return `type cap: plan() started ${n} ${agentType} with ${live} in flight at N=${typeCap}`;

@@ -13,7 +13,6 @@
       "enabled": true,
       "providerId": "",
       "modelId": "",
-      "maxConcurrent": 2,
       "workAgentId": null,
       "allowedTools": null,
       "deniedTools": [

@@ -122,12 +122,12 @@ describe('plan — two caps, start-gate only', () => {
     );
   });
 
-  it('missing per-type keys fall back to shipped default 2', () => {
-    assert.equal(typeCap(defaultCaps(), 'explore'), 2);
+  it('missing per-type keys are bounded only by the global cap', () => {
+    assert.equal(typeCap(defaultCaps(), 'explore'), 3);
     const state = derive(
       journal(requested('a', 'explore'), requested('b', 'explore'), requested('c', 'explore')),
     );
-    assert.equal(plan(state, defaultCaps()).length, 2);
+    assert.equal(plan(state, defaultCaps()).length, 3);
   });
 
   it('lowering the cap does not kill in-flight work', () => {

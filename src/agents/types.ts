@@ -54,7 +54,7 @@ export interface SubAgentTypeConfig {
   enabled: boolean;
   providerId: string;
   modelId: string;
-  maxConcurrent: number;
+  maxConcurrent?: number;
   workAgentId: string | null;
   allowedTools: string[] | null;
   deniedTools: string[];

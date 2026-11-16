@@ -37,7 +37,8 @@ is what the per-type cap keys on. `isAgentRole` is `role === 'sub-agent'`.
 Two, from `sub-agents.json` **values**, never from reading the file:
 
 - `globalMaxConcurrent` default **3**
-- per-type `maxConcurrent` default **2**
+- per-type `maxConcurrent` default **global cap** — a type without an explicit
+  `maxConcurrent` (the shipped `generalPurpose`) is bounded only by the global cap
 
 They gate **starting**, not continuing. Lowering a cap mid-run does not kill
 in-flight work. The invariant is: *no tick starts work that would push
