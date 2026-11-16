@@ -10,8 +10,25 @@ import { tryAdmitAgentCliProbe } from '../generations/agent-cli/admission.js';
 const TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
 const inflight = new Map();
+// Last successful catalog per binary/account, kept across TTL expiry and cache
+// clears. Used only when a fresh probe cannot run (Codex busy) or fails.
+const lastKnown = new Map();
 
 export function clearCodexModelCatalogCache() { cache.clear(); }
+export function resetCodexModelCatalogForTests() { cache.clear(); lastKnown.clear(); }
+
+/** Codex rewrites auth.json on every token refresh; key on the account, not the token bytes. */
+function authIdentity(auth) {
+  try {
+    const parsed = JSON.parse(auth.toString('utf8'));
+    const accountId = parsed?.tokens?.account_id;
+    const apiKey = parsed?.OPENAI_API_KEY;
+    if ((typeof accountId === 'string' && accountId) || (typeof apiKey === 'string' && apiKey)) {
+      return createHash('sha256').update(JSON.stringify([accountId ?? null, apiKey ?? null])).digest('hex');
+    }
+  } catch { /* Unrecognized auth files are keyed by their bytes. */ }
+  return createHash('sha256').update(auth).digest('hex');
+}
 
 /** Discovery only: initialize and model/list, with no thread or inference. */
 export async function readCodexModelCatalog(invocation, timeoutMs = 15_000) {
@@ -53,18 +70,19 @@ export async function fetchCodexModelCatalog(options = {}) {
     throw error;
   });
   const bin = await resolveAgentCliBin({ kind: 'codex', ...options });
-  const key = createHash('sha256').update(JSON.stringify([
-    bin.command, bin.argsPrefix, options.cliVersion, sourceHome, authPath,
-    options.cliToken, env.OPENAI_API_KEY, env.CODEX_API_KEY,
-  ])).update(auth).digest('hex');
+  const identity = [bin.command, bin.argsPrefix, sourceHome, authPath,
+    options.cliToken, env.OPENAI_API_KEY, env.CODEX_API_KEY, authIdentity(auth)];
+  const key = createHash('sha256').update(JSON.stringify([...identity, options.cliVersion])).digest('hex');
+  const stableKey = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
   const cached = cache.get(key);
   if (!options.refresh && cached && Date.now() - cached.at < TTL_MS) return cached.models;
   if (inflight.has(key)) return inflight.get(key);
   const work = (async () => {
     const release = tryAdmitAgentCliProbe('codex-cli');
     if (!release) {
-      if (cached) return cached.models;
-      throw new Error('The Codex model list can refresh when Codex is idle.');
+      const known = cached ?? lastKnown.get(stableKey);
+      if (known) return known.models;
+      throw Object.assign(new Error('The Codex model list can refresh when Codex is idle.'), { code: 'CODEX_CATALOG_BUSY' });
     }
     let home;
     let syncAuth;
@@ -93,7 +111,14 @@ export async function fetchCodexModelCatalog(options = {}) {
       });
       if (cache.size >= 16) cache.delete(cache.keys().next().value);
       cache.set(key, { at: Date.now(), models });
+      if (lastKnown.size >= 16 && !lastKnown.has(stableKey)) lastKnown.delete(lastKnown.keys().next().value);
+      lastKnown.set(stableKey, { at: Date.now(), models });
       return models;
+    } catch (error) {
+      // A transient probe failure must not make an already-known catalog unavailable.
+      const known = cached ?? lastKnown.get(stableKey);
+      if (known) return known.models;
+      throw error;
     } finally {
       try { await syncAuth?.(); }
       finally {

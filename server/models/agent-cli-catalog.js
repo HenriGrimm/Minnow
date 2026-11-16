@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { runProcess } from '../process-runner.js';
-import { fetchCodexModelCatalog, clearCodexModelCatalogCache } from './codex-cli-catalog.js';
+import { fetchCodexModelCatalog, clearCodexModelCatalogCache, resetCodexModelCatalogForTests } from './codex-cli-catalog.js';
 import { fetchClaudeModelCatalog, clearClaudeModelCatalogCache } from './claude-cli-catalog.js';
 import { applyAgentCliContextWindow } from './agent-cli-context.js';
 import {
@@ -214,6 +214,7 @@ export function parseCursorListModels(text) {
 
 export function resetAgentCliCatalogCacheForTests() {
   clearAgentCliModelCatalogCache();
+  resetCodexModelCatalogForTests();
   cursorListInflight.clear();
 }
 
@@ -362,7 +363,13 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
     }))));
   }
   if (providerId !== CODEX_CLI_ID) return applyContext(staticRows);
-  return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));
+  try {
+    return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));
+  } catch (error) {
+    // Busy with a turn or usage probe before any catalog was discovered.
+    if (error?.code === 'CODEX_CATALOG_BUSY') return applyContext(staticRows);
+    throw error;
+  }
 }
 
 /** Keep CLI model values for requests, adding pinned IDs only when the CLI resolves them. */
