@@ -546,11 +546,6 @@
   outline-offset: -2px;
 }
 
-.scc-refrow.is-current {
-  background: var(--mn-accent-soft);
-  border-color: var(--mn-accent-border);
-}
-
 .scc-refrow__main {
   flex: 1;
   min-width: 0;
