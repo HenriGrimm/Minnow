@@ -656,6 +656,103 @@
   overflow-wrap: anywhere;
 }
 
+/* ─── Worktree problems: summary above the list, the fix on each row ────── */
+
+.scc-wtnotice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 8px 11px;
+  border: 1px solid var(--mn-warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-warning-soft);
+}
+
+.scc-wtnotice[hidden] {
+  display: none;
+}
+
+.scc-wtnotice__line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--scc-text-sm);
+  line-height: 1.5;
+  color: var(--mn-fg);
+}
+
+.scc-wtnotice__icon,
+.scc-wtissue__icon {
+  flex-shrink: 0;
+  color: var(--mn-warning);
+}
+
+.scc-wtnotice__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.scc-refrow.has-issue {
+  align-items: flex-start;
+}
+
+.scc-wtissue {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 9px;
+  margin-top: 2px;
+  padding: 6px 9px;
+  border-left: 2px solid var(--mn-warning);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--mn-warning-soft);
+  font-size: var(--scc-text-xs);
+  line-height: 1.5;
+  color: var(--mn-fg);
+}
+
+.scc-wtissue--failed {
+  border-left-color: var(--mn-danger);
+  background: var(--mn-danger-soft);
+}
+
+.scc-wtissue--failed .scc-wtissue__icon {
+  color: var(--mn-danger);
+}
+
+.scc-wtissue__text {
+  flex: 1 1 32ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.scc-wtissue__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.scc-wtissue__details {
+  flex-basis: 100%;
+  color: var(--mn-fg-subtle);
+}
+
+.scc-wtissue__details > summary {
+  cursor: pointer;
+  width: max-content;
+}
+
+.scc-wtissue__details > pre {
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--scc-label);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ─── Branch tree ────────────────────────────────────────────────────────── */
 
 .scc-btree__row {

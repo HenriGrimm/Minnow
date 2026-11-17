@@ -1272,7 +1272,42 @@ async function resolveMainWorktreePath(repoCwd) {
   return null;
 }
 
-export async function worktreeRemove({ cwd, path: worktreePath, force } = {}) {
+/**
+ * Git's lock reason for one registered worktree: `undefined` when it is not
+ * locked, `''` when it is locked without a reason.
+ * @param {string} repoCwd
+ * @param {string} worktreePath
+ * @returns {Promise<string | undefined>}
+ */
+async function readWorktreeLock(repoCwd, worktreePath) {
+  const result = await git(['worktree', 'list', '--porcelain'], repoCwd);
+  if (result.code !== 0) return undefined;
+  const key = normalizeWorkspacePathKey(worktreePath);
+  let inTarget = false;
+  for (const rawLine of String(result.stdout ?? '').split('\n')) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith('worktree ')) inTarget = normalizeWorkspacePathKey(line.slice('worktree '.length).trim()) === key;
+    else if (inTarget && (line === 'locked' || line.startsWith('locked '))) return line.slice('locked'.length).trim();
+  }
+  return undefined;
+}
+
+async function folderExists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `unlock` clears a lock another tool left behind (Codex leaves `initializing`
+ * on worktrees whose folders it already deleted, so `git worktree prune` never
+ * drops them). It never weakens dirty protection: without `force` a checkout
+ * with changes is refused before the lock is touched.
+ */
+export async function worktreeRemove({ cwd, path: worktreePath, force, unlock } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
@@ -1281,7 +1316,8 @@ export async function worktreeRemove({ cwd, path: worktreePath, force } = {}) {
   }
 
   const targetPath = worktreePath.trim();
-  assertActionWorktreeIdle(path.resolve(repo.cwd, targetPath));
+  const absolutePath = path.resolve(repo.cwd, targetPath);
+  assertActionWorktreeIdle(absolutePath);
   const mainWorktreePath = await resolveMainWorktreePath(repo.cwd);
   if (
     mainWorktreePath &&
@@ -1290,22 +1326,49 @@ export async function worktreeRemove({ cwd, path: worktreePath, force } = {}) {
     return { ok: false, error: 'Cannot remove the main worktree' };
   }
 
+  const gitCwd = mainWorktreePath ?? repo.cwd;
+  const missing = !(await folderExists(absolutePath));
   const args = ['worktree', 'remove'];
   if (force) args.push('--force');
   args.push(targetPath);
 
-  const gitCwd = mainWorktreePath ?? repo.cwd;
-  const result = await withWorktreeMutation(path.resolve(repo.cwd, targetPath), () => git(args, gitCwd));
-  if (result.code !== 0) {
-    const text = processError(result);
+  const result = await withWorktreeMutation(absolutePath, async () => {
+    const lockReason = unlock ? await readWorktreeLock(gitCwd, absolutePath) : undefined;
+    if (lockReason === undefined) return { removal: await git(args, gitCwd) };
+    if (!missing && !force) {
+      const status = await git(['status', '--porcelain', '--untracked-files=normal'], absolutePath);
+      if (status.code === 0 && String(status.stdout ?? '').trim()) {
+        return { refused: { ok: false, code: 'dirty', lockReason, missing,
+          error: `'${targetPath}' contains modified or untracked files, use --force to delete it` } };
+      }
+    }
+    const unlocked = await git(['worktree', 'unlock', targetPath], gitCwd);
+    if (unlocked.code !== 0) return { removal: unlocked, lockReason };
+    const removal = await git(args, gitCwd);
+    // Leave the checkout exactly as we found it when removal still fails.
+    if (removal.code !== 0) {
+      await git(['worktree', 'lock', ...(lockReason ? ['--reason', lockReason] : []), targetPath], gitCwd);
+    }
+    return { removal, lockReason };
+  });
+  if (result.refused) return result.refused;
+  if (result.removal.code !== 0) {
+    const text = processError(result.removal);
     // Only a dirty tree warrants offering --force; other failures must not.
     const dirty = /contains modified or untracked files|use --force to delete/i.test(text);
-    const locked = /is locked|use 'remove -f -f'/i.test(text);
-    return { ok: false, error: text, ...(dirty ? { code: 'dirty' } : locked ? { code: 'locked' } : {}) };
+    const locked = /is locked|locked working tree|use 'remove -f -f'/i.test(text);
+    const lockReason = result.lockReason ?? (locked ? await readWorktreeLock(gitCwd, absolutePath) : undefined);
+    return {
+      ok: false,
+      error: text,
+      missing,
+      ...(dirty ? { code: 'dirty' } : locked ? { code: 'locked' } : {}),
+      ...(lockReason !== undefined ? { lockReason } : {}),
+    };
   }
 
   invalidateRegisteredWorktreeCache();
-  return { ok: true };
+  return { ok: true, ...(missing ? { missing } : {}) };
 }
 
 export async function checkout({ cwd, branch, create, startPoint } = {}) {

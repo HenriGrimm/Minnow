@@ -27,6 +27,8 @@ import {
   worktreePathsEqual,
 } from '../lib/worktree-list-parse';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
+import { describeWorktreeIssue, worktreeKey, worktreeOrigin, type WorktreeIssue } from '../lib/worktree-issues';
+import type { Chat } from '../types';
 import { isProtectedBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { panelPathsEqual } from './panel-worktree-cwd';
@@ -110,8 +112,23 @@ function refRow(options: {
 
 // ── Branches ─────────────────────────────────────────────────────────────────
 
-/** Selection is scoped to the visible rows and captured before confirmation. */
-function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
+interface SelectionFailure {
+  key: string;
+  label: string;
+  result: GitOpResult;
+}
+
+/**
+ * Selection is scoped to the visible rows and captured before confirmation.
+ * `onFailures` takes over reporting (it runs before the refresh, so rows can
+ * paint their own explanation); without it failures collect in one strip.
+ */
+function refSelection(
+  toolbar: HTMLElement,
+  ctx: SccContext,
+  kind: string,
+  options: { onFailures?: (failures: SelectionFailure[]) => void } = {},
+) {
   const selected = new Set<string>();
   const entries = new Map<string, { label: string; remove?: () => Promise<GitOpResult>; forceRemove?: () => Promise<GitOpResult>; row: HTMLElement }>();
   let busy = false;
@@ -170,7 +187,9 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
         title: `Delete ${batch.length} ${kind}`, confirmLabel: 'Delete', danger: true,
       })) return;
       failureStrip?.remove();
-      const failures: string[] = [];
+      const failures: SelectionFailure[] = [];
+      const fail = (target: { key: string; label: string }, result: GitOpResult) =>
+        failures.push({ key: target.key, label: target.label, result });
       const unmerged: typeof batch = [];
       progress.hidden = false;
       await runGitUiOp(async () => {
@@ -180,9 +199,9 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
             const result = await target.remove();
             if (result.ok) selected.delete(target.key);
             else if (target.forceRemove && isUnmergedBranchDelete(result)) unmerged.push(target);
-            else failures.push(`${target.label}: ${result.error ?? 'Deletion failed'}`);
+            else fail(target, result);
           } catch (error) {
-            failures.push(`${target.label}: ${String(error)}`);
+            fail(target, { ok: false, error: String(error) });
           }
           update();
         }
@@ -202,23 +221,24 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
               try {
                 const result = await target.forceRemove!();
                 if (result.ok) selected.delete(target.key);
-                else failures.push(`${target.label}: ${result.error ?? 'Deletion failed'}`);
+                else fail(target, result);
               } catch (error) {
-                failures.push(`${target.label}: ${String(error)}`);
+                fail(target, { ok: false, error: String(error) });
               }
               update();
             }
             return { ok: true };
           }, { label: `Force deleting ${unmerged.length} branches…`, skipSuccessToast: true });
         } else {
-          for (const target of unmerged) failures.push(`${target.label}: Not deleted (not fully merged)`);
+          for (const target of unmerged) fail(target, { ok: false, error: 'Not deleted (not fully merged)' });
         }
       }
+      options.onFailures?.(failures);
       progress.textContent = 'Refreshing…';
       await ctx.refreshAll();
       showToast(`Deleted ${batch.length - failures.length} of ${batch.length} ${kind}`, failures.length ? 'error' : 'success');
-      if (failures.length) {
-        failureStrip = errorStrip(failures.join('\n'));
+      if (failures.length && !options.onFailures) {
+        failureStrip = errorStrip(failures.map((f) => `${f.label}: ${f.result.error ?? 'Deletion failed'}`).join('\n'));
         progress.after(failureStrip);
       }
     } finally {
@@ -990,7 +1010,17 @@ export function createWorktreesView(
       }),
   });
   toolbar.appendChild(addBtn);
-  const selection = refSelection(toolbar, ctx, 'worktrees');
+  /** Last failed removal per worktree, so the row can say why and offer the fix. */
+  const failures = new Map<string, GitOpResult>();
+  const selection = refSelection(toolbar, ctx, 'worktrees', {
+    onFailures: (list) => {
+      for (const failure of list) failures.set(worktreeKey(failure.key), failure.result);
+    },
+  });
+  const notice = el('div', 'scc-wtnotice');
+  notice.setAttribute('role', 'status');
+  notice.hidden = true;
+  root.insertBefore(notice, body);
   let refreshVersion = 0;
 
   async function refresh(): Promise<void> {
@@ -1030,6 +1060,11 @@ export function createWorktreesView(
     const active = ctx.getCwd() ?? workspace;
     const frag = document.createDocumentFragment();
     const statusTargets: { path: string; slot: HTMLElement }[] = [];
+    const missingKeys = new Set((result.missing ?? []).map(worktreeKey));
+    const listedKeys = new Set(worktrees.map((worktree) => worktreeKey(worktree.path)));
+    for (const key of failures.keys()) if (!listedKeys.has(key)) failures.delete(key);
+    const stale: ParsedWorktree[] = [];
+    let blocked = 0;
 
     for (const worktree of worktrees) {
       const isWorkspace = Boolean(workspace && panelPathsEqual(worktree.path, workspace));
@@ -1037,12 +1072,42 @@ export function createWorktreesView(
         principal?.path && worktreePathsEqual(worktree.path, principal.path),
       );
       const isActive = panelPathsEqual(worktree.path, active);
+      const key = worktreeKey(worktree.path);
+      const removable = !isPrincipal && !isWorkspace;
+      const missing = removable && (missingKeys.has(key) || worktree.prunable === true);
+      const origin = worktreeOrigin(worktree.path);
+      const issue = removable
+        ? describeWorktreeIssue({
+            path: worktree.path,
+            missing,
+            locked: worktree.locked,
+            lockReason: worktree.lockReason,
+            failure: failures.get(key),
+          })
+        : null;
+      if (issue?.kind === 'stale') stale.push(worktree);
+      else if (issue) blocked += 1;
 
       const meta: (HTMLElement | string)[] = [];
       if (worktree.branch) meta.push(chip(worktree.branch, 'branch'));
       else if (worktree.detached) meta.push(chip('detached', 'warn'));
       if (isPrincipal) meta.push(chip('main worktree', 'trunk'));
       else if (isWorkspace) meta.push(chip('workspace', 'trunk'));
+      if (origin && removable) {
+        const tag = chip(origin.label);
+        tag.title = origin.hint;
+        meta.push(tag);
+      }
+      if (missing) {
+        const tag = chip('folder missing', 'warn');
+        tag.title = 'The folder was deleted, but Git still has a record of this worktree.';
+        meta.push(tag);
+      }
+      if (worktree.locked) {
+        const tag = chip('locked', 'warn');
+        tag.title = worktree.lockReason ? `Locked: ${worktree.lockReason}` : 'Locked';
+        meta.push(tag);
+      }
       const bound = isWorkspace ? [] : chatsBoundToWorktree(worktree.path);
       if (bound.length) {
         const tag = chip(`${bound.length} ${bound.length === 1 ? 'chat' : 'chats'}`, 'branch');
@@ -1053,7 +1118,7 @@ export function createWorktreesView(
       const statusSlot = el('span', 'scc-refrow__wtstatus');
       statusSlot.hidden = true;
       meta.push(statusSlot);
-      statusTargets.push({ path: worktree.path, slot: statusSlot });
+      if (!missing) statusTargets.push({ path: worktree.path, slot: statusSlot });
       meta.push(worktree.path);
 
       const actions: HTMLElement[] = [];
@@ -1066,7 +1131,7 @@ export function createWorktreesView(
           onClick: () => void openChat(chat.id),
         }));
       }
-      if (!isActive) {
+      if (!isActive && !missing) {
         actions.push(
           button({
             label: 'Work here',
@@ -1077,14 +1142,14 @@ export function createWorktreesView(
           }),
         );
       }
-      if (!isPrincipal && !isWorkspace) {
+      if (removable) {
         actions.push(
           button({
             icon: 'trash',
             title: 'Remove this worktree',
             variant: 'ghost',
             className: 'scc-btn--danger-hover',
-            onClick: () => void remove(worktree.path, workspace),
+            onClick: () => void remove(worktree.path, workspace, missing),
           }),
         );
       }
@@ -1094,18 +1159,28 @@ export function createWorktreesView(
           current: isActive,
           meta,
           actions,
-          onActivate: isActive
+          onActivate: isActive || missing
             ? undefined
             : () => {
                 options.onSelectWorktree(isWorkspace ? undefined : worktree.path);
                 void ctx.refreshAll();
               },
         });
-      if (!isPrincipal && !isWorkspace) {
+      if (issue) {
+        row.classList.add('has-issue');
+        row.querySelector('.scc-refrow__main')!.appendChild(issueLine(issue, worktree, workspace));
+      }
+      if (removable) {
         selection.add(row, worktree.path, worktree.path, async () => {
           const using = chatsBoundToWorktree(worktree.path);
-          const result = await gitWorktreeRemove({ path: worktree.path, cwd: workspace || undefined });
+          // A missing folder has nothing left to protect, so its leftover lock goes too.
+          const result = await gitWorktreeRemove({
+            path: worktree.path,
+            cwd: workspace || undefined,
+            ...(missing ? { unlock: true } : {}),
+          });
           if (result.ok) {
+            failures.delete(key);
             if (panelPathsEqual(worktree.path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(undefined);
             await detachChatsFromRemovedWorktree(using);
           }
@@ -1117,8 +1192,180 @@ export function createWorktreesView(
       frag.appendChild(row);
     }
     body.replaceChildren(frag);
+    paintNotice(stale, blocked, workspace);
     selection.end();
     void paintWorktreeStatus(statusTargets, version);
+  }
+
+  function paintNotice(stale: ParsedWorktree[], blocked: number, workspace: string): void {
+    const parts: HTMLElement[] = [];
+    if (stale.length) {
+      const owners = [...new Set(stale.map((wt) => worktreeOrigin(wt.path)?.label).filter(Boolean))];
+      const line = el('div', 'scc-wtnotice__line');
+      line.append(
+        createIcon('warning', { className: 'scc-wtnotice__icon', size: 14 }),
+        el('span', 'scc-wtnotice__text',
+          `${stale.length === 1 ? '1 worktree points' : `${stale.length} worktrees point`} to a deleted folder` +
+          `${owners.length ? ` (left by ${owners.join(', ')})` : ''}. Cleaning up removes only Git's record.`),
+        button({
+          label: stale.length === 1 ? 'Clean up' : `Clean up ${stale.length}`,
+          onClick: () => void cleanUpStale(stale, workspace),
+        }),
+      );
+      parts.push(line);
+    }
+    if (blocked) {
+      const line = el('div', 'scc-wtnotice__line');
+      line.append(
+        createIcon('warning', { className: 'scc-wtnotice__icon', size: 14 }),
+        el('span', 'scc-wtnotice__text',
+          `${blocked === 1 ? '1 worktree was' : `${blocked} worktrees were`} not removed. Each one says why below.`),
+      );
+      parts.push(line);
+    }
+    notice.replaceChildren(...parts);
+    notice.hidden = parts.length === 0;
+  }
+
+  function issueLine(issue: WorktreeIssue, worktree: ParsedWorktree, workspace: string): HTMLElement {
+    const line = el('div', `scc-wtissue scc-wtissue--${issue.kind}`);
+    line.append(
+      createIcon(issue.kind === 'failed' ? 'statusFail' : 'warning', { className: 'scc-wtissue__icon', size: 14 }),
+      el('span', 'scc-wtissue__text', issue.message),
+    );
+    const actions = el('span', 'scc-wtissue__actions');
+    const path = worktree.path;
+    const who = worktreeOrigin(path)?.label ?? 'another tool';
+    if (issue.kind === 'stale') {
+      actions.append(button({
+        label: 'Clean up',
+        title: 'Remove Git\'s record of this worktree. No files are deleted.',
+        onClick: () => void cleanUpStale([worktree], workspace),
+      }));
+    } else if (issue.kind === 'locked') {
+      actions.append(button({
+        label: 'Unlock and remove',
+        onClick: async () => {
+          if (!await appConfirm(
+            `${who} locked this worktree. Unlock and remove it only if ${who} is no longer working in it. Uncommitted files are still protected.\n\n${path}`,
+            { title: 'Unlock and remove worktree', confirmLabel: 'Unlock and remove', danger: true },
+          )) return;
+          await removeWith(path, workspace, { unlock: true }, 'Unlocking worktree…');
+        },
+      }));
+    } else if (issue.kind === 'dirty') {
+      actions.append(
+        button({
+          label: 'Review changes',
+          title: 'Work in this checkout and open its changes',
+          onClick: () => {
+            options.onSelectWorktree(path);
+            ctx.goTo('changes');
+          },
+        }),
+        button({
+          label: 'Force remove',
+          variant: 'ghost',
+          className: 'scc-btn--danger-hover',
+          onClick: async () => {
+            if (!await appConfirm(
+              `Force remove permanently deletes this worktree's uncommitted and untracked files.\n\n${path}`,
+              { title: 'Force remove worktree', confirmLabel: 'Force remove', danger: true },
+            )) return;
+            await removeWith(path, workspace, { force: true, ...(worktree.locked ? { unlock: true } : {}) }, 'Removing worktree…');
+          },
+        }),
+      );
+    } else {
+      actions.append(button({
+        label: 'Retry',
+        variant: 'ghost',
+        onClick: () => void removeWith(path, workspace, {}, 'Removing worktree…'),
+      }));
+    }
+    line.append(actions);
+    if (issue.detail) {
+      const details = el('details', 'scc-wtissue__details');
+      details.append(el('summary', undefined, 'Git output'), el('pre', undefined, issue.detail));
+      line.append(details);
+    }
+    return line;
+  }
+
+  /** Record (or clear) the outcome on the row, then release what used the checkout. */
+  async function settleRemoval(path: string, workspace: string, bound: Chat[], result: GitOpResult): Promise<void> {
+    const key = worktreeKey(path);
+    if (!result.ok) {
+      failures.set(key, result);
+      await refresh();
+      return;
+    }
+    failures.delete(key);
+    // Move off the removed checkout only once it is actually gone.
+    if (panelPathsEqual(path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(undefined);
+    const failed = await detachChatsFromRemovedWorktree(bound);
+    if (failed.length) showToast(`Could not return ${failed.join(', ')} to Local. Choose a checkout in the chat.`, 'error');
+    await ctx.refreshAll();
+  }
+
+  async function removeWith(
+    path: string,
+    workspace: string,
+    flags: { force?: boolean; unlock?: boolean },
+    label: string,
+  ): Promise<GitOpResult> {
+    const bound = chatsBoundToWorktree(path);
+    const result = await runGitUiOp(
+      () => gitWorktreeRemove({ path, cwd: workspace || undefined, ...flags }),
+      {
+        label,
+        successMessage: 'Worktree removed',
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+        // The row explains the refusal and offers the fix; no second error card.
+        handlesError: () => true,
+      },
+    );
+    await settleRemoval(path, workspace, bound, result);
+    return result;
+  }
+
+  /**
+   * A locked record can be deliberate (Git's advice for worktrees on a removable
+   * drive), so locked ones are confirmed; unlocked ones Git would prune anyway.
+   */
+  async function cleanUpStale(stale: ParsedWorktree[], workspace: string): Promise<void> {
+    if (stale.some((wt) => wt.locked)) {
+      const list = stale.map((wt) => wt.path).join('\n');
+      if (!await appConfirm(
+        `Remove Git's record of ${stale.length === 1 ? 'this worktree' : `these ${stale.length} worktrees`}? The folders are already gone, so no files are deleted. Skip any that live on a drive that is disconnected right now.\n\n${list}`,
+        { title: 'Clean up missing worktrees', confirmLabel: 'Clean up' },
+      )) return;
+    }
+    let removed = 0;
+    const changed: string[] = [];
+    await runGitUiOp(async () => {
+      for (const wt of stale) {
+        const bound = chatsBoundToWorktree(wt.path);
+        const result = await gitWorktreeRemove({ path: wt.path, cwd: workspace || undefined, unlock: true })
+          .catch((error): GitOpResult => ({ ok: false, error: String(error) }));
+        const key = worktreeKey(wt.path);
+        if (!result.ok) {
+          failures.set(key, result);
+          continue;
+        }
+        failures.delete(key);
+        removed += 1;
+        changed.push(wt.path);
+        await detachChatsFromRemovedWorktree(bound);
+      }
+      return { ok: true };
+    }, { label: `Cleaning up ${stale.length === 1 ? 'worktree' : `${stale.length} worktrees`}…`, skipSuccessToast: true });
+    if (changed.some((p) => panelPathsEqual(p, ctx.getCwd() ?? workspace))) options.onSelectWorktree(undefined);
+    showToast(
+      stale.length === 1 && removed === 1 ? 'Worktree cleaned up' : `Cleaned up ${removed} of ${stale.length} worktrees`,
+      removed === stale.length ? 'success' : 'error',
+    );
+    await ctx.refreshAll();
   }
 
   /** One at a time: leaves HTTP connections for interactive work. */
@@ -1157,7 +1404,7 @@ export function createWorktreesView(
     }
   }
 
-  async function remove(path: string, workspace: string): Promise<void> {
+  async function remove(path: string, workspace: string, missing: boolean): Promise<void> {
     const bound = chatsBoundToWorktree(path);
     const names = bound.map((chat) => chat.name || 'Untitled chat');
     const chatsLine = bound.length
@@ -1171,13 +1418,19 @@ export function createWorktreesView(
     if (!confirmed) return;
 
     const attempt = (force: boolean) => runGitUiOp(
-      () => gitWorktreeRemove({ path, cwd: workspace || undefined, ...(force ? { force: true } : {}) }),
+      () => gitWorktreeRemove({
+        path,
+        cwd: workspace || undefined,
+        ...(force ? { force: true } : {}),
+        // A missing folder has nothing left to protect, so its leftover lock goes too.
+        ...(missing ? { unlock: true } : {}),
+      }),
       {
         label: 'Removing worktree…',
         successMessage: 'Worktree removed',
         ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
-        // Only a dirty tree is offered --force below; every other refusal is shown as is.
-        handlesError: (failed) => !force && failed.code === 'dirty',
+        // Refusals land on the row with their fix; only a dirty tree is offered --force here.
+        handlesError: () => true,
       },
     );
     let result = await attempt(false);
@@ -1187,16 +1440,9 @@ export function createWorktreesView(
         confirmLabel: 'Force remove',
         danger: true,
       });
-      if (!force) return;
-      result = await attempt(true);
+      if (force) result = await attempt(true);
     }
-    if (!result.ok) return;
-
-    // Move off the removed checkout only once it is actually gone.
-    if (panelPathsEqual(path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(undefined);
-    const failed = await detachChatsFromRemovedWorktree(bound);
-    if (failed.length) showToast(`Could not return ${failed.join(', ')} to Local. Choose a checkout in the chat.`, 'error');
-    await ctx.refreshAll();
+    await settleRemoval(path, workspace, bound, result);
   }
 
   const navigate = listNavigator({ getRows: () => [...body.querySelectorAll<HTMLElement>('.scc-refrow')] });
