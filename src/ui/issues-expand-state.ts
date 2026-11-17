@@ -1,21 +1,22 @@
-export const ISSUES_EXPAND_FORM_ID = 'issuesExpandForm';
-export const ISSUES_EXPAND_BACKDROP_ID = 'issuesExpandFormBackdrop';
+import type { ExpandedIssueDraft } from '../chat/issues/expand-issue';
 
 interface ExpandRunState {
   issueId: string;
 }
 
-let activeRun: ExpandRunState | null = null;
+/** Fields an in-place expansion wrote, with the values it replaced. */
+export interface IssueExpandUndo {
+  before: Partial<ExpandedIssueDraft>;
+  after: Partial<ExpandedIssueDraft>;
+}
 
-/** True while a sparkles expansion is in flight or awaiting Apply/Discard. */
+let activeRun: ExpandRunState | null = null;
+const undoByIssue = new Map<string, IssueExpandUndo>();
+
+/** True while a sparkles expansion is in flight for the issue (or any issue). */
 export function isIssueDraftExpanding(issueId?: string): boolean {
   if (!activeRun) return false;
   return issueId ? activeRun.issueId === issueId : true;
-}
-
-/** True when the review overlay is mounted and open. */
-export function isIssueExpandOverlayOpen(): boolean {
-  return document.getElementById(ISSUES_EXPAND_FORM_ID)?.classList.contains('is-open') === true;
 }
 
 export function getIssueExpandRunIssueId(): string | undefined {
@@ -24,4 +25,19 @@ export function getIssueExpandRunIssueId(): string | undefined {
 
 export function setIssueExpandRun(issueId: string | null): void {
   activeRun = issueId ? { issueId } : null;
+}
+
+export function getIssueExpandUndo(issueId: string): IssueExpandUndo | undefined {
+  return undoByIssue.get(issueId);
+}
+
+export function setIssueExpandUndo(issueId: string, undo: IssueExpandUndo | null): void {
+  if (undo) undoByIssue.set(issueId, undo);
+  else undoByIssue.delete(issueId);
+}
+
+/** Test helper. */
+export function resetIssueExpandStateForTests(): void {
+  activeRun = null;
+  undoByIssue.clear();
 }

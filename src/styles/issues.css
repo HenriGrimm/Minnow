@@ -795,6 +795,9 @@
 /* Inline Undo beside the sparkles control after an in-place expansion. */
 .issues-expand-undo {
   flex: 0 0 auto;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .issues-expand-undo[hidden] {

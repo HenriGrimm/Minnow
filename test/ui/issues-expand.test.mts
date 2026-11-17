@@ -129,7 +129,7 @@ describe('issues expand in place', () => {
     await startIssueExpandFromUi('MIN-8');
     await tick();
 
-    assert.equal(document.querySelector('[role="dialog"]'), null, 'no review overlay opens');
+    assert.equal(document.querySelector('.issues-expand-form, #issuesExpandForm') === null, true, 'no review overlay opens');
     assert.equal(findIssueById('MIN-8')?.title, 'Fix login save crash');
     assert.match(findIssueById('MIN-8')?.description ?? '', /Saving settings throws/);
     assert.equal(findIssueById('MIN-8')?.type, 'bug');

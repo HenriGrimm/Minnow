@@ -60,7 +60,7 @@ import {
 } from '../chat/review/review-actions';
 import { startPrReview } from '../chat/review/run-pr-review';
 import { renderPrReviewPanel } from './pr-review-panel';
-import { switchChat } from './sidebar';
+import { launchCodeWithChat } from '../os/chat-launch';
 import { createCodeRefLinkButton } from './code-ref-link';
 import { createIssueEditor, type IssueEditorHandle } from './issue-editor';
 import {
@@ -1292,7 +1292,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         }
       },
       onOpenChat: () => {
-        if (record.chatId) void switchChat(record.chatId);
+        if (record.chatId) void launchCodeWithChat(record.chatId);
       },
       onRetry: () => {
         void runGitAction(issue.id, 'review');

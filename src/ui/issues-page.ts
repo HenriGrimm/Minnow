@@ -2756,10 +2756,8 @@ async function openIssueAgentChat(issueId: string): Promise<void> {
   const issue = findIssueById(issueId);
   const chatId = issue?.agent?.chatId ?? issue?.boardChatId;
   if (!chatId) return;
-  const { launchApp } = await import('../os/router');
-  launchApp('code', { codeSection: 'chat', workspacePath: issue?.workspacePath });
-  const { switchChat } = await import('./sidebar');
-  switchChat(chatId);
+  const { launchCodeWithChat } = await import('../os/chat-launch');
+  await launchCodeWithChat(chatId);
 }
 
 /** List shortcuts move focus; an open detail panel turns plain arrows/j/k into issue browsing. Editors and menus retain their keyboard controls. */
