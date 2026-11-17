@@ -6,6 +6,7 @@ import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox 
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { formatReasoningEffortLabel, getComposerReasoningLevelOptions, modelShowsComposerBrainToggle } from '../lib/reasoning-effort';
 import { resolveSendCapabilities } from '../providers/model-capabilities';
+import { iconHtml } from './icon';
 import type { ReasoningEffortOption } from '../types';
 import '../styles/model-routing-form.css';
 
@@ -52,6 +53,11 @@ export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick
     trigger.hidden = true;
     trigger.style.display = 'none';
     const panel = host.querySelector<HTMLElement>('.auxiliary-model-popover')!;
+    if (options) {
+      // Same surface as the chat model picker: graphite sheet with a reasoning column.
+      panel.classList.add('composer-model-menu', 'composer-model-menu--code', 'launch-model-picker');
+      panel.querySelector('.model-select-host-filter')?.classList.add('composer-model-menu__filter');
+    }
     const reasoning = document.createElement('div');
     reasoning.className = 'composer-model-reasoning';
     const renderReasoning = () => {
@@ -65,21 +71,27 @@ export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick
       if (reasoning.hidden) return;
       const heading = document.createElement('div');
       heading.className = 'composer-model-reasoning__heading';
-      heading.textContent = 'Reasoning for new chat';
+      heading.textContent = 'Reasoning';
       const buttons = document.createElement('div');
       buttons.className = 'composer-model-reasoning__choices';
       buttons.setAttribute('role', 'group');
       buttons.setAttribute('aria-label', 'Reasoning for new chat');
       const values: Array<ReasoningEffortOption | undefined> = [undefined, ...(toggle ? ['off' as const] : []), ...(levels.length ? levels : ['on' as const])];
+      const markSelected = (button: HTMLButtonElement, selected: boolean) => {
+        button.setAttribute('aria-pressed', String(selected));
+        button.querySelector('.icon-svg')?.remove();
+        if (selected) button.insertAdjacentHTML('beforeend', iconHtml('check'));
+      };
       for (const effort of values) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'composer-model-reasoning__choice';
+        button.dataset.composerReasoning = effort ?? 'inherit';
         button.textContent = effort ? formatReasoningEffortLabel(effort) : 'Default';
-        button.setAttribute('aria-pressed', String(options.reasoning() === effort));
+        markSelected(button, options.reasoning() === effort);
         button.addEventListener('click', () => {
           options.onReasoning(effort);
-          buttons.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+          buttons.querySelectorAll('button').forEach(item => markSelected(item, item === button));
         });
         buttons.append(button);
       }
