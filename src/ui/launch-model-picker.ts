@@ -6,6 +6,8 @@ import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox 
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { formatReasoningEffortLabel, getComposerReasoningLevelOptions, modelShowsComposerBrainToggle } from '../lib/reasoning-effort';
 import { resolveSendCapabilities } from '../providers/model-capabilities';
+import { favoriteReasoningLevel, saveReasoningFavorite } from '../models/reasoning-favorite';
+import { wrapReasoningChoiceWithFavorite } from './reasoning-favorite-button';
 import { iconHtml } from './icon';
 import type { ReasoningEffortOption } from '../types';
 import '../styles/model-routing-form.css';
@@ -77,6 +79,8 @@ export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick
       buttons.setAttribute('role', 'group');
       buttons.setAttribute('aria-label', 'Reasoning for new chat');
       const values: Array<ReasoningEffortOption | undefined> = [undefined, ...(toggle ? ['off' as const] : []), ...(levels.length ? levels : ['on' as const])];
+      const favorite = levels.length ? favoriteReasoningLevel(binding.providerId, binding.modelId) : undefined;
+      const favoriteLabel = favorite ? formatReasoningEffortLabel(favorite) : '';
       const markSelected = (button: HTMLButtonElement, selected: boolean) => {
         button.setAttribute('aria-pressed', String(selected));
         button.querySelector('.icon-svg')?.remove();
@@ -87,13 +91,27 @@ export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick
         button.type = 'button';
         button.className = 'composer-model-reasoning__choice';
         button.dataset.composerReasoning = effort ?? 'inherit';
-        button.textContent = effort ? formatReasoningEffortLabel(effort) : 'Default';
+        button.textContent = effort ? formatReasoningEffortLabel(effort) : favorite ? `Default (${favoriteLabel})` : 'Default';
+        if (!effort && favorite) button.title = `Use your favorite: ${favoriteLabel}`;
         markSelected(button, options.reasoning() === effort);
         button.addEventListener('click', () => {
           options.onReasoning(effort);
-          buttons.querySelectorAll('button').forEach(item => markSelected(item, item === button));
+          buttons.querySelectorAll<HTMLButtonElement>('.composer-model-reasoning__choice').forEach(item => markSelected(item, item === button));
         });
-        buttons.append(button);
+        const level = effort && levels.includes(effort) ? effort : null;
+        const option = wrapReasoningChoiceWithFavorite(button, level, favorite);
+        option.querySelector<HTMLButtonElement>('[data-reasoning-favorite]')?.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const starLevel = level!;
+          void saveReasoningFavorite(binding.providerId, binding.modelId, favorite === starLevel ? null : starLevel)
+            .catch(async (error) => {
+              const { showToast } = await import('./toast');
+              showToast(`Could not save favorite reasoning: ${error instanceof Error ? error.message : String(error)}`, 'error');
+            });
+          renderReasoning();
+          reasoning.querySelector<HTMLButtonElement>(`[data-reasoning-favorite="${starLevel}"]`)?.focus();
+        });
+        buttons.append(option);
       }
       reasoning.append(heading, buttons);
     };

@@ -45,6 +45,50 @@ test('issue launch picker opens with the chat model picker surface', async () =>
   }
 });
 
+test('reasoning selection updates checkmarks without changing favorite stars', async () => {
+  const win = new Window({ url: 'http://localhost/' });
+  installHappyDomGlobals(win, { fetch: emptyCatalogFetch });
+  const { modelCache } = await import('../../src/app-state.ts');
+  const { encodeModelSelectKey } = await import('../../src/lib/model-select-key.ts');
+  const key = encodeModelSelectKey('openai', 'launch-reasoning-test');
+  const { setStorageModeForTests } = await import('../../src/config/storage-mode.ts');
+  const { persistDefaultModelValue } = await import('../../src/models/selection.ts');
+  setStorageModeForTests('localStorage');
+  await persistDefaultModelValue(key);
+  modelCache.set(key, { id: 'launch-reasoning-test', reasoning: { allowed_options: ['low', 'high'] }, capabilities: {
+    vision: false, tools: true, streaming: true, grammar: null, reasoning: true,
+    reasoningAllowedOptions: ['low', 'high'], contextLength: null, loadState: null,
+  } });
+  try {
+    const anchor = document.createElement('button');
+    document.body.append(anchor);
+    const { openLaunchModelPicker } = await import('../../src/ui/launch-model-picker.ts');
+    let selected: string | undefined;
+    openLaunchModelPicker(anchor, key, () => {}, {
+      reasoning: () => undefined,
+      onReasoning: effort => { selected = effort; },
+      onClose: () => {},
+    });
+    await waitFor(() => !!document.querySelector('[data-reasoning-favorite="high"]'));
+    const star = document.querySelector<HTMLButtonElement>('[data-reasoning-favorite="high"]')!;
+    const starMarkup = star.innerHTML;
+    const choice = document.querySelector<HTMLButtonElement>('[data-composer-reasoning="high"]')!;
+    choice.click();
+    assert.equal(selected, 'high');
+    assert.equal(choice.getAttribute('aria-pressed'), 'true');
+    assert.ok(choice.querySelector('.icon-svg'));
+    assert.equal(document.querySelector('[data-composer-reasoning="inherit"]')!.getAttribute('aria-pressed'), 'false');
+    assert.equal(star.innerHTML, starMarkup);
+    assert.equal(star.getAttribute('aria-pressed'), 'false');
+    document.querySelector('.auxiliary-model-popover')!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }) as unknown as Event);
+  } finally {
+    modelCache.delete(key);
+    await persistDefaultModelValue('');
+    setStorageModeForTests(null);
+    await teardownHappyDomAsync(win);
+  }
+});
+
 test('plain launch picker keeps the auxiliary popover surface', async () => {
   const win = new Window({ url: 'http://localhost/' });
   installHappyDomGlobals(win, { fetch: emptyCatalogFetch });

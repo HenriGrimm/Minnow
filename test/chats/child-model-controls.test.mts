@@ -64,6 +64,22 @@ test('child picker saves only a complete next-message selection and never rememb
   assert.match(host.textContent!, /New messages: next/); assert.match(host.textContent!, /Stop and switch/);
 });
 
+test('switching a managed chat model starts on the favorite reasoning level (MIN-1047)', async () => {
+  const { resetModelReasoningDefaultsForTests, saveModelReasoningDefault } = await import('../../src/config/model-reasoning-defaults.ts');
+  resetModelReasoningDefaultsForTests();
+  try {
+    const { chat } = setup(); setStorageModeForTests('localStorage');
+    const key = encodeModelSelectKey('next-provider', 'next');
+    modelCache.set(key, { id: 'next', reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' }, capabilities: { vision: false, tools: true, streaming: true, grammar: null,
+      reasoning: true, reasoningAllowedOptions: ['low', 'medium', 'high'], reasoningDefault: 'medium', contextLength: null, loadState: null } });
+    await saveModelReasoningDefault(key, 'high');
+    const bodies: any[] = [];
+    globalThis.fetch = async (_url, options) => { bodies.push(JSON.parse(String(options?.body))); return Response.json({}); };
+    onActiveChatModelChange(key, chat); await idle(chat.id);
+    assert.deepEqual(bodies[0].selection, { providerId: 'next-provider', modelId: 'next', options: { reasoningEffort: 'high' } });
+  } finally { resetModelReasoningDefaultsForTests(); }
+});
+
 test('reasoning changes use the child pair and preserve explicit budgets without changing its running or queued snapshot', async () => {
   const { chat } = setup(); const bodies: any[] = [];
   modelCache.set(encodeModelSelectKey('provider', 'old'), { id: 'old', reasoning: { allowed_options: ['off', 'low', 'medium', 'high'], default: 'medium' }, capabilities: { vision: false, tools: true, streaming: true, grammar: null,

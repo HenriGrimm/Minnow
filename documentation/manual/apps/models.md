@@ -15,6 +15,8 @@ If loading fails, keep the model selected in **Local server** while you read the
 
 Use **Providers** to manage API endpoints, keys, and model discovery. Use the switch on a provider row to control whether its models are available. Choose **Edit** to open the connection editor and read the full result of a connection test. Changes save automatically. Use **Subscriptions** to manage sign-in and installation for supported agent CLIs. Verify the model appears on the expected provider before selecting it. Pick it in the composer or press **Ctrl+M** / **Cmd+M**. Your selection becomes the starting choice for new ordinary threads. Existing threads keep their saved model.
 
+For models with reasoning levels, the model menu lists them under **Reasoning**. Choosing a level changes only the current thread. To make a level your favorite for that model, select the star next to it. New threads, model switches, issue launches and **Default** then start on your favorite. Select the star again to clear it; the model's own default applies when no favorite is set.
+
 ## Routing
 
 Open **Routing** to assign a different model to utility tasks or sub-agents. Utility tasks include titles, prompt or issue expansion, and commit messages. Without a fixed utility binding, the originating model supplies that role. Sub-agents inherit the parent model unless the delegation, agent type, or routing sets an override. Boards have model controls of their own.
