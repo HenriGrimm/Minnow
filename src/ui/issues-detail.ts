@@ -17,14 +17,14 @@ import {
   updateIssue,
 } from '../state/issues-store';
 import { parseIssueCodeRefPaste } from '../state/issue-code-ref-parse';
-import { getWorkspacePath, isCurrentWindowWorkspace } from '../state/workspace';
+import { getWorkspacePath } from '../state/workspace';
 import { getMode } from '../chat/modes/registry';
 import {
   canExpandIssueWithAgent,
 } from '../chat/issues/expand-task';
 import {
   createIssueExpandButton,
-  isIssueExpandOverlayOpen,
+  createIssueExpandUndoButton,
 } from './issues-expand-controls';
 import {
   canRunIssueWorkflow,
@@ -198,7 +198,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   let paintingDetail = false;
   const workspaceTabs = new Map<string, IssueWorkspaceTab>();
   const launchDrafts = new Map<string, string>();
-  const expandedLaunchOptions = new Set<string>();
+  /** Inline launch feedback; failures stay visible beside the Start button. */
+  const launchStatus = new Map<string, { text: string; error?: boolean }>();
   let planPreview: ReturnType<typeof mountIssuePlanPreview> | undefined;
   let workspacePanel: ReturnType<typeof mountIssueWorkspace> | undefined;
   let navigation: IssueDetailNavigation | undefined;
@@ -282,7 +283,6 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   /** True when focus is inside peek chrome that a remount would wipe. */
   function isIssuesDetailEditing(): boolean {
-    if (isIssueExpandOverlayOpen()) return true;
     const active = document.activeElement;
     if (!active || typeof (active as { closest?: unknown }).closest !== 'function') {
       return false;
@@ -297,8 +297,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         el.closest('.mn-editor') ||
         el.closest('.issues-detail__add-code') ||
         el.closest('.issues-work-field') ||
-        el.closest('.issues-work-chat__composer') ||
-        el.closest('.issues-expand-form'),
+        el.closest('.issues-work-chat__composer'),
     );
   }
 
@@ -760,17 +759,20 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       }
       headerActions.appendChild(nav);
     }
-    headerActions.append(createIssueExpandButton(issue, 'peek'), moreBtn);
+    headerActions.append(createIssueExpandUndoButton(issue), createIssueExpandButton(issue, 'peek'), moreBtn);
     if (!options) headerActions.append(layoutBtn);
     headerActions.append(closeBtn);
     const breadcrumb = document.createElement('span');
     breadcrumb.className = 'issues-detail__breadcrumb';
     breadcrumb.append(createIcon('appIssues', { size: 16 }), document.createTextNode('Issues /'));
-    header.append(breadcrumb, idEl);
+    const identity = document.createElement('div');
+    identity.className = 'issues-detail__identity';
+    identity.appendChild(idEl);
+    header.append(breadcrumb, identity);
     const githubBadge = createIssueGithubSyncBadge(
       issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
     );
-    if (githubBadge) header.appendChild(githubBadge);
+    if (githubBadge) identity.appendChild(githubBadge);
     header.appendChild(headerActions);
     sticky.appendChild(header);
 
@@ -1980,17 +1982,17 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
     const secondary = document.createElement('div');
     secondary.className = 'issues-detail__workflow-secondary';
+    const worktreeOn = issueUsesWorktree(issue.id);
     const useWorktree = createDetailTextButton({
-      label: issueUsesWorktree(issue.id)
-        ? workflowBusyIds.has(issue.id) ? 'Setting up…' : 'Worktree on'
-        : 'Use worktree',
+      label: 'New worktree',
       icon: 'gitWorktree',
       disabled: !workflowOk || busy,
-      title: 'Automatically name and prepare a separate checkout when this issue starts a chat',
+      title: worktreeOn
+        ? 'On: the chat prepares its own checkout before its first step. Click to work in the current checkout.'
+        : 'Off: the chat works in the current checkout. Click to give it its own worktree.',
       onClick: () => { toggleIssueWorktree(issue.id); refreshIssueDetailIfOpen(); },
     });
-    useWorktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
-    useWorktree.setAttribute('aria-busy', String(workflowBusyIds.has(issue.id)));
+    useWorktree.setAttribute('aria-pressed', String(worktreeOn));
     useWorktree.classList.add('issues-detail__use-worktree');
     const modelLabel = issueLaunchModelLabel(issue.id);
     const modelButton = createDetailTextButton({
@@ -2005,7 +2007,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     const modelText = modelButton.lastElementChild;
     modelButton.classList.add('issues-detail__model');
     modelButton.appendChild(createIcon('chevronDown', { size: 10 }));
-    secondary.append(modelButton, useWorktree);
+    if (options) secondary.append(modelButton, useWorktree);
 
     if (options) {
       const foregroundHints: Record<IssueForegroundChatMode, string> = {
@@ -2050,54 +2052,46 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       const launch = document.createElement('div');
       launch.className = 'issues-detail__compact-launch';
       const prompt = document.createElement('textarea');
-      const defaultPrompt = `Implement ${issue.id}: ${issue.title}${/[.!?]$/.test(issue.title) ? '' : '.'}`;
-      prompt.setAttribute('aria-label', 'Thread instructions');
+      prompt.setAttribute('aria-label', 'Extra instructions for the chat (optional)');
+      prompt.placeholder = 'Add instructions (optional). The issue is included automatically.';
       prompt.rows = 2;
-      prompt.value = launchDrafts.get(issue.id) ?? defaultPrompt;
+      prompt.value = launchDrafts.get(issue.id) ?? '';
       prompt.disabled = !workflowOk || busy;
       prompt.addEventListener('input', () => launchDrafts.set(issue.id, prompt.value));
       const actions = document.createElement('div');
       actions.className = 'issues-detail__compact-actions';
-      const worktree = createDetailTextButton({
-        label: 'New worktree', icon: 'gitWorktree', disabled: !workflowOk || busy,
-        title: 'Create a separate worktree for this thread',
-        onClick: () => {
-          toggleIssueWorktree(issue.id);
-          const enabled = String(issueUsesWorktree(issue.id));
-          worktree.setAttribute('aria-pressed', enabled);
-          useWorktree.setAttribute('aria-pressed', enabled);
-          const label = useWorktree.querySelector('span:last-child');
-          if (label) label.textContent = enabled === 'true' ? 'Worktree on' : 'Use worktree';
-        },
-      });
-      worktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
+      const starting = workflowBusyIds.has(issue.id);
       const start = createDetailTextButton({
-        label: busy ? 'Starting…' : 'Start thread', icon: 'chevronRight', primary: true, disabled: !workflowOk || busy,
+        label: starting ? 'Starting…' : 'Start chat', icon: 'chevronRight', primary: true, disabled: !workflowOk || busy,
+        title: 'Start a Build chat for this issue (Ctrl+Enter). You stay on this issue.',
         onClick: () => {
           const instruction = prompt.value.trim();
           void runWorkflowAction(issue.id, 'foreground', 'build',
-            { kind: issueUsesWorktree(issue.id) ? 'automatic' : 'local' },
-            instruction !== defaultPrompt ? instruction : undefined, true);
+            { kind: issueUsesWorktree(issue.id) ? 'automatic' : 'local' }, instruction || undefined);
         },
       });
+      start.setAttribute('aria-busy', String(starting));
       prompt.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey) || event.isComposing) return;
         event.preventDefault();
         start.click();
       });
-      secondary.id = 'issueLaunchOptions';
-      secondary.hidden = !expandedLaunchOptions.has(issue.id);
-      const more = createDetailTextButton({ label: 'Launch options', icon: 'more', onClick: () => {
-        secondary.hidden = !secondary.hidden;
-        if (secondary.hidden) expandedLaunchOptions.delete(issue.id);
-        else expandedLaunchOptions.add(issue.id);
-        more.setAttribute('aria-expanded', String(!secondary.hidden));
-      } });
-      more.setAttribute('aria-controls', secondary.id);
-      more.setAttribute('aria-expanded', String(!secondary.hidden));
-      actions.append(worktree, more, start);
+      secondary.hidden = !secondary.childElementCount;
+      actions.append(useWorktree, modelButton, start);
       launch.append(prompt, actions);
       row.insertBefore(launch, secondary);
+    }
+    const status = launchStatus.get(issue.id);
+    if (status) {
+      const line = document.createElement('p');
+      line.className = 'issues-detail__launch-status';
+      if (status.error) line.classList.add('is-error');
+      line.setAttribute('role', status.error ? 'alert' : 'status');
+      if (!status.error) line.appendChild(createIcon('statusRunning', { size: 11 }));
+      const span = document.createElement('span');
+      span.textContent = status.text;
+      line.appendChild(span);
+      row.appendChild(line);
     }
     return row;
   }
@@ -2112,11 +2106,11 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     modeId?: IssueForegroundChatMode,
     runTarget?: ChatRunTargetChoice,
     instruction?: string,
-    revealThread = false,
   ): Promise<void> {
     if (workflowBusyIds.has(issueId)) return;
-    const routeAtStart = window.location.hash;
     workflowBusyIds.add(issueId);
+    if (action === 'foreground') launchStatus.set(issueId, { text: 'Starting chat…' });
+    else launchStatus.delete(issueId);
     refreshIssueDetailIfOpen();
     try {
       if (action === 'foreground' && modeId) {
@@ -2128,29 +2122,22 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
           instruction,
         );
         if (!result.ok) {
-          showIssuesToast(result.error || (revealThread ? 'Could not start thread' : 'Send to chat failed'), 'error');
+          const error = result.error || 'Could not start the chat';
+          launchStatus.set(issueId, { text: error, error: true });
+          showIssuesToast(error, 'error');
           return;
         }
+        launchStatus.delete(issueId);
         launchDrafts.delete(issueId);
+        // Stay on the issue and follow the new chat in its Chat tab.
         workspaceTabs.set(issueId, 'Chat');
         if (modeId === 'plan') {
           showIssuesToast(
-            result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat started in Code',
+            result.planPath ? `Plan chat started · ${result.planPath}` : 'Plan chat started',
             'success',
           );
         } else {
-          showIssuesToast(`${getMode(modeId as IssueForegroundChatMode).label} chat started in Code`, 'success');
-        }
-        if (revealThread && result.chatId && selectedIssueId === issueId && window.location.hash === routeAtStart) {
-          const workspace = findIssueById(issueId)?.workspacePath ?? '';
-          const { getAppWindowId } = await import('../os/app-window');
-          if (!getAppWindowId() && isCurrentWindowWorkspace(workspace)) {
-            const { launchApp } = await import('../os/router');
-            if (window.location.hash === routeAtStart) launchApp('code', { chatId: result.chatId, codeSection: 'chat' });
-          } else {
-            const { launchCodeWithChat } = await import('../os/chat-launch');
-            if (window.location.hash === routeAtStart) await launchCodeWithChat(result.chatId);
-          }
+          showIssuesToast(`${getMode(modeId as IssueForegroundChatMode).label} chat started`, 'success');
         }
         return;
       }
