@@ -22,7 +22,7 @@ import { filterUserFacingBranches } from '../lib/worktree-list-parse';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { appPrompt, isAppDialogOpen } from './app-dialog';
-import { createIcon, type IconName } from './icon';
+import { createGitHubMark, createIcon, type IconName } from './icon';
 import { launchApp, returnToChat } from '../os/router';
 import { createBackToChatButton } from './back-to-chat';
 import { getForegroundAppId } from '../os/instances';
@@ -75,7 +75,7 @@ interface SectionDef {
   id: SccSectionId;
   label: string;
   icon: IconName;
-  group: 'Working tree' | 'Remote';
+  group: 'Repository' | 'GitHub';
   create: (ctx: SccContext) => SccView;
 }
 
@@ -150,35 +150,35 @@ function sections(): SectionDef[] {
       id: 'changes',
       label: 'Changes',
       icon: 'gitCommit',
-      group: 'Working tree',
+      group: 'Repository',
       create: (ctx) => createChangesView(ctx),
     },
     {
       id: 'history',
       label: 'History',
       icon: 'gitGraph',
-      group: 'Working tree',
+      group: 'Repository',
       create: (ctx) => createHistoryView(ctx),
     },
     {
       id: 'branches',
       label: 'Branches',
       icon: 'gitBranch',
-      group: 'Working tree',
+      group: 'Repository',
       create: (ctx) => createBranchesView(ctx),
     },
     {
       id: 'stashes',
       label: 'Stashes',
       icon: 'gitStash',
-      group: 'Working tree',
+      group: 'Repository',
       create: (ctx) => createStashesView(ctx),
     },
     {
       id: 'worktrees',
       label: 'Worktrees',
       icon: 'gitWorktree',
-      group: 'Working tree',
+      group: 'Repository',
       create: (ctx) =>
         createWorktreesView(ctx, {
           onSelectWorktree: (path) => void setCwd(path),
@@ -187,18 +187,18 @@ function sections(): SectionDef[] {
     {
       id: 'pulls',
       label: 'Pull requests',
-      icon: 'gitMerge',
-      group: 'Remote',
+      icon: 'gitPullRequest',
+      group: 'GitHub',
       create: (ctx) => createPullsView(ctx, { getForgeStatus: () => forge }),
     },
     {
       id: 'checks',
       label: 'Actions',
-      icon: 'statusRunning',
-      group: 'Remote',
+      icon: 'workflow',
+      group: 'GitHub',
       create: (ctx) => createActionsView(ctx, { getForgeStatus: () => forge }),
     },
-    { id: 'releases', label: 'Releases', icon: 'gitCommit', group: 'Remote', create: (ctx) => createReleasesView(ctx) },
+    { id: 'releases', label: 'Releases', icon: 'tags', group: 'GitHub', create: (ctx) => createReleasesView(ctx) },
   ];
 }
 
@@ -358,14 +358,14 @@ function buildBody(): HTMLElement {
     railEl.appendChild(item);
   }
 
-  const assistance = el('aside', 'scc-graphite-assistance');
-  const assistanceTitle = el('strong', undefined, 'Assisted by');
-  assistanceTitle.prepend(createIcon('sparkles', { size: 14 }));
-  const assistanceModel = el('p', undefined, 'Commit messages and summaries use your utility model settings.');
-  assistance.append(assistanceTitle, assistanceModel);
-  railEl.appendChild(assistance);
+  const footnote = el('p', 'scc-rail__footnote');
+  const footnoteText = el('span', undefined, 'Commit messages and summaries use your utility model.');
+  footnote.append(createIcon('sparkles', { size: 13 }), footnoteText);
+  railEl.appendChild(footnote);
   void loadUtilityModelConfig().then(({ modelId }) => {
-    if (modelId.trim()) assistanceModel.textContent = `Commit messages and summaries use ${modelId.trim()}.`;
+    const model = modelId.trim();
+    if (!model) return;
+    footnoteText.replaceChildren('Commit messages and summaries use ', el('strong', undefined, model), '.');
   }).catch(() => undefined);
 
   paneEl = el('div', 'scc-pane');
@@ -574,9 +574,12 @@ function paintForgeChip(): void {
   }
 
   forgeChipEl.hidden = false;
-  forgeChipEl.replaceChildren();
   forgeChipEl.classList.toggle('is-inactive', !forge.supported);
-  forgeChipEl.textContent = forge.repo || forge.hostname;
+  const isGitHub = forge.host === 'github' || forge.host === 'github-enterprise';
+  forgeChipEl.replaceChildren(
+    ...(isGitHub ? [createGitHubMark({ size: 13 })] : []),
+    el('span', undefined, forge.repo || forge.hostname),
+  );
   forgeChipEl.title = forge.supported
     ? `Connected to ${forge.hostname} as the signed-in gh user`
     : forge.reason;

@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import { runState, type PullRequestDetail, type PullRequestSummary } from '../state/forge-api';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { createIcon } from './icon';
-import { button, chip, diffStat, el, emptyState, pathLabel, relativeTime, stateDot, stateLabel } from './scc-shared';
+import { chip, detailHead, diffStat, el, emptyState, pathLabel, relativeTime, stateDot, stateLabel, statePill, type PillTone } from './scc-shared';
 
 export type PrDetailTab = 'overview' | 'checks' | 'files' | 'commits';
 
@@ -92,39 +92,40 @@ export function buildPrDetail(
     reviewHost: HTMLElement;
     activeTab: PrDetailTab;
     onTab: (tab: PrDetailTab) => void;
+    /** Narrow panes: return to the list. */
+    onBack?: () => void;
   },
 ): HTMLElement {
-  const wrap = el('article', 'scc-prdetail');
+  const wrap = el('article', 'scc-detail scc-prdetail');
   wrap.setAttribute('aria-label', `Pull request #${pr.number}`);
-  const head = el('header', 'scc-prdetail__head');
-  const eyebrow = el('div', 'scc-prdetail__eyebrow');
-  eyebrow.append(
-    el('span', 'scc-prdetail__number', `#${pr.number}`),
-    chip(prStateLabel(pr), pr.state === 'open' && pr.draft ? 'draft' : pr.state),
-  );
-  const title = el('h2', 'scc-prdetail__title', pr.title);
-  const facts = el('div', 'scc-prdetail__facts');
-  if (pr.author) facts.appendChild(el('span', 'scc-prdetail__author', pr.author));
+  const tone: PillTone = pr.state === 'merged' ? 'merged' : pr.state === 'closed' ? 'closed' : pr.draft ? 'draft' : 'open';
+  const eyebrow: HTMLElement[] = [statePill(prStateLabel(pr), tone), el('span', 'scc-prdetail__number', `#${pr.number}`)];
+  if (pr.author) eyebrow.push(el('span', 'scc-prdetail__author', pr.author));
   const age = relativeTime(pr.updatedAt);
   if (age) {
-    const time = el('time', undefined, age === 'now' ? 'Updated just now' : `Updated ${age} ago`);
+    const time = el('time', undefined, age === 'now' ? 'updated just now' : `updated ${age} ago`);
     time.dateTime = pr.updatedAt;
     time.title = new Date(pr.updatedAt).toLocaleString();
-    facts.appendChild(time);
+    eyebrow.push(time);
   }
   const branches = el('div', 'scc-prdetail__branches');
-  branches.append(createIcon('gitBranch', { size: 14 }), chip(pr.headRef), el('span', undefined, '→'), chip(pr.baseRef));
+  branches.append(chip(pr.headRef), createIcon('chevronRight', { size: 12 }), chip(pr.baseRef));
   branches.title = `${pr.headRef} into ${pr.baseRef}`;
-  if (pr.crossRepository) branches.appendChild(chip('Fork'));
-  head.append(eyebrow, title, facts, branches);
-  if (pr.labels.length) {
-    const labels = el('div', 'scc-prdetail__labels');
-    for (const label of pr.labels) labels.appendChild(chip(label.name));
-    head.appendChild(labels);
-  }
-  wrap.append(head, options.actions);
+  const facts: HTMLElement[] = [branches];
+  if (pr.crossRepository) facts.push(el('span', 'scc-tag', 'Fork'));
+  for (const label of pr.labels) facts.push(el('span', 'scc-tag', label.name));
+  const head = detailHead({
+    eyebrow,
+    title: pr.title,
+    titleClass: 'scc-prdetail__title',
+    facts,
+    actions: options.actions,
+    onBack: options.onBack,
+    backLabel: 'Pull requests',
+  });
+  wrap.append(head.root);
 
-  const tabs = el('div', 'scc-prdetail__tabs');
+  const tabs = el('div', 'scc-tabs scc-prdetail__tabs');
   tabs.setAttribute('role', 'tablist');
   tabs.setAttribute('aria-label', 'Pull request details');
   const panels = el('div', 'scc-prdetail__panels');
@@ -145,12 +146,14 @@ export function buildPrDetail(
     options.onTab(id);
   };
   for (const [index, definition] of definitions.entries()) {
-    const tab = button({ label: definition.label, variant: 'ghost', className: 'scc-prdetail__tab', onClick: () => selectTab(definition.id) });
+    const tab = el('button', 'scc-tab scc-prdetail__tab', definition.label);
+    tab.type = 'button';
+    tab.addEventListener('click', () => selectTab(definition.id));
     tab.id = `scc-pr-${pr.number}-${definition.id}-tab`;
     tab.dataset.tab = definition.id;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-controls', `scc-pr-${pr.number}-${definition.id}-panel`);
-    if (definition.count !== undefined) tab.appendChild(el('span', 'scc-prdetail__tab-count', String(definition.count)));
+    if (definition.count !== undefined) tab.appendChild(el('span', 'scc-tab__count scc-prdetail__tab-count', String(definition.count)));
     tab.addEventListener('keydown', (event) => {
       const next = event.key === 'ArrowRight' ? (index + 1) % definitions.length
         : event.key === 'ArrowLeft' ? (index + definitions.length - 1) % definitions.length
@@ -169,21 +172,25 @@ export function buildPrDetail(
     panel.tabIndex = 0;
     if (definition.id === 'overview') {
       const summary = el('div', 'scc-prdetail__summary');
-      const checks = button({ label: prCheckLabel(pr), variant: 'ghost', className: 'scc-prdetail__signal', onClick: () => selectTab('checks', true) });
+      const checks = el('button', 'scc-prdetail__signal');
+      checks.type = 'button';
+      checks.addEventListener('click', () => selectTab('checks', true));
       const dot = stateDot(pr.checks);
       dot.setAttribute('aria-hidden', 'true');
-      checks.prepend(el('span', 'scc-prdetail__signal-label', 'Checks'), dot);
+      const checksValue = el('span', 'scc-prdetail__signal-value');
+      checksValue.append(dot, el('span', undefined, prCheckLabel(pr)));
+      checks.append(el('span', 'scc-prdetail__signal-label', 'Checks'), checksValue);
       const review = el('div', 'scc-prdetail__signal');
-      review.append(el('span', 'scc-prdetail__signal-label', 'Review'), el('span', undefined, PR_REVIEW_LABEL[pr.reviewDecision] ?? 'No decision yet'));
+      review.append(el('span', 'scc-prdetail__signal-label', 'Review'), el('span', 'scc-prdetail__signal-value', PR_REVIEW_LABEL[pr.reviewDecision] ?? 'No decision yet'));
       const merge = el('div', 'scc-prdetail__signal');
-      merge.append(el('span', 'scc-prdetail__signal-label', 'Merge'), el('span', undefined, prMergeLabel(pr)));
+      merge.append(el('span', 'scc-prdetail__signal-label', 'Merge'), el('span', 'scc-prdetail__signal-value', prMergeLabel(pr)));
       summary.append(checks, review, merge);
       panel.append(summary, options.mergeActions, sectionTitle('Description'));
       const body = el('div', 'scc-prdetail__body');
       if (pr.body.trim()) renderPrMarkdown(body, pr.body.trim(), pr.url);
       else body.appendChild(el('p', 'scc-prdetail__muted', 'No description provided.'));
       panel.append(body, sectionTitle('Reviews', pr.reviews.length), options.reviewHost);
-      const reviews = el('div', 'scc-prdetail__reviews');
+      const reviews = el('div', 'scc-lines scc-prdetail__reviews');
       for (const review of pr.reviews) {
         const row = el('div', 'scc-reviewrow');
         row.append(el('span', 'scc-reviewrow__author', review.author), chip(PR_REVIEW_LABEL[review.state] ?? sentenceCase(review.state), review.state === 'approved' ? 'approved' : review.state === 'changes_requested' ? 'attention' : undefined));
@@ -200,7 +207,7 @@ export function buildPrDetail(
       if (!pr.statusChecks.length) panel.appendChild(emptyState({ icon: 'statusPending', title: 'No checks reported', body: 'Checks appear here when GitHub Actions or another CI service reports a result.' }));
       else {
         panel.appendChild(sectionTitle(prCheckLabel(pr), pr.statusChecks.length));
-        const checks = el('div', 'scc-prdetail__checks');
+        const checks = el('div', 'scc-lines scc-prdetail__checks');
         for (const check of pr.statusChecks) {
           const state = ['pending', 'expected'].includes(check.conclusion) ? 'pending' : runState(check);
           const url = prContentUrl(check.url, pr.url);
@@ -224,17 +231,17 @@ export function buildPrDetail(
       const heading = sectionTitle('Changed files', pr.changedFiles);
       heading.appendChild(diffStat(pr.additions, pr.deletions));
       panel.appendChild(heading);
-      const files = el('div', 'scc-prdetail__files');
+      const files = el('div', 'scc-lines scc-prdetail__files');
       for (const file of pr.files) {
         const row = el('div', 'scc-prfile');
-        row.append(createIcon('fileText', { size: 15 }), pathLabel(file.path), diffStat(file.additions, file.deletions));
+        row.append(createIcon('fileText', { size: 14 }), pathLabel(file.path), diffStat(file.additions, file.deletions));
         files.appendChild(row);
       }
       if (!pr.files.length) files.appendChild(el('p', 'scc-prdetail__muted', 'No changed files reported.'));
       panel.appendChild(files);
     } else {
       panel.appendChild(sectionTitle('Commits', pr.commits.length));
-      const commits = el('div', 'scc-prdetail__commits');
+      const commits = el('div', 'scc-lines scc-prdetail__commits');
       for (const commit of pr.commits) {
         const row = el('div', 'scc-prcommit');
         row.append(chip(commit.sha, 'sha'), el('span', 'scc-prcommit__subject', expandGitmojiShortcodes(commit.subject)));
@@ -252,9 +259,9 @@ export function buildPrDetail(
 }
 
 function sectionTitle(title: string, count?: number): HTMLElement {
-  const head = el('div', 'scc-prdetail__section');
-  head.appendChild(el('h3', 'scc-prdetail__section-title', title));
-  if (count !== undefined) head.appendChild(el('span', 'scc-prdetail__section-count', String(count)));
+  const head = el('div', 'scc-section scc-prdetail__section');
+  head.appendChild(el('h3', 'scc-section__title scc-prdetail__section-title', title));
+  if (count !== undefined) head.appendChild(el('span', 'scc-section__count scc-prdetail__section-count', String(count)));
   return head;
 }
 

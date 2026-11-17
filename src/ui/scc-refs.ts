@@ -45,11 +45,20 @@ import {
   emptyState,
   errorStrip,
   listNavigator,
+  pageBar,
   relativeTime,
+  searchBox,
   skeletonRows,
   type SccContext,
   type SccView,
 } from './scc-shared';
+
+/** List sections share the page bar; the bar root keeps the toolbar class for bulk selection. */
+function listBar(title: string) {
+  const bar = pageBar(title);
+  bar.root.classList.add('scc-list-view__toolbar');
+  return bar;
+}
 
 async function run(
   fn: () => Promise<GitOpResult>,
@@ -75,8 +84,9 @@ function refRow(options: {
   current?: boolean;
   actions: HTMLElement[];
   onActivate?: () => void;
+  prose?: boolean;
 }): HTMLElement {
-  const row = el('div', 'scc-refrow');
+  const row = el('div', options.prose ? 'scc-refrow scc-refrow--prose' : 'scc-refrow');
   row.tabIndex = 0;
   if (options.current) row.classList.add('is-current');
 
@@ -144,7 +154,7 @@ function refSelection(
     label: 'Delete selected', variant: 'ghost', className: 'scc-list-view__bulk-delete scc-btn--danger-hover',
     onClick: () => void removeSelected(),
   });
-  toolbar.append(deleteBtn);
+  (toolbar.querySelector('.scc-bar__actions') ?? toolbar).prepend(deleteBtn);
   function targets() {
     return [...entries].filter(([key, entry]) => selected.has(key) && entry.remove)
       .map(([key, entry]) => ({ key, ...entry, remove: entry.remove! }));
@@ -342,7 +352,8 @@ const collapsedByRepo = new Map<string, Set<string>>();
 
 export function createBranchesView(ctx: SccContext): SccView {
   const root = el('div', 'scc-list-view');
-  const toolbar = el('div', 'scc-list-view__toolbar');
+  const bar = listBar('Branches');
+  const toolbar = bar.root;
   const body = el('div', 'scc-list-view__body');
   body.setAttribute('role', 'tree');
   body.setAttribute('aria-label', 'Branches');
@@ -352,10 +363,9 @@ export function createBranchesView(ctx: SccContext): SccView {
   let destroyed = false;
   let filter = '';
 
-  const search = el('input', 'scc-search');
-  search.type = 'search';
-  search.placeholder = 'Filter branches';
-  search.setAttribute('aria-label', 'Filter branches');
+  const searchField = searchBox('Filter branches');
+  const search = searchField.input;
+  search.classList.add('scc-search');
   search.addEventListener('input', () => {
     filter = search.value.trim().toLowerCase();
     void refresh();
@@ -368,7 +378,8 @@ export function createBranchesView(ctx: SccContext): SccView {
     onClick: () => openNewBranch(newBranchBtn),
   });
 
-  toolbar.append(search, newBranchBtn);
+  bar.controls.append(searchField.root);
+  bar.actions.append(newBranchBtn);
   const selection = refSelection(toolbar, ctx, 'branches');
   let refreshVersion = 0;
 
@@ -429,6 +440,7 @@ export function createBranchesView(ctx: SccContext): SccView {
 
     const count = entries.length + remotes.length;
     ctx.setBadge('branches', count ? { kind: 'count', value: count } : null);
+    bar.count.textContent = `${entries.length} local · ${remotes.length} remote`;
 
     const matches = (name: string) => !filter || name.toLowerCase().includes(filter);
     const forest = buildBranchForest(entries, trunk);
@@ -845,9 +857,9 @@ export function parseStashEntry(line: string, index: number): {
 
 export function createStashesView(ctx: SccContext): SccView {
   const root = el('div', 'scc-list-view');
-  const toolbar = el('div', 'scc-list-view__toolbar');
+  const bar = listBar('Stashes');
   const body = el('div', 'scc-list-view__body');
-  root.append(toolbar, body);
+  root.append(bar.root, body);
 
   let destroyed = false;
 
@@ -870,10 +882,11 @@ export function createStashesView(ctx: SccContext): SccView {
         },
       }),
   });
-  toolbar.appendChild(stashBtn);
+  bar.actions.appendChild(stashBtn);
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
+    if (!body.firstChild) body.appendChild(skeletonRows(4));
 
     const result = await gitStashList(ctx.getCwd());
     if (destroyed) return;
@@ -885,13 +898,14 @@ export function createStashesView(ctx: SccContext): SccView {
 
     const stashes = result.stashes ?? [];
     ctx.setBadge('stashes', stashes.length ? { kind: 'count', value: stashes.length } : null);
+    bar.count.textContent = stashes.length ? String(stashes.length) : '';
 
     if (stashes.length === 0) {
       body.replaceChildren(
         emptyState({
           icon: 'gitStash',
           title: 'No stashes',
-          body: 'Stash to park uncommitted work and come back to a clean tree.',
+          body: 'A stash parks uncommitted work so you can switch branches with a clean tree. Pop it to bring the work back.',
         }),
       );
       return;
@@ -906,6 +920,7 @@ export function createStashesView(ctx: SccContext): SccView {
       frag.appendChild(
         refRow({
           name: expandGitmojiShortcodes(subject) || ref,
+          prose: true,
           meta,
           actions: [
             button({
@@ -967,7 +982,8 @@ export function createWorktreesView(
   options: { onSelectWorktree: (path: string | undefined) => void },
 ): SccView {
   const root = el('div', 'scc-list-view');
-  const toolbar = el('div', 'scc-list-view__toolbar');
+  const bar = listBar('Worktrees');
+  const toolbar = bar.root;
   const body = el('div', 'scc-list-view__body');
   body.setAttribute('role', 'tree');
   body.setAttribute('aria-label', 'Worktrees');
@@ -1009,7 +1025,7 @@ export function createWorktreesView(
         },
       }),
   });
-  toolbar.appendChild(addBtn);
+  bar.actions.appendChild(addBtn);
   /** Last failed removal per worktree, so the row can say why and offer the fix. */
   const failures = new Map<string, GitOpResult>();
   const selection = refSelection(toolbar, ctx, 'worktrees', {
@@ -1048,6 +1064,7 @@ export function createWorktreesView(
           : [];
 
     ctx.setBadge('worktrees', worktrees.length > 1 ? { kind: 'count', value: worktrees.length } : null);
+    bar.count.textContent = String(worktrees.length);
 
     if (worktrees.length === 0) {
       selection.end();
@@ -1119,7 +1136,7 @@ export function createWorktreesView(
       statusSlot.hidden = true;
       meta.push(statusSlot);
       if (!missing) statusTargets.push({ path: worktree.path, slot: statusSlot });
-      meta.push(worktree.path);
+      meta.push(el('span', 'scc-refrow__path', worktree.path));
 
       const actions: HTMLElement[] = [];
       if (bound.length) {

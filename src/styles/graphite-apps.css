@@ -895,51 +895,13 @@
   padding: var(--mn-space-2) var(--mn-workbench-rail-inset) var(--mn-space-3);
 }
 
-.mn-graphite-apps .scc-rail__group {
-  display: none;
-}
-
-.mn-graphite-apps .scc-rail .scc-rail__badge.scc-rail__badge--count {
-  min-width: 16px;
-  padding: 0;
-  background: transparent;
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  font-size: 11px;
-  line-height: 1.3;
-  text-align: end;
-}
-
 .mn-graphite-apps .scc-changes__list-col {
   width: clamp(208px, 38%, 340px);
 }
 
-.scc-graphite-assistance,
 .scc-changes__heading,
 .scc-changes__graphite-action {
   display: none;
-}
-
-.mn-graphite-apps .scc-graphite-assistance {
-  display: block;
-  margin-top: auto;
-  padding: 9px 12px;
-  border: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 10px;
-  background: var(--mn-graphite-raised, var(--mn-surface-1));
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  overflow-wrap: anywhere;
-}
-
-.mn-graphite-apps .scc-graphite-assistance strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--mn-graphite-text, var(--mn-fg));
-  font-weight: 500;
-}
-
-.mn-graphite-apps .scc-graphite-assistance p {
-  margin: 3px 0 0;
 }
 
 .mn-graphite-apps .scc-changes__heading {

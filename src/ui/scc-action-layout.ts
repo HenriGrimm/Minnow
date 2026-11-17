@@ -1,21 +1,23 @@
-import { button, el } from './scc-shared';
+import { createIcon, type IconName } from './icon';
+import { el, stateDot, type RunState } from './scc-shared';
 
-export function actionHeader(title: string, description: string, actions: HTMLElement[] = []): HTMLElement {
-  const head = el('header', 'scc-actions__header');
-  const copy = el('div');
-  copy.append(el('h1', undefined, title));
-  if (description) copy.append(el('p', undefined, description));
-  const controls = el('div', 'scc-actions__controls');
-  controls.append(...actions);
-  head.append(copy, controls);
-  return head;
-}
-
-export function actionRow(title: string, meta: string, onClick: () => void): HTMLButtonElement {
-  const row = button({ onClick, className: 'scc-action-row' });
-  row.classList.remove('scc-btn--icon-only');
-  row.removeAttribute('aria-label');
-  row.append(el('span', 'scc-action-row__title', title), el('span', 'scc-action-row__meta', meta));
+/** List row for workflows, commands and local runs: same anatomy as every other list. */
+export function actionRow(
+  title: string,
+  meta: string,
+  onClick: () => void,
+  lead?: { icon?: IconName; state?: RunState },
+): HTMLButtonElement {
+  const row = el('button', 'scc-row scc-action-row');
+  row.type = 'button';
+  row.addEventListener('click', onClick);
+  const leadEl = el('span', 'scc-row__lead');
+  if (lead?.state) leadEl.appendChild(stateDot(lead.state));
+  else leadEl.appendChild(createIcon(lead?.icon ?? 'workflow', { size: 14 }));
+  const metaEl = el('span', 'scc-row__meta');
+  metaEl.appendChild(el('span', 'scc-action-row__meta', meta));
+  row.append(leadEl, el('span', 'scc-row__title scc-action-row__title', title), metaEl);
+  row.title = `${title}\n${meta}`;
   return row;
 }
 
