@@ -34,7 +34,7 @@ import {
   issueNeedsGithubPush,
 } from '../issues/github-sync-plan.ts';
 import { emitIssuesChange } from './issues-events.ts';
-import { notifyGithubSyncedFieldWrite } from './issues-github-notify.ts';
+import { deferGithubSyncedFieldWrites, notifyGithubSyncedFieldWrite } from './issues-github-notify.ts';
 import { getIssuesTaxonomySync } from './issues-taxonomy-store.ts';
 import { normalizeIssuePlanPath } from '../issues/plan-attach.ts';
 import { decodeGithubIssueBody } from '../issues/github-metadata.ts';
@@ -1357,8 +1357,16 @@ export type AddIssueInput = {
   projectId?: string;
 };
 
+export type AddIssueOptions = {
+  /**
+   * Hold GitHub auto-sync for the new card until `releaseGithubSyncedFieldWrites`
+   * (Expand and Create: sync once the expansion has landed).
+   */
+  deferGithubAutoSync?: boolean;
+};
+
 /** Add an issue card (defaults: task / backlog-role status / none / source user). */
-export function addIssue(input: AddIssueInput, issueId?: string): IssueCard {
+export function addIssue(input: AddIssueInput, issueId?: string, options?: AddIssueOptions): IssueCard {
   const nowMs = issuesNowMs();
   const workspacePath = normalizeWorkspacePath(
     input.workspacePath?.trim() || getWorkspacePath(),
@@ -1392,6 +1400,7 @@ export function addIssue(input: AddIssueInput, issueId?: string): IssueCard {
   if (input.projectId) card.projectId = input.projectId;
   requireIssuesState().issues.push(card);
   touchIssuesStore();
+  if (options?.deferGithubAutoSync && card.source !== 'github') deferGithubSyncedFieldWrites(card.id);
   if (card.source !== 'github') notifyGithubSyncedFieldWrite(card.id);
   return card;
 }

@@ -13,6 +13,7 @@ import {
 import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import { createIcon } from './icon';
+import { placeFloating } from './components/position';
 export type WorkspaceMenuStatusState = 'ok' | 'err' | 'spin';
 
 /** Injectable deps so tests avoid importing tools/config or status chains. */
@@ -112,18 +113,11 @@ function ensureMenu(): HTMLUListElement {
 
 /** Position the menu below the anchor, right-aligned so it opens left (top-right control). */
 function positionMenu(btn: HTMLButtonElement, menu: HTMLElement): void {
-  const rect = btn.getBoundingClientRect();
-  const margin = 8;
-  menu.style.top = `${rect.bottom + 4}px`;
   menu.style.right = 'auto';
   const graphite = Boolean(btn.closest('#osGraphiteWorkspaceSlot'));
   menu.classList.toggle('workspace-menu--graphite', graphite);
-  menu.style.width = graphite ? `${rect.width}px` : '';
-
-  const menuWidth = menu.offsetWidth || menu.getBoundingClientRect().width;
-  let left = rect.right - menuWidth;
-  left = Math.max(margin, Math.min(left, window.innerWidth - menuWidth - margin));
-  menu.style.left = `${left}px`;
+  menu.style.width = graphite ? `${btn.getBoundingClientRect().width}px` : '';
+  placeFloating(menu, btn, { placement: 'bottom-end' });
 }
 
 function setAnchorExpanded(expanded: boolean): void {

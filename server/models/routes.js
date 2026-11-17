@@ -2,7 +2,7 @@ import { getMtplxDescriptor } from './mtplx-descriptor.js';
 import { buildMtplxServeLaunch, getMtplxLoadDefaults, readMtplxConfig } from './mtplx-args.js';
 import { estimateMtplxMemory } from './mtplx-memory.js';
 import { launchBudgetBytes } from '../../src/models/launch-plan.mjs';
-import { getMtplxStatus, getMtplxDiagnostics } from './mtplx-runtime.js';
+import { getMtplxStatus, getMtplxDiagnostics, refreshMtplxStatus } from './mtplx-runtime.js';
 import { cancelDownload, pauseDownload, resumeDownload, listDownloads, startDownload, subscribeDownload } from './download.js';
 import { getHubFiles } from './hf-files.js';
 import { searchHubModels } from './hf-search.js';
@@ -205,7 +205,8 @@ export async function handleModelsRequest(req, res, pathname) {
   }
 
   if (pathname === '/api/models/mtplx/runtime' && req.method === 'GET') {
-    sendJson(res, 200, await getMtplxStatus()); return true;
+    const refresh = new URL(req.url ?? '/', 'http://localhost').searchParams.get('refresh') === '1';
+    sendJson(res, 200, await (refresh ? refreshMtplxStatus() : getMtplxStatus())); return true;
   }
   if (pathname === '/api/models/mtplx/estimate' && req.method === 'POST') {
     try {

@@ -3,9 +3,9 @@ import '../styles/scc-releases.css';
 import { actionApi, type Release } from '../state/actions-api';
 import { createIcon } from './icon';
 import {
-  button, el, emptyState, errorStrip, listNavigator, skeletonRows, type SccContext, type SccView,
+  button, drillIn, el, emptyState, errorStrip, listNavigator, pageBar, searchBox, skeletonRows, statePill,
+  type PillTone, type SccContext, type SccView,
 } from './scc-shared';
-import { actionHeader } from './scc-action-layout';
 import { renderReleaseNotesMarkdown } from './release-notes-markdown';
 import { confirmAction, field, labeled, operationButton, remoteOptions, select, statusLine, textArea } from './scc-action-form';
 import { createReleaseWorkflowTrigger } from './scc-release-workflow';
@@ -23,9 +23,15 @@ function releaseState(release: Release): string {
   return release.draft ? 'Draft' : release.prerelease ? 'Prerelease' : 'Published';
 }
 
+function releaseTone(release: Release): PillTone {
+  return release.draft ? 'draft' : release.prerelease ? 'warning' : 'success';
+}
+
 function stateLabel(release: Release): HTMLElement {
   const state = releaseState(release);
-  return el('span', `scc-release__state scc-release__state--${state.toLowerCase()}`, state);
+  const pill = statePill(state, releaseTone(release));
+  pill.classList.add('scc-release__state', `scc-release__state--${state.toLowerCase()}`);
+  return pill;
 }
 
 function renderNotes(container: HTMLElement, body: string): void {
@@ -84,17 +90,18 @@ function prereleaseField(input: HTMLInputElement): HTMLElement {
 }
 
 export function createReleasesView(ctx: SccContext): SccView {
-  const root = el('div', 'scc-actions scc-releases');
-  const toolbar = el('div', 'scc-list-view__toolbar');
+  const root = el('div', 'scc-page scc-actions scc-releases');
+  const bar = pageBar('Releases');
   const split = el('div', 'scc-split');
+  const drill = drillIn(split);
   const listCol = el('section', 'scc-split__list');
   listCol.setAttribute('aria-label', 'Release history');
   const list = el('div', 'scc-split__list-body');
   const detail = el('div', 'scc-split__detail scc-release__detail');
   const content = el('div', 'scc-release__content');
-  const back = button({ label: 'All releases', icon: 'chevronLeft', variant: 'ghost', className: 'scc-release__back', onClick: backToList });
+  const back = button({ label: 'Releases', icon: 'chevronLeft', variant: 'ghost', className: 'scc-dhead__back scc-release__back', onClick: backToList });
   detail.append(back, content);
-  listCol.append(toolbar, list);
+  listCol.append(list);
   split.append(listCol, detail);
   let cwd = ctx.getCwd();
   let generation = 0;
@@ -109,12 +116,9 @@ export function createReleasesView(ctx: SccContext): SccView {
   let returnedToList = false;
   let canReloadDetail = () => true;
   let draftWriter: ReturnType<typeof createReleaseDraftWriter> | undefined;
-  const listCount = el('span', 'scc-actions__count');
-  listCount.setAttribute('role', 'status');
-  const search = field('Search loaded releases', '', 'search');
-  search.placeholder = 'Search loaded releases';
-  const searchBox = el('div', 'scc-release__search');
-  searchBox.append(createIcon('search', { size: 14 }), search);
+  const listCount = bar.count;
+  const searchField = searchBox('Search releases', 'Search loaded releases');
+  const search = searchField.input;
   const filter = select('Release status', [
     { value: 'all', label: 'All statuses' },
     { value: 'draft', label: 'Drafts' },
@@ -126,24 +130,25 @@ export function createReleasesView(ctx: SccContext): SccView {
     if (!creating) void create();
     openDetail();
   } });
-  root.append(actionHeader('Releases', '', [
+  bar.controls.append(searchField.root, filter);
+  bar.actions.append(
     button({ title: 'Refresh releases', icon: 'refresh', variant: 'ghost', onClick: () => void refresh(false, true) }),
     releaseWorkflow.button,
     newRelease,
-  ]), split);
-  toolbar.append(searchBox, filter, listCount);
+  );
+  root.append(bar.root, split);
   search.addEventListener('input', renderList);
   filter.addEventListener('change', renderList);
 
   function openDetail() {
     returnedToList = false;
-    root.classList.add('scc-releases--detail');
+    drill.open();
     if (back.getClientRects().length) back.focus();
   }
 
   function backToList() {
     returnedToList = true;
-    root.classList.remove('scc-releases--detail');
+    drill.close();
     (list.querySelector<HTMLButtonElement>('.is-selected') ?? search).focus();
   }
 
@@ -155,27 +160,33 @@ export function createReleasesView(ctx: SccContext): SccView {
       (filter.value === 'all' || releaseState(r).toLowerCase() === filter.value),
     );
     listCount.textContent = query || filter.value !== 'all'
-      ? `${visible.length} of ${rows.length} loaded`
-      : `${rows.length} loaded`;
+      ? `${visible.length} of ${rows.length}${hasMore ? '+' : ''}`
+      : `${rows.length}${hasMore ? '+' : ''}`;
     const nodes: HTMLElement[] = visible.map(r => {
       const label = `${r.title} · ${r.tag} · ${releaseState(r)}`;
-      const row = button({ className: 'scc-action-row scc-release__row', title: label, onClick: () => {
+      const row = el('button', 'scc-row scc-action-row scc-release__row');
+      row.type = 'button';
+      row.title = label;
+      row.addEventListener('click', () => {
         if (!returnedToList || r.id !== selected) void show(r.id);
         openDetail();
-      } });
-      row.classList.remove('scc-btn--icon-only');
+      });
       row.dataset.id = String(r.id);
       row.setAttribute('aria-pressed', String(selected === r.id));
       row.classList.toggle('is-selected', selected === r.id);
-      const top = el('span', 'scc-release__row-top');
-      top.append(stateLabel(r));
+      const lead = el('span', 'scc-row__lead');
+      lead.dataset.tone = releaseTone(r);
+      lead.appendChild(createIcon('tags', { size: 14 }));
       const date = dateLabel(r);
-      if (date) top.append(el('span', 'scc-release__row-date', date));
-      row.append(top, el('span', 'scc-action-row__title', r.title));
-      const meta = el('span', 'scc-action-row__meta');
-      if (r.title !== r.tag) meta.append(el('span', 'scc-release__ref', r.tag));
-      if (r.assets.length) meta.append(el('span', undefined, `${r.assets.length} ${r.assets.length === 1 ? 'asset' : 'assets'}`));
-      if (meta.childElementCount) row.append(meta);
+      const meta = el('span', 'scc-row__meta scc-action-row__meta');
+      if (r.title !== r.tag) meta.append(el('span', 'scc-fact scc-mono scc-release__ref', r.tag));
+      if (r.assets.length) meta.append(el('span', 'scc-fact', `${r.assets.length} ${r.assets.length === 1 ? 'asset' : 'assets'}`));
+      if (r.draft || r.prerelease) {
+        const end = el('span', 'scc-row__end');
+        end.append(stateLabel(r));
+        meta.append(end);
+      }
+      row.append(lead, el('span', 'scc-row__title scc-action-row__title', r.title), el('span', 'scc-row__aside', date), meta);
       return row;
     });
     if (!nodes.length) nodes.push(emptyState({
@@ -183,7 +194,7 @@ export function createReleasesView(ctx: SccContext): SccView {
       title: rows.length ? 'No matching releases' : 'No releases yet',
       body: rows.length ? 'Try a different search or status.' : 'Create a draft to prepare notes and attach builds.',
     }));
-    if (hasMore) nodes.push(button({ label: 'Load more', onClick: () => void refresh(true) }));
+    if (hasMore) nodes.push(button({ label: 'Load older releases', variant: 'ghost', onClick: () => void refresh(true) }));
     list.replaceChildren(...nodes);
     if (focusedId) list.querySelector<HTMLElement>(`[data-id="${focusedId}"]`)?.focus();
   }
@@ -212,16 +223,14 @@ export function createReleasesView(ctx: SccContext): SccView {
   }
 
   function renderHeader(title: string, badge?: HTMLElement) {
-    const head = el('header', 'scc-release__head');
-    const identity = el('div', 'scc-release__identity');
-    const titleRow = el('div', 'scc-release__title-row');
-    const heading = el('h2', undefined, title);
-    titleRow.append(heading);
-    if (badge) titleRow.append(badge);
-    if (repo) identity.append(el('p', 'scc-release__repo', repo));
-    identity.append(titleRow);
-    const actions = el('div', 'scc-release__actions');
-    head.append(identity, actions);
+    const head = el('header', 'scc-dhead scc-release__head');
+    const eyebrow = el('div', 'scc-dhead__eyebrow scc-release__title-row');
+    if (badge) eyebrow.append(badge);
+    if (repo) eyebrow.append(el('span', 'scc-release__repo', repo));
+    const heading = el('h2', 'scc-dhead__title', title);
+    const actions = el('div', 'scc-dhead__actions scc-release__actions');
+    if (eyebrow.childElementCount) head.append(eyebrow);
+    head.append(heading, actions);
     content.replaceChildren(head);
     return { heading, actions };
   }
@@ -483,7 +492,7 @@ export function createReleasesView(ctx: SccContext): SccView {
         hasMore = false;
         creating = false;
         returnedToList = false;
-        root.classList.remove('scc-releases--detail');
+        drill.close();
         content.replaceChildren(emptyState({ icon: 'tags', title: 'Select a release', body: 'Open a release to review notes and assets.' }));
         await refresh();
       }

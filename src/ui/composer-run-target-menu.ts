@@ -17,6 +17,7 @@ import {
 } from '../state/chat-worktree.ts';
 import { listWorktrees } from '../state/worktree-service.ts';
 import { getWorkspaceLabel } from '../state/workspace.ts';
+import { placeFloating } from './components/position';
 import { createGitWorktreeIcon } from './git-worktree-icons.ts';
 import {
   closeGitPanelNamePopover,
@@ -107,24 +108,7 @@ function menuItem(
 
 /** Position a run-target flyout under (or above) an anchor. */
 export function positionRunTargetMenu(anchor: HTMLElement, menu: HTMLElement): void {
-  const rect = anchor.getBoundingClientRect();
-  const margin = 8;
-  const gap = 4;
-  const menuHeight = menu.offsetHeight || menu.getBoundingClientRect().height;
-  const menuWidth = menu.offsetWidth || menu.getBoundingClientRect().width;
-
-  let top = rect.bottom + gap;
-  if (top + menuHeight > window.innerHeight - margin) {
-    top = Math.max(margin, rect.top - menuHeight - gap);
-  }
-
-  let left = rect.left;
-  if (left + menuWidth > window.innerWidth - margin) {
-    left = Math.max(margin, window.innerWidth - menuWidth - margin);
-  }
-
-  menu.style.top = `${top}px`;
-  menu.style.left = `${left}px`;
+  placeFloating(menu, anchor);
 }
 
 /** Fill current workspace / Worktree… / New worktree into an existing menu element. */

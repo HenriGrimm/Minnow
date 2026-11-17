@@ -174,6 +174,31 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   assert.ok(desktopArchive.scrolls && desktopArchive.clearsTop, JSON.stringify(desktopArchive));
   assert.ok(touchArchive.height >= 44 && touchArchive.clearsTop, JSON.stringify(touchArchive));
 
+  const toastLayer = await session.evaluate(`(() => {
+    const auxiliary = document.querySelector('.mn-graphite-auxiliary');
+    const footer = document.createElement('div');
+    footer.className = 'mn-graphite-sidebar-footer';
+    footer.innerHTML = '<div class="chat-list-views"><button class="chat-list-view">Archive</button>' +
+      '<div class="chat-list-toast"><span class="chat-list-toast__text">Chat archived.</span>' +
+      '<button class="chat-list-toast__undo">Undo</button></div></div>';
+    const previous = [...auxiliary.childNodes];
+    auxiliary.replaceChildren(footer);
+    const toast = footer.querySelector('.chat-list-toast');
+    const undo = toast.querySelector('button');
+    const { left, top, width, height } = undo.getBoundingClientRect();
+    const x = left + width / 2;
+    const y = top + height / 2;
+    const layers = document.elementsFromPoint(x, y);
+    const result = {
+      overlapsChatList: layers.some(element => element.matches('.chat-list')),
+      undoClickable: layers[0] === undo,
+      layers: layers.map(element => element.className),
+    };
+    auxiliary.replaceChildren(...previous);
+    return result;
+  })()`);
+  assert.ok(toastLayer.overlapsChatList && toastLayer.undoClickable, JSON.stringify(toastLayer));
+
   const grip = await session.evaluate(`(() => {
     const rail = document.getElementById('osAppRail').getBoundingClientRect();
     const resizer = document.getElementById('chatSidebarResizer');

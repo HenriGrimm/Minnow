@@ -378,6 +378,7 @@
 }
 
 .chat-list-views {
+  position: relative;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1321,18 +1322,21 @@
 
 /* Undo toast above the view switch. */
 .chat-list-toast {
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(100% + 8px);
+  z-index: var(--mn-z-toast);
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: 8px;
-  margin: 0 8px 8px;
+  margin: 0;
   padding: 6px 6px 6px 12px;
   border: 1px solid var(--mn-border-strong);
   border-radius: var(--radius-md);
   background: var(--mn-surface-2);
   color: var(--mn-fg);
   font-size: 12.5px;
-  animation: fadeUp 0.22s var(--ease-out);
 }
 
 .chat-list-toast[hidden] {
@@ -1733,7 +1737,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-list-toast,
   .needs-you-done,
   .chat-item-row--agent[data-agent-state='running'] .chat-item-logo::after {
     animation: none;

@@ -460,7 +460,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .send-btn:hover:not(:disabled):not(.send-btn--stop) {
+  .send-btn:hover:not(:disabled):not(.send-btn--busy) {
     opacity: 0.9;
   }
 }
@@ -474,7 +474,9 @@
   cursor: not-allowed;
 }
 
-.send-btn.send-btn--stop {
+/* Busy covers both Stop and Steer (text typed mid-turn): one control, one veil;
+   only the icon inside changes. */
+.send-btn.send-btn--busy {
   background: color-mix(in srgb, var(--mn-fg) 7%, transparent);
   border: 1px solid var(--mn-border-strong);
   /* --mn-fg: white on dark veil (light theme), light text on light veil (dark theme) */
@@ -500,7 +502,7 @@
    accent disc and drains, so the send button morphs into it: the veil swaps in
    underneath at once rather than cross-fading against the disc. */
 .send-btn { position: relative; }
-.send-btn.send-btn--stop.is-model-working {
+.send-btn.send-btn--busy.is-model-working {
   border-color: transparent;
   transition-property: opacity, transform, color, box-shadow;
 }
@@ -524,7 +526,7 @@
 }
 
 :root[data-reduce-motion] .composer-wave { display: none; }
-:root[data-reduce-motion] .send-btn.send-btn--stop.is-model-working {
+:root[data-reduce-motion] .send-btn.send-btn--busy.is-model-working {
   border-color: var(--mn-accent-border);
 }
 

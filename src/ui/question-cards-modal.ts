@@ -727,12 +727,15 @@ export function showQuestionCardsModal(
         const label = document.createElement('span');
         label.className = 'question-cards-option-label';
         label.textContent = opt.label;
-        row.append(input, keyHint(i + 1), label);
+        const content = document.createElement('span');
+        content.className = 'question-cards-option-content';
+        content.appendChild(label);
+        row.append(input, keyHint(i + 1), content);
         if (opt.description) {
           const desc = document.createElement('span');
           desc.className = 'question-cards-option-desc';
           desc.textContent = opt.description;
-          row.appendChild(desc);
+          content.appendChild(desc);
         }
         list.appendChild(row);
         rows.push(row);

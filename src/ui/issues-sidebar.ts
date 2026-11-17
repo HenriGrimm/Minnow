@@ -12,6 +12,7 @@ import { deferUntilIssueLabelPopoverClosed } from './issues-label-chip';
 import { createIcon } from './icon';
 import type { createIssueDetailController } from './issues-detail';
 import { addIssueAttachment, addIssue, findIssueById, isIssuesStoreLoaded, isIssuesStoreRecovering, listIssues, listIssueProjects, loadIssuesFromStorage, saveIssuesNow, updateIssue, type AddIssueInput } from '../state/issues-store';
+import { releaseGithubSyncedFieldWrites } from '../state/issues-github-notify';
 import { getIssuesTaxonomySync, loadIssuesTaxonomyFromStorage } from '../state/issues-taxonomy-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
@@ -381,7 +382,13 @@ async function createIssue(expandInBackground = false): Promise<void> {
   try {
     if (!isIssuesStoreLoaded() || isIssuesStoreRecovering()) throw new Error('Issues are still loading');
     if (value.pendingId && !findIssueById(value.pendingId)) value.pendingId = undefined;
-    if (!value.pendingId) value.pendingId = addIssue({ ...value.draft, workspacePath, source: 'user' }).id;
+    if (!value.pendingId) {
+      value.pendingId = addIssue(
+        { ...value.draft, workspacePath, source: 'user' },
+        undefined,
+        { deferGithubAutoSync: expandInBackground },
+      ).id;
+    }
     saveDraft(value, workspace);
     await saveIssuesNow();
     const id = value.pendingId;
@@ -403,10 +410,13 @@ async function createIssue(expandInBackground = false): Promise<void> {
     }
     if (expandInBackground) {
       void import('./issues-expand').then((m) => m.expandCreatedIssueInBackground(id)).catch((error) => {
+        releaseGithubSyncedFieldWrites(id);
         showToast(error instanceof Error ? error.message : `Could not expand ${id}`, 'error');
       });
     }
   } catch (error) {
+    // Saving failed before expansion started: let the card sync as usual.
+    if (value.pendingId) releaseGithubSyncedFieldWrites(value.pendingId);
     if (currentWorkspace === workspace) {
       feedback.textContent = `${error instanceof Error ? error.message : 'Could not save this issue.'} Retry save to keep it without creating a duplicate.`;
     }

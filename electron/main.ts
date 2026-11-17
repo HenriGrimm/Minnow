@@ -67,6 +67,7 @@ import {
   wireShellZoom,
 } from './shell-zoom.js';
 import { wireShellReload } from './shell-reload.js';
+import { wireShellRendererHealth } from './shell-renderer-health.js';
 import { buildShellEditMenu } from './shell-context-menu.js';
 import { readLoginItemSnapshot, writeLoginItemOpenAtLogin } from './login-item.js';
 import { createTrayManager, type TrayManager } from './tray.js';
@@ -1016,7 +1017,29 @@ async function createShellWindow(
     void openNewShellWindow();
   });
 
-  wireShellReload(win);
+  const offerHungRendererRestart = wireShellRendererHealth(win, {
+    isQuitting: () => quitInProgress,
+    confirmRestart: async (signal) => {
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'warning', title: 'Minnow is unresponsive', message: 'This Minnow window has stopped responding.',
+        detail: 'Restart the renderer to reopen this workspace. Unsaved changes in affected views may be lost.',
+        buttons: ['Keep waiting', 'Restart renderer'], defaultId: 0, cancelId: 0, noLink: true, signal,
+      });
+      return response === 1;
+    },
+    record: (kind, details) => {
+      const metric = app.getAppMetrics().find(process => process.pid === details.rendererPid);
+      crashLog.logCrash({
+        source: 'renderer', kind,
+        extra: {
+          ...details,
+          cumulativeCPUSeconds: metric?.cpu.cumulativeCPUUsage,
+          workingSetKiB: metric?.memory.workingSetSize,
+        },
+      });
+    },
+  });
+  wireShellReload(win, offerHungRendererRestart);
   win.webContents.on('context-menu', (_event, params) => {
     const items = buildShellEditMenu(params);
     if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
@@ -1127,23 +1150,6 @@ async function createShellWindow(
     crashLog.flushCrashLogSync();
     if (details.reason === 'clean-exit' || win.isDestroyed()) return;
     recoverRenderer(win);
-  });
-
-  win.webContents.on('unresponsive', () => {
-    crashLog.logCrash({
-      source: 'renderer',
-      kind: 'unresponsive',
-      message: 'Renderer became unresponsive',
-    });
-    crashLog.flushCrashLogSync();
-  });
-
-  win.webContents.on('responsive', () => {
-    crashLog.logCrash({
-      source: 'renderer',
-      kind: 'responsive',
-      message: 'Renderer became responsive again',
-    });
   });
 
   return win;

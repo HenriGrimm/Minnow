@@ -17,10 +17,15 @@ export function createComposerPrimaryButton(): HTMLButtonElement {
   return button;
 }
 
-/** Paint the same primary control in each composer, independent of turn ownership. */
+/**
+ * Paint the same primary control in each composer, independent of turn ownership.
+ * While a turn is busy the button keeps its stop veil and working rim; typing a
+ * steer message only swaps the stop square for the send arrow.
+ */
 export function paintComposerPrimaryButton(button: HTMLButtonElement, busy: boolean, stopping: boolean): void {
   const label = stopping ? 'Stop generating' : 'Send message';
   button.dataset.mode = busy ? 'stop' : 'send';
+  button.classList.toggle('send-btn--busy', busy || stopping);
   button.classList.toggle('send-btn--stop', stopping);
   button.setAttribute('aria-busy', String(busy));
   button.setAttribute('aria-label', label);

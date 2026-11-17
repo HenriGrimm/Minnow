@@ -1287,9 +1287,19 @@ export async function openPr({ boardId, branch, title, body }) {
   return { ok: true, url: urlMatch?.[0], output: text };
 }
 
+/**
+ * `missing` lists registered worktrees whose folder is gone. Git reports those
+ * as `prunable` only when unlocked; a locked one (Codex leaves `initializing`)
+ * otherwise looks like a live checkout forever.
+ */
 export async function listWorktrees() {
   const r = await git(['worktree', 'list', '--porcelain']);
-  return { ok: ok(r), output: out(r) };
+  if (!ok(r)) return { ok: false, output: out(r) };
+  const paths = String(r.stdout ?? '').split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length).trim());
+  const exists = await Promise.all(paths.map((p) => pathExists(p)));
+  return { ok: true, output: out(r), missing: paths.filter((_, i) => !exists[i]) };
 }
 
 const automaticChatSetups = new Map();

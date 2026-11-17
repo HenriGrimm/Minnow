@@ -12,31 +12,26 @@ import type {
   ExpandIssueResult,
 } from './issues-expand-client';
 import {
-  ISSUES_EXPAND_BACKDROP_ID,
-  ISSUES_EXPAND_FORM_ID,
+  getIssueExpandUndo,
   isIssueDraftExpanding,
-  isIssueExpandOverlayOpen,
   setIssueExpandRun,
+  setIssueExpandUndo,
 } from './issues-expand-state';
+import { syncIssueExpandButtons } from './issues-expand-controls';
 import { setStatus } from './status';
-import { showToast } from './toast';
+import { notify, showToast } from './toast';
 import { isIssueBackgroundExpanding, setIssueBackgroundExpanding } from './issues-background-activity';
+import { releaseGithubSyncedFieldWrites } from '../state/issues-github-notify';
 
-export { isIssueDraftExpanding, isIssueExpandOverlayOpen };
+export { isIssueDraftExpanding };
 
-const OVERLAY_FORM_ID = ISSUES_EXPAND_FORM_ID;
-const OVERLAY_BACKDROP_ID = ISSUES_EXPAND_BACKDROP_ID;
-
-const IDLE_LABEL = 'Expand issue';
-const IDLE_TITLE = 'Expand title, description, type, labels, and priority from the current card';
-const BUSY_LABEL = 'Expanding issue — click to cancel';
-const BUSY_TITLE = 'Expanding… click to cancel';
+type ExpandField = keyof ExpandedIssueDraft;
+const EXPAND_FIELDS = ['title', 'description', 'type', 'priority', 'labels'] as const satisfies readonly ExpandField[];
 
 interface ExpandRun {
   issueId: string;
+  workspacePath?: string;
   controller: AbortController;
-  original: ExpandedIssueDraft;
-  catalog: IssueExpandCatalog;
 }
 
 type ExpandIssueFetcher = (input: ExpandIssueRequest) => Promise<ExpandIssueResult>;
@@ -80,8 +75,19 @@ export async function expandUnsavedIssueDraft(
 /** Keep toast copy aligned with composer-expand-client without a static import. */
 const EXPAND_EMPTY_MESSAGE = 'Model returned no expanded prompt.';
 
-/** Expand a saved issue independently of the form that created it. */
+/**
+ * Expand a saved issue independently of the form that created it. Always ends
+ * any GitHub sync deferral for the issue, so its first sync includes the result.
+ */
 export async function expandCreatedIssueInBackground(issueId: string): Promise<void> {
+  try {
+    await expandCreatedIssue(issueId);
+  } finally {
+    releaseGithubSyncedFieldWrites(issueId);
+  }
+}
+
+async function expandCreatedIssue(issueId: string): Promise<void> {
   const issue = findIssueById(issueId);
   if (!issue || isIssueBackgroundExpanding(issueId, issue.workspacePath)) return;
   const original = {
@@ -95,7 +101,7 @@ export async function expandCreatedIssueInBackground(issueId: string): Promise<v
     const current = findIssueById(issueId);
     if (!current) return;
     const patch: Partial<ExpandedIssueDraft> = {};
-    for (const field of ['title', 'description', 'type', 'priority', 'labels'] as const) {
+    for (const field of EXPAND_FIELDS) {
       if (JSON.stringify(current[field]) === JSON.stringify(original[field]) && draft[field] !== undefined) {
         Object.assign(patch, { [field]: draft[field] });
       }
@@ -110,337 +116,78 @@ export async function expandCreatedIssueInBackground(issueId: string): Promise<v
   }
 }
 const EXPAND_FAILED_MESSAGE = 'Expand failed — check provider and model in Settings';
-const EXPANDING_STATUS = 'Expanding… writing a title, description, type, labels, and priority.';
 
-function clearActiveRun(): void {
-  activeRun = null;
-  setIssueExpandRun(null);
-}
-
-/** Keep sparkles controls in sync after the lazy expand module mutates run state. */
-function syncExpandButtons(): void {
-  document.querySelectorAll<HTMLButtonElement>('[data-issue-expand]').forEach((btn) => {
-    const id = btn.dataset.issueExpand ?? '';
-    const busy = isIssueDraftExpanding(id);
-    btn.classList.toggle('composer-expand-btn--busy', busy);
-    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
-    btn.setAttribute('aria-label', busy ? BUSY_LABEL : IDLE_LABEL);
-    btn.title = busy ? BUSY_TITLE : IDLE_TITLE;
-    if (!busy) {
-      const issue = findIssueById(id);
-      btn.disabled = !issue || !canExpandIssueDraft(issue);
-    } else {
-      btn.disabled = false;
-    }
-  });
-}
-
-// ── Overlay ──────────────────────────────────────────────────────────────────
-
-function overlayEls(): {
-  form: HTMLFormElement;
-  backdrop: HTMLButtonElement;
-  title: HTMLInputElement;
-  description: HTMLTextAreaElement;
-  labels: HTMLTextAreaElement;
-  type: HTMLSelectElement;
-  priority: HTMLSelectElement;
-  apply: HTMLButtonElement;
-  discard: HTMLButtonElement;
-  status: HTMLParagraphElement;
-  progress: HTMLElement;
-} | null {
-  const form = document.getElementById(OVERLAY_FORM_ID);
-  const backdrop = document.getElementById(OVERLAY_BACKDROP_ID);
-  const title = document.getElementById('issuesExpandTitle');
-  const description = document.getElementById('issuesExpandDescription');
-  const labels = document.getElementById('issuesExpandLabels');
-  const type = document.getElementById('issuesExpandType');
-  const priority = document.getElementById('issuesExpandPriority');
-  const apply = document.getElementById('issuesExpandApply');
-  const discard = document.getElementById('issuesExpandDiscard');
-  const status = document.getElementById('issuesExpandStatus');
-  const progress = document.getElementById('issuesExpandProgress');
-  if (
-    !(form instanceof HTMLFormElement) ||
-    !(backdrop instanceof HTMLButtonElement) ||
-    !(title instanceof HTMLInputElement) ||
-    !(description instanceof HTMLTextAreaElement) ||
-    !(labels instanceof HTMLTextAreaElement) ||
-    !(type instanceof HTMLSelectElement) ||
-    !(priority instanceof HTMLSelectElement) ||
-    !(apply instanceof HTMLButtonElement) ||
-    !(discard instanceof HTMLButtonElement) ||
-    !(status instanceof HTMLParagraphElement) ||
-    !(progress instanceof HTMLElement)
-  ) {
-    return null;
-  }
-  return {
-    form, backdrop, title, description, labels, type, priority, apply, discard, status, progress,
-  };
-}
-
-function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
-  const existing = overlayEls();
-  if (existing) return existing;
-
-  const backdrop = document.createElement('button');
-  backdrop.type = 'button';
-  backdrop.id = OVERLAY_BACKDROP_ID;
-  backdrop.className = 'issues-new-form__backdrop';
-  backdrop.setAttribute('aria-label', 'Discard expanded issue');
-
-  const form = document.createElement('form');
-  form.id = OVERLAY_FORM_ID;
-  form.className = 'issues-new-form issues-expand-form';
-  form.setAttribute('aria-label', 'Expand issue');
-  form.setAttribute('role', 'dialog');
-  form.setAttribute('aria-modal', 'true');
-
-  const heading = document.createElement('h2');
-  heading.className = 'issues-expand-form__heading';
-  heading.id = 'issuesExpandHeading';
-  heading.textContent = 'Expand issue';
-  form.setAttribute('aria-labelledby', heading.id);
-
-  const hint = document.createElement('p');
-  hint.className = 'issues-expand-form__hint';
-  hint.textContent =
-    'Review the title, description, type, labels, and priority. Nothing is saved until you apply.';
-
-  const titleLabel = document.createElement('label');
-  titleLabel.className = 'issues-expand-form__title';
-  titleLabel.append('Title');
-  const title = document.createElement('input');
-  title.type = 'text';
-  title.id = 'issuesExpandTitle';
-  title.autocomplete = 'off';
-  title.setAttribute('aria-label', 'Expanded title');
-  titleLabel.appendChild(title);
-
-  const descLabel = document.createElement('label');
-  descLabel.className = 'issues-expand-form__desc';
-  descLabel.append('Description');
-  const description = document.createElement('textarea');
-  description.id = 'issuesExpandDescription';
-  description.rows = 10;
-  description.setAttribute('aria-label', 'Expanded description');
-  descLabel.appendChild(description);
-
-  const labelsLabel = document.createElement('label');
-  labelsLabel.className = 'issues-expand-form__title';
-  labelsLabel.append('Labels (one per line)');
-  const labels = document.createElement('textarea');
-  labels.id = 'issuesExpandLabels';
-  labels.rows = 2;
-  labels.setAttribute('aria-label', 'Expanded labels');
-  labelsLabel.appendChild(labels);
-
-  const typeLabel = document.createElement('label');
-  typeLabel.className = 'issues-expand-form__title';
-  typeLabel.append('Type');
-  const type = document.createElement('select');
-  type.id = 'issuesExpandType';
-  type.setAttribute('aria-label', 'Expanded type');
-  typeLabel.appendChild(type);
-
-  const priorityLabel = document.createElement('label');
-  priorityLabel.className = 'issues-expand-form__title';
-  priorityLabel.append('Priority');
-  const priority = document.createElement('select');
-  priority.id = 'issuesExpandPriority';
-  priority.setAttribute('aria-label', 'Expanded priority');
-  priorityLabel.appendChild(priority);
-
-  const progress = document.createElement('div');
-  progress.id = 'issuesExpandProgress';
-  progress.className = 'issues-expand-form__progress';
-  progress.setAttribute('role', 'progressbar');
-  progress.setAttribute('aria-label', 'Expanding issue');
-  progress.hidden = true;
-
-  const status = document.createElement('p');
-  status.id = 'issuesExpandStatus';
-  status.className = 'issues-expand-form__status';
-  status.setAttribute('aria-live', 'polite');
-
-  const actions = document.createElement('div');
-  actions.className = 'issues-new-form__actions';
-  const discard = document.createElement('button');
-  discard.type = 'button';
-  discard.id = 'issuesExpandDiscard';
-  discard.className = 'issues-btn';
-  discard.textContent = 'Discard';
-  const apply = document.createElement('button');
-  apply.type = 'button';
-  apply.id = 'issuesExpandApply';
-  apply.className = 'issues-btn issues-btn--primary';
-  apply.textContent = 'Apply';
-  actions.append(discard, apply);
-
-  form.append(
-    heading, hint, progress, titleLabel, descLabel, typeLabel, labelsLabel, priorityLabel,
-    status, actions,
-  );
-  document.body.append(backdrop, form);
-
-  title.addEventListener('input', () => syncApplyEnabled());
-  description.addEventListener('input', () => syncApplyEnabled());
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    applyExpand();
-  });
-  apply.addEventListener('click', () => applyExpand());
-  discard.addEventListener('click', () => discardExpand());
-  backdrop.addEventListener('click', () => discardExpand());
-  form.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      discardExpand();
-      return;
-    }
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-      event.preventDefault();
-      applyExpand();
-    }
-  });
-
-  return overlayEls()!;
-}
-
-function setOverlayOpen(open: boolean): void {
-  const els = ensureOverlay();
-  els.form.classList.toggle('is-open', open);
-  els.backdrop.classList.toggle('is-open', open);
-}
-
-function setFieldsReadonly(readonly: boolean): void {
-  const els = overlayEls();
-  if (!els) return;
-  els.title.readOnly = readonly;
-  els.description.readOnly = readonly;
-  els.labels.readOnly = readonly;
-  els.type.disabled = readonly;
-  els.priority.disabled = readonly;
-  els.form.classList.toggle('is-expanding', readonly);
-  setExpandingIndicator(readonly);
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /**
- * Show or hide the in-flight indicator.
- *
- * `hidden` and not a class toggle: display:none actually stops the sweep
- * animation, where a transparent-but-painted bar keeps the compositor running
- * for the whole generation — which costs tokens/second on a local model.
- *
- * While it is up, Discard is the cancel button, so it says so.
+ * Re-render open detail surfaces so header controls pick up run/undo state.
+ * Dynamic import: a static one would cycle through issues-detail →
+ * issues-expand-controls → this module.
  */
-function setExpandingIndicator(busy: boolean): void {
-  const els = overlayEls();
-  if (!els) return;
-  els.progress.hidden = !busy;
-  els.discard.textContent = busy ? 'Cancel' : 'Discard';
-}
-
-function setStatusLine(text: string): void {
-  const els = overlayEls();
-  if (!els) return;
-  els.status.textContent = text;
-  els.status.hidden = !text;
-}
-
-function paintDraft(draft: ExpandedIssueDraft): void {
-  const els = overlayEls();
-  if (!els) return;
-  els.title.value = draft.title;
-  els.description.value = draft.description;
-  els.labels.value = (draft.labels ?? []).join('\n');
-  els.type.value = draft.type ?? '';
-  els.priority.value = draft.priority ?? 'none';
-  syncApplyEnabled();
-}
-
-function syncApplyEnabled(): void {
-  const els = overlayEls();
-  if (!els) return;
-  const streaming = Boolean(activeRun) && els.title.readOnly;
-  els.apply.disabled = streaming || !els.title.value.trim();
-}
-
-function closeOverlay(): void {
-  const els = overlayEls();
-  if (!els) return;
-  setOverlayOpen(false);
-  els.title.value = '';
-  els.description.value = '';
-  els.labels.value = '';
-  els.type.replaceChildren();
-  els.priority.replaceChildren();
-  setFieldsReadonly(false);
-  setStatusLine('');
-  els.apply.disabled = true;
-}
-
-/**
- * Streamed-so-far counter, so the overlay moves before the first field lands.
- *
- * Counts the raw partial, not the merge: the merge falls back to the card's
- * existing description, which would show a number that never moves on an issue
- * that already had one.
- */
-function setStreamingStatus(partial: ExpandedIssueDraft): void {
-  const written = partial.description?.trim().length ?? 0;
-  setStatusLine(written > 0 ? `Expanding… ${written} characters written.` : EXPANDING_STATUS);
-}
-
-/** Close without saving (tests + Discard). Aborts an in-flight generation. */
-export function closeIssueExpandOverlay(): void {
-  discardExpand();
-}
-
-// ── Apply ────────────────────────────────────────────────────────────────────
-
-function discardExpand(): void {
-  const run = activeRun;
-  if (run) {
-    run.controller.abort();
-    clearActiveRun();
-    syncExpandButtons();
-    setStatus('ok', 'Expand cancelled');
-  }
-  closeOverlay();
-}
-
-function applyExpand(): void {
-  const els = overlayEls();
-  const run = activeRun;
-  if (!els || !run) return;
-  if (els.title.readOnly) return;
-
-  const title = els.title.value.trim();
-  if (!title) return;
-
-  const description = els.description.value;
-  const issueId = run.issueId;
-  clearActiveRun();
-  const labels = els.labels.value.split('\n').map((label) => label.trim()).filter(Boolean);
-  const type = els.type.value || run.original.type;
-  const priority = els.priority.value || run.original.priority;
-  updateIssue(issueId, { title, description, type, labels, priority });
-  closeOverlay();
-  syncExpandButtons();
-  // The store emit above landed while the overlay still owned the editing
-  // guard, so the open detail never re-rendered; refresh it now that the
-  // overlay is closed. Dynamic import: a static one would cycle through
-  // issues-detail → issues-expand-controls → this module.
+function refreshDetail(): void {
+  syncIssueExpandButtons();
   void import('./issues-detail').then((m) => m.refreshIssueDetailIfOpen());
-  setStatus('ok', 'Issue expanded');
-  showToast('Issue expanded', 'success');
 }
 
-/** Open the review overlay and stream a proposal. */
+function finishRun(run: ExpandRun): void {
+  if (activeRun === run) {
+    activeRun = null;
+    setIssueExpandRun(null);
+  }
+  setIssueBackgroundExpanding(run.issueId, false, run.workspacePath);
+  syncIssueExpandButtons();
+}
+
+/** Stop an in-flight in-place expansion; nothing has been written yet. */
+export function cancelIssueExpand(): void {
+  const run = activeRun;
+  if (!run) return;
+  run.controller.abort();
+  finishRun(run);
+  setStatus('ok', 'Expand cancelled');
+}
+
+/** True when the last in-place expansion of this issue can be undone. */
+export function canUndoIssueExpand(issueId: string): boolean {
+  return Boolean(getIssueExpandUndo(issueId));
+}
+
+/**
+ * Restore the values the last expansion replaced. Fields edited since the
+ * expansion landed keep the newer edit.
+ */
+export function undoIssueExpand(issueId: string): boolean {
+  const undo = getIssueExpandUndo(issueId);
+  setIssueExpandUndo(issueId, null);
+  const current = findIssueById(issueId);
+  if (!undo || !current) {
+    refreshDetail();
+    return false;
+  }
+  const patch: Partial<ExpandedIssueDraft> = {};
+  for (const field of EXPAND_FIELDS) {
+    if (!(field in undo.after)) continue;
+    if (sameValue(current[field], undo.after[field])) Object.assign(patch, { [field]: undo.before[field] });
+  }
+  if (!Object.keys(patch).length) {
+    refreshDetail();
+    showToast(`${issueId} changed since it was expanded — nothing to undo`, 'error');
+    return false;
+  }
+  updateIssue(issueId, patch);
+  refreshDetail();
+  setStatus('ok', 'Expansion undone');
+  showToast(`${issueId} expansion undone`, 'success');
+  return true;
+}
+
+/**
+ * Expand a saved issue in place: the card shows an Expanding indicator, the
+ * result is written straight to the issue, and Undo restores the previous
+ * values. Fields the user edits while the model runs are left alone.
+ */
 export async function startIssueExpandFromUi(issueId: string): Promise<void> {
   const issue = findIssueById(issueId);
   if (!issue) {
@@ -451,13 +198,9 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
     showToast('Nothing to expand', 'error');
     return;
   }
+  if (activeRun) cancelIssueExpand();
 
-  if (activeRun) {
-    activeRun.controller.abort();
-    clearActiveRun();
-  }
-
-  const original = {
+  const original: ExpandedIssueDraft = {
     title: issue.title, description: issue.description ?? '',
     type: issue.type, labels: [...issue.labels], priority: issue.priority,
   };
@@ -469,76 +212,58 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
   if (!catalog.priorities.some((item) => item.id === issue.priority)) {
     catalog.priorities = [...catalog.priorities, { id: issue.priority, label: issue.priority }];
   }
-  const controller = new AbortController();
-  activeRun = { issueId, controller, original, catalog };
+  const run: ExpandRun = { issueId, workspacePath: issue.workspacePath, controller: new AbortController() };
+  activeRun = run;
   setIssueExpandRun(issueId);
+  setIssueExpandUndo(issueId, null);
+  setIssueBackgroundExpanding(issueId, true, issue.workspacePath);
+  refreshDetail();
+  setStatus('spin', `Expanding ${issueId}…`);
 
-  const els = ensureOverlay();
-  els.type.replaceChildren(...catalog.types.map((item) => {
-    const option = document.createElement('option');
-    option.value = item.id;
-    option.textContent = item.label;
-    return option;
-  }));
-  els.priority.replaceChildren(...catalog.priorities.map((item) => {
-    const option = document.createElement('option');
-    option.value = item.id;
-    option.textContent = item.label;
-    return option;
-  }));
-  setOverlayOpen(true);
-  paintDraft(original);
-  setFieldsReadonly(true);
-  setStatusLine(EXPANDING_STATUS);
-  els.apply.disabled = true;
-  els.title.focus();
-  syncExpandButtons();
-  setStatus('spin', 'Expanding issue…');
-
+  const stale = (): boolean => run.controller.signal.aborted || activeRun !== run;
   try {
     const fetchExpanded = await resolveExpandFetcher();
-    const result = await fetchExpanded({
-      issue,
-      catalog,
-      signal: controller.signal,
-      onPartial: (draft: ExpandedIssueDraft) => {
-        if (controller.signal.aborted || activeRun?.controller !== controller) return;
-        paintDraft(mergeExpandedIssue(original, draft, catalog));
-        setStreamingStatus(draft);
-      },
-    } satisfies ExpandIssueRequest);
+    if (stale()) return;
+    const result = await fetchExpanded({ issue, catalog, signal: run.controller.signal } satisfies ExpandIssueRequest);
+    if (stale()) return;
+    finishRun(run);
+    if (result.error) throw new Error(result.error);
+    if (!result.draft) throw new Error(EXPAND_EMPTY_MESSAGE);
 
-    if (controller.signal.aborted || activeRun?.controller !== controller) return;
-
-    if (result.error) {
-      clearActiveRun();
-      closeOverlay();
-      syncExpandButtons();
-      setStatus('err', result.error);
-      showToast(result.error, 'error');
-      return;
+    const draft = mergeExpandedIssue(original, result.draft, catalog);
+    const current = findIssueById(issueId);
+    if (!current) return;
+    const before: Partial<ExpandedIssueDraft> = {};
+    const after: Partial<ExpandedIssueDraft> = {};
+    for (const field of EXPAND_FIELDS) {
+      const next = draft[field];
+      if (next === undefined || sameValue(next, original[field])) continue;
+      if (field === 'title' && !String(next).trim()) continue;
+      // The user edited this field while the model ran; their edit wins.
+      if (!sameValue(current[field], original[field])) continue;
+      Object.assign(before, { [field]: original[field] });
+      Object.assign(after, { [field]: next });
     }
-    if (!result.draft) {
-      clearActiveRun();
-      closeOverlay();
-      syncExpandButtons();
+    if (!Object.keys(after).length) {
+      refreshDetail();
       setStatus('ok', 'Ready');
-      showToast(EXPAND_EMPTY_MESSAGE, 'error');
+      showToast(`${issueId} is already detailed — nothing changed`, 'success');
       return;
     }
-
-    paintDraft(mergeExpandedIssue(original, result.draft, catalog));
-    setFieldsReadonly(false);
-    setStatusLine('Expanded. Edit if you want, then apply.');
-    syncApplyEnabled();
-    setStatus('ok', 'Issue expanded — review to apply');
-    els.title.focus();
-    els.title.select();
+    updateIssue(issueId, after);
+    setIssueExpandUndo(issueId, { before, after });
+    refreshDetail();
+    setStatus('ok', 'Issue expanded');
+    notify({
+      tone: 'success',
+      message: `${issueId} expanded`,
+      actions: [{ label: 'Undo', ariaLabel: `Undo expansion of ${issueId}`, run: () => { undoIssueExpand(issueId); } }],
+    });
   } catch (err) {
-    if (controller.signal.aborted || activeRun?.controller !== controller) return;
-    clearActiveRun();
-    closeOverlay();
-    syncExpandButtons();
+    // Cancelled or replaced: cancelIssueExpand already cleared the run.
+    if (run.controller.signal.aborted) return;
+    finishRun(run);
+    refreshDetail();
     const message = err instanceof Error && err.message.trim() ? err.message : EXPAND_FAILED_MESSAGE;
     setStatus('err', message);
     showToast(message, 'error');

@@ -9,11 +9,17 @@ import { isCurrentWindowWorkspace } from '../state/workspace';
 import { getCurrentRoute, launchApp } from './router';
 import { getForegroundAppId } from './instances';
 
+// The route host and notification caller can activate the same launch together.
+// Share only that launch, never cache access across later clicks.
+const pendingChatLaunches = new Map<string, Promise<void>>();
+
 async function verifyLinkedChat(chatId: string): Promise<boolean> {
   const { isServerStorageMode } = await import('../config/storage-mode');
   if (!isServerStorageMode()) return true;
   const capability = await import('../config/agent-conversations-enabled');
-  await capability.loadAgentConversationsCapability();
+  if (capability.getConversationStorageCapabilitySync() === null) {
+    await capability.loadAgentConversationsCapability();
+  }
   if (capability.getConversationStorageCapabilitySync() === 'json') return true;
   try {
     const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}?view=navigation`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
@@ -57,7 +63,7 @@ async function ensureWorkspaceForCodeChat(chatId: string): Promise<boolean> {
   const chat = sessionState?.chats.find((row) => row.id === chatId);
   const chatWorkspace = chat?.workspacePath?.trim();
   if (!chat || !chatWorkspace || !isProjectWorkspacePath(chatWorkspace)) {
-    return true;
+    return verifyLinkedChat(chatId);
   }
 
   const { routeCodeWindowCommand } = await import('./code-window-command');
@@ -91,8 +97,16 @@ export async function launchCodeWithChat(chatId: string): Promise<void> {
   const allowed = await ensureWorkspaceForCodeChat(trimmed);
   if (!allowed || window.location.hash !== originHash || getForegroundAppId() !== originApp) return;
 
-  launchApp('code', { chatId: trimmed, codeSection: 'chat' });
-  await switchToCodeChat(trimmed, { isCurrent: () => getForegroundAppId() === 'code' && getCurrentRoute().chatId === trimmed });
+  const existing = pendingChatLaunches.get(trimmed);
+  if (existing) return existing;
+  // Publish before launchApp synchronously notifies the route host.
+  const opening = Promise.resolve().then(async () => {
+    launchApp('code', { chatId: trimmed, codeSection: 'chat' });
+    await activateLinkedChat(trimmed, () => getForegroundAppId() === 'code' && getCurrentRoute().chatId === trimmed);
+  });
+  pendingChatLaunches.set(trimmed, opening);
+  try { await opening; }
+  finally { if (pendingChatLaunches.get(trimmed) === opening) pendingChatLaunches.delete(trimmed); }
 }
 
 /** Foreground Code chat and activate the given assistant thread (legacy desktop/chat deep-links). */
@@ -110,10 +124,17 @@ export async function launchChatWithThread(chatId: string): Promise<void> {
 export async function switchToCodeChat(chatId: string, options: { isCurrent?: () => boolean } = {}): Promise<void> {
   const trimmed = chatId.trim();
   if (!trimmed) return;
+  const opening = pendingChatLaunches.get(trimmed);
+  if (opening) return opening;
   const isCurrent = options.isCurrent ?? (() => true);
   if (!isCurrent() || !await findLinkedChat(trimmed) || !isCurrent()) return;
   if (!await verifyLinkedChat(trimmed) || !isCurrent()) return;
 
+  await activateLinkedChat(trimmed, isCurrent);
+}
+
+/** Selection after access was checked by this navigation's entry point. */
+async function activateLinkedChat(trimmed: string, isCurrent: () => boolean): Promise<void> {
   const { switchChat } = await import('../ui/sidebar');
   const trySwitch = async (attempt = 0): Promise<void> => {
     if (!isCurrent()) return;

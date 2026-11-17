@@ -1,6 +1,6 @@
 /**
- * Issues sparkles expander overlay: propose, review, apply or discard.
- * Nothing is written to the store until Apply.
+ * Issues sparkles expander: expands a saved issue in place with a visible
+ * in-flight indicator, then offers Undo.
  */
 
 import assert from 'node:assert/strict';
@@ -17,12 +17,16 @@ const { setLocalServerAvailableForTests, setToolConfigForTests } = await import(
   '../../src/tools/config.ts'
 );
 const { defaultToolConfig } = await import('../../src/config/defaults.ts');
+const { startIssueExpandFromUi } = await import('../../src/ui/issues-expand-controls.ts');
 const {
-  closeIssueExpandOverlay,
-  isIssueExpandOverlayOpen,
-  startIssueExpandFromUi,
-} = await import('../../src/ui/issues-expand-controls.ts');
-const { expandCreatedIssueInBackground, setExpandIssueFetcherForTests } = await import('../../src/ui/issues-expand.ts');
+  cancelIssueExpand,
+  canUndoIssueExpand,
+  expandCreatedIssueInBackground,
+  setExpandIssueFetcherForTests,
+  undoIssueExpand,
+} = await import('../../src/ui/issues-expand.ts');
+const { resetIssueExpandStateForTests } = await import('../../src/ui/issues-expand-state.ts');
+const { resetToastsForTests } = await import('../../src/ui/toast.ts');
 const { closeIssueDetail, openIssueDetail } = await import(
   '../../src/ui/issues-detail.ts'
 );
@@ -91,7 +95,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  closeIssueExpandOverlay();
+  cancelIssueExpand();
+  resetIssueExpandStateForTests();
+  resetToastsForTests();
   setExpandIssueFetcherForTests(null);
   closeIssueDetail();
   setIssuesStateForTests(null);
@@ -99,157 +105,139 @@ afterEach(() => {
   domWindow = null;
 });
 
-describe('issues expand overlay', () => {
-  test('title-only expand proposes title and description without writing until Apply', async () => {
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+function detailButton(selector: string): HTMLButtonElement {
+  const btn = document.querySelector(`.issues-detail__header-actions ${selector}`);
+  assert.ok(btn instanceof HTMLButtonElement, `${selector} should be mounted in the detail header`);
+  return btn;
+}
+
+describe('issues expand in place', () => {
+  test('expands the issue in place without opening an overlay, then offers Undo', async () => {
     seedIssue({ title: 'login broken', description: '' });
-    setExpandIssueFetcherForTests(async (req) => {
-      const draft = {
-        title: 'Fix login save crash',
-        description: 'Saving settings throws. Fill in repro from the stub.',
-      };
-      req.onPartial?.(draft);
-      return { draft };
-    });
-
-    await startIssueExpandFromUi('MIN-8');
-
-    assert.equal(isIssueExpandOverlayOpen(), true);
-    assert.equal(findIssueById('MIN-8')?.title, 'login broken');
-    assert.equal(findIssueById('MIN-8')?.description, '');
-
-    const title = document.getElementById('issuesExpandTitle');
-    const description = document.getElementById('issuesExpandDescription');
-    assert.ok(title instanceof HTMLInputElement);
-    assert.ok(description instanceof HTMLTextAreaElement);
-    assert.equal(title.value, 'Fix login save crash');
-    assert.match(description.value, /Saving settings throws/);
-    assert.equal(title.readOnly, false);
-
-    document.getElementById('issuesExpandApply')?.click();
-
-    assert.equal(isIssueExpandOverlayOpen(), false);
-    assert.equal(findIssueById('MIN-8')?.title, 'Fix login save crash');
-    assert.match(findIssueById('MIN-8')?.description ?? '', /Saving settings throws/);
-  });
-
-  test('the overlay says it is working while the model streams', async () => {
-    seedIssue({ title: 'thin', description: '' });
-    let finish!: (value: { draft: { title: string; description: string } }) => void;
-    let partial!: (draft: { title: string; description: string }) => void;
-    setExpandIssueFetcherForTests((req) => {
-      partial = (draft) => req.onPartial?.(draft);
-      return new Promise((resolve) => { finish = resolve; });
-    });
-
-    const run = startIssueExpandFromUi('MIN-8');
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-    const progress = document.getElementById('issuesExpandProgress');
-    const status = document.getElementById('issuesExpandStatus');
-    const discard = document.getElementById('issuesExpandDiscard');
-    assert.ok(progress instanceof HTMLElement);
-    assert.ok(status instanceof HTMLParagraphElement);
-    assert.equal(progress.hidden, false, 'progress bar is up while streaming');
-    assert.match(status.textContent ?? '', /Expanding/);
-    // Discard is the cancel button while a run is in flight, so it says so.
-    assert.equal(discard?.textContent, 'Cancel');
-
-    partial({ title: 'Fix login', description: 'Saving settings throws a null.' });
-    assert.match(status.textContent ?? '', /\d+ characters written/);
-
-    finish({ draft: { title: 'Fix login', description: 'Saving settings throws a null.' } });
-    await run;
-
-    assert.equal(progress.hidden, true, 'progress bar comes down when the run ends');
-    assert.equal(discard?.textContent, 'Discard');
-    assert.match(status.textContent ?? '', /Expanded/);
-  });
-
-  test('cancelling takes the progress indicator down with the overlay', async () => {
-    seedIssue({ title: 'thin', description: '' });
-    let started = false;
-    setExpandIssueFetcherForTests(() => new Promise(() => { started = true; }));
-    void startIssueExpandFromUi('MIN-8');
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    assert.equal(started, true);
-    assert.equal(document.getElementById('issuesExpandProgress')?.hidden, false);
-
-    // Cancel is the same control as Discard, relabelled while a run is in flight.
-    document.getElementById('issuesExpandDiscard')?.click();
-    assert.equal(document.getElementById('issuesExpandProgress')?.hidden, true);
-    assert.equal(isIssueExpandOverlayOpen(), false);
-  });
-
-  test('existing details are not wiped on Discard', async () => {
-    seedIssue({
-      title: 'Login',
-      description: 'Null when saving settings. Keep this paragraph.',
-    });
     setExpandIssueFetcherForTests(async () => ({
       draft: {
         title: 'Fix login save crash',
-        description: 'Improved write-up that should not land unless applied.',
+        description: 'Saving settings throws. Fill in repro from the stub.',
+        type: 'bug',
+        priority: 'high',
       },
     }));
 
+    openIssueDetail('MIN-8');
     await startIssueExpandFromUi('MIN-8');
-    assert.equal(isIssueExpandOverlayOpen(), true);
-    document.getElementById('issuesExpandDiscard')?.click();
+    await tick();
 
-    assert.equal(isIssueExpandOverlayOpen(), false);
-    assert.equal(findIssueById('MIN-8')?.title, 'Login');
-    assert.equal(
-      findIssueById('MIN-8')?.description,
-      'Null when saving settings. Keep this paragraph.',
-    );
+    assert.equal(document.querySelector('.issues-expand-form, #issuesExpandForm') === null, true, 'no review overlay opens');
+    assert.equal(findIssueById('MIN-8')?.title, 'Fix login save crash');
+    assert.match(findIssueById('MIN-8')?.description ?? '', /Saving settings throws/);
+    assert.equal(findIssueById('MIN-8')?.type, 'bug');
+    assert.equal(findIssueById('MIN-8')?.priority, 'high');
+
+    const detailTitle = document.querySelector('.issues-detail__title');
+    assert.ok(detailTitle instanceof HTMLTextAreaElement, 'detail pane stays open');
+    assert.equal(detailTitle.value, 'Fix login save crash');
+
+    const undo = detailButton('[data-issue-expand-undo]');
+    assert.equal(undo.hidden, false, 'Undo is offered after expansion');
+    undo.click();
+    await tick();
+
+    assert.equal(findIssueById('MIN-8')?.title, 'login broken');
+    assert.equal(findIssueById('MIN-8')?.description, '');
+    assert.equal(findIssueById('MIN-8')?.type, 'task');
+    assert.equal(findIssueById('MIN-8')?.priority, 'none');
+    assert.equal(canUndoIssueExpand('MIN-8'), false);
+    assert.equal(detailButton('[data-issue-expand-undo]').hidden, true);
   });
 
-  test('user edits in the overlay are what Apply writes', async () => {
+  test('detail shows an in-progress indicator while the model runs', async () => {
     seedIssue({ title: 'thin', description: '' });
-    setExpandIssueFetcherForTests(async () => ({
-      draft: { title: 'Proposed title', description: 'Proposed body.' },
-    }));
+    let finish!: (value: { draft: { title: string; description: string } }) => void;
+    setExpandIssueFetcherForTests(() => new Promise((resolve) => { finish = resolve; }));
 
-    await startIssueExpandFromUi('MIN-8');
-    const title = document.getElementById('issuesExpandTitle');
-    const description = document.getElementById('issuesExpandDescription');
-    assert.ok(title instanceof HTMLInputElement);
-    assert.ok(description instanceof HTMLTextAreaElement);
-    title.value = 'Edited title';
-    description.value = 'Edited body that keeps the proposal as a starting point.';
-    document.getElementById('issuesExpandApply')?.click();
+    openIssueDetail('MIN-8');
+    const run = startIssueExpandFromUi('MIN-8');
+    await tick();
 
-    assert.equal(findIssueById('MIN-8')?.title, 'Edited title');
-    assert.equal(
-      findIssueById('MIN-8')?.description,
-      'Edited body that keeps the proposal as a starting point.',
-    );
+    const activity = document.querySelector('.issues-detail__run-state [data-issue-expansion-activity="MIN-8"]');
+    assert.ok(activity instanceof HTMLElement);
+    assert.equal(activity.hidden, false, 'Expanding indicator is visible');
+    const sparkles = detailButton('[data-issue-expand]');
+    assert.equal(sparkles.getAttribute('aria-busy'), 'true');
+    assert.ok(sparkles.classList.contains('composer-expand-btn--busy'));
+    assert.equal(detailButton('[data-issue-expand-undo]').hidden, true, 'no Undo while running');
+
+    finish({ draft: { title: 'Fix login', description: 'Saving settings throws a null.' } });
+    await run;
+    await tick();
+
+    const after = document.querySelector('.issues-detail__run-state [data-issue-expansion-activity="MIN-8"]');
+    assert.ok(after instanceof HTMLElement);
+    assert.equal(after.hidden, true, 'indicator clears when the run ends');
+    assert.equal(detailButton('[data-issue-expand]').getAttribute('aria-busy'), 'false');
+    assert.equal(detailButton('[data-issue-expand-undo]').hidden, false);
   });
 
-  test('apply refreshes the open detail pane without switching issues', async () => {
-    seedIssue({ title: 'login broken', description: '' });
-    setExpandIssueFetcherForTests(async (req) => {
-      const draft = {
-        title: 'Fix login save crash',
-        description: 'Saving settings throws. Fill in repro from the stub.',
-      };
-      req.onPartial?.(draft);
-      return { draft };
-    });
+  test('clicking the busy sparkles control cancels without writing', async () => {
+    seedIssue({ title: 'thin', description: 'Keep this paragraph.' });
+    let started = false;
+    setExpandIssueFetcherForTests(() => new Promise(() => { started = true; }));
+
+    openIssueDetail('MIN-8');
+    void startIssueExpandFromUi('MIN-8');
+    await tick();
+    assert.equal(started, true);
+
+    detailButton('[data-issue-expand]').click();
+    await tick();
+    await tick();
+
+    assert.equal(detailButton('[data-issue-expand]').getAttribute('aria-busy'), 'false');
+    const activity = document.querySelector('[data-issue-expansion-activity="MIN-8"]');
+    assert.equal((activity as HTMLElement | null)?.hidden, true);
+    assert.equal(findIssueById('MIN-8')?.title, 'thin');
+    assert.equal(findIssueById('MIN-8')?.description, 'Keep this paragraph.');
+    assert.equal(canUndoIssueExpand('MIN-8'), false);
+  });
+
+  test('fields edited while the model runs keep the user edit, and Undo leaves later edits alone', async () => {
+    seedIssue({ title: 'thin', description: '', priority: 'low' });
+    const { updateIssue } = await import('../../src/state/issues-store.ts');
+    let finish!: (value: { draft: { title: string; description: string; priority: string } }) => void;
+    setExpandIssueFetcherForTests(() => new Promise((resolve) => { finish = resolve; }));
+
+    const run = startIssueExpandFromUi('MIN-8');
+    await tick();
+    updateIssue('MIN-8', { title: 'User title' });
+    finish({ draft: { title: 'Model title', description: 'Model body.', priority: 'high' } });
+    await run;
+
+    assert.equal(findIssueById('MIN-8')?.title, 'User title');
+    assert.equal(findIssueById('MIN-8')?.description, 'Model body.');
+    assert.equal(findIssueById('MIN-8')?.priority, 'high');
+
+    updateIssue('MIN-8', { priority: 'urgent' });
+    assert.equal(undoIssueExpand('MIN-8'), true);
+    assert.equal(findIssueById('MIN-8')?.title, 'User title');
+    assert.equal(findIssueById('MIN-8')?.description, '');
+    assert.equal(findIssueById('MIN-8')?.priority, 'urgent');
+  });
+
+  test('a failed expansion clears the indicator and leaves the issue unchanged', async () => {
+    seedIssue({ title: 'thin', description: '' });
+    setExpandIssueFetcherForTests(async () => ({ error: 'provider unavailable' }));
 
     openIssueDetail('MIN-8');
     await startIssueExpandFromUi('MIN-8');
-    assert.equal(isIssueExpandOverlayOpen(), true);
+    await tick();
 
-    document.getElementById('issuesExpandApply')?.click();
-
-    assert.equal(findIssueById('MIN-8')?.title, 'Fix login save crash');
-    // The detail refresh rides a dynamic import; let its microtask land.
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-    const detailTitle = document.querySelector('.issues-detail__title');
-    assert.ok(detailTitle instanceof HTMLTextAreaElement, 'detail pane should still be open');
-    assert.equal(detailTitle.value, 'Fix login save crash');
+    assert.equal(findIssueById('MIN-8')?.title, 'thin');
+    assert.equal(canUndoIssueExpand('MIN-8'), false);
+    assert.equal(detailButton('[data-issue-expand]').getAttribute('aria-busy'), 'false');
+    const activity = document.querySelector('[data-issue-expansion-activity="MIN-8"]');
+    assert.equal((activity as HTMLElement | null)?.hidden, true);
   });
 });
 
@@ -266,29 +254,6 @@ describe('issues peek expand control', () => {
   });
 });
 
-
-test('metadata remains a proposal until Apply, with editable type, labels, and priority', async () => {
-  seedIssue({ labels: ['ui'], priority: 'low' });
-  setExpandIssueFetcherForTests(async () => ({ draft: {
-    title: 'Fix login', description: 'Crash on login', type: 'bug', labels: ['ui', 'crash'], priority: 'high',
-  } }));
-  await startIssueExpandFromUi('MIN-8');
-  assert.deepEqual(findIssueById('MIN-8')?.labels, ['ui']);
-  assert.equal(findIssueById('MIN-8')?.priority, 'low');
-  const labels = document.getElementById('issuesExpandLabels') as HTMLTextAreaElement;
-  const type = document.getElementById('issuesExpandType') as HTMLSelectElement;
-  const priority = document.getElementById('issuesExpandPriority') as HTMLSelectElement;
-  assert.equal(type.value, 'bug');
-  assert.equal(labels.value, 'ui\ncrash');
-  assert.equal(priority.value, 'high');
-  labels.value = 'login';
-  type.value = 'idea';
-  priority.value = 'urgent';
-  document.getElementById('issuesExpandApply')?.click();
-  assert.deepEqual(findIssueById('MIN-8')?.labels, ['login']);
-  assert.equal(findIssueById('MIN-8')?.type, 'idea');
-  assert.equal(findIssueById('MIN-8')?.priority, 'urgent');
-});
 
 test('unsaved expansion uses entered fields without creating or modifying an issue', async () => {
   seedIssue();
@@ -309,22 +274,21 @@ test('unsaved expansion uses entered fields without creating or modifying an iss
 });
 
 
-test('late cancellation errors cannot close a replacement expansion', async () => {
+test('late cancellation errors cannot clobber a replacement expansion', async () => {
   seedIssue();
-  const expand = await import('../../src/ui/issues-expand.ts');
   let rejectOld!: (error: Error) => void;
   let markStarted!: () => void;
   const started = new Promise<void>((resolve) => { markStarted = resolve; });
   setExpandIssueFetcherForTests(() => new Promise((_resolve, reject) => { rejectOld = reject; markStarted(); }));
-  const old = expand.startIssueExpandFromUi('MIN-8');
+  const old = startIssueExpandFromUi('MIN-8');
   await started;
-  expand.closeIssueExpandOverlay();
+  cancelIssueExpand();
   setExpandIssueFetcherForTests(async () => ({ draft: { title: 'Current result', description: 'Keep this' } }));
   await startIssueExpandFromUi('MIN-8');
   rejectOld(new Error('Request aborted'));
   await old;
-  assert.equal(isIssueExpandOverlayOpen(), true);
-  assert.equal((document.getElementById('issuesExpandTitle') as HTMLInputElement).value, 'Current result');
+  assert.equal(findIssueById('MIN-8')?.title, 'Current result');
+  assert.equal(canUndoIssueExpand('MIN-8'), true);
 });
 
 
@@ -347,6 +311,42 @@ test('background expansion updates mounted activity and clears it on success and
   await expandCreatedIssueInBackground('MIN-8');
   assert.equal(isIssueBackgroundExpanding('MIN-8', '/workspace'), false);
   assert.equal(slot.hidden, true);
+});
+
+
+test('Expand and Create defers the first GitHub sync until expansion lands', async () => {
+  const notify = await import('../../src/state/issues-github-notify.ts');
+  const { addIssue } = await import('../../src/state/issues-store.ts');
+  seedIssue();
+  const synced: Array<{ id: string; title: string | undefined }> = [];
+  const unsubscribe = notify.subscribeGithubSyncedFieldWrite((id) => {
+    synced.push({ id, title: findIssueById(id)?.title });
+  });
+  try {
+    let finish!: (result: { draft: { title: string; description: string } }) => void;
+    setExpandIssueFetcherForTests(() => new Promise((resolve) => { finish = resolve; }));
+    addIssue({ title: 'checkout fails', workspacePath: '/workspace' }, 'MIN-9', { deferGithubAutoSync: true });
+    const pending = expandCreatedIssueInBackground('MIN-9');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(synced, [], 'creation must not sync before expansion');
+    finish({ draft: { title: 'Checkout fails on save', description: 'Expanded body' } });
+    await pending;
+    assert.deepEqual(synced, [{ id: 'MIN-9', title: 'Checkout fails on save' }]);
+    assert.equal(notify.isGithubSyncedFieldWriteDeferred('MIN-9'), false);
+
+    synced.length = 0;
+    setExpandIssueFetcherForTests(async () => { throw new Error('provider unavailable'); });
+    addIssue({ title: 'second', workspacePath: '/workspace' }, 'MIN-10', { deferGithubAutoSync: true });
+    assert.deepEqual(synced, []);
+    await expandCreatedIssueInBackground('MIN-10');
+    assert.deepEqual(synced, [{ id: 'MIN-10', title: 'second' }], 'failed expansion still syncs the created issue once');
+
+    synced.length = 0;
+    addIssue({ title: 'plain', workspacePath: '/workspace' }, 'MIN-11');
+    assert.deepEqual(synced, [{ id: 'MIN-11', title: 'plain' }], 'plain create syncs immediately');
+  } finally {
+    unsubscribe();
+  }
 });
 
 

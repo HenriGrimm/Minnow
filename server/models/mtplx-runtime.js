@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
 
-export const MTPLX_INSTALL_GUIDANCE = 'Install MTPLX on Apple Silicon with pip install --upgrade mtplx, then refresh. Minnow uses your existing MTPLX installation.';
+export const MTPLX_INSTALL_GUIDANCE = 'Install or update MTPLX on Apple Silicon using its Mac app, Homebrew, or python3 -m pip install --upgrade mtplx in the environment where you installed it, then refresh. Minnow uses your existing MTPLX installation.';
 export const defaultMtplxCacheDir = () => path.join(os.homedir(), '.mtplx', 'models');
 
 export function isMtplxSupported(platform = process.platform, arch = process.arch, release = os.release()) {
@@ -67,4 +67,11 @@ export async function getMtplxStatus() {
 export async function getMtplxDiagnostics() {
   const result = await runMtplxJson(['status', '--json']);
   return result.diagnostics?.checks ?? result.checks ?? [];
+}
+
+/** Explicit user refresh must see external installs/upgrades, not the minute cache. */
+export async function refreshMtplxStatus() {
+  if (pending) await pending;
+  cached = null;
+  return getMtplxStatus();
 }

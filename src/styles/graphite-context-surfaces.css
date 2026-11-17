@@ -1,3 +1,15 @@
+.graphite-issue-host {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  container: issue-detail / inline-size;
+}
+
+.graphite-issue-host > .graphite-surface-status {
+  padding: var(--mn-space-4);
+}
+
 .graphite-context-surface {
   display: flex;
   min-height: 0;
@@ -69,15 +81,6 @@
   white-space: nowrap;
 }
 
-.graphite-context-surface__checklist-row {
-  display: flex;
-  min-height: 28px;
-  align-items: center;
-  gap: 8px;
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  font-size: 12.5px;
-}
-
 .graphite-context-surface :is([data-state="success"], [data-state="completed"]) > .icon-svg {
   color: var(--mn-success);
 }
@@ -104,15 +107,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.graphite-context-surface__prose {
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  overflow-wrap: anywhere;
-}
-
-.graphite-context-surface__prose > :first-child {
-  margin-top: 0;
 }
 
 .graphite-context-surface code,

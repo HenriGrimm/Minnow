@@ -114,6 +114,34 @@ describe('floating issue panel', () => {
     assert.equal(list.inert, false);
   });
 
+  test('docked column has a keyboard-resizable, persisted width handle', () => {
+    setupDom(); seedIssue();
+    document.documentElement.classList.add('mn-graphite-apps');
+    const shell = document.querySelector('.issues-shell')!;
+    const body = document.querySelector('.issues-body')!;
+    Object.defineProperty(shell, 'getBoundingClientRect', { value: () => ({ width: 1200 }) });
+    Object.defineProperty(body, 'getBoundingClientRect', { value: () => ({ width: 1200 }) });
+    openIssueDetail('VIN-10');
+    const host = document.getElementById('issuesDetailHost')!;
+    let width = 480;
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => ({ width, right: 1200 }) });
+    const handle = document.getElementById('issuesDetailResizer')!;
+    assert.ok(handle && handle.parentElement === host);
+    assert.equal(handle.getAttribute('role'), 'separator');
+    const root = document.getElementById('issuesView')!;
+    handle.dispatchEvent(new domWindow!.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }) as unknown as Event);
+    assert.equal(root.style.getPropertyValue('--issues-detail-inline-w'), 'min(504px, calc(100% - 320px))');
+    assert.equal(localStorage.getItem('minnow-issues-detail-inline-width-v1'), '504');
+    width = 880;
+    handle.dispatchEvent(new domWindow!.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }) as unknown as Event);
+    assert.equal(localStorage.getItem('minnow-issues-detail-inline-width-v1'), '880', 'clamped to leave room for the list');
+    handle.dispatchEvent(new domWindow!.KeyboardEvent('keydown', { key: 'Home', bubbles: true }) as unknown as Event);
+    assert.equal(root.style.getPropertyValue('--issues-detail-inline-w'), '');
+    assert.equal(localStorage.getItem('minnow-issues-detail-inline-width-v1'), null);
+    setIssueDetailSheetExpanded(true);
+    assert.equal(document.getElementById('issuesDetailResizer'), null, 'maximized panel is not resizable');
+  });
+
   test('opens over the list as a dialog, with no dock resizer', () => {
     setupDom(); seedIssue();
     const trigger = document.createElement('button'); document.body.append(trigger); trigger.focus();

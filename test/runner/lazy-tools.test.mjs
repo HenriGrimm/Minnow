@@ -55,6 +55,19 @@ test('select: loads exact names and returns their schemas in the result', () => 
   assert.equal(session.isLoaded('issue_search'), false);
 });
 
+test('discovering issue creation also exposes permitted editing, including exact select', () => {
+  for (const query of ['issue_add', 'select:issue_add']) {
+    const session = createLazyToolSession([tool('issue_add'), tool('issue_update')]);
+    assert.deepEqual(JSON.parse(session.search({ query, limit: 1 })).loaded, ['issue_add', 'issue_update']);
+    assert.equal(session.isLoaded('issue_update'), true);
+    session.search({ query });
+    assert.equal(session.tools.filter(t => t.function.name === 'issue_update').length, 1);
+    const restricted = createLazyToolSession([tool('issue_add')]);
+    assert.deepEqual(JSON.parse(restricted.search({ query, limit: 1 })).loaded, ['issue_add']);
+    assert.equal(restricted.isLoaded('issue_update'), false);
+  }
+});
+
 test('capability index groups MCP tools per server without listing schemas', () => {
   const index = buildCapabilityIndex(['mcp__linear__create_issue', 'mcp__linear__list', 'mcp__my_srv__go', 'git_status']);
   assert.match(index, /- git: git_status/);

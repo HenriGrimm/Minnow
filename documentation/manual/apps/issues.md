@@ -7,7 +7,7 @@ Open **Issues** from the command palette. Select the workspace you want to work 
 1. Use **New issue** in Issues, or **Capture issue** in a Code thread. The thread capture can link the current conversation.
 2. Give it a title that names the observed problem. Add steps, the expected result, the actual result, and a screenshot or log if it helps.
 3. Use **Expand** to propose a clearer description and labels. Read the result before applying it. Use **Create** or **Capture** to save.
-4. Use **Needs review** to triage incoming issues. Open an issue to edit its status, priority, labels, or project. Choose **Board** if moving cards between statuses is easier for the task.
+4. Use **Needs review** to triage incoming issues. Open an issue to edit its status, priority, labels, or project. On a saved issue, the sparkles **Expand** rewrites it in place and shows **Expanding** while it works. Select it again to cancel, or use **Undo** beside it afterwards to restore the previous values. Choose **Board** if moving cards between statuses is easier for the task.
 
 ## Hand it to an agent
 

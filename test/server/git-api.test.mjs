@@ -442,6 +442,42 @@ describe('git API', () => {
     assert.equal(forced.ok, true);
   });
 
+  test('worktreeRemove unlock clears a leftover lock but never a dirty tree without force', async () => {
+    const git = (args) => execFileAsync('git', args, { cwd: repoDir, windowsHide: true });
+    const lockedOf = async (target) => {
+      const { stdout } = await git(['worktree', 'list', '--porcelain']);
+      const block = stdout.split(/\r?\n\r?\n/).find((entry) => entry.includes(path.basename(target)));
+      return /^locked/m.test(block ?? '');
+    };
+
+    // Codex-style leftover: folder deleted, record still locked "initializing".
+    const gone = path.join(repoDir, '.worktrees', 'wt-gone-locked');
+    await git(['worktree', 'add', '--detach', gone]);
+    await git(['worktree', 'lock', '--reason', 'initializing', gone]);
+    await fs.rm(gone, { recursive: true, force: true });
+    const refused = await worktreeRemove({ cwd: repoDir, path: gone });
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'locked');
+    assert.equal(refused.lockReason, 'initializing');
+    assert.equal(refused.missing, true);
+    const cleaned = await worktreeRemove({ cwd: repoDir, path: gone, unlock: true });
+    assert.equal(cleaned.ok, true);
+    assert.equal(cleaned.missing, true);
+
+    // Locked and dirty: unlock alone refuses before touching the lock.
+    const busy = path.join(repoDir, '.worktrees', 'wt-busy-locked');
+    await git(['worktree', 'add', '--detach', busy]);
+    await git(['worktree', 'lock', '--reason', 'agent running', busy]);
+    await fs.writeFile(path.join(busy, 'scratch.txt'), 'untracked\n');
+    const dirty = await worktreeRemove({ cwd: repoDir, path: busy, unlock: true });
+    assert.equal(dirty.ok, false);
+    assert.equal(dirty.code, 'dirty');
+    assert.equal(dirty.lockReason, 'agent running');
+    assert.equal(await lockedOf(busy), true, 'the lock is left in place');
+    const forced = await worktreeRemove({ cwd: repoDir, path: busy, unlock: true, force: true });
+    assert.equal(forced.ok, true);
+  });
+
   test('worktreeAdd slugifies invalid branch names', async () => {
     const added = await worktreeAdd({
       cwd: repoDir,

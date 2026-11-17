@@ -5,7 +5,9 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, test } from 'node:test';
 import { setSessionStateForTests } from '../../src/state/sessions.ts';
-import { setIssuesStateForTests, findIssueById } from '../../src/state/issues-store.ts';
+import { setIssuesStateForTests, findIssueById, getIssuesSnapshot } from '../../src/state/issues-store.ts';
+import { createDefaultIssuesTaxonomy } from '../../src/issues/taxonomy.ts';
+import { setIssuesTaxonomyForTests } from '../../src/state/issues-taxonomy-store.ts';
 import {
   executeIssueTool,
   validateIssueAddArgs,
@@ -38,6 +40,7 @@ function makeChat(): Chat {
 
 describe('issue-tools', () => {
   beforeEach(() => {
+    setIssuesTaxonomyForTests(null);
     setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
     setSessionStateForTests({
       version: 2,
@@ -51,6 +54,47 @@ describe('issue-tools', () => {
   test('validateIssueAddArgs rejects empty title', () => {
     const r = validateIssueAddArgs({ title: '  ' });
     assert.equal(r.ok, false);
+  });
+
+  test('issue_add honors status and priority, and issue_update corrects them in place', async () => {
+    const created = JSON.parse(await executeIssueTool('issue_add', {
+      title: 'Real follow-up', issue_id: 'ISS-42', status: 'planned', priority: 'high',
+    }));
+    assert.equal(created.status, 'planned');
+    assert.equal(created.priority, 'high');
+    const updated = JSON.parse(await executeIssueTool('issue_update', {
+      issue_id: 'ISS-42', status: 'backlog', priority: 'low',
+    }));
+    assert.equal(updated.status, 'backlog');
+    assert.equal(updated.priority, 'low');
+    assert.equal(getIssuesSnapshot().issues.length, 1);
+  });
+
+  test('issue_add defaults to the configured backlog role', async () => {
+    const taxonomy = createDefaultIssuesTaxonomy();
+    taxonomy.statuses.find(s => s.role === 'backlog')!.id = 'queued';
+    setIssuesTaxonomyForTests(taxonomy);
+    const created = JSON.parse(await executeIssueTool('issue_add', { title: 'Follow-up' }));
+    assert.equal(created.status, 'queued');
+  });
+
+  test('invalid creation requests leave records and allocation unchanged', async () => {
+    const before = structuredClone(getIssuesSnapshot());
+    for (const issue_id of ['MIN-1053-x', 'zzz-noop-check', 'placeholder', '', 'ISS-0', 'ISS-9007199254740992', 42]) {
+      assert.match(await executeIssueTool('issue_add', { title: 'Follow-up', issue_id }), /^Error: issue_id/);
+    }
+    for (const status of ['not-a-status', '', 42, null]) {
+      assert.match(await executeIssueTool('issue_add', { title: 'Follow-up', status }), /^Error: status/);
+    }
+    assert.deepEqual(getIssuesSnapshot(), before);
+  });
+
+  test('duplicate creation directs correction to issue_update without changing state', async () => {
+    await executeIssueTool('issue_add', { title: 'Original', issue_id: 'ISS-42' });
+    const before = structuredClone(getIssuesSnapshot());
+    const result = await executeIssueTool('issue_add', { title: 'Replacement', issue_id: 'ISS-42', priority: 'high' });
+    assert.match(result, /already exists.*issue_update.*status, priority/);
+    assert.deepEqual(getIssuesSnapshot(), before);
   });
 
   test('issue_get_state projects and pages instead of dumping the store', async () => {

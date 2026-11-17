@@ -18,6 +18,7 @@ import {
   updateIssue,
 } from '../state/issues-store.ts';
 import { formatAllowedIds } from '../issues/taxonomy.ts';
+import { parseKeyedIssueId } from '../issues/project-key.ts';
 import {
   projectIssuePage,
   resolveIncludeClosedIssues,
@@ -43,6 +44,7 @@ export type ValidateIssueAddResult =
       description: string;
       type: IssueType;
       priority: IssuePriority;
+      status?: IssueStatus;
       labels: string[];
     }
   | { ok: false; error: string };
@@ -53,6 +55,24 @@ export type ValidateIssueAddResult =
 export function validateIssueAddArgs(args: Record<string, unknown>): ValidateIssueAddResult {
   const title = typeof args.title === 'string' ? args.title.trim() : '';
   if (!title) return { ok: false, error: 'Error: issue_add requires "title"' };
+  if (args.issue_id !== undefined) {
+    const id = typeof args.issue_id === 'string' ? args.issue_id.trim() : '';
+    const parsed = parseKeyedIssueId(id);
+    if (!parsed || !Number.isSafeInteger(parsed.number) || parsed.number < 1) {
+      return { ok: false, error: 'Error: issue_id must use KEY-number format (e.g. MIN-12); omit it to allocate an ID. Use issue_update to edit an existing issue.' };
+    }
+    if (findIssueById(id)) {
+      return { ok: false, error: `Error: Issue ID ${id} already exists. Use issue_update with this issue_id to change status, priority, or other fields; issue_add only creates new issues. Do not create a replacement ID.` };
+    }
+  }
+  let status: IssueStatus | undefined;
+  if (args.status !== undefined) {
+    const raw = typeof args.status === 'string' ? args.status.trim() : '';
+    if (!isIssueStatus(raw)) {
+      return { ok: false, error: `Error: status must be one of: ${formatAllowedIds(getIssuesTaxonomySync().statuses)} (configure in Settings → Issues)` };
+    }
+    status = raw as IssueStatus;
+  }
   const description = typeof args.description === 'string' ? args.description.trim() : '';
   const typeRaw = typeof args.type === 'string' ? args.type.trim() : 'task';
   if (!isIssueType(typeRaw)) {
@@ -75,7 +95,7 @@ export function validateIssueAddArgs(args: Record<string, unknown>): ValidateIss
         .filter((l): l is string => typeof l === 'string' && l.trim().length > 0)
         .map((l) => l.trim())
     : [];
-  return { ok: true, title, description, type: typeRaw, priority: priorityRaw, labels };
+  return { ok: true, title, description, type: typeRaw, priority: priorityRaw, labels, status };
 }
 
 export type ValidateIssueUpdateResult =
@@ -414,6 +434,7 @@ export async function executeIssueTool(
           description: validated.description,
           type: validated.type,
           priority: validated.priority,
+          status: validated.status,
           labels: validated.labels,
           workspacePath: getWorkspacePath(),
           source: 'agent',
