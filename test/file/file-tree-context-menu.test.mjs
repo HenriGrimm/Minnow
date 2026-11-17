@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { setFileTreeServerAvailable } from '../../src/ui/file-tree-server.ts';
+import { setLastTerminalAvailabilityForTests } from '../../src/api/terminal-pty.ts';
 
 const {
   buildFileMenuItems,
@@ -129,5 +130,52 @@ describe('file-tree context menu with a multi-row selection', () => {
     );
     assert.equal(copy.disabled, true);
     assert.match(copy.title ?? '', /only available for files/i);
+  });
+});
+
+describe('file-tree Run (MIN-35)', () => {
+  afterEach(() => {
+    setFileTreeServerAvailable(true);
+    setLastTerminalAvailabilityForTests(null);
+  });
+
+  test('supported scripts show an enabled Run item', () => {
+    setFileTreeServerAvailable(true);
+    for (const path of ['scripts/build.sh', 'tools/my tool.py', 'scripts/gen.mjs']) {
+      const run = buildFileMenuItems(buildMenuContext(path, 'file')).find((item) => item.label === 'Run');
+      assert.ok(run, path);
+      assert.equal(run.disabled, false);
+      assert.equal(typeof run.action, 'function');
+    }
+  });
+
+  test('unsupported files and folders have no Run item', () => {
+    for (const path of ['README.md', 'src/types.d.ts', 'package.json']) {
+      const labels = buildFileMenuItems(buildMenuContext(path, 'file')).map((item) => item.label);
+      assert.ok(!labels.includes('Run'), path);
+    }
+    const folderLabels = buildFolderMenuItems(buildMenuContext('scripts', 'dir')).map((item) => item.label);
+    assert.ok(!folderLabels.includes('Run'));
+  });
+
+  test('Run is disabled offline', () => {
+    setFileTreeServerAvailable(false);
+    const run = buildFileMenuItems(buildMenuContext('build.sh', 'file')).find((item) => item.label === 'Run');
+    assert.equal(run.disabled, true);
+    assert.match(run.title ?? '', /Open Minnow/i);
+  });
+
+  test('Run is disabled when the host has no terminal', () => {
+    setFileTreeServerAvailable(true);
+    setLastTerminalAvailabilityForTests({ ptyAvailable: false, profileCount: 2, platform: 'linux' });
+    const run = buildFileMenuItems(buildMenuContext('build.sh', 'file')).find((item) => item.label === 'Run');
+    assert.equal(run.disabled, true);
+    assert.match(run.title ?? '', /terminal is not available/i);
+  });
+
+  test('batch files are hidden on a non-Windows host', () => {
+    setLastTerminalAvailabilityForTests({ ptyAvailable: true, profileCount: 1, platform: 'darwin' });
+    const labels = buildFileMenuItems(buildMenuContext('build.cmd', 'file')).map((item) => item.label);
+    assert.ok(!labels.includes('Run'));
   });
 });
