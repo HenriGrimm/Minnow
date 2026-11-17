@@ -303,8 +303,15 @@ html.mn-phone .file-tree-context-menu,
 html.mn-phone .model-select-menu,
 html.mn-phone .model-select-popover {
   max-width: calc(100vw - var(--mn-phone-pad-left) - var(--mn-phone-pad-right));
-  max-height: min(60dvh, calc(100dvh - 140px));
   overscroll-behavior: contain;
+}
+
+html.mn-phone :is(
+  .composer-tools-popover, .composer-model-menu, .activity-dropdown, .skill-picker,
+  .branch-picker__menu, .chat-search-popover, .file-tree-context-menu, .model-select-menu,
+  .model-select-popover
+) {
+  max-height: min(60dvh, calc(100dvh - 140px));
 }
 
 html.mn-phone .app-dialog-panel {

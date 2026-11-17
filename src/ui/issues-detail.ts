@@ -1,3 +1,4 @@
+import '../styles/issues.css';
 import { mountIssuePlanPreview } from './issues-plan-preview';
 import type { SavedIssuePlan } from '../issues/saved-plan';
 import { createIssueChatActivity } from './issues-chat-activity';
@@ -117,6 +118,7 @@ import {
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { isLocalServerAvailable } from '../tools/config';
 import { createIcon } from './icon';
+import { isMacComposerPlatform } from './composer-shortcuts';
 import { createBackToChatButton } from './back-to-chat';
 import { returnToChat } from '../os/router';
 import {
@@ -177,6 +179,7 @@ export interface IssueDetailMountOptions {
   host: HTMLElement;
   onClose: () => void;
   onNavigate: (issueId: string) => void;
+  onOpenInIssues?: (issueId: string) => void;
   workspaceTabs?: boolean;
   onPlanChange?: (plan: SavedIssuePlan | null) => void;
 }
@@ -493,7 +496,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   /** Icon button used for Close and the more menu — 28px visual, 44px on coarse pointers. */
   function detailIconButton(
     label: string,
-    iconName: 'close' | 'more' | 'expand' | 'arrowUp' | 'arrowDown' | 'edit',
+    iconName: 'close' | 'more' | 'expand' | 'arrowUp' | 'arrowDown' | 'edit' | 'externalLink',
   ): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -760,6 +763,11 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       headerActions.appendChild(nav);
     }
     headerActions.append(createIssueExpandUndoButton(issue), createIssueExpandButton(issue, 'peek'), moreBtn);
+    if (options?.onOpenInIssues) {
+      const openButton = detailIconButton('Open in Issues', 'externalLink');
+      openButton.addEventListener('click', () => options.onOpenInIssues?.(issue.id));
+      headerActions.append(openButton);
+    }
     if (!options) headerActions.append(layoutBtn);
     headerActions.append(closeBtn);
     const breadcrumb = document.createElement('span');
@@ -1918,10 +1926,13 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     const row = document.createElement('section');
     row.className = 'issues-detail__workflow';
     row.setAttribute('aria-label', 'Issue workflow');
+    const header = document.createElement('div');
+    header.className = 'issues-detail__workflow-header';
     const heading = document.createElement('h3');
     heading.className = 'issues-detail__workflow-heading';
     heading.textContent = 'Work on this';
-    row.appendChild(heading);
+    header.appendChild(heading);
+    row.appendChild(header);
 
     const busy = workflowBusyIds.has(issue.id) || expandingIds.has(issue.id);
     const workflowOk = canRunIssueWorkflow(issue);
@@ -2041,11 +2052,23 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         items: foregroundItems,
       }));
     }
-    if (issue.chatIds?.length || issue.agent) secondary.append(createDetailTextButton({
-      label: isReviewStatus(getIssuesTaxonomySync(), issue.status) ? 'Review work' : 'View work',
-      icon: 'gitWorktree', primary: true,
-      onClick: () => workspacePanel?.select('Work'),
-    }));
+    if (issue.chatIds?.length || issue.agent) {
+      const reviewing = isReviewStatus(getIssuesTaxonomySync(), issue.status);
+      const workButton = createDetailTextButton({
+        label: reviewing ? 'Review work' : 'View work',
+        icon: options ? 'gitWorktree' : 'chevronRight',
+        primary: Boolean(options),
+        title: 'Open the Work tab for this issue',
+        onClick: () => workspacePanel?.select('Work'),
+      });
+      // The compact launcher owns the one primary action; work review is a quiet header link.
+      if (options) secondary.append(workButton);
+      else {
+        workButton.classList.add('issues-detail__workflow-review');
+        if (reviewing) workButton.classList.add('is-review');
+        header.append(workButton);
+      }
+    }
 
     row.appendChild(secondary);
     if (!options) {
@@ -2053,7 +2076,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       launch.className = 'issues-detail__compact-launch';
       const prompt = document.createElement('textarea');
       prompt.setAttribute('aria-label', 'Extra instructions for the chat (optional)');
-      prompt.placeholder = 'Add instructions (optional). The issue is included automatically.';
+      prompt.placeholder = 'Add instructions, or start with just the issue';
       prompt.rows = 2;
       prompt.value = launchDrafts.get(issue.id) ?? '';
       prompt.disabled = !workflowOk || busy;
@@ -2061,9 +2084,10 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       const actions = document.createElement('div');
       actions.className = 'issues-detail__compact-actions';
       const starting = workflowBusyIds.has(issue.id);
+      const shortcut = isMacComposerPlatform() ? '⌘↵' : 'Ctrl+↵';
       const start = createDetailTextButton({
-        label: starting ? 'Starting…' : 'Start chat', icon: 'chevronRight', primary: true, disabled: !workflowOk || busy,
-        title: 'Start a Build chat for this issue (Ctrl+Enter). You stay on this issue.',
+        label: starting ? 'Starting…' : 'Start chat', icon: 'arrowUp', primary: true, disabled: !workflowOk || busy,
+        title: `Start a Build chat for this issue (${shortcut}). You stay on this issue.`,
         onClick: () => {
           const instruction = prompt.value.trim();
           void runWorkflowAction(issue.id, 'foreground', 'build',
@@ -2077,7 +2101,21 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         start.click();
       });
       secondary.hidden = !secondary.childElementCount;
-      actions.append(useWorktree, modelButton, start);
+      start.classList.add('issues-detail__start');
+      const hint = document.createElement('kbd');
+      hint.className = 'issues-detail__start-hint';
+      hint.setAttribute('aria-hidden', 'true');
+      hint.textContent = shortcut;
+      const spacer = document.createElement('span');
+      spacer.className = 'issues-detail__compact-spacer';
+      actions.append(modelButton, useWorktree, spacer, hint, start);
+      // The whole box reads as one field: a click on its padding lands in the prompt.
+      launch.addEventListener('mousedown', (event) => {
+        if (event.target !== launch && event.target !== actions && event.target !== spacer) return;
+        if (prompt.disabled) return;
+        event.preventDefault();
+        prompt.focus();
+      });
       launch.append(prompt, actions);
       row.insertBefore(launch, secondary);
     }

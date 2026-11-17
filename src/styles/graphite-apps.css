@@ -1441,11 +1441,6 @@
   flex-wrap: wrap;
 }
 
-.mn-graphite-apps .issues-detail__workflow .issues-detail__compact-actions > button {
-  min-height: 28px;
-  padding: 4px 8px;
-}
-
 .issues-graphite-projects {
   display: grid;
   grid-template-columns: minmax(0, var(--mn-workbench-rail-w)) minmax(0, 1fr);

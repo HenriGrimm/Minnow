@@ -2631,18 +2631,29 @@
 
 /* Launch controls share one compact surface at the top of the action rail. */
 .issues-detail__workflow {
+  container: issue-launch / inline-size;
   display: grid;
   gap: var(--mn-space-2);
-  margin-bottom: var(--mn-space-5);
-  padding: var(--mn-space-3);
+  margin-bottom: var(--mn-space-6);
   max-width: 100%;
   min-width: 0;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm);
-  background: var(--mn-surface-1);
 }
 
-.issues-detail__workflow-heading { margin: 0; font: 500 var(--mn-type-sm)/1.5 var(--font-ui); color: var(--mn-fg); }
+.issues-detail__workflow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mn-space-2);
+  min-width: 0;
+  min-height: var(--mn-control-h-sm);
+}
+
+.issues-detail__workflow-heading {
+  margin: 0;
+  font: var(--mn-weight-medium) var(--mn-type-md) / var(--mn-leading-tight) var(--font-ui);
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
 .issues-detail__workflow-primary,
 .issues-detail__workflow-secondary {
   display: grid;
@@ -2651,53 +2662,139 @@
 }
 .issues-detail__workflow-secondary[hidden] { display: none; }
 
-.issues-detail__compact-launch {
-  display: grid;
-  gap: var(--mn-space-2);
+.issues-detail__workflow .issues-btn {
+  font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-semibold);
+  padding: var(--mn-space-1-5) var(--mn-space-2-5);
+  min-height: var(--mn-control-h-md);
 }
 
-.issues-detail__compact-launch textarea {
-  box-sizing: border-box;
-  min-height: 60px;
-  width: 100%;
-  padding: 9px 12px;
-  resize: vertical;
+/* "View work" / "Review work": a quiet header link, never a second primary. */
+.issues-detail__workflow .issues-detail__workflow-review {
+  flex-direction: row-reverse;
+  gap: var(--mn-space-0-5);
+  min-height: var(--mn-control-h-sm);
+  margin-inline-end: calc(-1 * var(--mn-space-1-5));
+  padding: 0 var(--mn-space-1) 0 var(--mn-space-2);
+  border-color: transparent;
+  background: transparent;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-medium);
+}
+.issues-detail__workflow .issues-detail__workflow-review.is-review { color: var(--mn-accent); }
+
+/* The launcher: one field, prompt on top and its controls along the bottom edge. */
+.issues-detail__compact-launch {
+  display: grid;
+  min-width: 0;
   border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
   border-radius: var(--mn-radius-md);
   background: var(--mn-graphite-sheet, var(--mn-bg));
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  font: inherit;
+  cursor: text;
+  transition: border-color 150ms var(--ease-out, ease-out);
 }
+.issues-detail__compact-launch:focus-within {
+  border-color: color-mix(in oklch, var(--mn-accent) 60%, var(--mn-graphite-line-2, var(--mn-border-strong)));
+}
+.issues-detail__compact-launch:has(textarea:disabled) { cursor: default; }
+
+.issues-detail__compact-launch textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  max-height: 160px;
+  field-sizing: content;
+  margin: 0;
+  padding: var(--mn-space-2-5) var(--mn-space-3) var(--mn-space-1);
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font: var(--mn-type-md) / var(--mn-leading-normal) var(--font-ui);
+}
+.issues-detail__compact-launch textarea::placeholder { color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle)); }
+.issues-detail__compact-launch textarea:disabled { cursor: default; }
 
 .issues-detail__compact-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--mn-space-1);
-}
-
-.issues-detail__compact-actions > button:last-child {
-  margin-inline-start: auto;
-  flex-direction: row-reverse;
-}
-
-.issues-detail__compact-actions > [aria-pressed='true'] {
-  color: var(--mn-accent);
-  background: var(--mn-accent-soft);
-}
-
-.issues-detail__compact-actions {
   align-items: center;
+  gap: var(--mn-space-0-5);
+  min-width: 0;
+  padding: var(--mn-space-1) var(--mn-space-1-5) var(--mn-space-1-5);
 }
+
+.issues-detail__compact-spacer { flex: 1 1 0; min-width: var(--mn-space-1); }
+
+/* Model and worktree read as settings of the field, not buttons beside it. */
+.issues-detail__workflow .issues-detail__model,
+.issues-detail__workflow .issues-detail__use-worktree {
+  justify-content: flex-start;
+  gap: var(--mn-space-1-5);
+  min-width: 0;
+  min-height: var(--mn-control-h-sm);
+  padding: 0 var(--mn-space-2);
+  border-color: transparent;
+  border-radius: var(--mn-radius-sm);
+  background: transparent;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-medium);
+  text-align: left;
+  transition: background-color 150ms var(--ease-out, ease-out), color 150ms var(--ease-out, ease-out);
+}
+.issues-detail__model > span:not(.icon-svg) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.issues-detail__model > .icon-svg:last-child { flex-shrink: 0; margin-left: auto; opacity: 0.6; }
+.issues-detail__workflow .issues-detail__use-worktree { flex: none; }
+.issues-detail__workflow .issues-detail__use-worktree[aria-pressed="true"] {
+  border-color: var(--mn-accent-border);
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent);
+}
+.issues-detail__workflow .issues-detail__use-worktree[aria-pressed="true"] .issues-detail__act-icon { opacity: 1; }
 
 .issues-detail__compact-actions > .issues-detail__model {
   flex: 0 1 auto;
-  max-width: 50%;
+  max-width: 60%;
 }
-
 .issues-detail__compact-actions > .issues-detail__model > span:not(.icon-svg) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.issues-detail__start-hint {
+  flex: none;
+  padding-inline: var(--mn-space-1);
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font: var(--mn-type-2xs) / var(--mn-leading-none) var(--font-mono);
+  white-space: nowrap;
+}
+.issues-detail__compact-launch:not(:focus-within) .issues-detail__start-hint { visibility: hidden; }
+
+.issues-detail__workflow .issues-detail__start {
+  flex: none;
+  flex-direction: row-reverse;
+  gap: var(--mn-space-1);
+  min-height: var(--mn-control-h-sm);
+  padding: 0 var(--mn-space-2) 0 var(--mn-space-2-5);
+  border-radius: var(--mn-radius-sm);
+  font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-semibold);
+}
+.issues-detail__workflow .issues-detail__start[aria-busy="true"] { cursor: progress; }
+
+@container issue-launch (max-width: 380px) {
+  .issues-detail__start-hint { display: none; }
+  .issues-detail__compact-actions > .issues-detail__model { max-width: none; }
+}
+
+@container issue-launch (max-width: 300px) {
+  .issues-detail__compact-actions { flex-wrap: wrap; }
+  .issues-detail__compact-spacer { display: none; }
+  .issues-detail__workflow .issues-detail__start { flex: 1 0 100%; justify-content: center; }
 }
 
 .issues-detail__launch-status {
@@ -2725,34 +2822,24 @@
 
 @media (prefers-reduced-motion: reduce) {
   .issues-detail__launch-status > .icon-svg { animation: none; }
+  .issues-detail__compact-launch,
+  .issues-detail__workflow .issues-detail__model,
+  .issues-detail__workflow .issues-detail__use-worktree { transition: none; }
 }
 
-.issues-detail__workflow .issues-btn {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 10px;
-  min-height: 32px;
-}
-.issues-detail__workflow .issues-detail__model,
-.issues-detail__workflow .issues-detail__use-worktree {
-  justify-content: flex-start;
-  min-width: 0;
-  padding: var(--mn-space-1) var(--mn-space-1-5);
-  border-color: transparent;
-  background: transparent;
-  color: var(--mn-fg-muted);
-  font-size: var(--mn-type-xs);
-  font-weight: 400;
-  text-align: left;
-}
-.issues-detail__model > span:not(.icon-svg) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-.issues-detail__model > .icon-svg:last-child { flex-shrink: 0; margin-left: auto; }
-.issues-detail__workflow .issues-detail__use-worktree[aria-pressed="true"] { color: var(--mn-accent); background: var(--mn-accent-soft); }
 .issues-detail__workflow .issues-workflow-menu__trigger { width: 100%; justify-content: flex-start; }
 .issues-detail__workflow .issues-workflow-menu__chevron { margin-left: auto; }
 @media (hover: hover) and (pointer: fine) {
-  .issues-detail__workflow .issues-detail__model:hover,
-  .issues-detail__workflow .issues-detail__use-worktree:hover { background: var(--mn-surface-elevated); color: var(--mn-fg); }
+  .issues-detail__workflow .issues-detail__model:hover:not(:disabled),
+  .issues-detail__workflow .issues-detail__use-worktree:hover:not(:disabled),
+  .issues-detail__workflow .issues-detail__workflow-review:hover {
+    background: var(--mn-surface-elevated);
+    color: var(--mn-graphite-text, var(--mn-fg));
+  }
+  .issues-detail__workflow .issues-detail__use-worktree[aria-pressed="true"]:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--mn-accent) 20%, transparent);
+    color: var(--mn-accent);
+  }
 }
 
 /* Send to chat mode dropdown */

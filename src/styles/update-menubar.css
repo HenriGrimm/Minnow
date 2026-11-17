@@ -21,7 +21,6 @@
 .mn-os-update-menu.mn-popover {
   width: min(380px, calc(100vw - 16px));
   max-width: none;
-  max-height: min(calc(100dvh - 76px), 540px);
   padding: 0;
 }
 

@@ -880,7 +880,7 @@ html:not(.mn-phone) .graphite-browser-host .preview-go {
   background: var(--mn-graphite-ground, var(--mn-bg));
 }
 
-.graphite-browser-host--expanded .preview-body {
+.graphite-browser-host--expanded:is([data-preview-width="tablet"], [data-preview-width="phone"]) .preview-body {
   align-self: center;
   width: calc(100% - 32px);
   max-width: var(--mn-graphite-preview-width, 100%);

@@ -2,10 +2,11 @@
 
 .workspace-menu {
   position: fixed;
+  box-sizing: border-box;
   z-index: 50;
   min-width: 18rem;
   max-width: min(30rem, calc(100vw - 1rem));
-  max-height: min(28rem, calc(100vh - 4rem));
+  max-height: calc(100dvh - 16px);
   overflow-y: auto;
   margin: 0;
   padding: var(--mn-menu-padding);

@@ -1325,7 +1325,7 @@
   position: absolute;
   inset-inline: 0;
   bottom: calc(100% + 8px);
-  z-index: 1;
+  z-index: var(--mn-z-toast);
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -1337,7 +1337,6 @@
   background: var(--mn-surface-2);
   color: var(--mn-fg);
   font-size: 12.5px;
-  animation: fadeUp 0.22s var(--ease-out);
 }
 
 .chat-list-toast[hidden] {
@@ -1738,7 +1737,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-list-toast,
   .needs-you-done,
   .chat-item-row--agent[data-agent-state='running'] .chat-item-logo::after {
     animation: none;
