@@ -1,6 +1,7 @@
 import type { SettingsSectionId } from './settings-page-types';
 
 const SUMMARIES: Partial<Record<SettingsSectionId, string>> = {
+  'keyboard-shortcuts': 'Your inputs, mapped to the way you work.',
   general: 'What Minnow opens with.',
   appearance: 'How Minnow looks on this machine.',
   notifications: 'When Minnow taps you on the shoulder.',

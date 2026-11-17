@@ -394,6 +394,16 @@
       ],
       "section": "Legal",
       "hash": "3314f4b7526e771cc2abf670a78e01c1141f6e040b9570c4ea3440af4947df2f"
+    },
+    {
+      "path": "documentation/manual/keyboard-shortcuts.md",
+      "title": "Keyboard shortcuts",
+      "summary": "Open Settings → Keyboard shortcuts to search shortcuts by action, group or input. Select a binding button and press a replacement key or chord, click a mouse button, scroll the wheel, or activate a gamepad button or stick direction. Gamepads must be connected and activated while ",
+      "headings": [
+        "Input boundaries"
+      ],
+      "section": "Overview",
+      "hash": "0716fdeba0cfe6c954506f4719a217373677f3082833a5a4470627df0540723c"
     }
   ]
 }

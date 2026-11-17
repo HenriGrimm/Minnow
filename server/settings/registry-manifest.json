@@ -1,5 +1,28 @@
 [
   {
+    "key": "keyboard.shortcuts",
+    "label": "Keyboard shortcuts",
+    "description": "Record, disable or reset keyboard, mouse and gamepad bindings.",
+    "keywords": [
+      "keybindings",
+      "hotkeys",
+      "mouse",
+      "gamepad",
+      "controller",
+      "remap",
+      "input"
+    ],
+    "category": "general",
+    "area": "keyboard-shortcuts",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "keyboard-shortcuts"
+    ]
+  },
+  {
     "key": "github.account",
     "label": "GitHub account",
     "description": "Connect the GitHub account shared by pull requests, CI and issue sync.",

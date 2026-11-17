@@ -23,6 +23,7 @@ export {
 };
 
 export type SettingsSectionId =
+  | 'keyboard-shortcuts'
   | 'general'
   | 'terminal'
   | 'backups'
@@ -72,6 +73,7 @@ export type SettingsSectionId =
 
 /** Sidebar label (hash id stays stable for bookmarks). */
 export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
+  'keyboard-shortcuts': 'Keyboard shortcuts',
   general: 'Startup and setup',
   terminal: 'Terminal',
   data: 'Data & privacy',
@@ -136,7 +138,7 @@ export type SettingsNavGroup = {
 
 /** Sidebar groups and nav order (must match index.html section order). */
 export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
-  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio', 'devices', 'updates'] },
+  { id: 'app', label: 'General', sections: ['general', 'appearance', 'keyboard-shortcuts', 'notifications', 'audio', 'devices', 'updates'] },
   { id: 'apps', label: 'Code and workspace', sections: ['editor', 'terminal', 'lsp', 'browser', 'external-connections', 'issues'] },
   {
     id: 'agents',

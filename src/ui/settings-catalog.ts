@@ -50,7 +50,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsCategoryId,
   SettingsSectionId[]
 > = {
-  general: ['general', 'terminal', 'backups', 'access', 'updates', 'notifications', 'audio', 'devices', 'about'],
+  general: ['general', 'keyboard-shortcuts', 'terminal', 'backups', 'access', 'updates', 'notifications', 'audio', 'devices', 'about'],
   apps: ['plugins', 'external-connections', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
@@ -134,6 +134,10 @@ function field(
 
 /** Static field catalog source — filtered for release gates in SETTINGS_FIELD_CATALOG. */
 const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
+  field('keyboard.shortcuts', 'Keyboard shortcuts', 'general', 'keyboard-shortcuts', {
+    keywords: ['keybindings', 'hotkeys', 'mouse', 'gamepad', 'controller', 'remap', 'input'],
+    description: 'Record, disable or reset keyboard, mouse and gamepad bindings.',
+  }),
   field('github.account', 'GitHub account', 'apps', 'external-connections', {
     keywords: ['login', 'sign in', 'authentication', 'gh', 'pull requests', 'CI', 'repository'],
     description: 'Connect the GitHub account shared by pull requests, CI and issue sync.',
