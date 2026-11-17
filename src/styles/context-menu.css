@@ -8,11 +8,12 @@
 
 .mn-menu {
   position: fixed;
+  box-sizing: border-box;
   /* Above .mn-capture (95) so menus opened from the capture popover stay reachable. */
   z-index: 96;
   min-width: 184px;
   max-width: min(300px, calc(100vw - 16px));
-  max-height: min(60vh, 520px);
+  max-height: calc(100dvh - 16px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--mn-menu-padding);

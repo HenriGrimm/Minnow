@@ -21,7 +21,7 @@ export function select(
   choices: { value: string; label: string }[],
   value?: string,
 ): HTMLSelectElement {
-  const input = el('select', 'scc-action-input');
+  const input = el('select', 'scc-action-input scc-select');
   input.setAttribute('aria-label', label);
   for (const choice of choices) {
     const option = el('option', undefined, choice.label);

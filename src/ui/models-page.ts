@@ -126,7 +126,7 @@ function setActiveSection(section: ModelsSectionId): void {
   syncModelsInspectorToggle();
 
   const displaySection = usesGraphiteModels() && section === 'thinking' ? 'sampler' : section;
-  const navSection = usesGraphiteModels() && section === 'engine' ? 'settings' : displaySection;
+  const navSection = displaySection;
   for (const id of SECTIONS) {
     const panel = document.getElementById(`modelsSection-${id}`);
     const nav = document.querySelector(

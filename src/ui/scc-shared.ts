@@ -87,6 +87,158 @@ export function button(options: {
   return btn;
 }
 
+// ── Page structure ───────────────────────────────────────────────────────────
+//
+// Every section is the same page: one bar (title, count, filters, actions),
+// then a list, or a list beside a detail. Sections differ in content only.
+
+export interface PageBar {
+  root: HTMLElement;
+  /** Count or status beside the title; set textContent. */
+  count: HTMLElement;
+  /** Filters, search, view switches: everything that changes what the list shows. */
+  controls: HTMLElement;
+  /** Commands: refresh, secondary actions, then the one primary action. */
+  actions: HTMLElement;
+}
+
+export function pageBar(title: string, options?: {
+  count?: string;
+  controls?: HTMLElement[];
+  actions?: HTMLElement[];
+}): PageBar {
+  const root = el('div', 'scc-bar');
+  const heading = el('div', 'scc-bar__heading');
+  const titleEl = el('h2', 'scc-bar__title', title);
+  const count = el('span', 'scc-bar__count', options?.count ?? '');
+  count.setAttribute('role', 'status');
+  heading.append(titleEl, count);
+  const controls = el('div', 'scc-bar__controls');
+  controls.append(...(options?.controls ?? []));
+  const actions = el('div', 'scc-bar__actions');
+  actions.append(...(options?.actions ?? []));
+  root.append(heading, controls, actions);
+  return { root, count, controls, actions };
+}
+
+/** Mutually exclusive view or filter switch. */
+export function segmented<T extends string>(options: {
+  label: string;
+  items: readonly { value: T; label: string; title?: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}): { root: HTMLElement; setValue: (value: T) => void } {
+  const root = el('div', 'scc-seg');
+  root.setAttribute('role', 'group');
+  root.setAttribute('aria-label', options.label);
+  const buttons = options.items.map((item) => {
+    const btn = el('button', 'scc-seg__item', item.label);
+    btn.type = 'button';
+    btn.dataset.value = item.value;
+    if (item.title) btn.title = item.title;
+    btn.addEventListener('click', () => {
+      if (btn.getAttribute('aria-pressed') === 'true') return;
+      setValue(item.value);
+      options.onChange(item.value);
+    });
+    return btn;
+  });
+  function setValue(value: T): void {
+    for (const btn of buttons) btn.setAttribute('aria-pressed', String(btn.dataset.value === value));
+  }
+  root.append(...buttons);
+  setValue(options.value);
+  return { root, setValue };
+}
+
+/** Search input with a leading glyph. */
+export function searchBox(placeholder: string, label = placeholder): { root: HTMLElement; input: HTMLInputElement } {
+  const root = el('label', 'scc-searchbox');
+  const input = el('input', 'scc-searchbox__input');
+  input.type = 'search';
+  input.placeholder = placeholder;
+  input.setAttribute('aria-label', label);
+  root.append(createIcon('search', { className: 'scc-searchbox__icon', size: 14 }), input);
+  return { root, input };
+}
+
+export type PillTone =
+  | 'open' | 'draft' | 'merged' | 'closed'
+  | 'success' | 'failure' | 'pending' | 'warning' | 'neutral';
+
+/** State label with a leading dot: one vocabulary for PRs, runs, releases. */
+export function statePill(label: string, tone: PillTone): HTMLElement {
+  const pill = el('span', `scc-pill scc-pill--${tone}`);
+  pill.append(el('span', 'scc-pill__dot'), el('span', 'scc-pill__label', label));
+  return pill;
+}
+
+export function runStateTone(state: RunState): PillTone {
+  return state === 'success' ? 'success'
+    : state === 'failure' ? 'failure'
+      : state === 'pending' ? 'pending'
+        : 'neutral';
+}
+
+/**
+ * Detail header shared by commits, pull requests, runs and releases:
+ * a state line, the title, facts, then the actions for this one item.
+ */
+export function detailHead(options: {
+  eyebrow?: (HTMLElement | string)[];
+  title: string;
+  facts?: (HTMLElement | string)[];
+  actions?: HTMLElement;
+  onBack?: () => void;
+  backLabel?: string;
+  titleClass?: string;
+}): { root: HTMLElement; title: HTMLElement } {
+  const root = el('header', 'scc-dhead');
+  if (options.onBack) {
+    const back = button({
+      label: options.backLabel ?? 'Back',
+      icon: 'chevronLeft',
+      variant: 'ghost',
+      className: 'scc-dhead__back',
+      onClick: options.onBack,
+    });
+    root.appendChild(back);
+  }
+  if (options.eyebrow?.length) {
+    const eyebrow = el('div', 'scc-dhead__eyebrow');
+    for (const item of options.eyebrow) eyebrow.append(typeof item === 'string' ? el('span', undefined, item) : item);
+    root.appendChild(eyebrow);
+  }
+  const title = el('h2', `scc-dhead__title${options.titleClass ? ` ${options.titleClass}` : ''}`, options.title);
+  root.appendChild(title);
+  if (options.facts?.length) {
+    const facts = el('div', 'scc-dhead__facts');
+    for (const item of options.facts) facts.append(typeof item === 'string' ? el('span', undefined, item) : item);
+    root.appendChild(facts);
+  }
+  if (options.actions) {
+    options.actions.classList.add('scc-dhead__actions');
+    root.appendChild(options.actions);
+  }
+  return { root, title };
+}
+
+/**
+ * List beside detail. Narrow panes show one at a time: picking a row opens
+ * the detail, and its Back button returns to the list.
+ */
+export function drillIn(split: HTMLElement): { open: () => void; close: () => void; isOpen: () => boolean } {
+  split.classList.add('scc-split--drill');
+  return {
+    open: () => split.classList.add('is-detail-open'),
+    close: () => {
+      split.classList.remove('is-detail-open');
+      split.querySelector<HTMLElement>('.scc-split__list [aria-pressed="true"], .scc-split__list .is-selected')?.focus();
+    },
+    isOpen: () => split.classList.contains('is-detail-open'),
+  };
+}
+
 /** Section header inside a pane: uppercase label, count, trailing actions. */
 export function paneHeader(
   title: string,

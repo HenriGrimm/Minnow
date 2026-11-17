@@ -25,6 +25,8 @@ export interface WorktreeOpResult {
   branch?: string;
   /** Parsed worktrees when `op` is `list`. */
   worktrees?: WorktreeListEntry[];
+  /** `list`: registered worktrees whose folder no longer exists. */
+  missing?: string[];
   created?: boolean;
   createdBranch?: string;
   committed?: boolean;

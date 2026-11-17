@@ -706,10 +706,11 @@
 
 .composer-run-target-menu {
   position: fixed;
+  box-sizing: border-box;
   z-index: 1200;
   min-width: 12rem;
   max-width: min(20rem, calc(100vw - 16px));
-  max-height: min(18rem, calc(100vh - 16px));
+  max-height: calc(100dvh - 16px);
   overflow: auto;
   padding: var(--mn-menu-padding);
   border-radius: var(--mn-menu-radius);

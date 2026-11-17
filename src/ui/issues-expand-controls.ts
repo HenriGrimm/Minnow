@@ -3,11 +3,11 @@ import { findIssueById } from '../state/issues-store';
 import type { IssueCard } from '../types';
 import { iconHtml } from './icon';
 import {
+  getIssueExpandUndo,
   isIssueDraftExpanding,
-  isIssueExpandOverlayOpen,
 } from './issues-expand-state';
 
-export { isIssueDraftExpanding, isIssueExpandOverlayOpen };
+export { isIssueDraftExpanding };
 
 const IDLE_LABEL = 'Expand issue';
 const IDLE_TITLE = 'Expand title, description, labels, and priority from the current card';
@@ -50,7 +50,28 @@ export function createIssueExpandButton(
   return btn;
 }
 
-/** Refresh busy/disabled on every mounted sparkles control (after lazy module sync). */
+/**
+ * Inline Undo shown beside the sparkles control after an in-place expansion.
+ * A stable element painted in place, so run state never remounts the editor.
+ */
+export function createIssueExpandUndoButton(issue: IssueCard): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'issues-btn issues-expand-undo';
+  btn.dataset.issueExpandUndo = issue.id;
+  btn.textContent = 'Undo';
+  btn.title = 'Undo expansion';
+  btn.setAttribute('aria-label', `Undo expansion of ${issue.id}`);
+  btn.hidden = !getIssueExpandUndo(issue.id) || isIssueDraftExpanding(issue.id);
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    btn.hidden = true;
+    void import('./issues-expand').then((m) => m.undoIssueExpand(issue.id));
+  });
+  return btn;
+}
+
+/** Refresh busy/disabled on every mounted sparkles control and its Undo. */
 export function syncIssueExpandButtons(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-issue-expand]').forEach((btn) => {
     const id = btn.dataset.issueExpand ?? '';
@@ -63,24 +84,28 @@ export function syncIssueExpandButtons(): void {
       btn.disabled = false;
     }
   });
+  document.querySelectorAll<HTMLButtonElement>('[data-issue-expand-undo]').forEach((btn) => {
+    const id = btn.dataset.issueExpandUndo ?? '';
+    btn.hidden = !getIssueExpandUndo(id) || isIssueDraftExpanding(id);
+  });
 }
 
 async function onExpandButtonClick(issueId: string): Promise<void> {
   const expand = await import('./issues-expand');
   if (isIssueDraftExpanding(issueId)) {
-    expand.closeIssueExpandOverlay();
+    expand.cancelIssueExpand();
     return;
   }
   await expand.startIssueExpandFromUi(issueId);
 }
 
-/** Open the review overlay (loads expand module on first use). */
+/** Expand in place (loads expand module on first use). */
 export async function startIssueExpandFromUi(issueId: string): Promise<void> {
   const expand = await import('./issues-expand');
   await expand.startIssueExpandFromUi(issueId);
 }
 
-/** Discard / close without saving. */
-export function closeIssueExpandOverlay(): void {
-  void import('./issues-expand').then((m) => m.closeIssueExpandOverlay());
+/** Stop an in-flight expansion without writing anything. */
+export function cancelIssueExpand(): void {
+  void import('./issues-expand').then((m) => m.cancelIssueExpand());
 }

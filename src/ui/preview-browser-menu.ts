@@ -3,6 +3,7 @@ import type {
   MinnowPreviewBrowserMenuApi,
 } from '../electron';
 import { appConfirm } from './app-dialog';
+import { placeFloating } from './components/position';
 import { clearBrowserHistory } from './browser-history';
 import { closeBrowserHistoryPopover } from './browser-url-suggest';
 import { markPreviewOccluder } from './preview-occlusion';
@@ -151,12 +152,8 @@ function separator(): HTMLElement {
 }
 
 function positionMenu(menu: HTMLElement, anchor: HTMLElement): void {
-  const rect = anchor.getBoundingClientRect();
-  const width = Math.min(280, window.innerWidth - 16);
-  menu.style.width = `${width}px`;
-  menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.maxHeight = `${Math.max(80, window.innerHeight - rect.bottom - 12)}px`;
-  menu.style.left = `${Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))}px`;
+  menu.style.width = 'min(280px, calc(100vw - 16px))';
+  placeFloating(menu, anchor, { placement: 'bottom-end' });
 }
 
 async function openPreviewBrowserMenu(

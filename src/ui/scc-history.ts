@@ -8,11 +8,13 @@ import { splitCommitOutput } from './scc-commit-output';
 import { gitUiCtx, showGitUiFailure } from './git-ui-op';
 import {
   chip,
+  detailHead,
   diffStat,
   el,
   emptyState,
   errorStrip,
   button,
+  pageBar,
   skeletonRows,
   type SccContext,
   type SccView,
@@ -29,6 +31,8 @@ interface CommitFile {
 
 export function createHistoryView(ctx: SccContext): SccView {
   const root = el('div', 'scc-history');
+  root.dataset.view = 'map';
+  const bar = pageBar('History');
 
   const graphCol = el('div', 'scc-history__graph-col');
   const graphMount = el('div', 'scc-history__graph');
@@ -37,7 +41,7 @@ export function createHistoryView(ctx: SccContext): SccView {
   const detailCol = el('div', 'scc-history__detail-col');
   detailCol.setAttribute('aria-label', 'Commit review');
   detailCol.setAttribute('role', 'region');
-  root.append(graphCol, detailCol);
+  root.append(bar.root, graphCol, detailCol);
 
   let graphHandle: GitHistoryMapHandle | null = null;
   let selectedSha: string | null = null;
@@ -46,6 +50,9 @@ export function createHistoryView(ctx: SccContext): SccView {
   let cwd = ctx.getCwd();
 
   const graphOptions: GitHistoryMapOptions = {
+    controlsHost: bar.controls,
+    onViewChange: (view) => { root.dataset.view = view; },
+    onStatus: (text) => { bar.count.textContent = text; },
     onSelectCommit: (sha) => void selectCommit(sha),
     onSelectionRemoved: () => {
       selectedSha = null;
@@ -119,18 +126,19 @@ export function createHistoryView(ctx: SccContext): SccView {
     const header = splitCommitOutput(stdout);
     const files = collectFiles(patch || header.patch, nameStatus);
     const wrap = el('div', 'scc-commit-detail git-commit-diff');
+    wrap.setAttribute('aria-label', `Commit ${sha.slice(0, 7)}`);
 
-    const head = el('div', 'scc-commit-detail__head git-commit-diff__meta');
-    const text = el('div', 'git-commit-diff__meta-text');
-    const subject = el('h2', 'scc-commit-detail__subject', header.subject || '(no message)');
-    const meta = el('div', 'scc-commit-detail__meta');
-    meta.append(chip(sha.slice(0, 7), 'sha'));
-    if (header.author) meta.appendChild(el('span', 'scc-commit-detail__author', header.author));
-    if (header.date) meta.appendChild(el('span', 'scc-commit-detail__date', header.date));
-    meta.append(el('span', '', `${files.length} files changed`));
-    text.append(subject, meta);
-    const actions = el('div', 'git-commit-diff__meta-actions');
-    const wrapButton = button({ label: 'Wrap', title: 'Toggle word wrap in commit diff', onClick: () => {
+    const closeReview = () => {
+      selectedSha = null;
+      detailRequest++;
+      graphHandle?.setSelection(null);
+      renderPlaceholder();
+    };
+    const totals = files.reduce((sum, file) => ({ add: sum.add + file.additions, del: sum.del + file.deletions }), { add: 0, del: 0 });
+    const eyebrow: HTMLElement[] = [chip(sha.slice(0, 7), 'sha')];
+    if (header.author) eyebrow.push(el('span', 'scc-commit-detail__author', header.author));
+    if (header.date) eyebrow.push(el('span', 'scc-commit-detail__date', header.date));
+    const wrapButton = button({ label: 'Wrap lines', variant: 'ghost', title: 'Toggle word wrap in commit diff', onClick: () => {
       const enabled = !getGitCommitDiffWordWrap();
       setGitCommitDiffWordWrap(enabled);
       wrapButton.setAttribute('aria-pressed', String(enabled));
@@ -138,19 +146,22 @@ export function createHistoryView(ctx: SccContext): SccView {
       if (mount) setSideBySidePatchDiffWordWrap(mount, enabled);
     } });
     wrapButton.setAttribute('aria-pressed', String(getGitCommitDiffWordWrap()));
-    actions.append(wrapButton, button({ icon: 'close', title: 'Close commit review', onClick: () => {
-      selectedSha = null;
-      detailRequest++;
-      graphHandle?.setSelection(null);
-      renderPlaceholder();
-    } }));
-    head.append(text, actions);
-    wrap.appendChild(head);
+    const filesFact = el('span', 'scc-commit-detail__files', `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`);
+    const head = detailHead({
+      eyebrow,
+      title: header.subject || '(no message)',
+      titleClass: 'scc-commit-detail__subject',
+      facts: files.length ? [filesFact, diffStat(totals.add, totals.del)] : [filesFact],
+      onBack: closeReview,
+      backLabel: 'History',
+    });
+    head.root.appendChild(button({ icon: 'close', variant: 'ghost', title: 'Close commit review', className: 'scc-commit-detail__close', onClick: closeReview }));
+    wrap.appendChild(head.root);
 
     if (header.body) {
       const message = el('details', 'scc-commit-detail__message');
-      message.append(el('summary', '', 'Commit message'), el('pre', 'scc-commit-detail__body', header.body));
-      text.append(message);
+      message.append(el('summary', '', 'Full message'), el('pre', 'scc-commit-detail__body', header.body));
+      head.root.appendChild(message);
     }
 
     if (files.length === 0) {
@@ -218,7 +229,9 @@ export function createHistoryView(ctx: SccContext): SccView {
       tabButtons.push(tab);
       tabs.append(tab);
     });
-    wrap.append(tabs, body);
+    const filebar = el('div', 'scc-commit-detail__filebar');
+    filebar.append(tabs, wrapButton);
+    wrap.append(filebar, body);
     detailCol.replaceChildren(wrap);
     selectFile(0);
   }

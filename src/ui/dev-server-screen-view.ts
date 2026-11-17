@@ -3,6 +3,7 @@ import {
   type DevServerLifecycleStatus,
   type DevServerNetwork,
 } from '../config/startup-api';
+import { worktreeTitle } from '../lib/worktree-title';
 import type { DevServerListItem, ListeningPortRow } from '../config/dev-servers-api';
 
 export type HubDevServerUiState =
@@ -233,17 +234,17 @@ function formatElapsed(startedAt: number | null): string {
   return `${Math.floor(min / 60)}h`;
 }
 
-/** Compact worktree label for server rows (branch name or folder leaf). */
+/** Compact worktree label for server rows: the checkout's user-facing title (MIN-14). */
 export function formatDevServerWorktreeLabel(
   worktreeRoot: string | null | undefined,
   workspaceRoot: string,
+  titleFor: (path: string) => string = (path) => worktreeTitle({ path }),
 ): string | null {
   if (!worktreeRoot?.trim()) return null;
   const normRoot = workspaceRoot.replace(/\\/g, '/').replace(/\/+$/, '');
   const normPath = worktreeRoot.replace(/\\/g, '/').replace(/\/+$/, '');
   if (normPath === normRoot) return 'workspace';
-  const leaf = normPath.split('/').pop() ?? normPath;
-  return leaf;
+  return titleFor(worktreeRoot);
 }
 
 /** Per-row state machine for the Dev Servers screen. */
@@ -251,6 +252,7 @@ export function deriveDevServerRowView(
   serverOnline: boolean,
   item: DevServerListItem,
   workspaceRoot = '',
+  worktreeTitleFor?: (path: string) => string,
 ): DevServerRowViewModel {
   const port = item.port ?? item.def?.port ?? DEFAULT_DEV_SERVER_PORT;
   const network = item.network ?? item.def?.network ?? 'local';
@@ -292,6 +294,7 @@ export function deriveDevServerRowView(
   const worktreeLabel = formatDevServerWorktreeLabel(
     item.worktreeRoot ?? item.def?.worktreeRoot,
     workspaceRoot,
+    worktreeTitleFor,
   );
   const metaParts = [base.meta];
   if (worktreeLabel) metaParts.push(worktreeLabel);

@@ -595,6 +595,7 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
 .mn-graphite-workspace .mn-os-app-rail__btn[data-app-id='scheduler'] { order: -1; }
 
 .mn-graphite-sidebar-footer {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -605,6 +606,7 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
 }
 
 .mn-graphite-sidebar-footer .chat-list-views {
+  position: static;
   flex: 1 0 82px;
   min-width: 0;
   border: 0;

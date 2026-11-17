@@ -8,7 +8,7 @@ import { createChatRepository } from '../../server/chats/repository.js';
 import { createChatPresentation } from '../../server/chats/presentation.js';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { applySharedChatFrame, createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
-import { renderChatFromHistory, cancelChatHistoryBackfill, appendStreamingAssistantRow } from '../../src/ui/messages.ts';
+import { renderChatFromHistory, cancelChatHistoryBackfill, appendStreamingAssistantRow, syncPendingTranscriptMessages } from '../../src/ui/messages.ts';
 import { setStreaming } from '../../src/app-state.ts';
 import { attachToolStartIndicator } from '../../src/ui/stream-status.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
@@ -73,6 +73,47 @@ test('sending another message does not reopen the finished turn before its user 
   renderChatFromHistory(chat);
   assert.equal(mount.querySelector('.chat-work').getAttribute('aria-expanded'), 'false');
 });
+
+for (const view of ['compact', 'full']) {
+  test(`${view} keeps the next pending message after the completed turn's edited files`, (t) => {
+    setChatView(view);
+    t.after(() => setChatView('compact'));
+    chat.chatCommandVersion = 1;
+    chat.history[0].commandId = 'old-command';
+    chat.history[0].workStatus = 'completed';
+    renderChatFromHistory(chat);
+    const final = mount.querySelector('.chat-turn-final');
+    const card = mount.querySelector('.chat-turn-changes');
+    chat.pendingMessageQueue = [{ id: 'new-command', text: 'Next request', createdAt: 1, provenance: { actor: 'human' } }];
+    chat.agentPendingCommand = { commandId: 'new-command', state: 'accepted' };
+    const assertOrder = (user) => {
+      const children = [...mount.children];
+      const changes = mount.querySelector('.chat-turn-changes');
+      const status = mount.querySelector('.msg--sending-status');
+      assert.ok(changes, 'the completed edited-files card remains mounted');
+      assert.ok(user, 'the new user message is visible');
+      assert.ok(status, 'Sending remains visible before the new response');
+      assert.ok(children.indexOf(changes) < children.indexOf(user), 'edited files precede the next input');
+      assert.ok(children.indexOf(user) < children.indexOf(status), 'input precedes Sending');
+      assert.ok(!status.classList.contains('chat-work-hidden'), 'Sending is not collapsed into previous work');
+      assert.ok(!status.classList.contains('chat-step'), 'Sending is not a previous work step');
+    };
+    syncPendingTranscriptMessages(chat, mount);
+    assertOrder(mount.querySelector('.msg--sending'));
+    installChatWorkView(mount, chat, () => false);
+    assertOrder(mount.querySelector('.msg--sending'));
+    assert.equal(mount.querySelector('.chat-turn-final'), final);
+    assert.equal(mount.querySelector('.chat-turn-changes'), card);
+    renderChatFromHistory(chat);
+    assertOrder(mount.querySelector('.msg--sending'));
+    chat.history.push({ role: 'user', content: 'Next request', commandId: 'new-command' });
+    chat.agentPendingCommand = undefined;
+    chat.agentExecution = { commandId: 'new-command', executionId: 'new-execution', status: 'running' };
+    renderChatFromHistory(chat);
+    assert.equal(mount.querySelector('.msg--sending'), null, 'canonical input replaces the echo');
+    assertOrder(mount.querySelector('.msg.user[data-history-index="4"]'));
+  });
+}
 
 test('compact history keeps the final answer visible and groups tools and thoughts without replacing nodes', () => {
   renderChatFromHistory(chat);

@@ -112,7 +112,7 @@ afterEach(() => {
 });
 
 describe('issues detail display', () => {
-  test('Launch options keeps model and worktree selection beside a single thread launch', () => {
+  test('launch card shows model and worktree beside Start chat with an empty prompt', () => {
     setupDom();
     seedIssues([{
       id: 'GET-3', title: 'Fix the thread launcher', description: '', type: 'task',
@@ -121,25 +121,24 @@ describe('issues detail display', () => {
     }]);
     openIssueDetail('GET-3');
 
-    const options = () => document.querySelector<HTMLButtonElement>('[aria-controls="issueLaunchOptions"]')!;
-    const panel = () => document.getElementById('issueLaunchOptions')!;
-    const worktree = () => panel().querySelector<HTMLButtonElement>('.issues-detail__use-worktree')!;
+    const actions = () => document.querySelector<HTMLElement>('.issues-detail__compact-actions')!;
+    const worktree = () => actions().querySelector<HTMLButtonElement>('.issues-detail__use-worktree')!;
     const button = (selector: string, label: string) =>
       [...document.querySelectorAll<HTMLButtonElement>(selector)].find((el) => el.textContent?.trim() === label)!;
-    assert.equal(options().getAttribute('aria-expanded'), 'false');
-    assert.equal(panel().hidden, true);
-    options().click();
-    assert.equal(options().getAttribute('aria-expanded'), 'true');
-    assert.equal(panel().hidden, false);
-    assert.ok(panel().querySelector('.issues-detail__model'));
+    const prompt = document.querySelector<HTMLTextAreaElement>('.issues-detail__compact-launch textarea')!;
+    assert.equal(prompt.value, '', 'the launch prompt must not be pre-typed');
+    assert.ok(prompt.placeholder);
+    assert.equal(document.querySelector('[aria-controls="issueLaunchOptions"]'), null);
+    assert.ok(actions().querySelector('.issues-detail__model'));
     assert.ok(worktree());
-    assert.equal(panel().querySelector('.issues-workflow-menu-wrap'), null);
-    assert.ok(button('.issues-detail__compact-actions button', 'Start thread'));
+    assert.equal(document.querySelectorAll('.issues-detail__use-worktree').length, 1);
+    assert.equal(document.querySelector('.issues-workflow-menu-wrap'), null);
+    assert.ok(button('.issues-detail__compact-actions button', 'Start chat'));
 
+    assert.equal(worktree().getAttribute('aria-pressed'), 'false');
     button('.issues-detail__compact-actions button', 'New worktree').click();
     assert.equal(worktree().getAttribute('aria-pressed'), 'true');
     refreshIssueDetailIfOpen();
-    assert.equal(options().getAttribute('aria-expanded'), 'true');
     assert.equal(worktree().getAttribute('aria-pressed'), 'true');
     worktree().click();
     assert.equal(worktree().getAttribute('aria-pressed'), 'false');
@@ -421,6 +420,14 @@ describe('issues detail display', () => {
     assert.ok([...githubRow.querySelectorAll('button')].some((btn) => btn.textContent === 'Sync'));
     assert.equal(githubRow.querySelector('a'), null);
     assert.equal(scroll.querySelectorAll('.issues-detail__git-chip').length, 1);
+
+    const linked = findIssueById('GET-7')!;
+    seedIssues([{ ...linked, updatedAt: FIXED_NOW + 1,
+      github: { ...linked.github!, localChangedAt: FIXED_NOW + 1 } }]);
+    refreshIssueDetailIfOpen();
+    const identity = document.querySelector('.issues-detail__identity');
+    assert.ok(identity?.querySelector('.issues-detail__id'));
+    assert.equal(identity?.querySelector('.issues-github-sync-badge')?.textContent, 'GitHub · Needs push');
   });
 
   test('Push to GitHub is in the Git toolbar only when mirror is on and unlinked', () => {

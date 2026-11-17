@@ -1,6 +1,6 @@
 import { gitLog, type GitCommitEntry, type GitLogResult } from '../../state/git-api';
 import type { CommitVisual } from '../git-graph';
-import { button, el, emptyState, errorStrip, skeletonRows } from '../scc-shared';
+import { button, el, emptyState, errorStrip, searchBox, segmented, skeletonRows } from '../scc-shared';
 import { createViewport, type ViewportApi, type ViewState } from '../spatial-viewport';
 import { frameGitHistoryLayout, layoutGitHistory, type GitHistoryBox, type GitHistoryLayout } from './layout';
 import {
@@ -15,6 +15,11 @@ export interface GitHistoryMapOptions {
   onSelectCommit?(sha: string): void;
   onContextMenu?(visual: CommitVisual, event: MouseEvent): void;
   onSelectionRemoved?(): void;
+  /** Mount the search, filters and view switch here (a page bar) instead of above the map. */
+  controlsHost?: HTMLElement;
+  onViewChange?(view: 'map' | 'list'): void;
+  /** Short count for a page bar, e.g. "200 commits". */
+  onStatus?(text: string): void;
 }
 export interface GitHistoryMapHandle {
   refresh(): Promise<void>;
@@ -24,7 +29,8 @@ export interface GitHistoryMapHandle {
 
 const VIEW_KEY = 'minnow.git-history.view';
 const PAGE_SIZE = 200;
-const LIST_ROW_HEIGHT = 88;
+/** Must match .git-history-map__list-row height in source-control-center.css. */
+const LIST_ROW_HEIGHT = 54;
 
 /** One loaded history and selection shared by spatial and chronological views. */
 export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOptions = {}): GitHistoryMapHandle {
@@ -32,27 +38,27 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
   const toolbar = el('div', 'git-history-map__toolbar');
   toolbar.setAttribute('role', 'toolbar');
   toolbar.setAttribute('aria-label', 'History discovery');
-  const search = el('input', 'git-history-map__search');
-  search.type = 'search';
-  search.placeholder = 'Search loaded history';
-  search.setAttribute('aria-label', 'Search loaded commits by message, author, SHA, or ref');
-  const filter = el('select', 'git-history-map__filter');
+  const searchField = searchBox('Search history', 'Search loaded commits by message, author, SHA, or ref');
+  searchField.root.classList.add('git-history-map__search');
+  const search = searchField.input;
+  const filter = el('select', 'scc-select git-history-map__filter');
   filter.setAttribute('aria-label', 'Filter by ref type');
   for (const [value, label] of [['all', 'All refs'], ['head', 'HEAD'], ['local', 'Local branches'], ['remote', 'Remote branches'], ['tag', 'Tags']]) {
     const option = el('option', '', label);
     option.value = value;
     filter.append(option);
   }
-  const branches = el('select', 'git-history-map__filter');
+  const branches = el('select', 'scc-select git-history-map__filter');
   branches.setAttribute('aria-label', 'Branch to collapse or expand');
-  const collapse = button({ label: 'Collapse', onClick: toggleBranch });
-  const switcher = el('div', 'git-history-map__switch');
-  switcher.setAttribute('role', 'group');
-  switcher.setAttribute('aria-label', 'History view');
-  const mapButton = button({ label: 'Map', onClick: () => changeView('map') });
-  const listButton = button({ label: 'List', onClick: () => changeView('list') });
-  switcher.append(mapButton, listButton);
-  toolbar.append(switcher, search, filter);
+  const collapse = button({ label: 'Collapse', variant: 'ghost', onClick: toggleBranch });
+  const switcher = segmented<'list' | 'map'>({
+    label: 'History view',
+    items: [{ value: 'list', label: 'List' }, { value: 'map', label: 'Map' }],
+    value: 'map',
+    onChange: (next) => changeView(next),
+  });
+  switcher.root.classList.add('git-history-map__switch');
+  toolbar.append(switcher.root, searchField.root, filter);
   const branchControls = el('div', 'git-history-map__branch-controls');
   branchControls.append(branches, collapse);
   toolbar.append(branchControls);
@@ -86,18 +92,22 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
   navigation.setAttribute('aria-label', 'Map navigation');
   const zoom = el('span', 'git-history-map__zoom', '100%');
   navigation.append(
-    button({ label: 'Zoom out', onClick: () => viewport.zoomBy(1 / 1.25) }), zoom,
-    button({ label: 'Zoom in', onClick: () => viewport.zoomBy(1.25) }),
-    button({ label: 'Fit', icon: 'expand', onClick: () => viewport.fit({ maxScale: 1 }) }),
-    button({ label: 'Reset', onClick: resetView }),
+    button({ label: 'Zoom out', variant: 'ghost', onClick: () => viewport.zoomBy(1 / 1.25) }), zoom,
+    button({ label: 'Zoom in', variant: 'ghost', onClick: () => viewport.zoomBy(1.25) }),
+    button({ label: 'Fit', icon: 'expand', variant: 'ghost', onClick: () => viewport.fit({ maxScale: 1 }) }),
+    button({ label: 'Reset', variant: 'ghost', onClick: resetView }),
   );
   const minimap = el('canvas', 'git-history-map__minimap');
   minimap.setAttribute('aria-label', 'Commit map overview. Drag to pan.');
   minimap.setAttribute('role', 'img');
   const navigationRow = el('div', 'git-history-map__navigation-row');
   navigationRow.append(navigation, minimap);
+  // A page bar shows the count; the footer then only offers older commits.
+  if (options.controlsHost) status.hidden = true;
   footer.append(status, older);
-  root.append(toolbar, message, body, navigationRow, footer);
+  if (options.controlsHost) options.controlsHost.append(toolbar);
+  else root.append(toolbar);
+  root.append(message, body, navigationRow, footer);
   host.replaceChildren(root);
 
   let destroyed = false;
@@ -141,10 +151,13 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
   resize.observe(body);
 
   function updateStatus(): void {
-    const suffix = selected ? ` · Selected ${selected.slice(0, 7)}` : '';
+    const filtered = Boolean(query || filter.value !== 'all');
     status.textContent = busy ? 'Loading history…' : `${commits.length} loaded · ${visibleModel.nodes.length} shown`
-      + (query || filter.value !== 'all' ? ` · ${visibleModel.matches.size} matches` : '')
-      + (visibleModel.hiddenCount ? ` · ${visibleModel.hiddenCount} hidden` : '') + suffix;
+      + (filtered ? ` · ${visibleModel.matches.size} matches` : '')
+      + (visibleModel.hiddenCount ? ` · ${visibleModel.hiddenCount} hidden` : '');
+    options.onStatus?.(busy && !commits.length ? '' : filtered
+      ? `${visibleModel.matches.size} of ${commits.length}${hasMore ? '+' : ''}`
+      : `${commits.length}${hasMore ? '+' : ''} commits`);
     older.hidden = !hasMore;
     older.disabled = busy;
     root.setAttribute('aria-busy', String(busy));
@@ -241,9 +254,18 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
       row.setAttribute('aria-pressed', String(node.commit.hash === selected));
       row.classList.toggle('is-selected', node.commit.hash === selected);
       row.classList.toggle('is-context', !visibleModel.matches.has(node.commit.hash));
-      row.append(el('span', 'git-history-map__subject', node.commit.subject),
-        el('span', 'git-history-map__meta', `${node.commit.hash.slice(0, 7)} · ${node.commit.author} · ${node.commit.relativeTime}`),
-        renderGitHistoryRefs(node.refs));
+      row.classList.add('scc-row');
+      const lane = el('span', 'git-history-map__lane');
+      lane.style.setProperty('--lane', `var(${gitHistoryColorToken(node)})`);
+      const lead = el('span', 'scc-row__lead');
+      lead.append(lane);
+      const time = el('span', 'scc-row__aside', shortRelativeTime(node.commit.relativeTime));
+      time.title = node.commit.relativeTime;
+      const meta = el('span', 'scc-row__meta git-history-map__meta');
+      meta.append(el('span', 'scc-fact scc-mono', node.commit.hash.slice(0, 7)), el('span', 'scc-fact', node.commit.author));
+      if (node.refs.length) meta.append(renderGitHistoryRefs(node.refs));
+      row.append(lead, el('span', 'scc-row__title git-history-map__subject', node.commit.subject), time, meta);
+      row.title = node.commit.subject;
       row.addEventListener('click', () => select(node));
       row.addEventListener('focus', () => {
         focused = node.commit.hash;
@@ -335,8 +357,8 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
     canvas.hidden = next !== 'map';
     list.hidden = next !== 'list';
     navigationRow.hidden = next !== 'map';
-    mapButton.setAttribute('aria-pressed', String(next === 'map'));
-    listButton.setAttribute('aria-pressed', String(next === 'list'));
+    switcher.setValue(next);
+    options.onViewChange?.(next);
     const anchor = selected ?? focused;
     if (anchor) {
       if (next === 'list') {
@@ -508,4 +530,12 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
       root.remove();
     },
   };
+}
+
+/** "12 minutes ago" → "12m"; anything unrecognised passes through. */
+function shortRelativeTime(text: string): string {
+  const match = /^(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/.exec(text.trim());
+  if (!match) return text;
+  const unit = { second: 's', minute: 'm', hour: 'h', day: 'd', week: 'w', month: 'mo', year: 'y' }[match[2] as 'second'];
+  return `${match[1]}${unit}`;
 }

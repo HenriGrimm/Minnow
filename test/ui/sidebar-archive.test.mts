@@ -71,6 +71,8 @@ test('archiving a long chat title shows a short confirmation with Undo', () => {
   const list = setup([value]);
   setChatsArchivedWithUndo([value], true);
   assert.equal(document.querySelector('.chat-list-toast__text')?.textContent, 'Chat archived.');
+  assert.equal(document.getElementById('chatListToast')?.parentElement?.id, 'chatListViews',
+    'toast is anchored inside the view bar, not a flex sibling in the footer');
   assert.equal(ids(list).includes(value.id), false);
   document.querySelector<HTMLButtonElement>('.chat-list-toast__undo')!.click();
   assert.ok(ids(list).includes(value.id));

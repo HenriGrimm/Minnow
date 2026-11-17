@@ -9,6 +9,11 @@ export interface ParsedWorktree {
   branch?: string;
   detached: boolean;
   bare?: boolean;
+  /** `git worktree lock` is set; `remove` and `prune` refuse it until unlocked. */
+  locked?: boolean;
+  lockReason?: string;
+  /** Git already knows the folder is gone (only reported for unlocked entries). */
+  prunable?: boolean;
 }
 
 /** Parse porcelain blocks emitted by `git worktree list --porcelain`. */
@@ -39,6 +44,11 @@ export function parseWorktreeListPorcelain(output: string): ParsedWorktree[] {
       current.detached = true;
     } else if (line === 'bare') {
       current.bare = true;
+    } else if (line === 'locked' || line.startsWith('locked ')) {
+      current.locked = true;
+      current.lockReason = line.slice('locked'.length).trim() || undefined;
+    } else if (line === 'prunable' || line.startsWith('prunable ')) {
+      current.prunable = true;
     }
   }
 
@@ -56,6 +66,8 @@ function finishWorktreeEntry(entry: Partial<ParsedWorktree>): ParsedWorktree {
     branch: entry.branch,
     detached: entry.detached === true,
     bare: entry.bare,
+    ...(entry.locked ? { locked: true, lockReason: entry.lockReason } : {}),
+    ...(entry.prunable ? { prunable: true } : {}),
   };
 }
 
@@ -106,39 +118,6 @@ export function isPrincipalWorktreePath(
   const principal = getPrincipalWorktree(worktrees);
   if (!principal?.path) return false;
   return worktreePathsEqual(worktreePath, principal.path);
-}
-
-export interface FormatWorktreeOptionLabelOptions {
-  /** Absolute path of the git principal worktree (first porcelain entry). */
-  principalPath?: string;
-}
-
-/** Compact label for a worktree row in the git panel cwd dropdown. */
-export function formatWorktreeOptionLabel(
-  wt: ParsedWorktree,
-  workspaceRoot: string,
-  options?: FormatWorktreeOptionLabelOptions,
-): string {
-  const branchLabel = wt.branch
-    ? wt.branch
-    : wt.detached
-      ? '(detached)'
-      : '(unknown)';
-
-  if (worktreePathsEqual(wt.path, workspaceRoot)) {
-    return `${branchLabel} — workspace`;
-  }
-
-  if (options?.principalPath && worktreePathsEqual(wt.path, options.principalPath)) {
-    return `${branchLabel} — main worktree`;
-  }
-
-  const normPath = normalizeWorktreePath(wt.path);
-  const leaf = normPath.split('/').pop() ?? normPath;
-  if (wt.branch && isMinnowBoardBranch(wt.branch) && wt.branch.split('/').pop() === leaf) {
-    return branchLabel;
-  }
-  return `${branchLabel} — ${leaf}`;
 }
 
 /** Minnow orchestration branches created for board worktrees. */

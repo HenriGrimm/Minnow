@@ -218,11 +218,11 @@ async function runIssueWorkflowFromMenu(
     }
     if (modeId === 'plan') {
       showToast(
-        result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat started in Code',
+        result.planPath ? `Plan chat started · ${result.planPath}` : 'Plan chat started',
         'success',
       );
     } else {
-      showToast(`${getMode(modeId).label} chat started in Code`, 'success');
+      showToast(`${getMode(modeId).label} chat started`, 'success');
     }
   } finally {
     workflowBusyIds.delete(issueId);

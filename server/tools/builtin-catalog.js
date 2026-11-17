@@ -1186,14 +1186,15 @@ export const BUILT_IN_TOOLS = [
     serverRequired: false,
     definition: toolSchema(
       'issue_add',
-      'File a new issue in the Issues tracker.',
+      'Create a real new issue, not a test or placeholder. Creation only: to edit an existing issue use issue_update (including status and priority), or issue_move for status/rank. Never retry an existing ID with replacement IDs.',
       {
         title: { type: 'string', description: 'Short title' },
         description: { type: 'string', description: 'Markdown body' },
         type: { type: 'string', description: 'Issue type id (default task)' },
         priority: { type: 'string', description: 'Priority id (default none)' },
+        status: { type: 'string', description: 'Status id from Settings → Issues (default: configured backlog-role status)' },
         labels: { type: 'array', items: { type: 'string' }, description: 'Labels' },
-        issue_id: { type: 'string', description: 'Optional stable id (MIN-12)' },
+        issue_id: { type: 'string', description: 'Optional unused KEY-number id (MIN-12). Omit to allocate automatically; not an upsert key.' },
         parent_id: { type: 'string', description: 'Parent issue id for a sub-issue' },
         project_id: { type: 'string', description: 'Project id' },
       },
@@ -1315,7 +1316,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: false,
     definition: toolSchema(
       'issue_update',
-      'Patch one issue by issue_id.',
+      'Edit an existing issue by issue_id, including status and priority. Use this instead of issue_add when correcting an issue; no replacement issue is needed.',
       {
         issue_id: { type: 'string', description: 'Issue id (KEY-n) or legacy bug id' },
         title: { type: 'string' },

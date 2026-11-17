@@ -30,7 +30,21 @@ test('Graphite issue details stay full height while the bulk toolbar is visible'
           <button class="issues-detail-scrim" hidden></button>
           <div class="issues-detail-host is-open">
             <div class="issues-detail">
-              <div class="issues-detail__sticky">Issue details</div>
+              <div class="issues-detail__sticky">
+                <header class="issues-detail__header">
+                  <span class="issues-detail__breadcrumb">Issues /</span>
+                  <div class="issues-detail__identity">
+                    <button class="issues-detail__id">MIN-1051<span class="issues-detail__id-copy">⧉</span></button>
+                    <span class="issues-github-sync-badge">GitHub · Needs push</span>
+                  </div>
+                  <div class="issues-detail__header-actions">
+                    <nav class="issues-detail__navigation"><span class="issues-detail__position">1 / 36</span>
+                      <button class="issues-detail__icon-btn">↑</button><button class="issues-detail__icon-btn">↓</button>
+                    </nav>
+                    <button class="issues-detail__icon-btn">…</button><button class="issues-detail__icon-btn">×</button>
+                  </div>
+                </header>
+              </div>
               <div class="issues-detail__scroll">${rows}</div>
               <div class="issues-detail__workflow">Work on this</div>
             </div>
@@ -96,4 +110,19 @@ test('Graphite issue details stay full height while the bulk toolbar is visible'
   const cleared = await measure(false);
   assert.equal(cleared.list.top, cleared.body.top);
   assert.equal(cleared.detail.bottom, cleared.body.bottom);
+
+  for (const width of [320, 380, 520, 800]) {
+    const layout = await session.evaluate(`(() => {
+      const sticky = document.querySelector('.issues-detail__sticky');
+      sticky.style.width = '${width}px';
+      const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+      const id = document.querySelector('.issues-detail__id');
+      return { id: rect('.issues-detail__id'), badge: rect('.issues-github-sync-badge'),
+        header: rect('.issues-detail__header'), clipped: id.scrollWidth > id.clientWidth };
+    })()`);
+    assert.ok(Math.abs((layout.id.top + layout.id.height / 2) - (layout.badge.top + layout.badge.height / 2)) < 1,
+      `ID and sync chip stay on the same line at ${width}px: ${JSON.stringify(layout)}`);
+    assert.equal(layout.clipped, false);
+    assert.ok(layout.badge.right <= layout.header.right + 1, 'Sync chip fits the header');
+  }
 });

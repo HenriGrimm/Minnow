@@ -111,7 +111,7 @@ test('setting up an unlinked thread returns to the issue and focuses its instruc
   assert.equal(document.querySelector('[data-tab="Issue"]')?.getAttribute('aria-selected'), 'true');
   assert.equal(document.querySelector('.issues-workflow-menu'), null);
   assert.equal(worktree.getAttribute('aria-pressed'), enabled, 'starting chat must not toggle the worktree preference');
-  assert.equal(document.activeElement, document.querySelector('[aria-label="Thread instructions"]'));
+  assert.equal(document.activeElement, document.querySelector('.issues-detail__compact-launch textarea'));
 });
 
 test('a portaled model picker owns Escape if focus falls back to the document', () => {

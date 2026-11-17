@@ -96,6 +96,10 @@ export type GitCheckoutCode =
 
 export interface GitOpResult {
   code?: GitCheckoutCode;
+  /** `worktreeRemove`: Git's lock reason (`''` when locked without one). */
+  lockReason?: string;
+  /** `worktreeRemove`: the worktree folder was already gone. */
+  missing?: boolean;
   /** `in_worktree` / `checkoutPlan`: the checkout that already has the target. */
   worktreePath?: string;
   worktreeBranch?: string;
@@ -445,6 +449,8 @@ export function gitWorktreeAdd(input: {
 export function gitWorktreeRemove(input: {
   path: string;
   force?: boolean;
+  /** Clear a lock left by another tool first; still refuses a dirty tree without `force`. */
+  unlock?: boolean;
   cwd?: string;
 }): Promise<GitOpResult> {
   return postGit('worktreeRemove', input);

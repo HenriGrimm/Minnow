@@ -165,6 +165,7 @@ describe('Models → Engine panel', () => {
       if (url === '/api/models/llama-runtime') return json(UPGRADE_RUNTIME);
       if (url === '/api/models/serve') return json({ serves: [] });
       if (url === '/api/servers') return json({ servers: [MLX_UNSUPPORTED, mtplx] });
+      if (url === '/api/models/mtplx/runtime?refresh=1') return json(mtplx);
       throw new Error(`unexpected fetch: ${method} ${url}`);
     }) as typeof fetch;
   });
@@ -244,6 +245,9 @@ describe('Models → Engine panel', () => {
     assert.match(block.textContent ?? '', /Installed/);
     assert.match(block.textContent ?? '', /2\.12\.0/);
     assert.match(block.textContent ?? '', /Load settings/);
+    assert.match(block.textContent ?? '', /Update MTPLX on this Mac/);
+    assert.match(block.textContent ?? '', /brew upgrade youssofal\/mtplx\/mtplx/);
+    assert.match(block.textContent ?? '', /python3 -m pip install --upgrade mtplx/);
     assert.deepEqual([...block.querySelectorAll('button')].map((b) => b.textContent), ['Refresh']);
   });
 
@@ -259,6 +263,32 @@ describe('Models → Engine panel', () => {
     block.querySelector('button')!.click();
     await waitFor(() => Boolean(block.textContent?.includes('2.12.0')));
     assert.doesNotMatch(block.textContent ?? '', /Not installed/);
+    assert.ok(requests.some((request) => request.url === '/api/models/mtplx/runtime?refresh=1'));
+  });
+
+  test('retains the installed version and offers retry when refresh fails', async () => {
+    const { mountEngineSection } = await import('../../src/ui/models/engine-panel.ts');
+    await mountEngineSection();
+    globalThis.fetch = async () => ({ ok: false, status: 503 }) as Response;
+    const block = document.getElementById('modelsEngineMtplx')!;
+    const refresh = block.querySelector('button')!;
+    refresh.click();
+    await waitFor(() => Boolean(block.querySelector('[role="status"]')?.textContent));
+    assert.match(block.textContent ?? '', /2\.12\.0/);
+    assert.match(block.textContent ?? '', /Try again/);
+    assert.equal(refresh.disabled, false);
+  });
+
+  test('refresh detects an external upgrade, retains update instructions and restores focus', async () => {
+    const { mountEngineSection } = await import('../../src/ui/models/engine-panel.ts');
+    await mountEngineSection();
+    const block = document.getElementById('modelsEngineMtplx')!;
+    block.querySelector('details')!.open = true;
+    mtplx = { ...mtplx, version: '2.12.3' };
+    block.querySelector('button')!.click();
+    await waitFor(() => Boolean(block.textContent?.includes('Detected MTPLX 2.12.3')));
+    assert.equal(block.querySelector('details')!.open, true);
+    assert.equal(document.activeElement, block.querySelector('button'));
   });
 
   test('keeps MTPLX visible on unsupported hosts with the platform reason', async () => {

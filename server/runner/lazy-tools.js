@@ -124,11 +124,19 @@ export function createLazyToolSession(catalog, alwaysLoaded = []) {
       tools.push(tool);
     }
   };
-  const result = (matches, empty) => JSON.stringify({
-    loaded: matches.map(tool => tool.function.name),
-    ...(matches.length ? { tools: matches.map(tool => tool.function) } : {}),
-    message: matches.length ? 'These tools are callable on the next request; use the schemas above.' : empty,
-  });
+  const result = (matches, empty) => {
+    // Creation and correction belong together, including exact-name discovery.
+    const update = byName.get('issue_update');
+    if (update && matches.some(tool => tool.function.name === 'issue_add') && !matches.includes(update)) {
+      matches.push(update);
+      load(update);
+    }
+    return JSON.stringify({
+      loaded: matches.map(tool => tool.function.name),
+      ...(matches.length ? { tools: matches.map(tool => tool.function) } : {}),
+      message: matches.length ? 'These tools are callable on the next request; use the schemas above.' : empty,
+    });
+  };
   return {
     tools,
     isLoaded: (name) => loaded.has(name),

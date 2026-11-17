@@ -7,18 +7,17 @@ import { openExternalUrl } from '../../api/remote-admin';
 import { formatWorkDuration } from '../../chat/transcript-turns';
 import { setEmbeddedManagedChatView, subscribeManagedChatMetadata } from '../../chat/managed-chat-view';
 import { isChatStreaming, subscribeChatStreamActivity } from '../../chat/streaming-state';
-import { parseMarkdownBlocks, parseTaskItems } from '../../issues/markdown-blocks';
-import { findStatus } from '../../issues/taxonomy';
 import { resolveChatWorktreeRoot } from '../../state/chat-worktree';
 import { prMerge, prView, type PullRequestDetail } from '../../state/forge-api';
 import { findIssueById } from '../../state/issues-store';
-import { getIssuesTaxonomySync } from '../../state/issues-taxonomy-store';
+import { subscribeIssuesChanges } from '../../state/issues-events';
+import { subscribeIssuesTaxonomyChanges } from '../../state/issues-taxonomy-events';
 import { ensureChatHistoryLoaded, findChatById, sessionState } from '../../state/sessions';
 import { getWorkspacePath } from '../../state/workspace';
 import type { Chat, IssueCard, PersistedSubAgentRun } from '../../types';
-import { setAssistantBubbleContent } from '../../markdown/renderer';
 import { appConfirm } from '../app-dialog';
 import { createIcon, type IconName } from '../icon';
+import type { createIssueDetailController } from '../issues-detail';
 import { chatGitState, subscribeSidebarGitState } from '../sidebar-git-state';
 import { createEmbeddedChatTranscript, readEmbeddedChatLive } from '../embedded-chat-transcript';
 import { createLegacySubAgentTranscript } from '../sub-agent-conversation';
@@ -28,7 +27,7 @@ import { showToast } from '../toast';
 import { createGraphiteSideChat } from './graphite-side-chat';
 import type { SurfaceAvailability, SurfaceContext } from './surface-registry';
 import type { SurfaceId } from './surface-state';
-import { isCurrentSurfaceChat, refreshSurfacePanels, registerSurface } from './surfaces-column';
+import { dismissSurface, isCurrentSurfaceChat, refreshSurfacePanels, registerSurface } from './surfaces-column';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -56,53 +55,92 @@ function isCurrent(chat: Chat): boolean {
   return isCurrentSurfaceChat(chat.id);
 }
 
-function openIssue(issue: IssueCard): void {
-  void import('../issues-page').then(({ openIssues }) => openIssues({ issueId: issue.id }));
-}
-
 function issueFor({ chat, target }: SurfaceContext): IssueCard | undefined {
   const issue = typeof target === 'string' ? findIssueById(target) : undefined;
   if (issue && (issue.chatIds?.includes(chat.id) || issue.boardChatId === chat.id || issue.agent?.chatId === chat.id)) return issue;
   return findThreadIssue(chat);
 }
 
-function issueSurface(context: SurfaceContext): HTMLElement {
-  const root = el('div', 'graphite-context-surface');
-  const issue = issueFor(context);
-  if (!issue) {
-    root.append(status('No linked issue'));
-    return root;
-  }
-  const meta = el('div', 'graphite-context-surface__meta');
-  meta.append(el('code', '', issue.id), '·', findStatus(getIssuesTaxonomySync(), issue.status)?.label ?? issue.status,
-    action('Open in Issues', () => openIssue(issue), 'externalLink'));
-  const prose = el('div', 'graphite-context-surface__prose');
-  const blocks = parseMarkdownBlocks(issue.description);
-  const heading = blocks.findIndex(block => block.kind === 'heading' &&
-    /^#{1,6}\s+(done when|acceptance criteria)\s*#*\s*$/i.test(block.source));
-  const last = heading < 0 ? -1 : blocks.findIndex((block, index) => index > heading &&
-    block.kind === 'heading' && (block.level ?? 6) <= (blocks[heading].level ?? 6));
-  const criteria = heading < 0 ? [] : blocks.slice(heading + 1, last < 0 ? undefined : last).flatMap(parseTaskItems);
-  const hasChecklistOnly = criteria.length > 0 &&
-    blocks.slice(heading + 1, last < 0 ? undefined : last).every(block => block.kind === 'task-list' || block.kind === 'blank');
-  const description = hasChecklistOnly
-    ? [issue.description.slice(0, blocks[heading].start), last < 0 ? '' : issue.description.slice(blocks[last].start)].join('\n\n').trim()
-    : issue.description;
-  setAssistantBubbleContent(prose, description || (hasChecklistOnly ? '' : 'No description'));
-  root.append(meta, el('h2', '', issue.title));
-  if (description || !hasChecklistOnly) root.append(prose);
-  if (hasChecklistOnly) {
-    const checklist = el('ul', 'graphite-context-surface__list');
-    for (const item of criteria) {
-      const row = el('li', 'graphite-context-surface__checklist-row');
-      const icon = createIcon(item.checked ? 'statusPass' : 'statusPending', { size: 14 });
-      row.dataset.state = item.checked ? 'success' : 'pending';
-      row.append(icon, el('span', 'visually-hidden', item.checked ? 'Complete: ' : 'Incomplete: '), item.text);
-      checklist.append(row);
+function issueSurface(context: SurfaceContext): ContextSurfaceView {
+  const root = el('div', 'graphite-issue-host');
+  const feedback = status('Loading issue…');
+  root.append(feedback);
+  let detail: ReturnType<typeof createIssueDetailController> | undefined;
+  let relatedIssueId: string | undefined;
+  let visible = false;
+  let loading = false;
+  let needsRefresh = false;
+
+  function render(): void {
+    if (!visible || !detail || detail.isIssuesDetailEditing()) return;
+    needsRefresh = false;
+    const linkedIssue = issueFor(context);
+    const issue = (linkedIssue && relatedIssueId ? findIssueById(relatedIssueId) : undefined) ?? linkedIssue;
+    feedback.hidden = Boolean(issue);
+    if (issue) detail.openIssueDetail(issue.id);
+    else {
+      detail.closeIssueDetail();
+      relatedIssueId = undefined;
+      feedback.textContent = 'No linked issue';
     }
-    root.append(el('h3', '', 'Done when'), checklist);
   }
-  return root;
+
+  function requestRefresh(): void {
+    if (!visible || needsRefresh) return;
+    needsRefresh = true;
+    queueMicrotask(render);
+  }
+
+  function setVisible(next: boolean): void {
+    if (visible === next) return;
+    visible = next;
+    if (!visible) {
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && root.contains(focused)) focused.blur();
+      detail?.closeIssueDetail();
+      needsRefresh = false;
+      return;
+    }
+    if (detail) {
+      render();
+      return;
+    }
+    if (loading) return;
+    loading = true;
+    feedback.textContent = 'Loading issue…';
+    void import('../issues-detail').then(({ createIssueDetailController }) => {
+      if (!visible) return;
+      detail = createIssueDetailController({
+        host: root,
+        onClose: () => { if (visible && isCurrent(context.chat)) dismissSurface('issue'); },
+        onNavigate: issueId => {
+          relatedIssueId = issueId;
+          detail?.openIssueDetail(issueId);
+        },
+        onOpenInIssues: issueId => {
+          window.location.hash = `#/app/issues/${encodeURIComponent(issueId)}`;
+        },
+      });
+      render();
+    }).catch(() => {
+      if (visible) feedback.textContent = 'Could not load issue. Reopen the tab to retry.';
+    }).finally(() => { loading = false; });
+  }
+
+  root.addEventListener('focusout', () => {
+    if (needsRefresh) setTimeout(() => { if (needsRefresh) render(); }, 0);
+  });
+  const unsubscribeIssues = subscribeIssuesChanges(requestRefresh);
+  const unsubscribeTaxonomy = subscribeIssuesTaxonomyChanges(requestRefresh);
+  return {
+    root, setVisible,
+    dispose() {
+      setVisible(false);
+      unsubscribeIssues();
+      unsubscribeTaxonomy();
+      detail?.dispose();
+    },
+  };
 }
 
 function prNumber({ chat, target }: SurfaceContext): number | undefined {
@@ -494,6 +532,7 @@ export function mountGraphiteContextSurfaces(): void {
     return count ? { available: true, hint: String(count) } : { available: false, reason: 'No subagents yet' };
   });
   subscribeSidebarGitState(refreshSurfacePanels);
+  subscribeIssuesChanges(refreshSurfacePanels);
   subscribeSubAgentRuns(run => {
     if (run.parentChatId === sessionState?.activeId) refreshSurfacePanels();
   });
