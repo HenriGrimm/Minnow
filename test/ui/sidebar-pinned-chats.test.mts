@@ -22,6 +22,7 @@ import type { Chat, ChatGroup, SessionState } from '../../src/types.ts';
 
 const WS = 'C:\\workspace\\pinned-chats';
 let activeWindow: Window | undefined;
+const originalFetch = globalThis.fetch;
 
 function setupList(): HTMLElement {
   activeWindow?.close();
@@ -57,6 +58,7 @@ function paintOrder(list: HTMLElement): string[] {
 }
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   flushScheduledSessionSaveForTests();
   document.body.innerHTML = '';
   activeWindow?.close();
@@ -66,6 +68,44 @@ afterEach(() => {
 });
 
 describe('sidebar pinned chats', () => {
+  test('managed pin placement is immediate and rapid unpin waits for acknowledgement', async () => {
+    const list = setupList();
+    setWorkspaceFromServer({ path: WS, label: 'ws', isDefault: false });
+    const chat = listedChat('Managed', 100);
+    chat.chatCommandVersion = 1;
+    chat.history = [];
+    chat.historyLoaded = false;
+    chat.messageCount = 1;
+    setSessionStateForTests({ ...defaultSessionState(), chats: [chat], activeId: chat.id });
+    const requests: { pinned: boolean; resolve: (response: Response) => void }[] = [];
+    globalThis.fetch = async (_url, options) => new Promise<Response>(resolve => {
+      requests.push({ pinned: JSON.parse(String(options?.body)).pinned, resolve });
+    });
+    setChatPinned(chat, true);
+    renderSidebar();
+    assert.deepEqual(paintOrder(list), ['#pinned', 'managed']);
+    assert.equal(chat.pinnedAt, undefined);
+    for (let i = 0; i < 100 && !requests.length; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(requests.length, 1);
+    setChatPinned(chat, false);
+    renderSidebar();
+    assert.deepEqual(paintOrder(list), ['#older', 'managed']);
+    assert.equal(requests.length, 1);
+    requests[0]!.resolve(Response.json({}));
+    for (let i = 0; i < 100 && requests.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.deepEqual(requests.map(request => request.pinned), [true, false]);
+    requests[1]!.resolve(Response.json({ error: 'Rejected' }, { status: 403 }));
+    for (let i = 0; i < 100; i++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      renderSidebar();
+      if (paintOrder(list)[0] === '#pinned') break;
+    }
+    assert.deepEqual(paintOrder(list), ['#pinned', 'managed'], 'failed unpin restores acknowledged pin');
+    assert.equal(chat.historyLoaded, false);
+    assert.deepEqual(chat.history, []);
+    assert.equal(chat.updatedAt, 100);
+  });
+
   test('no Pinned section until a chat is pinned; activity sections still head the list', () => {
     const list = setupList();
     setWorkspaceFromServer({ path: WS, label: 'ws', isDefault: false });
