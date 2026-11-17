@@ -8,6 +8,7 @@ Start in an open workspace and choose a thread or **New thread**. The thread hea
 2. Edit the file and save with **Ctrl+S** / **Cmd+S**. Use the file's tab to return to it while keeping the conversation visible.
 3. To ask about a specific file, drag its tab into the composer or attach the file from the composer. Include the function, error, or expected behavior in the prompt. For a small replacement in the editor, select the text and use **Ctrl+K** / **Cmd+K** for Quick Edit.
 4. To view two files, open both and use the panel's split control or **Ctrl+\** / **Cmd+\**. Use a tab's context menu to move it between groups.
+5. To run a script, right-click it in **Files** and choose **Run**. Minnow opens a new terminal tab and runs the file with its usual runner: `bash`, `zsh`, `python`, `node`, `npx tsx`, `ruby`, `perl` or PowerShell. Windows batch files run directly. **Run** appears only for these script types and is unavailable when the terminal is not available.
 
 If completions, formatting, or **Go to definition** are missing, open **Settings**, search for **Language servers**, and check the language for that file. Mixed projects may need a server for each language.
 

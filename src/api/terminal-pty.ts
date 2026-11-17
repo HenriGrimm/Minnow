@@ -25,6 +25,26 @@ export type PtyServerMessage =
   | { type: 'exit'; code: number }
   | { type: 'meta'; sessionId: string; shell: string; shellProfileId?: string };
 
+/** Last shell-profile probe, so synchronous UI (menus) can hide terminal actions. */
+export interface TerminalAvailabilitySnapshot {
+  ptyAvailable: boolean;
+  profileCount: number;
+  /** Host platform reported by the shell profiles, when any were listed. */
+  platform?: string;
+}
+
+let lastAvailability: TerminalAvailabilitySnapshot | null = null;
+
+/** Result of the most recent `fetchShellProfiles`, or null before the first probe. */
+export function getLastTerminalAvailability(): TerminalAvailabilitySnapshot | null {
+  return lastAvailability;
+}
+
+/** Test hook: set or clear the cached availability snapshot. */
+export function setLastTerminalAvailabilityForTests(snapshot: TerminalAvailabilitySnapshot | null): void {
+  lastAvailability = snapshot;
+}
+
 /** Fetch OS-gated shell profiles. */
 export async function fetchShellProfiles(): Promise<{
   profiles: ShellProfile[];
@@ -38,9 +58,12 @@ export async function fetchShellProfiles(): Promise<{
     ptyAvailable?: boolean;
     defaultShellProfileId?: string;
   };
+  const profiles = body.profiles ?? [];
+  const ptyAvailable = body.ptyAvailable !== false;
+  lastAvailability = { ptyAvailable, profileCount: profiles.length, platform: profiles[0]?.platform };
   return {
-    profiles: body.profiles ?? [],
-    ptyAvailable: body.ptyAvailable !== false,
+    profiles,
+    ptyAvailable,
     defaultShellProfileId: body.defaultShellProfileId,
   };
 }

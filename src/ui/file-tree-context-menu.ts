@@ -7,6 +7,9 @@ import { isExecutableOrchestratePlan } from '../chat/plans/plan-path';
 import * as fileTreeOps from './file-tree-ops';
 import { revealPathInSystemExplorer } from './reveal-in-system-explorer';
 import { CAPTURE_MENU_KINDS, legacyCaptureMenuItems } from './issue-capture';
+import { getLastTerminalAvailability } from '../api/terminal-pty';
+import { scriptRunnerForPath, runFileInNewTerminal } from './file-tree-run';
+import { showToast } from './toast';
 type FileTreeEntryKind = 'file' | 'dir';
 
 export interface FileTreeMenuContext {
@@ -137,10 +140,10 @@ function renderMenuItems(items: MenuItemDef[]): void {
     btn.className = 'file-tree-context-menu__item';
     btn.setAttribute('role', 'menuitem');
     btn.textContent = item.label;
+    if (item.title) btn.title = item.title;
     if (item.disabled) {
       btn.disabled = true;
       btn.classList.add('file-tree-context-menu__item--disabled');
-      if (item.title) btn.title = item.title;
     } else if (item.action) {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -171,6 +174,43 @@ function positionMenu(clientX: number, clientY: number): void {
 
 function serverCrudEnabled(): boolean {
   return isFileTreeServerAvailable();
+}
+
+function hostPlatformHint(): string | undefined {
+  const known = getLastTerminalAvailability()?.platform;
+  if (known) return known;
+  if (typeof navigator === 'undefined') return undefined;
+  const ua = `${navigator.platform ?? ''} ${navigator.userAgent ?? ''}`;
+  if (/Win/i.test(ua)) return 'win32';
+  return undefined;
+}
+
+/**
+ * **Run** for supported scripts (MIN-35): opens a new terminal tab and runs the file
+ * with its runner. Disabled while the terminal is offline or unavailable on the host.
+ */
+function buildRunItem(ctx: FileTreeMenuContext, offline: boolean): MenuItemDef[] {
+  if (ctx.kind !== 'file') return [];
+  const runner = scriptRunnerForPath(ctx.path, hostPlatformHint());
+  if (!runner) return [];
+  const availability = getLastTerminalAvailability();
+  const noTerminal =
+    availability != null && (!availability.ptyAvailable || availability.profileCount === 0);
+  let title = `Run with ${runner.label} in a new terminal tab`;
+  if (offline) title = 'Open Minnow to use this action';
+  else if (noTerminal) title = 'The terminal is not available on this host';
+  return [
+    {
+      label: 'Run',
+      disabled: offline || noTerminal,
+      title,
+      action: () =>
+        void runFileInNewTerminal(ctx.path, runner).catch((error: unknown) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          showToast(`Could not run ${ctx.path}: ${detail}`, 'error');
+        }),
+    },
+  ];
 }
 
 /** Build context-menu items for a file row (exported for tests). */
@@ -231,6 +271,7 @@ export function buildFileMenuItems(ctx: FileTreeMenuContext): MenuItemDef[] {
 
   return [
     ...openItems,
+    ...buildRunItem(ctx, offline),
     ...previewItem,
     ...orchestrateItem,
     ...legacyCaptureMenuItems({ kind: CAPTURE_MENU_KINDS.file, path: ctx.path }),
