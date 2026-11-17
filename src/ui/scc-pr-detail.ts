@@ -103,7 +103,7 @@ export function buildPrDetail(
   if (pr.author) eyebrow.push(el('span', 'scc-prdetail__author', pr.author));
   const age = relativeTime(pr.updatedAt);
   if (age) {
-    const time = el('time', undefined, age === 'now' ? 'updated just now' : `updated ${age} ago`);
+    const time = el('time', undefined, `updated ${age}`);
     time.dateTime = pr.updatedAt;
     time.title = new Date(pr.updatedAt).toLocaleString();
     eyebrow.push(time);

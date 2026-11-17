@@ -11,9 +11,22 @@ export function field(label: string, value = '', type = 'text'): HTMLInputElemen
   input.setAttribute('aria-label', label);
   return input;
 }
-export function labeled(label: string, input: HTMLElement): HTMLLabelElement {
+export function labeled(label: string, input: HTMLElement, hint?: string): HTMLLabelElement {
   const wrap = el('label', 'scc-action-field');
-  wrap.append(el('span', undefined, label), input);
+  const head = el('span', 'scc-action-field__label', label);
+  wrap.append(head, input);
+  if (hint) wrap.append(el('span', 'scc-action-field__hint', hint));
+  return wrap;
+}
+
+/** Workflow input: its description as the label, the input name and "required" as the hint. */
+export function inputField(def: { name: string; description?: string; required?: boolean }, input: HTMLElement): HTMLLabelElement {
+  const label = def.description?.trim() || def.name;
+  const wrap = labeled(label, input);
+  const meta = el('span', 'scc-action-field__meta');
+  if (label !== def.name) meta.appendChild(el('code', undefined, def.name));
+  if (def.required) meta.appendChild(el('span', 'scc-action-field__required', 'Required'));
+  if (meta.childElementCount) wrap.firstElementChild!.after(meta);
   return wrap;
 }
 export function select(

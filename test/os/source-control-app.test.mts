@@ -131,3 +131,36 @@ test('change selection keys reach the list and Escape dismisses its menu without
     await teardownHappyDomAsync(win);
   }
 });
+
+test('a page left and revisited is the same page, refreshed in place rather than rebuilt', async () => {
+  const win = new Window();
+  installHappyDomGlobals(win, {
+    fetch: async () => new Response(JSON.stringify({ ok: true, stashes: [], branches: [], local: ['main'], remote: [], current: 'main', staged: [], unstaged: [], untracked: [] })),
+  });
+  const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
+  const { launchInstance, resetInstancesForTests } = await import('../../src/os/instances.ts');
+  const scc = await import('../../src/ui/source-control-center.ts');
+  setLocalServerAvailableForTests(true);
+  seedMinimalSession('cache-chat');
+  document.body.innerHTML = '<main id="sourceControlView"></main>';
+  const rail = (id: string) => document.querySelector<HTMLButtonElement>(`.scc-rail__item[data-section="${id}"]`)!;
+  try {
+    launchInstance('source-control');
+    await scc.openSourceControlCenter({ section: 'stashes' });
+    await scc.mountSourceControlCenter();
+    await setImmediate();
+    const stashes = document.querySelector('.scc-pane > .scc-list-view');
+    assert.ok(stashes);
+    rail('branches').click();
+    await setImmediate();
+    assert.notEqual(document.querySelector('.scc-pane > .scc-list-view'), stashes);
+    rail('stashes').click();
+    await setImmediate();
+    assert.equal(document.querySelector('.scc-pane > .scc-list-view'), stashes, 'revisiting Stashes reuses its page');
+  } finally {
+    scc.resetSourceControlCenterForTests();
+    resetInstancesForTests();
+    setLocalServerAvailableForTests(false);
+    await teardownHappyDomAsync(win);
+  }
+});

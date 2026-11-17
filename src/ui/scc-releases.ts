@@ -99,7 +99,7 @@ export function createReleasesView(ctx: SccContext): SccView {
   const list = el('div', 'scc-split__list-body');
   const detail = el('div', 'scc-split__detail scc-release__detail');
   const content = el('div', 'scc-release__content');
-  const back = button({ label: 'Releases', icon: 'chevronLeft', variant: 'ghost', className: 'scc-dhead__back scc-release__back', onClick: backToList });
+  const back = button({ label: 'All releases', icon: 'chevronLeft', variant: 'ghost', className: 'scc-dhead__back scc-release__back', onClick: backToList });
   detail.append(back, content);
   listCol.append(list);
   split.append(listCol, detail);
@@ -167,6 +167,7 @@ export function createReleasesView(ctx: SccContext): SccView {
       const row = el('button', 'scc-row scc-action-row scc-release__row');
       row.type = 'button';
       row.title = label;
+      row.setAttribute('aria-label', label);
       row.addEventListener('click', () => {
         if (!returnedToList || r.id !== selected) void show(r.id);
         openDetail();

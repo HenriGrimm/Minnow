@@ -5,7 +5,7 @@ import { createViewport, type ViewportApi, type ViewState } from '../spatial-vie
 import { frameGitHistoryLayout, layoutGitHistory, type GitHistoryBox, type GitHistoryLayout } from './layout';
 import {
   buildGitHistoryModel, collapseGitHistoryBranches, commitVisual, filterGitHistoryModel,
-  type GitHistoryModel, type GitHistoryNode, type GitHistoryRefKind,
+  type GitHistoryNode, type GitHistoryRefKind,
 } from './model';
 import { gitHistoryColorToken, renderGitHistoryScene, type GitHistorySceneApi } from './scene';
 import { renderGitHistoryRefs } from './refs';
@@ -437,8 +437,17 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
     let last: GitLogResult;
     let freshKey: string | null = null;
     do {
-      last = await gitLog({ cwd, count: PAGE_SIZE, skip: offset, fullRefs: true, historyKey: freshKey });
+      last = await gitLog({
+        cwd, count: PAGE_SIZE, skip: offset, fullRefs: true, historyKey: freshKey,
+        // Polling asks "did anything change?" first; most of the time nothing did.
+        ifHistoryKey: offset === 0 && !firstLoad && !changedCwd ? historyKey : null,
+      });
       if (destroyed || id !== generation) return;
+      if (last.ok && last.historyUnchanged) {
+        busy = false;
+        updateStatus();
+        return;
+      }
       if (!last.ok) {
         busy = false;
         updateStatus();
@@ -532,10 +541,14 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
   };
 }
 
-/** "12 minutes ago" → "12m"; anything unrecognised passes through. */
+/** Git's "12 minutes ago" in the app's wording ("12 min ago"); anything unrecognised passes through. */
 function shortRelativeTime(text: string): string {
-  const match = /^(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/.exec(text.trim());
+  const match = /^(\d+)\s+(second|minute|hour|day|week|month|year)s?(?:,.*)?\s+ago$/.exec(text.trim());
   if (!match) return text;
-  const unit = { second: 's', minute: 'm', hour: 'h', day: 'd', week: 'w', month: 'mo', year: 'y' }[match[2] as 'second'];
-  return `${match[1]}${unit}`;
+  const count = Number(match[1]);
+  const unit = match[2];
+  if (unit === 'second') return 'just now';
+  if (unit === 'day') return count === 1 ? '1 day ago' : `${count} days ago`;
+  const short = { minute: 'min', hour: 'hr', week: 'wk', month: 'mo', year: 'yr' }[unit as 'minute'];
+  return `${count} ${short} ago`;
 }

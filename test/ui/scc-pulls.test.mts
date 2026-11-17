@@ -5,7 +5,7 @@ import DOMPurify from 'dompurify';
 import serverDOMPurify from 'isomorphic-dompurify';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { setLocalServerAvailable } from '../../src/tools/config.ts';
-import { createPullsView } from '../../src/ui/scc-pulls.ts';
+import { createPullsView, suggestPrTitle } from '../../src/ui/scc-pulls.ts';
 import { createChecksView } from '../../src/ui/scc-checks.ts';
 import { buildPrDetail, prMergeLabel, renderPrMarkdown } from '../../src/ui/scc-pr-detail.ts';
 import type { ForgeStatus, PullRequestDetail } from '../../src/state/forge-api.ts';
@@ -94,7 +94,7 @@ test('current branch opens automatically; search matches labels and state filter
   assert.equal(view!.root.querySelectorAll('.scc-prrow').length, 1);
   search.value = '';
   search.dispatchEvent(new win.Event('input') as unknown as Event);
-  view!.root.querySelector<HTMLButtonElement>('[data-state="merged"]')!.click();
+  view!.root.querySelector<HTMLButtonElement>('[data-value="merged"]')!.click();
   await settle();
   assert.equal(view!.root.querySelector('.scc-prdetail__number')?.textContent, '#3');
   assert.equal(view!.root.querySelectorAll('.scc-prrow').length, 1);
@@ -163,12 +163,12 @@ test('an older filter response cannot restore a previous state list', async () =
   holdOpen = true;
   const old = view!.refresh();
   await settle();
-  view!.root.querySelector<HTMLButtonElement>('[data-state="merged"]')!.click();
+  view!.root.querySelector<HTMLButtonElement>('[data-value="merged"]')!.click();
   await settle();
   releaseOld!({ ok: true, prs: [pr(2)] });
   await old;
   assert.equal(view!.root.querySelector('.scc-prrow')?.getAttribute('data-number'), '3');
-  assert.equal(view!.root.querySelector('[data-state="merged"]')?.getAttribute('aria-pressed'), 'true');
+  assert.equal(view!.root.querySelector('[data-value="merged"]')?.getAttribute('aria-pressed'), 'true');
 });
 
 test('out-of-order responses for the same PR cannot replace newer details', async () => {
@@ -236,4 +236,10 @@ test('PR rows say where each PR is checked out without asking GitHub per row', a
   assert.doesNotMatch(row(3), /In review|Checked out here/, 'a fork head name never matches a local worktree');
   assert.match(row(3), /Fork/);
   assert.equal(ops.filter((op) => op === 'checkoutPlan').length, 1, 'only the opened detail asks the server');
+});
+
+test('new pull request titles follow GitHub: one commit uses its subject, several use the branch name', () => {
+  assert.equal(suggestPrTitle('feat/thing', { ahead: 1, subject: 'fix(ui): one commit' }), 'fix(ui): one commit');
+  assert.equal(suggestPrTitle('minnow/min-7-customizable-keyboard-shortcuts-68e0536535', { ahead: 3, subject: 'x' }), 'Min 7 customizable keyboard shortcuts');
+  assert.equal(suggestPrTitle('worktree-multi-repo-workspaces', { ahead: 13, subject: 'x' }), 'Worktree multi repo workspaces');
 });

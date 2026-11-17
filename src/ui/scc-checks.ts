@@ -20,6 +20,7 @@ import {
   detailHead,
   drillIn,
   duration,
+  durationLabel,
   el,
   emptyState,
   errorStrip,
@@ -54,7 +55,11 @@ export function rollupChecksRailState(runs: WorkflowRunSummary[]): RunState {
 
 export function createChecksView(
   ctx: SccContext,
-  options: { getForgeStatus: () => ForgeStatus | null },
+  options: {
+    getForgeStatus: () => ForgeStatus | null;
+    /** Start filtered to one workflow, across branches, optionally on one run. */
+    focus?: { workflow: string; runId?: number };
+  },
 ): SccView {
   const root = el('div', 'scc-split');
   const drill = drillIn(root);
@@ -84,6 +89,11 @@ export function createChecksView(
   const workflowFilter = workflowSearch.input;
   const statusFilter = selectField('Run status', ['', 'queued', 'in_progress', 'success', 'failure', 'cancelled'].map(value => ({ value, label: value || 'All statuses' })));
   workflowFilter.addEventListener('change', () => { page = 1; void refresh(); });
+  if (options.focus) {
+    workflowFilter.value = options.focus.workflow;
+    branchOnly = false;
+    if (options.focus.runId) selectedId = options.focus.runId;
+  }
   statusFilter.addEventListener('change', () => { page = 1; void refresh(); });
   const previous = button({ label: 'Newer', icon: 'chevronLeft', variant: 'ghost', onClick: () => { page = Math.max(1, page - 1); void refresh(); } });
   const next = button({ label: 'Older', variant: 'ghost', onClick: () => { page++; void refresh(); } });
@@ -94,7 +104,7 @@ export function createChecksView(
       { value: 'branch', label: 'This branch' },
       { value: 'all', label: 'All branches' },
     ],
-    value: 'branch',
+    value: branchOnly ? 'branch' : 'all',
     onChange: (scope) => {
       branchOnly = scope === 'branch';
       page = 1;
@@ -263,9 +273,9 @@ export function createChecksView(
     );
     const end = el('span', 'scc-row__end');
     if (state === 'pending' && run.startedAt) {
-      end.appendChild(el('span', 'scc-runrow__elapsed', duration(run.startedAt, '')));
+      end.appendChild(durationLabel(duration(run.startedAt, ''), 'scc-runrow__elapsed'));
     } else if (run.startedAt && run.updatedAt) {
-      end.appendChild(el('span', undefined, duration(run.startedAt, run.updatedAt)));
+      end.appendChild(durationLabel(duration(run.startedAt, run.updatedAt)));
     }
     meta.appendChild(end);
 
@@ -638,6 +648,7 @@ export function createChecksView(
     getRows: () => [...listBody.querySelectorAll<HTMLElement>('.scc-runrow')],
   });
 
+  if (options.focus?.runId) drill.open();
   void refresh();
 
   return {

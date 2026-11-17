@@ -88,6 +88,21 @@ let unregisterGlobalCommands: (() => void) | null = null;
 
 let activeSection: SccSectionId = 'changes';
 let activeView: SccView | null = null;
+/**
+ * Pages already visited for the current checkout. Switching back re-attaches
+ * the page as it was (selection, scroll, loaded data) and refreshes it in the
+ * background, instead of rebuilding it behind a skeleton.
+ */
+const viewCache = new Map<SccSectionId, SccView>();
+
+/** Drop every kept page except the one on screen (a different checkout, or teardown). */
+function dropCachedViews(keepActive = true): void {
+  for (const [id, view] of viewCache) {
+    if (keepActive && view === activeView) continue;
+    view.destroy();
+    viewCache.delete(id);
+  }
+}
 const badges = new Map<SccSectionId, SccBadge>();
 
 let panelCwd: string | undefined;
@@ -395,8 +410,9 @@ async function showSection(id: SccSectionId): Promise<void> {
   }
 
   activeSection = id;
-  activeView?.destroy();
-  activeView = def.create(context);
+  const cached = viewCache.get(id);
+  activeView = cached ?? def.create(context);
+  if (!cached) viewCache.set(id, activeView);
 
   paneEl.replaceChildren(activeView.root);
   paneEl.setAttribute('aria-label', def.label);
@@ -409,6 +425,8 @@ async function showSection(id: SccSectionId): Promise<void> {
   }
 
   activeView.activate?.();
+  // A kept page shows what it had at once; bring it up to date behind the scenes.
+  if (cached) void refreshActiveView();
 }
 
 function applyRailBadge(section: SccSectionId, badge: SccBadge | null): void {
@@ -634,6 +652,8 @@ async function runOp(
 async function setCwd(path: string | undefined): Promise<void> {
   panelCwd = path;
   forge = null;
+  // Kept pages belong to the previous checkout.
+  dropCachedViews();
   const { setGitPanelCwd } = await import('./git-panel');
   setGitPanelCwd(path);
   await refreshAll();
@@ -1128,7 +1148,7 @@ export function resetSourceControlCenterForTests(): void {
   }
   unregisterGlobalCommands?.();
   unregisterGlobalCommands = null;
-  activeView?.destroy();
+  dropCachedViews(false);
   activeView = null;
   document.getElementById(ROOT_ID)?.remove();
   root = null;

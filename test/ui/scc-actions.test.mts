@@ -463,14 +463,14 @@ test('run selection responds immediately, reuses details, and coalesces pending 
   const detail = view.root.querySelector<HTMLElement>('.scc-split__detail')!;
   const row = (id: number) => view!.root.querySelector<HTMLElement>(`.scc-runrow[data-id="${id}"]`)!;
   const reply = (id: number) => pending.get(id)!({ ok: true, run: { ...runs.find(run => run.id === id), jobs: [{ id, name: `Job ${id}`, status: 'completed', conclusion: 'success', startedAt: '', completedAt: '', steps: [] }] } });
-  assert.equal(detail.querySelector('h2')?.textContent, 'CI 42');
+  assert.equal(detail.querySelector('.scc-rundetail__workflow')?.textContent, 'CI 42');
   assert.equal(detail.querySelector('[role="status"]')?.textContent, 'Loading jobs…');
   assert(detail.querySelector('.scc-run-loading__wheel'));
   reply(42);
   await flush();
   assert.equal(detail.getAttribute('aria-busy'), 'false');
   row(43).click();
-  assert.equal(detail.querySelector('h2')?.textContent, 'CI 43');
+  assert.equal(detail.querySelector('.scc-rundetail__workflow')?.textContent, 'CI 43');
   assert.equal(detail.querySelector('.scc-job'), null);
   assert.equal(detail.getAttribute('aria-busy'), 'true');
   await flush();
@@ -482,7 +482,7 @@ test('run selection responds immediately, reuses details, and coalesces pending 
   assert.equal(calls.filter(id => id === 43).length, 1);
   reply(42); // A stale response must not replace the selected run.
   await flush();
-  assert.equal(detail.querySelector('h2')?.textContent, 'CI 43');
+  assert.equal(detail.querySelector('.scc-rundetail__workflow')?.textContent, 'CI 43');
   const refresh = view.refresh();
   await flush();
   assert.equal(calls.filter(id => id === 43).length, 1);
@@ -508,7 +508,7 @@ test('failed run loads clear the loading indicator and can be retried', async ()
   fail = false;
   click('Retry');
   await flush();
-  assert.equal(detail.querySelector('h2')?.textContent, 'CI');
+  assert.equal(detail.querySelector('.scc-rundetail__workflow')?.textContent, 'CI');
   assert.equal(detail.querySelector('.scc-error'), null);
 });
 

@@ -10,7 +10,7 @@ import {
   type PullRequestDetail,
   type PullRequestSummary,
 } from '../state/forge-api';
-import { gitBranches, gitCheckoutPlan, type GitCheckoutSwitchInput } from '../state/git-api';
+import { gitBranches, gitBranchTree, gitCheckoutPlan, gitPush, type GitBranchTreeEntry, type GitCheckoutSwitchInput } from '../state/git-api';
 import { listWorktrees } from '../state/worktree-service';
 import { parseWorktreeListPorcelain, worktreePathsEqual, type ParsedWorktree } from '../lib/worktree-list-parse';
 import { checkoutRecoveryActions, runCheckoutFlow } from './git-checkout-confirm';
@@ -26,9 +26,12 @@ import { showToast } from './toast';
 import { switchChat } from './sidebar';
 import { createIcon } from './icon';
 import { openGitRecoveryPopover, closeGitRecoveryPopover } from './git-recovery';
-import { buildPrDetail, PR_REVIEW_LABEL, prCheckLabel, prStateLabel, type PrDetailTab } from './scc-pr-detail';
+import { buildPrDetail, PR_REVIEW_LABEL, prCheckLabel, prStateLabel, renderPrMarkdown, type PrDetailTab } from './scc-pr-detail';
+import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import {
   button,
+  chip,
+  detailHead,
   diffStat,
   drillIn,
   el,
@@ -296,7 +299,7 @@ export function createPullsView(
 
     const lead = el('span', 'scc-row__lead');
     lead.dataset.tone = prTone(pr);
-    const glyph = createIcon(pr.state === 'merged' ? 'gitMerge' : 'gitPullRequest', { size: 15 });
+    const glyph = createIcon(pr.state === 'merged' ? 'gitMerge' : pr.state === 'closed' ? 'gitPullRequestClosed' : pr.draft ? 'gitPullRequestDraft' : 'gitPullRequest', { size: 15 });
     glyph.setAttribute('role', 'img');
     glyph.setAttribute('aria-label', prStateLabel(pr));
     lead.appendChild(glyph);
@@ -711,7 +714,10 @@ export function createPullsView(
     const request = detailRequest;
     detailCol.replaceChildren(skeletonRows(5));
 
-    const branchResult = await gitBranches(ctx.getCwd());
+    const [branchResult, tree] = await Promise.all([
+      gitBranches(ctx.getCwd()),
+      gitBranchTree(ctx.getCwd()).catch(() => null),
+    ]);
     if (destroyed || !creating || request !== detailRequest) return;
     const trunk = branchResult.ok
       ? resolveTrunkBranchName(
@@ -721,6 +727,7 @@ export function createPullsView(
         )
       : 'main';
     const head = ctx.getBranch();
+    const headEntry = tree?.ok ? tree.branches?.find((entry) => entry.name === head) : undefined;
 
     selectedNumber = null;
     for (const row of listBody.querySelectorAll('.scc-prrow')) {
@@ -729,56 +736,175 @@ export function createPullsView(
     }
 
     drill.open();
-    const form = el('form', 'scc-prform');
+    const cancel = () => { renderDetailPlaceholder(); drill.close(); };
+    const form = el('form', 'scc-detail scc-prform');
+    form.setAttribute('aria-label', 'New pull request');
+    form.noValidate = true;
 
-    const heading = el('div', 'scc-prform__head');
-    heading.append(
-      button({ label: 'Pull requests', icon: 'chevronLeft', variant: 'ghost', className: 'scc-dhead__back', onClick: () => { renderDetailPlaceholder(); drill.close(); } }),
-      el('h2', 'scc-prform__title', 'New pull request'),
-      el('p', 'scc-prform__branches', `${head || 'current branch'} → ${trunk}`),
+    // Base: branches GitHub knows about, trunk first. Never the branch being merged.
+    const baseField = el('select', 'scc-select scc-prform__base');
+    baseField.setAttribute('aria-label', 'Base branch');
+    const remoteNames = (branchResult.ok ? branchResult.remote ?? [] : [])
+      .filter((ref) => !isSkippedRemoteRef(ref) && !ref.endsWith('/HEAD'))
+      .map((ref) => displayRemoteRef(ref).replace(/^[^/]+\//, ''));
+    const onTrunk = Boolean(head) && head === trunk;
+    const bases = onTrunk ? [trunk] : [...new Set([trunk, ...remoteNames])].filter((name) => name && name !== head);
+    for (const name of bases.length ? bases : [trunk]) {
+      const option = el('option', undefined, name);
+      option.value = name;
+      baseField.appendChild(option);
+    }
+    baseField.value = bases.includes(trunk) ? trunk : bases[0] ?? trunk;
+    baseField.disabled = onTrunk || !head;
+
+    const compare = el('div', 'scc-prform__compare');
+    compare.append(
+      el('span', 'scc-prform__compare-label', 'Merge'),
+      chip(head || 'detached HEAD', 'branch'),
+      el('span', 'scc-prform__compare-label', 'into'),
+      baseField,
     );
+    const facts: HTMLElement[] = [compare];
+    const ahead = el('span', 'scc-prform__ahead');
+    facts.push(ahead);
 
-    const titleField = el('input', 'scc-input');
+    const header = detailHead({
+      title: 'New pull request',
+      titleClass: 'scc-prform__title',
+      facts,
+      onBack: cancel,
+      backLabel: 'Pull requests',
+    });
+
+    // What would stop this pull request from being useful, said before the user types.
+    const notice = el('div', 'scc-prform__notice');
+    notice.setAttribute('role', 'status');
+    const blocked = !head;
+
+    const titleField = el('input', 'scc-input scc-prform__input');
     titleField.type = 'text';
-    titleField.placeholder = 'Title';
+    titleField.id = 'scc-prform-title';
+    titleField.placeholder = 'Summarize the change';
     titleField.required = true;
     titleField.setAttribute('aria-label', 'Pull request title');
+    if (head && !onTrunk) titleField.value = suggestPrTitle(head, headEntry);
 
-    const bodyField = el('textarea', 'scc-textarea');
-    bodyField.rows = 8;
-    bodyField.placeholder = 'What changed, and why';
+    const titleBlock = el('div', 'scc-prform__field');
+    const titleLabel = el('label', 'scc-prform__label', 'Title');
+    titleLabel.htmlFor = titleField.id;
+    titleBlock.append(titleLabel, titleField);
+
+    // Description: write in Markdown, check it the way GitHub will render it.
+    const bodyField = el('textarea', 'scc-textarea scc-prform__textarea');
+    bodyField.rows = 10;
+    bodyField.placeholder = 'What changed, and why. How to test it.';
     bodyField.setAttribute('aria-label', 'Pull request description');
+    const preview = el('div', 'scc-prdetail__body scc-prform__preview');
+    preview.hidden = true;
+    const modes = segmented<'write' | 'preview'>({
+      label: 'Description view',
+      items: [{ value: 'write', label: 'Write' }, { value: 'preview', label: 'Preview' }],
+      value: 'write',
+      onChange: (mode) => {
+        const previewing = mode === 'preview';
+        if (previewing) {
+          if (bodyField.value.trim()) renderPrMarkdown(preview, bodyField.value, 'https://github.com/');
+          else preview.replaceChildren(el('p', 'scc-prdetail__muted', 'Nothing to preview yet.'));
+        }
+        preview.hidden = !previewing;
+        bodyField.hidden = previewing;
+        if (!previewing) bodyField.focus();
+      },
+    });
+    const editor = el('div', 'scc-prform__editor');
+    const editorBar = el('div', 'scc-prform__editor-bar');
+    editorBar.append(modes.root, el('span', 'scc-prform__hint', 'Markdown'));
+    editor.append(editorBar, bodyField, preview);
+    const bodyBlock = el('div', 'scc-prform__field');
+    bodyBlock.append(el('span', 'scc-prform__label', 'Description'), editor);
 
-    const baseField = el('input', 'scc-input scc-input--compact');
-    baseField.type = 'text';
-    baseField.value = trunk;
-    baseField.setAttribute('aria-label', 'Base branch');
-
-    const draftLabel = el('label', 'scc-checkbox');
+    const draftLabel = el('label', 'scc-prform__draft');
     const draftInput = el('input');
     draftInput.type = 'checkbox';
-    draftLabel.append(draftInput, el('span', undefined, 'Open as draft'));
+    const draftText = el('span', 'scc-prform__draft-text');
+    draftText.append(el('span', undefined, 'Open as draft'), el('span', 'scc-prform__hint', 'Reviewers are not asked until you mark it ready.'));
+    draftLabel.append(draftInput, draftText);
 
-    const actions = el('div', 'scc-prform__actions');
+    const footer = el('div', 'scc-prform__footer');
     const submit = button({ label: 'Create pull request', variant: 'primary' });
     submit.type = 'submit';
-    actions.append(
-      button({ label: 'Cancel', variant: 'ghost', onClick: () => { renderDetailPlaceholder(); drill.close(); } }),
-      submit,
-    );
+    const buttons = el('div', 'scc-prform__actions');
+    buttons.append(button({ label: 'Cancel', variant: 'ghost', onClick: cancel }), submit);
+    footer.append(draftLabel, buttons);
 
-    const baseRow = el('div', 'scc-prform__row');
-    baseRow.append(el('span', 'scc-prform__label', 'Base'), baseField, draftLabel);
+    function paintNotice(entry: GitBranchTreeEntry | undefined): void {
+      notice.replaceChildren();
+      notice.dataset.tone = '';
+      let message = '';
+      let action: HTMLElement | null = null;
+      if (blocked || onTrunk) {
+        notice.dataset.tone = 'warning';
+        message = head
+          ? `You are on ${head}. Switch to the branch with your changes, then open the pull request from there.`
+          : 'This checkout is not on a branch. Check out a branch to open a pull request.';
+      } else if (entry && (!entry.upstream || entry.upstreamGone)) {
+        notice.dataset.tone = 'warning';
+        message = `${head} is not on GitHub yet. Publish it so the pull request has commits to show.`;
+        action = button({ label: 'Publish branch', icon: 'gitPush', onClick: () => void publish(true) });
+      } else if (entry && entry.upstreamAhead > 0) {
+        notice.dataset.tone = 'neutral';
+        message = `${entry.upstreamAhead} ${entry.upstreamAhead === 1 ? 'commit is' : 'commits are'} not pushed yet. The pull request shows what is on GitHub.`;
+        action = button({ label: 'Push', icon: 'gitPush', onClick: () => void publish(false) });
+      }
+      notice.hidden = !message;
+      if (!message) return;
+      notice.append(
+        createIcon('warning', { size: 14, className: 'scc-prform__notice-icon' }),
+        el('span', 'scc-prform__notice-text', message),
+      );
+      if (action) notice.append(action);
+    }
 
-    form.append(heading, titleField, baseRow, bodyField, actions);
+    function paintAhead(entry: GitBranchTreeEntry | undefined): void {
+      ahead.textContent = entry && entry.parent && entry.ahead > 0 && !onTrunk
+        ? `${entry.ahead} ${entry.ahead === 1 ? 'commit' : 'commits'} ahead of ${entry.parent}`
+        : '';
+      ahead.hidden = !ahead.textContent;
+    }
+
+    async function publish(setUpstream: boolean): Promise<void> {
+      const result = await runGitUiOp(
+        () => gitPush(setUpstream ? { cwd: ctx.getCwd(), setUpstream: true, branch: head } : { cwd: ctx.getCwd() }),
+        {
+          label: setUpstream ? 'Publishing branch…' : 'Pushing…',
+          successMessage: setUpstream ? `Published ${head}` : 'Pushed',
+          ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+        },
+      );
+      if (!result.ok || destroyed || !form.isConnected) return;
+      const next = await gitBranchTree(ctx.getCwd()).catch(() => null);
+      if (!form.isConnected) return;
+      const entry = next?.ok ? next.branches?.find((item) => item.name === head) : undefined;
+      paintNotice(entry);
+      paintAhead(entry);
+    }
+
+    paintNotice(headEntry);
+    paintAhead(headEntry);
+    submit.disabled = blocked || onTrunk;
+
+    form.append(header.root, notice, titleBlock, bodyBlock, footer);
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (submit.disabled) return;
       const title = titleField.value.trim();
       if (!title) {
+        titleField.setAttribute('aria-invalid', 'true');
         titleField.focus();
         return;
       }
+      titleField.removeAttribute('aria-invalid');
 
       submit.disabled = true;
       submit.querySelector('.scc-btn__label')!.textContent = 'Creating…';
@@ -789,12 +915,12 @@ export function createPullsView(
             cwd: ctx.getCwd(),
             title,
             body: bodyField.value,
-            base: baseField.value.trim() || undefined,
+            base: baseField.value || undefined,
             draft: draftInput.checked,
           }),
         {
           label: 'Creating pull request…',
-          successMessage: 'Pull request opened',
+          successMessage: draftInput.checked ? 'Draft pull request opened' : 'Pull request opened',
           chatKind: 'pr',
           ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
         },
@@ -812,9 +938,11 @@ export function createPullsView(
       if (number) pendingSelectNumber = number;
       await refresh();
     });
+    titleField.addEventListener('input', () => titleField.removeAttribute('aria-invalid'));
 
     detailCol.replaceChildren(form);
     titleField.focus();
+    if (titleField.value) titleField.select();
   }
 
   const navigate = listNavigator({
@@ -847,4 +975,11 @@ function prTone(pr: Pick<PullRequestSummary, 'state' | 'draft'>): PillTone {
   if (pr.state === 'merged') return 'merged';
   if (pr.state === 'closed') return 'closed';
   return pr.draft ? 'draft' : 'open';
+}
+
+/** One commit: its subject. Several: the branch name, readable (prefix and trailing hash dropped). */
+export function suggestPrTitle(branch: string, entry?: Pick<GitBranchTreeEntry, 'ahead' | 'subject'>): string {
+  if (entry?.subject && entry.ahead === 1) return entry.subject;
+  const words = branch.replace(/^.*\//, '').replace(/-[0-9a-f]{7,}$/i, '').replace(/[-_]+/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : entry?.subject ?? '';
 }

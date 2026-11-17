@@ -223,6 +223,28 @@ export function detailHead(options: {
   return { root, title };
 }
 
+/** A titled section inside a detail: heading, one line of explanation, then content. */
+export function section(title: string, options?: { description?: string; actions?: HTMLElement[]; count?: string }): {
+  root: HTMLElement;
+  body: HTMLElement;
+} {
+  const root = el('section', 'scc-section-block');
+  const head = el('header', 'scc-section-block__head');
+  const heading = el('div', 'scc-section');
+  heading.appendChild(el('h3', 'scc-section__title', title));
+  if (options?.count) heading.appendChild(el('span', 'scc-section__count', options.count));
+  head.appendChild(heading);
+  if (options?.actions?.length) {
+    const actions = el('div', 'scc-section-block__actions');
+    actions.append(...options.actions);
+    head.appendChild(actions);
+  }
+  if (options?.description) head.appendChild(el('p', 'scc-section-block__desc', options.description));
+  const body = el('div', 'scc-section-block__body');
+  root.append(head, body);
+  return { root, body };
+}
+
 /**
  * List beside detail. Narrow panes show one at a time: picking a row opens
  * the detail, and its Back button returns to the list.
@@ -237,25 +259,6 @@ export function drillIn(split: HTMLElement): { open: () => void; close: () => vo
     },
     isOpen: () => split.classList.contains('is-detail-open'),
   };
-}
-
-/** Section header inside a pane: uppercase label, count, trailing actions. */
-export function paneHeader(
-  title: string,
-  options?: { count?: number | string; actions?: HTMLElement[] },
-): HTMLElement {
-  const head = el('div', 'scc-pane-head');
-  const titleEl = el('h2', 'scc-pane-head__title', title);
-  head.appendChild(titleEl);
-  if (options?.count !== undefined && options.count !== '') {
-    head.appendChild(el('span', 'scc-pane-head__count', String(options.count)));
-  }
-  if (options?.actions?.length) {
-    const actions = el('div', 'scc-pane-head__actions');
-    actions.append(...options.actions);
-    head.appendChild(actions);
-  }
-  return head;
 }
 
 // ── Empty states ─────────────────────────────────────────────────────────────
@@ -379,17 +382,33 @@ const DAY = 24 * HOUR;
 
 // ── Time ─────────────────────────────────────────────────────────────────────
 
-/** Compact relative time: 4m, 3h, 6d, 12w. Empty string for unparseable input. */
+/**
+ * Age that reads unambiguously next to a duration: "just now", "4 min ago",
+ * "3 hr ago", "6 days ago", "2 wk ago", "5 mo ago", "1 yr ago".
+ * Empty string for unparseable input.
+ */
 export function relativeTime(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
   const delta = Date.now() - ms;
-  if (delta < MINUTE) return 'now';
-  if (delta < HOUR) return `${Math.floor(delta / MINUTE)}m`;
-  if (delta < DAY) return `${Math.floor(delta / HOUR)}h`;
-  if (delta < 7 * DAY) return `${Math.floor(delta / DAY)}d`;
-  if (delta < 365 * DAY) return `${Math.floor(delta / (7 * DAY))}w`;
-  return `${Math.floor(delta / (365 * DAY))}y`;
+  if (delta < MINUTE) return 'just now';
+  if (delta < HOUR) return `${Math.floor(delta / MINUTE)} min ago`;
+  if (delta < DAY) return `${Math.floor(delta / HOUR)} hr ago`;
+  if (delta < 7 * DAY) {
+    const days = Math.floor(delta / DAY);
+    return days === 1 ? '1 day ago' : `${days} days ago`;
+  }
+  if (delta < 30 * DAY) return `${Math.floor(delta / (7 * DAY))} wk ago`;
+  if (delta < 365 * DAY) return `${Math.floor(delta / (30 * DAY))} mo ago`;
+  return `${Math.floor(delta / (365 * DAY))} yr ago`;
+}
+
+/** Elapsed time with a clock glyph, so it never reads as an age. */
+export function durationLabel(text: string, className = ''): HTMLElement {
+  const wrap = el('span', `scc-duration${className ? ` ${className}` : ''}`);
+  wrap.append(createIcon('clock', { size: 12, className: 'scc-duration__icon' }), el('span', undefined, text));
+  wrap.title = `Took ${text}`;
+  return wrap;
 }
 
 /** Duration between two ISO stamps, as 1m 04s. */

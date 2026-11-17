@@ -1,10 +1,15 @@
 import '../styles/scc-actions.css';
 import { actionApi, type ActionCommand, type ActionWorkflow } from '../state/actions-api';
 import { createChecksView } from './scc-checks';
-import { type ForgeStatus } from '../state/forge-api';
-import { button, detailHead, drillIn, el, emptyState, pageBar, segmented, type RunState, type SccContext, type SccView } from './scc-shared';
+import { runList, runState, type ForgeStatus, type WorkflowRunSummary } from '../state/forge-api';
+import { createIcon } from './icon';
+import {
+  button, chip, detailHead, searchBox, drillIn, duration, durationLabel, el, emptyState, pageBar, relativeTime, section, segmented,
+  stateDot, statePill, stateLabel, runStateTone, type RunState, type SccContext, type SccView,
+} from './scc-shared';
 import {
   field,
+  inputField,
   labeled,
   operationButton,
   select,
@@ -53,6 +58,8 @@ export function createActionsView(
   let loadingLog = false;
   let page = 1;
   let workflowRepo = '';
+  /** Set by a workflow page: open Runs filtered to that workflow, optionally on one run. */
+  let runsFocus: { workflow: string; runId?: number } | null = null;
   const tabs = segmented<'runs' | 'workflows' | 'commands'>({
     label: 'Actions views',
     items: [
@@ -81,16 +88,6 @@ export function createActionsView(
     wrap.append(listCol, detail);
     body.append(wrap);
     return { list, detail, foot };
-  }
-  /** Detail header for a workflow, command or local run, with Back on narrow panes. */
-  function detailTitle(title: string, facts?: string[]) {
-    const repo = options.getForgeStatus()?.repo;
-    return detailHead({
-      title,
-      eyebrow: facts ?? [repo || 'Current workspace', branch || 'Detached HEAD'].filter(Boolean),
-      onBack: () => drill?.close(),
-      backLabel: tab === 'commands' ? 'Commands' : tab === 'workflows' ? 'Workflows' : 'Runs',
-    }).root;
   }
   const openRow = () => drill?.open();
 
@@ -121,7 +118,8 @@ export function createActionsView(
       });
       targets.append(target);
       if (location === 'remote') {
-        checks = createChecksView(ctx, options);
+        checks = createChecksView(ctx, { ...options, focus: runsFocus ?? undefined });
+        runsFocus = null;
         body.append(checks.root);
       } else {
         const panes = split();
@@ -212,59 +210,95 @@ export function createActionsView(
     const request = ++formRequest;
     const capturedCwd = cwd;
     const local = location === 'local';
-    detail.replaceChildren(detailTitle(summary.name));
+    const current = () => valid(g) && request === formRequest;
+    const file = summary.path.split('/').pop() ?? summary.path;
+    const headActions = el('div');
+    if (!local && workflowRepo) {
+      const link = el('a', 'scc-btn scc-btn--ghost', 'Open on GitHub');
+      link.append(createIcon('externalLink', { size: 13 }));
+      link.href = `https://${workflowRepo}/actions/workflows/${encodeURIComponent(file)}`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      headActions.append(link);
+    }
+    const head = detailHead({
+      eyebrow: [el('span', 'scc-mono', summary.path), local ? statePill('Runs locally with act', 'neutral') : el('span', undefined, workflowRepo || 'GitHub')],
+      title: summary.name,
+      actions: headActions.childElementCount ? headActions : undefined,
+      onBack: () => drill?.close(),
+      backLabel: 'Workflows',
+    });
+    detail.replaceChildren(head.root);
+
     if (!local) {
-      await renderRemoteWorkflowForm(summary, detail, {
-        cwd: capturedCwd, branch, isCurrent: () => valid(g) && request === formRequest,
-        onWorkflowLoaded: (workflow, host) => {
+      const run = section('Run workflow', { description: `Starts ${file} on GitHub, the same as Run workflow on github.com.` });
+      run.root.classList.add('scc-section-block--form');
+      const recent = section('Recent runs');
+      const releases = section('Releases', { description: 'Connect this workflow to Run release workflow on the Releases page.' });
+      releases.root.hidden = true;
+      detail.append(run.root, recent.root, releases.root);
+      void recentRuns(summary, recent.body, current);
+      await renderRemoteWorkflowForm(summary, run.body, {
+        cwd: capturedCwd, branch, isCurrent: current,
+        onWorkflowLoaded: (workflow) => {
           const repo = workflowRepo;
           const status = statusLine();
           const mapping = button({ label: 'Use for releases', onClick: () => {
-            if (!valid(g) || request !== formRequest) return;
+            if (!current()) return;
             try {
               const mapped = getReleaseWorkflow(repo)?.id === workflow.id;
               setReleaseWorkflow(repo, mapped ? null : workflow);
               update();
-              status.textContent = mapped ? 'Release workflow mapping removed.' : 'The Releases button now runs this workflow.';
+              status.textContent = mapped ? 'Disconnected from Releases.' : 'Run release workflow on the Releases page now runs this workflow.';
             } catch (error) { status.textContent = String(error); }
           } });
+          const state = el('span', 'scc-section-block__state');
           const update = () => {
             const mapped = getReleaseWorkflow(repo)?.id === workflow.id;
-            mapping.textContent = mapped ? 'Remove release mapping' : 'Use for releases';
+            mapping.querySelector('.scc-btn__label')!.textContent = mapped ? 'Remove release mapping' : 'Use for releases';
             mapping.setAttribute('aria-pressed', String(mapped));
+            state.replaceChildren(mapped ? statePill('Connected', 'success') : statePill('Not connected', 'neutral'));
           };
           update();
-          host.append(mapping, status);
+          const row = el('div', 'scc-setting-row');
+          row.append(state, mapping);
+          releases.body.replaceChildren(row, status);
+          releases.root.hidden = false;
         },
       });
       return;
     }
+
+    const runLocal = section('Run locally', {
+      description: 'Runs in this worktree with act, including uncommitted edits. Linux container jobs only; results can differ from GitHub.',
+    });
+    runLocal.root.classList.add('scc-section-block--form');
     const status = statusLine();
     const form = el('div', 'scc-action-form');
-    detail.append(form, status);
+    runLocal.body.append(form, status);
+    detail.append(runLocal.root);
     if (summary.error) {
       status.textContent = summary.error;
       return;
     }
     try {
       const caps = await actionApi('localCapabilities', { cwd });
-      if (!valid(g) || request !== formRequest) return;
+      if (!current()) return;
       if (!caps.act?.available || !caps.docker?.available) {
-        status.textContent = `Install act and start Docker, then select this workflow again. ${caps.act?.detail || ''} ${caps.docker?.detail || ''}`;
-        const link = el('a', undefined, 'act setup instructions');
+        const missing = el('div', 'scc-prform__notice');
+        missing.dataset.tone = 'warning';
+        missing.append(
+          createIcon('warning', { size: 14, className: 'scc-prform__notice-icon' }),
+          el('span', 'scc-prform__notice-text', `Install act and start Docker, then select this workflow again. ${caps.act?.detail || ''} ${caps.docker?.detail || ''}`.trim()),
+        );
+        const link = el('a', 'scc-btn scc-btn--ghost', 'act setup instructions');
         link.href = 'https://nektosact.com/installation/';
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
-        form.append(link);
+        missing.append(link);
+        form.append(missing);
         return;
       }
-      form.append(
-        el(
-          'p',
-          undefined,
-          'Uses the selected worktree, including current edits. Linux container jobs only; local results may differ from GitHub.',
-        ),
-      );
       const controls = el('div', 'scc-action-form');
       form.append(controls);
       let refRequest = 0;
@@ -277,7 +311,7 @@ export function createActionsView(
           path: summary.path,
           id: summary.id,
         });
-        if (!valid(g) || request !== formRequest || refGeneration !== refRequest) return;
+        if (!current() || refGeneration !== refRequest) return;
         if (!result.ok || !result.workflow) {
           status.textContent = result.error || 'Could not read workflow';
           return;
@@ -310,9 +344,7 @@ export function createActionsView(
             );
           input.required = def.required;
           inputs.set(def.name, input);
-          controls.append(
-            labeled(`${def.name}${def.required ? ' *' : ''} · ${def.description}`, input),
-          );
+          controls.append(inputField(def, input));
         }
         const event = select(
           'Event',
@@ -328,62 +360,113 @@ export function createActionsView(
         ]);
         const image = field('Runner image', 'catthehacker/ubuntu:act-latest');
         const secretNames = field('Secret names', '');
-        controls.append(
-          labeled('Event', event),
-          labeled('Job', job),
-          labeled('Runner image', image),
-          labeled('Local secret names (comma separated)', secretNames),
+        secretNames.placeholder = 'GITHUB_TOKEN, NPM_TOKEN';
+        const grid = el('div', 'scc-field-grid');
+        grid.append(labeled('Event', event), labeled('Job', job));
+        const advanced = el('details', 'scc-action-advanced');
+        advanced.append(
+          el('summary', undefined, 'Runner and secrets'),
+          labeled('Runner image', image, 'Docker image act uses for ubuntu-latest jobs.'),
+          labeled('Secret names', secretNames, 'Comma separated. Values come from Local secrets below.'),
         );
-        secretForm(controls, capturedCwd);
-        controls.append(
-          operationButton(
-            'Run locally',
-            status,
-            async () => {
-              for (const input of inputs.values())
-                if (!input.reportValidity())
-                  return { ok: false, error: 'Complete the required inputs.' };
-              const values = Object.fromEntries(
-                [...inputs].map(([name, input]) => [name, input.value]),
-              );
-              return actionApi('localRunStart', {
-                cwd: capturedCwd,
-                id: summary.id,
-                path: summary.path,
-                kind: 'workflow',
-                event: event.value,
-                job: job.value || undefined,
-                inputs: values,
-                image: image.value,
-                secretNames: secretNames.value
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              });
-            },
-            () => {
-              tab = 'runs';
-              location = 'local';
-              void mount();
-            },
-          ),
+        const runButton = operationButton(
+          'Run locally',
+          status,
+          async () => {
+            for (const input of inputs.values())
+              if (!input.reportValidity())
+                return { ok: false, error: 'Complete the required inputs.' };
+            const values = Object.fromEntries(
+              [...inputs].map(([name, input]) => [name, input.value]),
+            );
+            return actionApi('localRunStart', {
+              cwd: capturedCwd,
+              id: summary.id,
+              path: summary.path,
+              kind: 'workflow',
+              event: event.value,
+              job: job.value || undefined,
+              inputs: values,
+              image: image.value,
+              secretNames: secretNames.value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+            });
+          },
+          () => {
+            tab = 'runs';
+            location = 'local';
+            void mount();
+          },
         );
+        runButton.classList.add('scc-btn--primary');
+        controls.append(grid, advanced, runButton);
       };
       await load();
+      detail.append(secretSection(capturedCwd));
     } catch (error) {
-      if (valid(g) && request === formRequest) status.textContent = String(error);
+      if (current()) status.textContent = String(error);
     }
   }
 
-  function secretForm(host: HTMLElement, capturedCwd: string | undefined) {
-    const details = el('details');
-    details.append(el('summary', undefined, 'Local secrets'));
+  /** The newest runs of one workflow; each opens in Runs. */
+  async function recentRuns(summary: ActionWorkflow, host: HTMLElement, current: () => boolean) {
+    host.replaceChildren(skeletonRows(3));
+    // gh accepts the file name, which also reads better in the Runs filter than a numeric ID.
+    const workflow = summary.path.split('/').pop() || String(summary.id);
+    const result = await runList({ cwd, workflow, limit: 5 }).catch(() => null);
+    if (!current()) return;
+    const runs: WorkflowRunSummary[] = result?.ok ? result.runs ?? [] : [];
+    if (!runs.length) {
+      host.replaceChildren(el('p', 'scc-prdetail__muted', result?.ok ? 'This workflow has not run yet.' : 'Recent runs are unavailable right now.'));
+      return;
+    }
+    const list = el('div', 'scc-lines scc-recent-runs');
+    for (const run of runs) {
+      const state = runState(run) as RunState;
+      const row = el('button', 'scc-row scc-recent-run');
+      row.type = 'button';
+      const lead = el('span', 'scc-row__lead');
+      lead.append(stateDot(state, stateLabel(state)));
+      const meta = el('span', 'scc-row__meta');
+      meta.append(el('span', 'scc-fact', run.branch), el('span', 'scc-fact scc-mono', run.sha.slice(0, 7)));
+      if (run.startedAt && state !== 'pending') {
+        const end = el('span', 'scc-row__end');
+        end.append(durationLabel(duration(run.startedAt, run.updatedAt)));
+        meta.append(end);
+      }
+      // Manual and scheduled runs are titled after the workflow itself; say what started them instead.
+      const title = run.title.trim() === summary.name.trim() ? eventLabel(run.event) : run.title;
+      row.append(lead, el('span', 'scc-row__title', title), el('span', 'scc-row__aside', relativeTime(run.createdAt)), meta);
+      row.addEventListener('click', () => openRuns(workflow, run.id));
+      list.append(row);
+    }
+    const all = button({ label: 'All runs of this workflow', variant: 'ghost', onClick: () => openRuns(workflow) });
+    host.replaceChildren(list, all);
+  }
+
+  function openRuns(workflow: string, runId?: number) {
+    runsFocus = { workflow, runId };
+    tab = 'runs';
+    location = 'remote';
+    page = 1;
+    void mount();
+  }
+
+  /** Values act passes as secrets; stored encrypted on this machine, never sent to GitHub. */
+  function secretSection(capturedCwd: string | undefined) {
+    const block = section('Local secrets', { description: 'Stored encrypted on this machine for local runs. Never sent to GitHub.' });
+    const details = el('details', 'scc-action-advanced');
+    details.append(el('summary', undefined, 'Add or remove a secret'));
     const name = field('Secret name');
+    name.placeholder = 'NPM_TOKEN';
     const value = field('Secret value', '', 'password');
     const status = statusLine();
-    details.append(
-      labeled('Name', name),
-      labeled('Value', value),
+    const grid = el('div', 'scc-field-grid');
+    grid.append(labeled('Name', name), labeled('Value', value));
+    const buttons = el('div', 'scc-button-row');
+    buttons.append(
       operationButton(
         'Save secret',
         status,
@@ -396,9 +479,10 @@ export function createActionsView(
       operationButton('Delete secret', status, () =>
         actionApi('actionSecrets', { cwd: capturedCwd, name: name.value, remove: true }),
       ),
-      status,
     );
-    host.append(details);
+    details.append(grid, buttons, status);
+    block.body.append(details);
+    return block.root;
   }
 
   async function commands(g: number) {
@@ -421,20 +505,83 @@ export function createActionsView(
       list.append(row);
     }
     if (!result.commands?.length) list.append(emptyState({ title: 'No project commands', body: 'Save a command here, or add scripts to package.json.' }));
+    else if (result.commands.length > 8) {
+      // Many package.json scripts: filter by name or command line.
+      const filters = el('div', 'scc-split__filters');
+      const find = searchBox('Filter commands');
+      const empty = el('p', 'scc-prdetail__muted scc-split__none', 'No commands match.');
+      empty.hidden = true;
+      find.input.addEventListener('input', () => {
+        const query = find.input.value.trim().toLowerCase();
+        let shown = 0;
+        for (const row of list.querySelectorAll<HTMLElement>('.scc-action-row')) {
+          const match = !query || (row.title || row.textContent || '').toLowerCase().includes(query);
+          row.hidden = !match;
+          if (match) shown++;
+        }
+        empty.hidden = shown > 0;
+      });
+      filters.append(find.root);
+      list.parentElement!.prepend(filters);
+      list.append(empty);
+    }
     detail.append(
       emptyState({
+        icon: 'terminal',
         title: 'Project commands',
-        body: 'Run package scripts or save a named command for this repository.',
+        body: 'Run package scripts or save a named command for this repository. Runs appear under Runs → Local runs.',
       }),
     );
   }
   function editCommand(command: ActionCommand | undefined, detail: HTMLElement, g: number) {
     const capturedCwd = cwd;
     const status = statusLine();
-    detail.replaceChildren(detailTitle(command?.label || 'New command'));
+    const isScript = command?.script !== undefined;
+    const headActions = el('div');
+    if (command) {
+      const run = operationButton(
+        'Run saved command',
+        status,
+        () =>
+          actionApi('localRunStart', {
+            cwd: capturedCwd,
+            kind: 'command',
+            commandId: command.id,
+          }),
+        () => {
+          tab = 'runs';
+          location = 'local';
+          void mount();
+        },
+      );
+      run.classList.add('scc-btn--primary');
+      headActions.append(run);
+    }
+    const head = detailHead({
+      eyebrow: [statePill(isScript ? 'package.json script' : command ? 'Saved command' : 'New command', 'neutral')],
+      title: command?.label || 'New command',
+      facts: command ? [el('span', 'scc-mono', command.cwd || '.')] : undefined,
+      actions: headActions.childElementCount ? headActions : undefined,
+      onBack: () => drill?.close(),
+      backLabel: 'Commands',
+    });
+    detail.replaceChildren(head.root, status);
+
+    if (isScript) {
+      const block = section('Script', { description: 'Defined in package.json. Edit it there.' });
+      block.body.append(el('pre', 'scc-log scc-log--code', `$ ${command!.command}\n${command!.script}`));
+      detail.append(block.root);
+      detail.append(secretSection(capturedCwd));
+      return;
+    }
+
     const id = field('ID', command?.id);
+    id.placeholder = 'build';
     const label = field('Label', command?.label);
+    label.placeholder = 'Build';
     const script = textArea('Command', command?.command);
+    script.rows = 3;
+    script.placeholder = 'npm run build';
     const directory = field('Working directory', command?.cwd || '.');
     const shell = field('Shell profile ID (optional)', command?.shellProfile);
     const env = textArea('Environment JSON', JSON.stringify(command?.env || {}, null, 2));
@@ -442,79 +589,62 @@ export function createActionsView(
       'Secret references JSON',
       JSON.stringify(command?.secrets || {}, null, 2),
     );
-    if (command?.script !== undefined)
-      detail.append(el('pre', 'scc-log', `${command.command}\n${command.script}`));
-    else {
-      id.disabled = Boolean(command);
-      detail.append(
-        labeled('ID', id),
-        labeled('Label', label),
-        labeled('Command', script),
-        labeled('Working directory', directory),
-      );
-      const advanced = el('details', 'scc-action-advanced');
-      advanced.append(el('summary', undefined, 'Environment and shell'), labeled('Shell profile ID (optional)', shell), labeled('Environment JSON', env), labeled('Secret references JSON', secrets));
-      detail.append(advanced);
-      detail.append(
-        operationButton(
-          'Save command',
-          status,
-          () =>
-            actionApi('commandSave', {
-              cwd: capturedCwd,
-              command: {
-                id: id.value,
-                label: label.value,
-                command: script.value,
-                cwd: directory.value,
-                shellProfile: shell.value,
-                env: JSON.parse(env.value),
-                secrets: JSON.parse(secrets.value),
-              },
-            }),
-          () => {
-            if (valid(g)) void mount();
+    id.disabled = Boolean(command);
+
+    const block = section('Command', { description: 'Runs in this worktree. Use it from Runs → Local runs or from a chat.' });
+    block.root.classList.add('scc-section-block--form');
+    const grid = el('div', 'scc-field-grid');
+    grid.append(labeled('Label', label), labeled('ID', id, command ? 'Fixed once saved.' : 'Letters, numbers and dashes.'));
+    const advanced = el('details', 'scc-action-advanced');
+    advanced.append(
+      el('summary', undefined, 'Environment and shell'),
+      labeled('Shell profile ID (optional)', shell),
+      labeled('Environment JSON', env, 'Variables set for this command, as { "NAME": "value" }.'),
+      labeled('Secret references JSON', secrets, 'Map variables to Local secrets, as { "NAME": "SECRET_NAME" }.'),
+    );
+    const save = operationButton(
+      'Save command',
+      status,
+      () =>
+        actionApi('commandSave', {
+          cwd: capturedCwd,
+          command: {
+            id: id.value,
+            label: label.value,
+            command: script.value,
+            cwd: directory.value,
+            shellProfile: shell.value,
+            env: JSON.parse(env.value),
+            secrets: JSON.parse(secrets.value),
           },
-        ),
+        }),
+      () => {
+        if (valid(g)) void mount();
+      },
+    );
+    save.classList.add(command ? 'scc-btn--secondary' : 'scc-btn--primary');
+    const footer = el('div', 'scc-form-footer');
+    if (command) {
+      const remove = operationButton(
+        'Delete command',
+        status,
+        async () =>
+          (await appConfirm({
+            message: `Delete saved command ${command.label}?`,
+            danger: true,
+          }))
+            ? actionApi('commandSave', { cwd: capturedCwd, id: command.id, remove: true })
+            : { ok: true, note: 'Cancelled' },
+        () => {
+          if (valid(g)) void mount();
+        },
       );
-      if (command)
-        detail.append(
-          operationButton(
-            'Delete command',
-            status,
-            async () =>
-              (await appConfirm({
-                message: `Delete saved command ${command.label}?`,
-                danger: true,
-              }))
-                ? actionApi('commandSave', { cwd: capturedCwd, id: command.id, remove: true })
-                : { ok: true, note: 'Cancelled' },
-            () => {
-              if (valid(g)) void mount();
-            },
-          ),
-        );
+      remove.classList.add('scc-btn--ghost', 'scc-btn--danger-hover');
+      footer.append(remove);
     }
-    if (command)
-      detail.append(
-        operationButton(
-          'Run saved command',
-          status,
-          () =>
-            actionApi('localRunStart', {
-              cwd: capturedCwd,
-              kind: 'command',
-              commandId: command.id,
-            }),
-          () => {
-            tab = 'runs';
-            location = 'local';
-            void mount();
-          },
-        ),
-      );
-    secretForm(detail, capturedCwd);
-    detail.append(status);
+    footer.append(save);
+    block.body.append(grid, labeled('Command', script), labeled('Working directory', directory, 'Relative to the worktree root.'), advanced, footer);
+    detail.append(block.root, secretSection(capturedCwd));
   }
 
   async function refreshLocalRuns(g: number) {
@@ -535,27 +665,40 @@ export function createActionsView(
             logText = '';
             loadingLog = false;
             const host = localDetail!;
-            host.replaceChildren(
-              detailTitle(run.label, [run.branch, run.sha.slice(0, 8), ...(run.dirty ? ['uncommitted edits'] : []), run.cwd]),
-            );
             runStatus = statusLine();
-            logNode = el('pre', 'scc-log');
+            logNode = el('pre', 'scc-log scc-log--tall');
             logNode.tabIndex = 0;
+            logNode.setAttribute('aria-label', `Output of ${run.label}`);
             cancelRun = operationButton('Cancel run', runStatus, () =>
               actionApi('localRunCancel', { cwd: run.cwd, id: run.id }),
             );
+            cancelRun.classList.add('scc-btn--danger-hover');
             cancelRun.hidden = run.status !== 'running';
-            host.append(
-              cancelRun,
+            const actions = el('div');
+            actions.append(
               operationButton(
                 'Run again',
                 runStatus,
                 () => actionApi('localRunRerun', { cwd: run.cwd, id: run.id }),
                 () => void refreshLocalRuns(g),
               ),
-              runStatus,
-              logNode,
+              cancelRun,
             );
+            const state = localRunState(run.status);
+            const facts: HTMLElement[] = [chip(run.branch, 'branch'), chip(run.sha.slice(0, 8), 'sha')];
+            if (run.dirty) facts.push(el('span', 'scc-tag', 'Uncommitted edits'));
+            facts.push(el('span', 'scc-mono scc-local-run__cwd', run.cwd));
+            const head = detailHead({
+              eyebrow: [statePill(sentence(run.status), runStateTone(state)), el('span', undefined, run.kind === 'workflow' ? 'Workflow with act' : 'Command')],
+              title: run.label,
+              facts,
+              actions,
+              onBack: () => drill?.close(),
+              backLabel: 'Local runs',
+            });
+            const output = section('Output');
+            output.body.append(logNode);
+            host.replaceChildren(head.root, runStatus, output.root);
             void refreshLog(g);
           }, { state: localRunState(run.status) });
       row.classList.toggle('is-selected', run.id === selectedRun);
@@ -593,6 +736,15 @@ export function createActionsView(
   void mount();
   return {
     root,
+    activate: () => {
+      const requested = pendingTab;
+      pendingTab = '';
+      if (requested && requested !== tab) {
+        tab = requested;
+        page = 1;
+        void mount();
+      }
+    },
     refresh: async () => {
       if (cwd !== ctx.getCwd() || branch !== ctx.getBranch()) {
         cwd = ctx.getCwd();
@@ -616,4 +768,21 @@ function localRunState(status: string): RunState {
   if (status === 'failure' || status === 'failed' || status === 'error') return 'failure';
   if (status === 'cancelled' || status === 'canceled') return 'cancelled';
   return 'none';
+}
+
+function sentence(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Unknown';
+}
+
+const EVENT_LABEL: Record<string, string> = {
+  workflow_dispatch: 'Manual run',
+  schedule: 'Scheduled run',
+  push: 'Push',
+  pull_request: 'Pull request',
+  release: 'Release',
+  workflow_run: 'After another workflow',
+};
+
+function eventLabel(event: string): string {
+  return EVENT_LABEL[event] ?? sentence(event.replace(/_/g, ' '));
 }

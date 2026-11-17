@@ -533,12 +533,6 @@
   min-height: 64px;
 }
 
-.scc-input--compact {
-  width: 20ch;
-  font-family: var(--font-mono);
-  font-size: var(--scc-text-sm);
-}
-
 .scc-search {
   flex: 1;
   min-width: 0;
@@ -551,16 +545,6 @@
 .scc-search:focus {
   outline: none;
   border-color: var(--mn-accent);
-}
-
-.scc-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--scc-text-sm);
-  color: var(--mn-fg-muted);
-  white-space: nowrap;
-  cursor: pointer;
 }
 
 /* ─── List sections (branches, stashes, worktrees) ───────────────────────── */
@@ -1039,13 +1023,59 @@
 }
 
 .scc-btree__time {
-  width: 34px;
-  margin-left: 8px;
-  color: var(--mn-fg-subtle);
+  width: 11ch;
+  margin-left: var(--mn-space-2);
+  font-family: inherit;
+  color: var(--scc-subtle);
+}
+
+/* Row commands float over the right edge on approach, so the ahead/behind and
+   age columns line up on every row however many commands a branch has. */
+.scc-btree__row {
+  position: relative;
 }
 
 .scc-btree__row > .scc-refrow__actions {
-  margin-left: 12px;
+  --scc-row-fill: var(--scc-hover);
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  padding-inline: var(--mn-space-8) var(--mn-space-2);
+  border-radius: 0 var(--scc-radius) var(--scc-radius) 0;
+  /* The row veil over the opaque sheet, fading in so the age column is covered, not cut. */
+  background:
+    linear-gradient(to right, transparent, var(--scc-row-fill) var(--mn-space-6)),
+    linear-gradient(to right, transparent, var(--mn-graphite-sheet, var(--mn-surface-0)) var(--mn-space-6));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scc-btree__row.is-selected > .scc-refrow__actions {
+  --scc-row-fill: var(--scc-sel);
+}
+
+.scc-btree__row:is(:hover, :focus-within) > .scc-refrow__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: hover) {
+  .scc-btree__row.is-current:not(:hover, :focus-within) > .scc-refrow__actions {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* Without hover the commands stay in the row, always visible. */
+@media (hover: none) {
+  .scc-btree__row > .scc-refrow__actions {
+    position: static;
+    margin-inline-start: var(--mn-space-3);
+    padding: 0;
+    background: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 /* Compact: the commit column goes first, then the counts. */
@@ -1424,7 +1454,7 @@
   height: calc(var(--scc-btn-h) - 6px);
   padding: 0 var(--mn-space-2-5);
   border: 0;
-  border-radius: calc(var(--scc-radius) - 2px);
+  border-radius: var(--mn-radius-xs);
   background: transparent;
   color: var(--scc-muted);
   font-family: inherit;
@@ -1706,10 +1736,6 @@
   transition: background var(--duration-fast) var(--ease-out);
 }
 
-.scc-row--flat {
-  grid-template-areas: 'lead title aside';
-}
-
 @media (hover: hover) and (pointer: fine) {
   .scc-row:hover {
     background: var(--scc-hover);
@@ -1939,7 +1965,7 @@
   inset-inline: 0;
   bottom: -1px;
   height: 2px;
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
   background: transparent;
 }
 
@@ -2035,12 +2061,6 @@
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.scc-prdetail__labels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--mn-space-1-5);
 }
 
 .scc-prdetail__more {
@@ -2267,53 +2287,197 @@ button.scc-prdetail__signal {
 }
 
 /* ─── Pull request form ──────────────────────────────────────────────────── */
+/* Same header as a pull request's detail; fields read top to bottom, and the  */
+/* footer holds draft and the one primary action.                              */
 
 .scc-prform {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: var(--mn-space-3);
-  max-width: 78ch;
-  padding: var(--mn-space-5) var(--mn-space-6) var(--mn-space-8);
+  max-width: 820px;
+  gap: var(--mn-space-5);
 }
 
-.scc-prform__head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--mn-space-1);
+.scc-prform__compare {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mn-space-1-5) var(--mn-space-2);
+  min-width: 0;
 }
 
-.scc-prform__title {
-  margin: 0;
-  font-size: var(--mn-type-2xl);
-  font-weight: var(--mn-weight-semibold);
-  letter-spacing: -0.015em;
+.scc-prform__compare .scc-chip {
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--mn-type-xs);
+  line-height: 20px;
 }
 
-.scc-prform__branches {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--mn-type-sm);
+.scc-prform__compare-label {
   color: var(--scc-muted);
 }
 
-.scc-prform__row {
+.scc-prform__base.scc-select {
+  height: calc(var(--scc-btn-h) - 4px);
+  max-width: 28ch;
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-xs);
+}
+
+.scc-prform__ahead {
+  color: var(--scc-subtle);
+  font-size: var(--mn-type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.scc-prform__notice {
   display: flex;
   align-items: center;
-  gap: var(--mn-space-2-5);
   flex-wrap: wrap;
+  gap: var(--mn-space-2) var(--mn-space-2-5);
+  margin-top: calc(-1 * var(--mn-space-2));
+  padding: var(--mn-space-2-5) var(--mn-space-3);
+  border: 1px solid var(--scc-line);
+  border-radius: var(--mn-radius-md);
+  background: var(--scc-raised);
+  color: var(--scc-ink);
+  font-size: var(--mn-type-sm);
+  line-height: 1.5;
+}
+
+.scc-prform__notice[data-tone='warning'] {
+  border-color: var(--mn-warning-border);
+  background: var(--mn-warning-soft);
+}
+
+.scc-prform__notice-icon {
+  flex-shrink: 0;
+  color: var(--scc-muted);
+}
+
+.scc-prform__notice[data-tone='warning'] .scc-prform__notice-icon {
+  color: var(--mn-warning);
+}
+
+.scc-prform__notice-text {
+  flex: 1 1 32ch;
+  min-width: 0;
+}
+
+.scc-prform__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mn-space-1-5);
+  min-width: 0;
 }
 
 .scc-prform__label {
-  color: var(--scc-muted);
+  color: var(--scc-ink);
   font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-medium);
+}
+
+.scc-prform__input.scc-input {
+  height: var(--mn-control-h-lg);
+  padding-block: 0;
+  font-size: var(--mn-type-base);
+}
+
+.scc-prform__input[aria-invalid='true'] {
+  border-color: var(--mn-danger);
+}
+
+/* Write / Preview over one bordered editor, like release notes. */
+.scc-prform__editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--scc-line-strong);
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-bg);
+  overflow: hidden;
+}
+
+.scc-prform__editor:focus-within {
+  border-color: var(--mn-accent);
+}
+
+.scc-prform__editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mn-space-2);
+  padding: var(--mn-space-1-5) var(--mn-space-3) var(--mn-space-1-5) var(--mn-space-1-5);
+  border-bottom: 1px solid var(--scc-line);
+  background: var(--scc-raised);
+}
+
+.scc-prform__editor-bar .scc-seg {
+  border: 0;
+  background: transparent;
+}
+
+.scc-prform__textarea.scc-textarea {
+  min-height: 220px;
+  padding: var(--mn-space-3) var(--mn-space-3-5);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--mn-type-base);
+  line-height: 1.6;
+}
+
+.scc-prform__textarea.scc-textarea:focus {
+  border: 0;
+}
+
+.scc-prform__preview {
+  min-height: 220px;
+  padding: var(--mn-space-3) var(--mn-space-3-5);
+  max-width: none;
+}
+
+.scc-prform__hint {
+  color: var(--scc-subtle);
+  font-size: var(--mn-type-xs);
+  font-weight: var(--mn-weight-regular);
+}
+
+.scc-prform__footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mn-space-3) var(--mn-space-4);
+  padding-top: var(--mn-space-4);
+  border-top: 1px solid var(--scc-line);
+}
+
+.scc-prform__draft {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mn-space-2-5);
+  flex: 1 1 260px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.scc-prform__draft input {
+  margin: 3px 0 0;
+  accent-color: var(--mn-accent);
+  flex-shrink: 0;
+}
+
+.scc-prform__draft-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mn-space-0-5);
+  font-size: var(--mn-type-sm);
+  color: var(--scc-ink);
 }
 
 .scc-prform__actions {
   display: flex;
+  align-items: center;
   gap: var(--mn-space-1-5);
-  justify-content: flex-end;
-  padding-top: var(--mn-space-1);
+  margin-inline-start: auto;
 }
 
 /* ─── Runs: jobs, steps, logs ────────────────────────────────────────────── */
@@ -2811,20 +2975,6 @@ button.scc-prdetail__signal {
   display: none;
 }
 
-.scc-commit-detail__filebar {
-  display: flex;
-  align-items: center;
-  gap: var(--mn-space-2);
-  padding-inline-end: var(--mn-space-3);
-  border-bottom: 1px solid var(--scc-line);
-}
-
-.scc-commit-detail__filebar > .git-commit-diff__file-tabs {
-  flex: 1;
-  min-width: 0;
-  border-bottom: 0;
-}
-
 .git-history-map__navigation-row {
   display: flex;
   align-items: center;
@@ -2883,8 +3033,10 @@ button.scc-prdetail__signal {
 }
 
 /* ─── Commit detail ──────────────────────────────────────────────────────── */
+/* Header, then the changed files beside the diff of the one that is open.   */
 
 .scc-commit-detail {
+  container: scc-commit / inline-size;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -2894,12 +3046,14 @@ button.scc-prdetail__signal {
 .scc-commit-detail > .scc-dhead {
   flex-shrink: 0;
   position: relative;
+  gap: var(--mn-space-1-5);
   padding: var(--mn-space-4) var(--mn-space-5) var(--mn-space-3);
+  border-bottom: 1px solid var(--scc-line);
 }
 
 .scc-commit-detail__subject.scc-dhead__title {
-  max-width: 68ch;
-  padding-inline-end: var(--mn-space-12);
+  max-width: 72ch;
+  padding-inline-end: var(--mn-space-10);
   font-size: var(--mn-type-xl);
 }
 
@@ -2909,70 +3063,178 @@ button.scc-prdetail__signal {
   inset-inline-end: var(--mn-space-3);
 }
 
+.scc-commit-detail__author {
+  color: var(--scc-ink);
+  font-weight: var(--mn-weight-medium);
+}
+
 .scc-commit-detail__message {
   color: var(--scc-muted);
   font-size: var(--mn-type-sm);
 }
 
 .scc-commit-detail__message > summary {
-  cursor: pointer;
   width: fit-content;
+  cursor: pointer;
 }
 
 .scc-commit-detail__body {
-  max-height: 140px;
+  max-width: 72ch;
+  max-height: 160px;
   margin: var(--mn-space-2) 0 0;
   overflow: auto;
+  color: var(--scc-muted);
   font-family: inherit;
   font-size: var(--mn-type-sm);
   line-height: 1.55;
-  color: var(--scc-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-width: 72ch;
 }
 
-/* Changed files: underline tabs, like every other tab strip here. */
-.scc-commit-detail .git-commit-diff__file-tabs {
-  gap: var(--mn-space-4);
-  padding: 0 var(--mn-space-5);
-  border-bottom: 1px solid var(--scc-line);
-  scrollbar-width: thin;
+.scc-commit-detail__review {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
 }
 
-.scc-commit-detail .git-commit-diff__file-tab {
-  position: relative;
-  max-width: 260px;
-  height: 34px;
-  padding: 0;
+.scc-commit-detail__review.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.scc-commit-detail__review.is-single .scc-commit-files {
+  display: none;
+}
+
+.scc-commit-files {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--mn-space-1-5);
+  border-inline-end: 1px solid var(--scc-line);
+}
+
+.scc-commit-file {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mn-space-2);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--mn-space-1) var(--mn-space-2);
   border: 0;
-  border-radius: 0;
+  border-radius: var(--scc-radius);
   background: transparent;
-  font-size: var(--mn-type-xs);
-  color: var(--scc-muted);
-}
-
-.scc-commit-detail .git-commit-diff__file-tab::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px;
-}
-
-.scc-commit-detail .git-commit-diff__file-tab.is-active {
   color: var(--scc-ink);
-  background: transparent;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.scc-commit-detail .git-commit-diff__file-tab.is-active::after {
-  background: var(--scc-ink);
+@media (hover: hover) and (pointer: fine) {
+  .scc-commit-file:hover {
+    background: var(--scc-hover);
+  }
 }
 
-.scc-commit-detail .git-commit-diff__file-tab:focus-visible {
+.scc-commit-file.is-active {
+  background: var(--scc-sel);
+}
+
+.scc-commit-file:focus-visible {
   outline: 2px solid var(--mn-focus-ring);
   outline-offset: -2px;
+}
+
+.scc-commit-file__status {
+  --scc-tone: var(--mn-fg-muted);
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--mn-radius-xs);
+  background: color-mix(in srgb, var(--scc-tone) 16%, transparent);
+  color: color-mix(in srgb, var(--scc-tone) 70%, var(--mn-fg));
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-2xs);
+  font-weight: var(--mn-weight-semibold);
+  line-height: 1;
+}
+
+.scc-commit-file__status--added { --scc-tone: var(--mn-success); }
+.scc-commit-file__status--deleted { --scc-tone: var(--mn-danger); }
+.scc-commit-file__status--renamed { --scc-tone: var(--mn-graphite-blue, var(--mn-accent)); }
+
+.scc-commit-file__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.scc-commit-file__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-xs);
+}
+
+.scc-commit-file__dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: start;
+  color: var(--scc-subtle);
+  font-size: var(--mn-type-2xs);
+}
+
+.scc-commit-detail__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.scc-commit-detail__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  min-height: 40px;
+  padding: var(--mn-space-1) var(--mn-space-2) var(--mn-space-1) var(--mn-space-4);
+  border-bottom: 1px solid var(--scc-line);
+}
+
+.scc-commit-detail__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-xs);
+  color: var(--scc-ink);
+}
+
+.scc-commit-detail__path-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-space-1);
+  max-width: 100%;
+}
+
+.scc-commit-detail__path-old {
+  color: var(--scc-subtle);
+  text-decoration: line-through;
+}
+
+.scc-commit-detail .git-commit-diff__body {
+  flex: 1;
+  min-height: 0;
 }
 
 .scc-commit-detail .git-commit-diff__column-labels {
@@ -2980,22 +3242,27 @@ button.scc-prdetail__signal {
   border-bottom-color: var(--scc-line);
 }
 
-.scc-commit-file__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--mn-space-3);
-  width: 100%;
-  padding: var(--mn-space-1) var(--mn-space-1-5);
-  border: none;
-  border-radius: var(--scc-radius);
-  background: transparent;
-  color: var(--scc-ink);
+.scc-commit-detail .git-commit-diff__column-label {
   font-family: inherit;
-  font-size: var(--mn-type-sm);
-  text-align: left;
-  cursor: pointer;
-  min-height: var(--scc-btn-h);
+  font-weight: var(--mn-weight-medium);
+  color: var(--scc-muted);
+}
+
+.scc-commit-detail .git-commit-diff__column-label + .git-commit-diff__column-label {
+  border-left-color: var(--scc-line);
+}
+
+/* Narrow: the file list sits above the diff as a short scrolling list. */
+@container scc-commit (max-width: 640px) {
+  .scc-commit-detail__review {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 132px) minmax(0, 1fr);
+  }
+
+  .scc-commit-files {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--scc-line);
+  }
 }
 
 /* ─── Shared primitives ──────────────────────────────────────────────────── */
@@ -3233,6 +3500,168 @@ button.scc-prdetail__signal {
 }
 
 /* Command palette lives in styles/command-palette.css (one palette, globally). */
+
+/* ─── Durations ──────────────────────────────────────────────────────────── */
+/* A clock marks elapsed time so it never reads as "how long ago".          */
+
+.scc-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-space-1);
+  color: var(--scc-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scc-duration__icon {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.scc-duration.scc-runrow__elapsed {
+  color: var(--mn-warning);
+}
+
+/* ─── Detail sections and forms ──────────────────────────────────────────── */
+
+.scc-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mn-space-3);
+  min-width: 0;
+  padding-top: var(--mn-space-5);
+  border-top: 1px solid var(--scc-line);
+}
+
+.scc-section-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--mn-space-1) var(--mn-space-3);
+}
+
+.scc-section-block__head > .scc-section {
+  flex: 1 1 auto;
+}
+
+.scc-section-block__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-1-5);
+}
+
+.scc-section-block__desc {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: 72ch;
+  color: var(--scc-muted);
+  font-size: var(--mn-type-sm);
+  line-height: 1.5;
+}
+
+.scc-section-block__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mn-space-3);
+  min-width: 0;
+}
+
+.scc-section-block__body > :is(.scc-action-form, .scc-lines, .scc-log, details, .scc-field-grid, .scc-setting-row) {
+  width: 100%;
+}
+
+/* A form inside one quiet frame, so its controls read as one task. */
+.scc-section-block--form > .scc-section-block__body {
+  padding: var(--mn-space-4);
+  border: 1px solid var(--scc-line);
+  border-radius: var(--mn-radius-md);
+  background: var(--scc-raised);
+}
+
+.scc-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--mn-space-3) var(--mn-space-4);
+}
+
+.scc-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mn-space-3);
+}
+
+.scc-button-row,
+.scc-form-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mn-space-1-5);
+}
+
+.scc-form-footer {
+  justify-content: flex-end;
+  width: 100%;
+  padding-top: var(--mn-space-3);
+  border-top: 1px solid var(--scc-line);
+}
+
+.scc-form-footer > .scc-btn--danger-hover {
+  margin-inline-end: auto;
+}
+
+.scc-action-field__label {
+  color: var(--scc-ink);
+  font-weight: var(--mn-weight-medium);
+}
+
+.scc-action-field__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  margin-top: calc(-1 * var(--mn-space-1));
+  color: var(--scc-subtle);
+  font-size: var(--mn-type-xs);
+}
+
+.scc-action-field__meta code {
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-2xs);
+}
+
+.scc-action-field__required {
+  color: color-mix(in srgb, var(--mn-warning) 70%, var(--mn-fg));
+}
+
+.scc-action-field__hint {
+  color: var(--scc-subtle);
+  font-size: var(--mn-type-xs);
+  line-height: 1.45;
+}
+
+.scc-log--tall {
+  min-height: 240px;
+  max-height: min(70vh, 720px);
+}
+
+.scc-log--code {
+  color: var(--scc-ink);
+  white-space: pre-wrap;
+}
+
+.scc-local-run__cwd {
+  color: var(--scc-subtle);
+  overflow-wrap: anywhere;
+}
+
+.scc-split__none {
+  padding: var(--mn-space-3) var(--mn-space-2-5);
+}
+
+.scc-recent-runs .scc-recent-run {
+  border-radius: 0;
+}
 
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 /* Measured against the app, not the window: Source Control runs in app windows. */

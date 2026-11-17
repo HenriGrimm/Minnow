@@ -383,6 +383,8 @@ export function createBranchesView(ctx: SccContext): SccView {
   bar.actions.append(newBranchBtn);
   const selection = refSelection(toolbar, ctx, 'branches');
   let refreshVersion = 0;
+  /** What the rows were last built from; polling the same data leaves them alone. */
+  let renderedFrom = '';
 
   function collapsedSet(): Set<string> {
     const key = ctx.getCwd() ?? getWorkspacePath();
@@ -423,6 +425,12 @@ export function createBranchesView(ctx: SccContext): SccView {
       gitBranches(cwd),
     ]);
     if (destroyed || version !== refreshVersion) return;
+    const source = JSON.stringify([
+      cwd, tree, refs.ok ? [refs.current, refs.local, refs.remote, refs.lockedLocal] : refs.error,
+      filter, [...collapsedSet()],
+    ]);
+    if (source === renderedFrom && body.querySelector('.scc-refrow, .scc-empty')) return;
+    renderedFrom = source;
     selection.begin();
 
     if (!tree.ok) {
@@ -884,13 +892,18 @@ export function createStashesView(ctx: SccContext): SccView {
       }),
   });
   bar.actions.appendChild(stashBtn);
+  let renderedFrom = '';
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
     if (!body.firstChild) body.appendChild(skeletonRows(4));
 
-    const result = await gitStashList(ctx.getCwd());
+    const cwd = ctx.getCwd();
+    const result = await gitStashList(cwd);
     if (destroyed) return;
+    const source = JSON.stringify([cwd, result]);
+    if (source === renderedFrom && body.querySelector('.scc-refrow, .scc-empty')) return;
+    renderedFrom = source;
 
     if (!result.ok) {
       body.replaceChildren(errorStrip(result.error ?? 'Could not list stashes', () => void refresh()));
@@ -1039,6 +1052,9 @@ export function createWorktreesView(
   notice.hidden = true;
   root.insertBefore(notice, body);
   let refreshVersion = 0;
+  let renderedFrom = '';
+  let lastStatusTargets: { path: string; slot: HTMLElement }[] = [];
+  let unchangedPolls = 0;
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
@@ -1047,6 +1063,20 @@ export function createWorktreesView(
     const version = ++refreshVersion;
     const result = await listWorktrees();
     if (destroyed || version !== refreshVersion) return;
+
+    // Same worktrees, same chats, same failures: keep the rows (and the selection).
+    // Their file and sync counts are re-read every sixth poll (about 30s).
+    const listed = result.ok && result.output ? parseWorktreeListPorcelain(result.output) : [];
+    const source = JSON.stringify([
+      result.ok, result.output, result.missing, ctx.getCwd() ?? workspace, [...failures.keys()],
+      listed.map((wt) => chatsBoundToWorktree(wt.path).map((chat) => chat.id)),
+    ]);
+    if (source === renderedFrom && body.querySelector('.scc-refrow')) {
+      if (++unchangedPolls % 6 === 0) void paintWorktreeStatus(lastStatusTargets, version);
+      return;
+    }
+    renderedFrom = source;
+    unchangedPolls = 0;
     selection.begin();
     if (!result.ok) {
       selection.end();
@@ -1212,6 +1242,7 @@ export function createWorktreesView(
     body.replaceChildren(frag);
     paintNotice(stale, blocked, workspace);
     selection.end();
+    lastStatusTargets = statusTargets;
     void paintWorktreeStatus(statusTargets, version);
   }
 

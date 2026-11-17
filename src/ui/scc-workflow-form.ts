@@ -1,6 +1,6 @@
 import { actionApi, type ActionWorkflow } from '../state/actions-api';
 import { button, el } from './scc-shared';
-import { field, labeled, remoteOptions, select, statusLine } from './scc-action-form';
+import { field, inputField, labeled, remoteOptions, select, statusLine } from './scc-action-form';
 
 /** Shared remote dispatch form for the workflow inspector and Releases shortcut. */
 export async function renderRemoteWorkflowForm(
@@ -24,13 +24,22 @@ export async function renderRemoteWorkflowForm(
       remoteOptions(options.cwd, 'branches'), remoteOptions(options.cwd, 'tags'),
     ]);
     if (!valid()) return;
-    const ref = select('Remote branch or tag', [
-      ...branches.map(b => ({ value: b.name, label: `Branch: ${b.name}` })),
-      ...tags.map(t => ({ value: t.name, label: `Tag: ${t.name}` })),
-    ]);
+    const ref = el('select', 'scc-action-input scc-select');
+    ref.setAttribute('aria-label', 'Remote branch or tag');
+    for (const [label, items] of [['Branches', branches], ['Tags', tags]] as const) {
+      if (!items.length) continue;
+      const group = el('optgroup');
+      group.label = label;
+      for (const item of items) {
+        const option = el('option', undefined, item.name);
+        option.value = item.name;
+        group.appendChild(option);
+      }
+      ref.appendChild(group);
+    }
     ref.required = true;
     if (branches.some(b => b.name === options.branch)) ref.value = options.branch;
-    form.append(labeled('Remote branch or tag', ref));
+    form.append(labeled('Run from', ref, 'The workflow file and its inputs are read from this branch or tag on GitHub.'));
     const controls = el('div', 'scc-action-form');
     form.append(controls);
     let request = 0;
@@ -76,7 +85,7 @@ export async function renderRemoteWorkflowForm(
           }
           input.required = def.required;
           inputs.set(def.name, input);
-          controls.append(labeled(`${def.name}${def.required ? ' *' : ''} · ${label}`, input));
+          controls.append(inputField(def, input));
         }
         const run = button({ label: 'Run on GitHub', variant: 'primary', onClick: async () => {
           if (!active() || run.disabled) return;
