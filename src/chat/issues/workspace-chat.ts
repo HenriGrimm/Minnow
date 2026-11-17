@@ -1,6 +1,6 @@
 import { captureLaunchModel, issueLaunchModel, clearIssueLaunchModel, issueLaunchReasoning } from '../../models/launch-selection';
 import { ensureBackgroundChat } from '../../state/background-chat';
-import { applyChatRunTargetChoice, isChatWorktreeSetupPending, type ChatRunTargetChoice } from '../../state/chat-worktree';
+import { applyChatRunTargetChoice, enableChatWorktreeOnSend, isChatWorktreeSetupPending, type ChatRunTargetChoice } from '../../state/chat-worktree';
 import { appendIssueActivity, appendIssueLinks, defaultIssuePlanPath, findIssueById, requireIssueStatusForRole, updateIssue } from '../../state/issues-store';
 import { formatCodeRefLabel } from '../../attachments/code-ref-format';
 import type { Attachment } from '../../attachments/types';
@@ -33,7 +33,13 @@ export async function runIssueWorkspaceChat(
     if (isChatWorktreeSetupPending(chat.id)) return { ok: false, error: 'Worktree setup is already running', chatId: chat.id };
     if (isChatStreaming(chat.id) || getChatRunActivity(chat.id, chat) === 'running') return { ok: false, error: 'This issue chat is already running', chatId: chat.id };
     if (reasoningEffort) chat.reasoningEffort = reasoningEffort;
-    if (runTarget) {
+    if (runTarget?.kind === 'automatic' && !chat.worktreeSetupRequired) {
+      // Like the composer, defer checkout creation and dependency installs to
+      // the first turn so launching returns at once and setup shows in the chat.
+      enableChatWorktreeOnSend(chat);
+      touchChat(chat);
+      scheduleSaveSessions();
+    } else if (runTarget) {
       const setup = applyChatRunTargetChoice(chat, runTarget);
       touchChat(chat);
       scheduleSaveSessions();

@@ -3,6 +3,7 @@ import { applyIcon } from './icon';
 import { isContextMenuOpen } from './context-menu';
 import { isAppDialogOpen } from './app-dialog';
 import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
+import { syncIssuesDetailResizer } from './issues-detail-resize';
 
 let maximized = false;
 let active = false;
@@ -68,6 +69,7 @@ export function refreshIssuesPeekLayoutChrome(): void {
   shell?.classList.toggle('is-detail-maximized', open && maximized);
   shell?.classList.toggle('is-detail-inline', inline);
   if (host && open) syncInlineDetailBody(host, inline);
+  syncIssuesDetailResizer(host, inline);
   host?.setAttribute('role', inline ? 'region' : 'dialog');
   if (inline) host?.removeAttribute('aria-modal');
   else host?.setAttribute('aria-modal', 'true');

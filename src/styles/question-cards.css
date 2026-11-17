@@ -271,7 +271,7 @@
 .question-cards-option {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: 2px 10px;
   min-height: 32px;
@@ -335,7 +335,17 @@
   color: var(--mn-fg-on-accent);
 }
 
+.question-cards-option-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  flex: 1;
+  min-width: 0;
+}
+
 .question-cards-option-label {
+  min-width: 0;
   font-weight: 500;
   color: var(--mn-fg);
   overflow-wrap: anywhere;

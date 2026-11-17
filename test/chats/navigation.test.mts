@@ -401,6 +401,37 @@ function holdChatNavigation(chatId: string) {
   };
 }
 
+test('Open review chat leaves Issues even when that chat is already selected', { timeout: 10_000 }, async () => {
+  const reviewChat = chat('issue-review'); reviewChat.historyLoaded = true;
+  setup([reviewChat]); setStorageModeForTests('localStorage');
+  window.location.hash = '#/app/issues/MIN-1';
+  const issues = await import('../../src/state/issues-store.ts');
+  const reviews = await import('../../src/state/pr-review-store.ts');
+  issues.setIssuesStateForTests({ version: 2, nextId: 2, workspaces: {}, issues: [{
+    id: 'MIN-1', title: 'Review navigation', description: '', type: 'bug', status: 'todo',
+    priority: 'none', labels: [], workspacePath: WS, createdAt: 1, updatedAt: 1, source: 'user',
+  }] });
+  reviews.resetPrReviewsForTests({ reviews: { review: {
+    key: 'review', repo: 'fixture/repo', number: 1, url: '', headRef: 'fix', baseRef: 'main', headSha: '',
+    issueId: 'MIN-1', chatId: reviewChat.id, runId: '', status: 'done', summary: 'Reviewed', findings: [], artifacts: [], startedAt: 1,
+  } } });
+  const host = document.createElement('div'); document.body.append(host);
+  const { createIssueDetailController } = await import('../../src/ui/issues-detail.ts');
+  const detail = createIssueDetailController({ host, onClose: () => {}, onNavigate: () => {}, workspaceTabs: false });
+  try {
+    detail.openIssueDetail('MIN-1');
+    const button = [...host.querySelectorAll('button')].find(node => node.textContent === 'Open review chat');
+    assert.ok(button);
+    button.click();
+    for (let i = 0; i < 100 && !window.location.hash.includes('/code/chat'); i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(parseOsHash(window.location.hash).appId, 'code');
+    assert.equal(parseOsHash(window.location.hash).chatId, reviewChat.id);
+    assert.equal(sessionState!.activeId, reviewChat.id);
+  } finally {
+    detail.dispose(); reviews.resetPrReviewsForTests(); issues.setIssuesStateForTests(null);
+  }
+});
+
 test('leaving Code while a chat link is loading cancels the late selection', { timeout: 10_000 }, async () => {
   const root = chat('waiting-root'), child = chat('waiting-child', root.id);
   setup([root, child]); setStorageModeForTests('server');

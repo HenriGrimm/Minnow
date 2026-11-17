@@ -57,7 +57,7 @@ function isCurrent(chat: Chat): boolean {
 }
 
 function openIssue(issue: IssueCard): void {
-  void import('../issues-page').then(({ openIssues }) => openIssues({ issueId: issue.id }));
+  window.location.hash = `#/app/issues/${encodeURIComponent(issue.id)}`;
 }
 
 function issueFor({ chat, target }: SurfaceContext): IssueCard | undefined {

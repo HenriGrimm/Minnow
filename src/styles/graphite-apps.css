@@ -1318,7 +1318,8 @@
 
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, min(45%, 400px));
+  /* --issues-detail-inline-w is set by the drag handle (issues-detail-resize.ts). */
+  grid-template-columns: minmax(0, 1fr) minmax(300px, var(--issues-detail-inline-w, min(54%, 480px)));
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "selection detail"
@@ -1343,6 +1344,32 @@
   border: 0;
   border-inline-start: 1px solid var(--mn-graphite-line, var(--mn-border));
   border-radius: 0;
+}
+
+.issues-detail__resize {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: 3;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.issues-detail__resize:focus-visible {
+  outline: none;
+  background: var(--mn-accent-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .issues-detail__resize:hover,
+  .issues-detail__resize.dragging {
+    background: var(--mn-accent-soft);
+  }
+}
+
+.issues-detail-host.is-resizing {
+  user-select: none;
 }
 
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-detail__header {
