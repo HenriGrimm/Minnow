@@ -231,11 +231,15 @@ test('the composer keeps Stop for nested agents after the parent finishes and re
   assert.equal(shouldAllowComposerPrimaryAction(''), true);
   const input = document.getElementById('msgInput') as HTMLTextAreaElement;
   input.value = 'A new instruction'; refreshComposerStreamingAffordance(); assert.equal(stop.getAttribute('aria-label'), 'Send message');
+  // Steering keeps the same busy control (veil + working rim); only the icon swaps.
+  assert.ok(stop.classList.contains('send-btn--busy')); assert.ok(!stop.classList.contains('send-btn--stop'));
   input.value = ''; refreshComposerStreamingAffordance(); assert.equal(stop.getAttribute('aria-label'), 'Stop generating');
+  assert.ok(stop.classList.contains('send-btn--busy')); assert.ok(stop.classList.contains('send-btn--stop'));
   stop.addEventListener('click', handleComposerPrimaryAction); stop.click(); await until(() => posts.length === 1);
   assert.deepEqual(posts.map(item => [item.body.action, item.body.scope, item.body.executionId]), [['stop', 'tree', undefined]]);
   grandchild.agentExecution.status = 'stopped'; syncComposerFromStreamingState();
   assert.equal(stop.dataset.mode, 'send'); assert.equal(shouldAllowComposerPrimaryAction(''), false);
+  assert.ok(!stop.classList.contains('send-btn--busy'));
 });
 
 test('waiting managed turns retain composer Stop without a generating stream', () => {
