@@ -33,6 +33,35 @@ test('project membership uses real git registration and excludes a replaced unre
   await assert.rejects(loadChatProjectRegistry(dirs.other, { validateRoot, runGit }));
 });
 
+test('checkout verification overlaps bounded reads and preserves order with unavailable siblings', async t => {
+  const { dirs, runGit, validateRoot } = await fixture(t);
+  const siblings = await Promise.all(Array.from({ length: 9 }, async (_, i) => {
+    const dir = path.join(path.dirname(dirs.main), `sibling-${i}`);
+    await fs.mkdir(dir);
+    return dir;
+  }));
+  const listed = [dirs.main, ...siblings, dirs.other, path.join(dirs.main, 'absent')];
+  let active = 0, peak = 0, verified = 0;
+  const concurrentGit = async (args, cwd) => {
+    if (args[0] === 'worktree') return { code: 0, stdout: listed.map(dir => `worktree ${dir}\0\0`).join('') };
+    active++; peak = Math.max(peak, active); verified++;
+    try {
+      await new Promise(resolve => setTimeout(resolve, cwd === dirs.main ? 20 : 5));
+      return await runGit(args, cwd);
+    } finally { active--; }
+  };
+  const context = createChatContext({ repository: {}, runGit: concurrentGit, validateRoot, resolvePolicyInput: async () => ({}) });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    verified = 0;
+    const project = await context.project(dirs.main);
+    assert.deepEqual(project.registry.entries.map(row => row.canonicalKey), [dirs.main, ...siblings]
+      .map(dir => process.platform === 'win32' ? dir.toLowerCase() : dir));
+    assert.equal(verified, listed.length, 'unavailable registrations still require fresh sibling verification');
+  }
+  assert.ok(peak > 1, 'independent checkout checks must overlap');
+  assert.ok(peak <= 4, 'checkout checks must not spawn unbounded Git processes');
+});
+
 test('human and execution authority is server derived and current permissions only narrow saved profiles', async t => {
   const { dirs, runGit, validateRoot } = await fixture(t);
   let permission = 'full';

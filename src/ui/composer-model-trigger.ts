@@ -1,5 +1,6 @@
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
-import { getComposerReasoningState, setComposerReasoningChoice } from './composer-reasoning-effort';
+import { getComposerReasoningState, setComposerReasoningChoice, toggleComposerReasoningFavorite } from './composer-reasoning-effort';
+import { wrapReasoningChoiceWithFavorite } from './reasoning-favorite-button';
 import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
 import { positionAnchoredModelPicker } from './model-picker-position';
 import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
@@ -427,6 +428,14 @@ function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
     section.append(heading, choices);
     trigger.menu.after(section);
     choices.addEventListener('click', event => {
+      const star = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-reasoning-favorite]');
+      if (star) {
+        if (star.disabled) return;
+        const level = star.dataset.reasoningFavorite!;
+        toggleComposerReasoningFavorite(level);
+        section?.querySelector<HTMLButtonElement>(`[data-reasoning-favorite="${level}"]`)?.focus();
+        return;
+      }
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-composer-reasoning]');
       if (!button || button.disabled) return;
       const value = button.dataset.composerReasoning!;
@@ -445,7 +454,10 @@ function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
     button.setAttribute('aria-pressed', String(selected));
     if (selected) button.insertAdjacentHTML('beforeend', iconHtml('check'));
     button.disabled = state.disabled;
-    return button;
+    if (choice.value === 'inherit' && state.favorite) {
+      button.title = `Use your favorite: ${state.choices.find(entry => entry.level === state.favorite)?.label ?? state.favorite}`;
+    }
+    return wrapReasoningChoiceWithFavorite(button, choice.level ?? null, state.favorite);
   }));
 }
 

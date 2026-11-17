@@ -1287,9 +1287,19 @@ export async function openPr({ boardId, branch, title, body }) {
   return { ok: true, url: urlMatch?.[0], output: text };
 }
 
+/**
+ * `missing` lists registered worktrees whose folder is gone. Git reports those
+ * as `prunable` only when unlocked; a locked one (Codex leaves `initializing`)
+ * otherwise looks like a live checkout forever.
+ */
 export async function listWorktrees() {
   const r = await git(['worktree', 'list', '--porcelain']);
-  return { ok: ok(r), output: out(r) };
+  if (!ok(r)) return { ok: false, output: out(r) };
+  const paths = String(r.stdout ?? '').split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length).trim());
+  const exists = await Promise.all(paths.map((p) => pathExists(p)));
+  return { ok: true, output: out(r), missing: paths.filter((_, i) => !exists[i]) };
 }
 
 const automaticChatSetups = new Map();
@@ -1319,7 +1329,10 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
         return { ok: false, error: 'Worktrees need a Git repository with at least one commit. Create the first commit in Source Control, then retry.' };
       }
       const slug = slugifyGitRefName(typeof title === 'string' ? title : '', 'worktree').slice(0, 48).replace(/[./-]+$/, '') || 'worktree';
-      const suffix = createHash('sha256').update(chatId).digest('hex').slice(0, 10);
+      // Short stable numeric suffix keeps same-titled chats apart; UI titles
+      // recognise and hide it (src/lib/worktree-title.ts, MIN-14).
+      const digest = parseInt(createHash('sha256').update(chatId).digest('hex').slice(0, 8), 16);
+      const suffix = String(digest % 1_000_000).padStart(6, '0');
       const stem = `minnow/${slug}-${suffix}`;
       branch = stem;
       for (let i = 2; await branchExists(branch); i++) branch = `${stem}-${i}`;

@@ -38,6 +38,7 @@ import {
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { getIssuesGithubMode, subscribeIssuesGithubMode } from '../state/issues-github';
+import { releaseGithubSyncedFieldWrites } from '../state/issues-github-notify';
 import { createIssueGithubSyncBadge } from './issues-github-badge';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import {
@@ -124,10 +125,8 @@ import {
   navigateIssueDetail,
 } from './issues-detail';
 import {
-  closeIssueExpandOverlay,
   createIssueExpandButton,
   isIssueDraftExpanding,
-  isIssueExpandOverlayOpen,
   startIssueExpandFromUi,
 } from './issues-expand-controls';
 import {
@@ -2603,7 +2602,7 @@ async function submitNewIssue(event: Event, expandInBackground = false): Promise
     priority: (controlValue('issuesNewPriority') as IssuePriority) || 'none',
     labels: newIssueLabels,
     workspacePath: newIssueWorkspacePath(),
-  });
+  }, undefined, { deferGithubAutoSync: expandInBackground });
   if (quickIssuePayload) {
     const links = capturePayloadToLinks(quickIssuePayload);
     appendIssueLinks(issue.id, {
@@ -2624,6 +2623,7 @@ async function submitNewIssue(event: Event, expandInBackground = false): Promise
   if (expandInBackground) {
     showToast(`Created ${issue.id}. Expanding in the background.`);
     void import('./issues-expand').then((m) => m.expandCreatedIssueInBackground(issue.id)).catch((error) => {
+      releaseGithubSyncedFieldWrites(issue.id);
       showToast(error instanceof Error ? error.message : `Could not expand ${issue.id}`, 'error');
     });
   }
@@ -2756,10 +2756,8 @@ async function openIssueAgentChat(issueId: string): Promise<void> {
   const issue = findIssueById(issueId);
   const chatId = issue?.agent?.chatId ?? issue?.boardChatId;
   if (!chatId) return;
-  const { launchApp } = await import('../os/router');
-  launchApp('code', { codeSection: 'chat', workspacePath: issue?.workspacePath });
-  const { switchChat } = await import('./sidebar');
-  switchChat(chatId);
+  const { launchCodeWithChat } = await import('../os/chat-launch');
+  await launchCodeWithChat(chatId);
 }
 
 /** List shortcuts move focus; an open detail panel turns plain arrows/j/k into issue browsing. Editors and menus retain their keyboard controls. */
@@ -2770,7 +2768,7 @@ function onIssuesKeydown(event: KeyboardEvent): void {
   if (document.querySelector('.auxiliary-model-popover:not(.hidden)')) return;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest('[role="menu"], [role="listbox"], [role="combobox"], .issues-labels-popover, .issues-labels-add-popover, .issues-labels-overflow, .issues-label-color-picker')) return;
-  if (getSelectedIssueId() && event.key === 'Escape' && !isIssueExpandOverlayOpen()) {
+  if (getSelectedIssueId() && event.key === 'Escape') {
     event.preventDefault();
     closeIssueDetail();
     setIssuesRouteHash('#/app/issues');
@@ -2778,13 +2776,6 @@ function onIssuesKeydown(event: KeyboardEvent): void {
     return;
   }
   if (isTypingTarget(event.target)) return;
-  if (isIssueExpandOverlayOpen()) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeIssueExpandOverlay();
-    }
-    return;
-  }
   if (getSelectedIssueId()) {
     if (!event.altKey && !event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'j' || event.key === 'k')) {
       event.preventDefault();

@@ -546,6 +546,23 @@ describe('worktree conflict merge and verification', () => {
     }
   });
 
+  test('listWorktrees reports registered worktrees whose folder is gone, locked or not', async () => {
+    const git = (args) => execFileAsync('git', args, { cwd: repoDir, windowsHide: true });
+    const gone = path.join(path.dirname(repoDir), 'gone-locked');
+    await git(['worktree', 'add', '--detach', gone]);
+    await git(['worktree', 'lock', '--reason', 'initializing', gone]);
+    await fs.rm(gone, { recursive: true, force: true });
+    try {
+      const listed = await listWorktrees();
+      assert.equal(listed.ok, true);
+      const missing = (listed.missing ?? []).map((p) => path.resolve(p).toLowerCase());
+      assert.deepEqual(missing, [path.resolve(gone).toLowerCase()]);
+    } finally {
+      await git(['worktree', 'unlock', gone]);
+      await git(['worktree', 'prune', '--expire', 'now']);
+    }
+  });
+
   test('cleanupBoardWorktrees keeps integration by default and removes all when includeIntegration', async () => {
     const partial = await cleanupBoardWorktrees({ boardId: BOARD_ID });
     assert.equal(partial.ok, true);

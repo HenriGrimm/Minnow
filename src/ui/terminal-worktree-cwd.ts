@@ -2,6 +2,7 @@ import { getWorkspacePath } from '../state/workspace';
 import { getGitPanelFileBrowseCwd } from './git-panel';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
 import { normalizePanelPath, panelPathsEqual } from './panel-worktree-cwd';
+import { displayWorktreeTitle } from './worktree-display';
 
 /** Absolute cwd for new PTY sessions: same root as the file explorer (listing worktree when set, else git panel cwd, else main workspace). */
 export function resolveFileExplorerTerminalCwd(): string {
@@ -22,8 +23,7 @@ export function isTerminalWorktreeCwd(cwd: string): boolean {
 /** Muted header suffix when browsing a task worktree (e.g. " · task-abc"). */
 export function getTerminalCwdLabelSuffix(cwd: string): string {
   if (!isTerminalWorktreeCwd(cwd)) return '';
-  const base = normalizePanelPath(cwd).split('/').filter(Boolean).pop();
-  return base ? ` · ${base}` : '';
+  return ` · ${displayWorktreeTitle({ path: cwd })}`;
 }
 
 /** PTY tab title: shell label plus workspace or worktree scope (e.g. "PowerShell 7 · workspace"). */
@@ -47,12 +47,12 @@ export function formatTerminalTabTooltip(shellLabel: string, cwd: string): strin
 
 /** Short label for the terminal header cwd chip. */
 export function formatTerminalCwdHeader(cwd: string): string {
-  const normalized = normalizePanelPath(cwd);
-  const base = normalized.split('/').filter(Boolean).pop() ?? cwd;
   if (isTerminalWorktreeCwd(cwd)) {
-    return `${base} (worktree)`;
+    const title = displayWorktreeTitle({ path: cwd });
+    return title === 'Worktree' ? title : `${title} (worktree)`;
   }
-  return base;
+  const normalized = normalizePanelPath(cwd);
+  return normalized.split('/').filter(Boolean).pop() ?? cwd;
 }
 
 export interface TerminalShellHintOptions {

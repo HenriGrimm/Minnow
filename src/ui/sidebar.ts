@@ -570,7 +570,7 @@ function showSidebarToast(text: string, undo: () => void): void {
     toast.className = 'chat-list-toast';
     toast.setAttribute('role', 'status');
     const views = document.getElementById('chatListViews');
-    if (views) views.before(toast); else list.after(toast);
+    if (views) views.append(toast); else list.after(toast);
   }
   const label = document.createElement('span');
   label.className = 'chat-list-toast__text';

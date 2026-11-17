@@ -44,13 +44,14 @@ import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './mai
 import { createBackToChatButton } from './back-to-chat';
 import {
   filterUserFacingWorktrees,
-  formatWorktreeOptionLabel,
   getPrincipalWorktree,
   parseWorktreeListPorcelain,
 } from '../lib/worktree-list-parse';
 import { listWorktrees } from '../state/worktree-service';
 import { getWorkspacePath } from '../state/workspace';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
+import { formatWorktreeOptionLabel } from '../lib/worktree-title';
+import { displayWorktreeTitle, worktreeChatTitle } from './worktree-display';
 import { createIcon, iconHtml, type IconName } from './icon';
 import { openDevServerFormPopover } from './dev-server-form-popover';
 import { restoreGraphiteMaximizedPanel } from './surfaces/surface-bridge';
@@ -282,7 +283,7 @@ function buildWorktreeSelectOptions(): Array<{ value: string; label: string }> {
   const principal = getPrincipalWorktree(knownWorktrees);
   return knownWorktrees.map((wt) => ({
     value: wt.path,
-    label: formatWorktreeOptionLabel(wt, ws, { principalPath: principal?.path }),
+    label: formatWorktreeOptionLabel(wt, ws, { principalPath: principal?.path, chatTitleFor: worktreeChatTitle }),
   }));
 }
 
@@ -345,7 +346,7 @@ function renderServerList(): void {
   }
 
   for (const item of visible) {
-    const view = deriveDevServerRowView(online, item, getWorkspacePath());
+    const view = deriveDevServerRowView(online, item, getWorkspacePath(), (path) => displayWorktreeTitle({ path }));
     const row = document.createElement('div');
     row.className = 'dev-server-screen__row';
     row.classList.toggle('is-selected', item.id === selectedId);

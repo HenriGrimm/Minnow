@@ -389,6 +389,100 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.equal(chat.providerId, 'openai');
   });
 
+  test('model menu stars a favorite level that Default and new selections use (MIN-1047)', async () => {
+    const { resetModelReasoningDefaultsForTests } = await import('../../src/config/model-reasoning-defaults.ts');
+    const { favoriteReasoningLevel } = await import('../../src/models/reasoning-favorite.ts');
+    const { applyModelReasoningDefaultToChat } = await import('../../src/ui/default-model.ts');
+    resetModelReasoningDefaultsForTests();
+    try {
+      setupDom();
+      const chat = seedChat();
+      const key = encodeModelSelectKey('openai', 'gpt-5-preview');
+      modelCache.set(key, {
+        id: 'gpt-5-preview',
+        reasoning: { allowed_options: ['off', 'low', 'medium', 'high'], default: 'medium' },
+        capabilities: {
+          vision: false, tools: null, streaming: null, grammar: null, reasoning: true,
+          reasoningAllowedOptions: ['off', 'low', 'medium', 'high'], reasoningDefault: 'medium',
+          contextLength: null, loadState: null,
+        },
+      });
+      initThinkingControl();
+      initComposerReasoningEffort();
+      document.body.insertAdjacentHTML('beforeend', `<select id="modelSelect"><option value="${key}">GPT 5 preview — OpenAI</option></select><div id="codeComposerModelAnchor"></div>`);
+      initComposerModelTriggers();
+      const trigger = document.querySelector<HTMLButtonElement>('#codeComposerModelAnchor .composer-model-trigger')!;
+      trigger.click();
+      const menu = document.querySelector<HTMLElement>('.composer-model-menu:not(.hidden)')!;
+      const stars = () => [...menu.querySelectorAll<HTMLButtonElement>('[data-reasoning-favorite]')];
+      // Only effort levels can be starred; Default and Off cannot.
+      assert.deepEqual(stars().map(star => star.dataset.reasoningFavorite), ['low', 'medium', 'high']);
+      assert.ok(stars().every(star => star.getAttribute('aria-pressed') === 'false'));
+      assert.equal(menu.querySelector('[data-composer-reasoning] [data-reasoning-favorite]'), null);
+      assert.equal(trigger.textContent, 'GPT 5 preview · Medium');
+
+      // Starring while the chat follows Default adopts the favorite.
+      stars().find(star => star.dataset.reasoningFavorite === 'high')!.click();
+      assert.equal(favoriteReasoningLevel('openai', 'gpt-5-preview'), 'high');
+      assert.equal(chat.reasoningEffort, 'high');
+      assert.equal(trigger.textContent, 'GPT 5 preview · High');
+      assert.equal(menu.querySelector('[data-reasoning-favorite="high"]')?.getAttribute('aria-pressed'), 'true');
+      assert.equal(menu.querySelector('[data-reasoning-favorite="high"]')?.getAttribute('aria-label'), 'Unfavorite High for this model');
+      assert.equal(menu.querySelector<HTMLElement>('[data-composer-reasoning="inherit"]')?.title, 'Use your favorite: High');
+
+      // An explicit chat choice is kept; Default returns to the favorite.
+      menu.querySelector<HTMLButtonElement>('[data-composer-reasoning="low"]')!.click();
+      assert.equal(chat.reasoningEffort, 'low');
+      menu.querySelector<HTMLButtonElement>('[data-composer-reasoning="inherit"]')!.click();
+      assert.equal(chat.reasoningEffort, 'high');
+
+      // Selecting the model elsewhere (new chat / model switch) seeds the favorite.
+      const fresh: { modelId: string; providerId?: string; reasoningEffort?: 'low' | 'medium' | 'high' } = { modelId: 'gpt-5-preview', providerId: 'openai' };
+      applyModelReasoningDefaultToChat(fresh, key);
+      assert.equal(fresh.reasoningEffort, 'high');
+
+      // Starring a different level while on an explicit level leaves the chat alone.
+      menu.querySelector<HTMLButtonElement>('[data-composer-reasoning="low"]')!.click();
+      stars().find(star => star.dataset.reasoningFavorite === 'medium')!.click();
+      assert.equal(favoriteReasoningLevel('openai', 'gpt-5-preview'), 'medium');
+      assert.equal(chat.reasoningEffort, 'low');
+
+      // Unstarring falls back to the model default without touching the chat.
+      stars().find(star => star.dataset.reasoningFavorite === 'medium')!.click();
+      assert.equal(favoriteReasoningLevel('openai', 'gpt-5-preview'), undefined);
+      assert.ok(stars().every(star => star.getAttribute('aria-pressed') === 'false'));
+      assert.equal(chat.reasoningEffort, 'low');
+    } finally {
+      resetModelReasoningDefaultsForTests();
+    }
+  });
+
+  test('a favorite the model no longer advertises is ignored (MIN-1047)', async () => {
+    const { resetModelReasoningDefaultsForTests, saveModelReasoningDefault } = await import('../../src/config/model-reasoning-defaults.ts');
+    const { favoriteReasoningLevel, savedReasoningFavorite } = await import('../../src/models/reasoning-favorite.ts');
+    resetModelReasoningDefaultsForTests();
+    try {
+      setupDom();
+      const key = encodeModelSelectKey('openai', 'gpt-5-preview');
+      modelCache.set(key, {
+        id: 'gpt-5-preview',
+        reasoning: { allowed_options: ['low', 'medium'], default: 'medium' },
+        capabilities: {
+          vision: false, tools: null, streaming: null, grammar: null, reasoning: true,
+          reasoningAllowedOptions: ['low', 'medium'], contextLength: null, loadState: null,
+        },
+      });
+      await saveModelReasoningDefault(key, 'xhigh');
+      assert.equal(savedReasoningFavorite('openai', 'gpt-5-preview'), 'xhigh');
+      assert.equal(favoriteReasoningLevel('openai', 'gpt-5-preview'), undefined);
+      await saveModelReasoningDefault(key, 'low');
+      assert.equal(favoriteReasoningLevel('openai', 'gpt-5-preview'), 'low');
+      assert.equal(favoriteReasoningLevel(undefined, 'gpt-5-preview'), undefined);
+    } finally {
+      resetModelReasoningDefaultsForTests();
+    }
+  });
+
   test('the CLI picker changes speed without changing the selected model or reasoning', () => {
     setupDom();
     const chat = seedChat({ providerId: 'codex-cli', modelId: 'gpt-6.1-sol', reasoningEffort: 'high' });

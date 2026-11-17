@@ -9,6 +9,12 @@
       "autoPort": true
     },
     {
+      "name": "SCC scratch home",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Users/dukky/AppData/Local/Temp/claude/704879023ebfab6a/75e3da30-9a79-4ad7-9462-d7dccc87910f/scratchpad/scc-preview.mjs"],
+      "port": 9481
+    },
+    {
       "name": "Vite Dev (frontend only)",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "5173", "--strictPort"],

@@ -8,7 +8,7 @@
   box-sizing: border-box;
   min-width: 160px;
   max-width: min(360px, calc(100vw - var(--mn-space-4)));
-  max-height: min(70vh, 560px);
+  max-height: calc(100dvh - 16px);
   overflow: auto;
   overscroll-behavior: contain;
   padding: var(--mn-menu-padding);

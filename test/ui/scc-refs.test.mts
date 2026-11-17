@@ -398,3 +398,83 @@ test('worktree rows show uncommitted and sync counts, offer Open chat, and only 
     await win.happyDOM.close();
   }
 });
+
+test('missing and locked worktrees explain themselves on the row and offer the fix', async () => {
+  const win = new Window();
+  installHappyDomGlobals(win);
+  setLocalServerAvailable(true);
+  resetAppDialogForTests();
+  const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+  setWorkspaceFromServer({ path: '/repo', label: 'repo', isDefault: false });
+  const calls: Record<string, any>[] = [];
+  let entries = [
+    { path: '/home/me/.codex/worktrees/d60f/repo', lock: 'initializing', missing: true },
+    { path: '/home/me/.codex/worktrees/94d3/repo', lock: 'initializing', missing: true },
+    { path: '/home/me/.codex/worktrees/1d36/repo', lock: 'initializing', missing: false },
+  ];
+  globalThis.fetch = (async (_url, init) => {
+    const args = JSON.parse(String(init?.body));
+    calls.push(args);
+    let result: object = { ok: true };
+    if (args.op === 'list') result = { ok: true,
+      output: ['worktree /repo\nHEAD abc\nbranch refs/heads/main\n',
+        ...entries.map((e) => `worktree ${e.path}\nHEAD abc\ndetached\nlocked ${e.lock}\n`)].join('\n'),
+      missing: entries.filter((e) => e.missing).map((e) => e.path) };
+    if (args.op === 'status') result = { ok: true, branch: '' };
+    if (args.op === 'worktreeRemove') {
+      const entry = entries.find((e) => e.path === args.path)!;
+      if (!args.unlock) result = { ok: false, code: 'locked', lockReason: entry.lock, missing: entry.missing,
+        error: `fatal: cannot remove a locked working tree, lock reason: ${entry.lock}\nuse 'remove -f -f' to override or unlock first` };
+      else entries = entries.filter((e) => e !== entry);
+    }
+    return new Response(JSON.stringify(result));
+  }) as typeof fetch;
+  let view: SccView | undefined;
+  const ctx: SccContext = {
+    getCwd: () => undefined, getBranch: () => 'main', refreshAll: async () => view?.refresh(),
+    refreshSection: async () => view?.refresh(), goTo() {}, setBadge() {},
+  };
+  const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((resolve) => setTimeout(resolve, 1)); };
+  const buttonIn = (root: ParentNode, label: string) =>
+    [...root.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === label);
+  const rowFor = (leaf: string) => [...view!.root.querySelectorAll<HTMLElement>('.scc-refrow')]
+    .find((r) => r.textContent?.includes(`/${leaf}/`))!;
+  try {
+    view = createWorktreesView(ctx, { onSelectWorktree() {} });
+    document.body.append(view.root);
+    await settle();
+    const notice = view.root.querySelector<HTMLElement>('.scc-wtnotice')!;
+    assert.equal(notice.hidden, false);
+    assert.match(notice.textContent ?? '', /2 worktrees point to a deleted folder \(left by Codex\)/);
+    assert.match(rowFor('d60f').textContent ?? '', /Codex.*folder missing.*locked/);
+    assert.equal(buttonIn(rowFor('d60f'), 'Work here'), undefined, 'nothing to work in');
+    assert.equal(rowFor('1d36').querySelector('.scc-wtissue'), null, 'a live locked worktree is just labelled');
+
+    // Bulk delete auto-unlocks the missing ones and explains the live locked one.
+    for (const leaf of ['d60f', '94d3', '1d36']) {
+      rowFor(leaf).dispatchEvent(new win.MouseEvent('click', { bubbles: true, ctrlKey: true }) as unknown as MouseEvent);
+    }
+    buttonIn(view.root, 'Delete selected (3)')!.click();
+    await settle();
+    buttonIn(document.querySelector('#appDialogPanel')!, 'Delete')!.click();
+    await settle();
+    assert.deepEqual(calls.filter((c) => c.op === 'worktreeRemove').map((c) => Boolean(c.unlock)), [true, true, false]);
+    assert.equal(entries.length, 1);
+    assert.equal(view.root.querySelector('.scc-error'), null, 'no wall of git output');
+    assert.match(notice.textContent ?? '', /1 worktree was not removed/);
+    const issue = rowFor('1d36').querySelector<HTMLElement>('.scc-wtissue--locked')!;
+    assert.match(issue.textContent ?? '', /Locked by Codex \("initializing"\)/);
+    assert.match(issue.querySelector('pre')?.textContent ?? '', /remove -f -f/);
+
+    buttonIn(issue, 'Unlock and remove')!.click();
+    await settle();
+    buttonIn(document.querySelector('#appDialogPanel')!, 'Unlock and remove')!.click();
+    await settle();
+    assert.equal(calls.filter((c) => c.op === 'worktreeRemove').at(-1)?.unlock, true);
+    assert.equal(entries.length, 0);
+    assert.equal(notice.hidden, true);
+  } finally {
+    view?.destroy();
+    await win.happyDOM.close();
+  }
+});

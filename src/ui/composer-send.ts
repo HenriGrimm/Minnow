@@ -121,7 +121,7 @@ export function syncComposerReadOnlyState(): boolean {
   input.disabled = true;
   if (sendBtn) {
     sendBtn.disabled = true; sendBtn.dataset.mode = 'inspect'; sendBtn.setAttribute('aria-busy', 'false');
-    sendBtn.setAttribute('aria-label', 'Inspect-only conversation'); sendBtn.title = reason; sendBtn.classList.remove('send-btn--stop');
+    sendBtn.setAttribute('aria-label', 'Inspect-only conversation'); sendBtn.title = reason; sendBtn.classList.remove('send-btn--stop', 'send-btn--busy');
   }
   return true;
 }
@@ -179,7 +179,7 @@ export function setComposerStreamingMode(mode: ComposerStreamingMode): void {
     sendBtn.disabled = isStreaming ? false : recoveryBlocked;
     sendBtn.setAttribute('aria-busy', isStreaming ? 'true' : 'false');
     sendBtn.dataset.mode = 'send';
-    sendBtn.classList.remove('send-btn--stop');
+    sendBtn.classList.remove('send-btn--stop', 'send-btn--busy');
     sendBtn.removeAttribute('data-steer-ready');
     sendBtn.setAttribute('aria-label', 'Send message');
     if (isStreaming) refreshComposerStreamingAffordance();

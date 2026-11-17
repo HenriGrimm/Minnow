@@ -2,6 +2,7 @@ import type { Chat } from '../types';
 import { resolveChatWorktreeRoot } from '../state/chat-worktree';
 import { gitWorktreeStatus, type GitWorktreeStatusResult } from '../state/git-api';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { humanizeWorktreeBranch } from '../lib/worktree-title';
 import { isLocalServerAvailable } from '../tools/config';
 import { applyIcon, createIcon } from './icon';
 
@@ -17,7 +18,7 @@ function applyStatus(icon: HTMLElement, result?: GitWorktreeStatusResult): void 
     applyIcon(icon, merged ? 'gitMerge' : 'gitBranch');
     icon.dataset.worktreeState = state;
   }
-  const branch = result?.ok && result.branch && result.branch !== 'HEAD' ? ` · ${result.branch}` : '';
+  const branch = result?.ok && result.branch && result.branch !== 'HEAD' ? ` · ${humanizeWorktreeBranch(result.branch)}` : '';
   const status = result?.ok && result.trunk && result.merged != null
     ? merged ? ` · Merged into ${result.trunk}`
       : result.dirty ? ` · Uncommitted changes${result.merged ? '' : ` · Not merged into ${result.trunk}`}`

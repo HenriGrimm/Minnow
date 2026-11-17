@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import type { BrowserWindow } from 'electron';
 import { wireShellReload } from '../../electron/shell-reload.ts';
 
-function shell(prepare: () => Promise<unknown>) {
+function shell(prepare: () => Promise<unknown>, offerRecovery?: () => boolean) {
   const contents = Object.assign(new EventEmitter(), {
     executeJavaScript: prepare,
     isDestroyed: () => false,
@@ -13,7 +13,7 @@ function shell(prepare: () => Promise<unknown>) {
   });
   const reloads: string[] = [];
   const win = { webContents: contents, isDestroyed: () => false };
-  wireShellReload(win as unknown as BrowserWindow);
+  wireShellReload(win as unknown as BrowserWindow, offerRecovery);
   let prevented = 0;
   return {
     win, reloads,
@@ -66,4 +66,41 @@ test('F5 is guarded and a closed window cannot reload after the save', async () 
   finish(true);
   await settle();
   assert.deepEqual(fixture.reloads, []);
+});
+
+test('a confirmed renderer hang can be handled even while an earlier save is pending', () => {
+  let prepares = 0;
+  let recoveryOffers = 0;
+  let hung = false;
+  const fixture = shell(() => {
+    prepares++;
+    return new Promise(() => {});
+  }, () => {
+    if (!hung) return false;
+    recoveryOffers++;
+    return true;
+  });
+  fixture.press('F5');
+  hung = true;
+  fixture.press('F5');
+  assert.equal(prepares, 1);
+  assert.equal(recoveryOffers, 1);
+  assert.deepEqual(fixture.reloads, []);
+});
+
+test('renderer replacement releases a stuck save and ignores its late acknowledgement', async () => {
+  const prepares: Array<(saved: boolean) => void> = [];
+  const fixture = shell(() => new Promise(resolve => prepares.push(resolve)));
+  fixture.press();
+  fixture.win.webContents.emit('render-process-gone');
+  fixture.press();
+  assert.equal(prepares.length, 2);
+  prepares[0](true);
+  await settle();
+  assert.deepEqual(fixture.reloads, []);
+  fixture.press();
+  assert.equal(prepares.length, 2);
+  prepares[1](true);
+  await settle();
+  assert.deepEqual(fixture.reloads, ['normal']);
 });

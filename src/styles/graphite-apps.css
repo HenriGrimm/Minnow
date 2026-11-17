@@ -895,51 +895,13 @@
   padding: var(--mn-space-2) var(--mn-workbench-rail-inset) var(--mn-space-3);
 }
 
-.mn-graphite-apps .scc-rail__group {
-  display: none;
-}
-
-.mn-graphite-apps .scc-rail .scc-rail__badge.scc-rail__badge--count {
-  min-width: 16px;
-  padding: 0;
-  background: transparent;
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  font-size: 11px;
-  line-height: 1.3;
-  text-align: end;
-}
-
 .mn-graphite-apps .scc-changes__list-col {
   width: clamp(208px, 38%, 340px);
 }
 
-.scc-graphite-assistance,
 .scc-changes__heading,
 .scc-changes__graphite-action {
   display: none;
-}
-
-.mn-graphite-apps .scc-graphite-assistance {
-  display: block;
-  margin-top: auto;
-  padding: 9px 12px;
-  border: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 10px;
-  background: var(--mn-graphite-raised, var(--mn-surface-1));
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  overflow-wrap: anywhere;
-}
-
-.mn-graphite-apps .scc-graphite-assistance strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--mn-graphite-text, var(--mn-fg));
-  font-weight: 500;
-}
-
-.mn-graphite-apps .scc-graphite-assistance p {
-  margin: 3px 0 0;
 }
 
 .mn-graphite-apps .scc-changes__heading {
@@ -1318,7 +1280,8 @@
 
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, min(45%, 400px));
+  /* --issues-detail-inline-w is set by the drag handle (issues-detail-resize.ts). */
+  grid-template-columns: minmax(0, 1fr) minmax(300px, var(--issues-detail-inline-w, min(54%, 480px)));
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "selection detail"
@@ -1343,6 +1306,32 @@
   border: 0;
   border-inline-start: 1px solid var(--mn-graphite-line, var(--mn-border));
   border-radius: 0;
+}
+
+.issues-detail__resize {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: 3;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.issues-detail__resize:focus-visible {
+  outline: none;
+  background: var(--mn-accent-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .issues-detail__resize:hover,
+  .issues-detail__resize.dragging {
+    background: var(--mn-accent-soft);
+  }
+}
+
+.issues-detail-host.is-resizing {
+  user-select: none;
 }
 
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-detail__header {
@@ -1412,11 +1401,6 @@
 .mn-graphite-apps .issues-shell.is-detail-inline .issues-detail__workflow-secondary:not([hidden]) {
   display: flex;
   flex-wrap: wrap;
-}
-
-.mn-graphite-apps .issues-detail__workflow .issues-detail__compact-actions > button {
-  min-height: 28px;
-  padding: 4px 8px;
 }
 
 .issues-graphite-projects {

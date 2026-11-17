@@ -292,7 +292,7 @@ async function createNewCaptureIssue(
     ...draft,
     workspacePath: current.payload.workspacePath,
     source: 'user',
-  });
+  }, undefined, { deferGithubAutoSync: expandInBackground });
   store.appendIssueLinks(issue.id, {
     codeRefs: links.codeRefs,
     gitLinks: links.gitLinks,
@@ -311,6 +311,7 @@ async function createNewCaptureIssue(
     void import('./issues-expand').then(({ expandCreatedIssueInBackground }) =>
       expandCreatedIssueInBackground(issue.id),
     ).catch((error) => {
+      void import('../state/issues-github-notify').then((m) => m.releaseGithubSyncedFieldWrites(issue.id));
       showToast(error instanceof Error ? error.message : `Could not expand ${issue.id}`, 'error');
     });
   }

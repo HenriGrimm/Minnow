@@ -547,7 +547,10 @@ function emptyParagraph(): MarkdownBlock {
 }
 
 function syncPlaceholder(state: EditorState): void {
-  const empty = state.body.textContent?.trim().length === 0;
+  // Images and dividers are visible content even though they have no text.
+  // Inspect the live DOM so insertions/deletions update before the next flush.
+  const empty = state.body.textContent?.trim().length === 0
+    && !state.body.querySelector('img, hr');
   state.body.classList.toggle('is-empty', empty);
 }
 

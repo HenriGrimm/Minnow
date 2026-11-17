@@ -79,7 +79,8 @@ describe('Source Control history commit click', () => {
     assert.equal(view.root.querySelector('[role="tab"]')?.getAttribute('aria-selected'), 'true');
     assert.equal(view.root.querySelector('.sbs-diff__cell--left.sbs-diff__cell--remove')?.textContent, 'before');
     assert.equal(view.root.querySelector('.sbs-diff__cell--right.sbs-diff__cell--add')?.textContent, 'after');
-    assert.equal(view.root.firstElementChild?.className, 'scc-history__graph-col');
+    assert.equal(view.root.firstElementChild?.className, 'scc-bar');
+    assert.equal(view.root.children[1]?.className, 'scc-history__graph-col');
     assert.equal(view.root.lastElementChild?.className, 'scc-history__detail-col');
     assert.equal(view.root.querySelector('.scc-commit-file__row'), null, 'file patches are not accordions');
     view.destroy();

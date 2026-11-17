@@ -12,6 +12,20 @@ const key = value => process.platform === 'win32' ? path.resolve(value).toLowerC
 const identity = (prefix, value) => `${prefix}-${createHash('sha256').update(value).digest('hex').slice(0, 32)}`;
 const activeStates = new Set(['running', 'waiting', 'waiting_for_model', 'loading_model', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_approval']);
 
+// Unavailable registrations require fresh verification on every send. Overlap
+// independent reads without spawning unbounded Git processes or caching grants.
+async function readCheckouts(values, read) {
+  const results = new Array(values.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, values.length) }, async () => {
+    while (next < values.length) {
+      const index = next++;
+      results[index] = await read(values[index]);
+    }
+  }));
+  return results;
+}
+
 async function directory(value) {
   if (typeof value !== 'string' || !value.trim() || value.includes('\0')) {
     throw new ChatContractError('workspace_denied', 'A registered project directory is required');
@@ -82,11 +96,10 @@ async function discoverProject(workspacePath, runGit) {
     throw new ChatContractError('workspace_denied', 'Cannot verify the project checkout registry');
   }
   const candidates = String(listed.stdout ?? '').split('\0').filter(entry => entry.startsWith('worktree ')).map(entry => entry.slice(9));
-  const identities = [];
-  for (const registered of candidates) {
-    try { identities.push(await filesystemIdentity(registered)); }
-    catch { identities.push(null); }
-  }
+  const identities = await readCheckouts(candidates, async registered => {
+    try { return await filesystemIdentity(registered); }
+    catch { return null; }
+  });
   if (!identities.some(row => row?.[0] === key(canonical))) {
     throw new ChatContractError('workspace_denied', 'This checkout is no longer registered');
   }
@@ -104,16 +117,21 @@ async function buildProjectRegistry(workspacePath, discovered, runGit) {
   const projectId = identity('project', key(projectRoot));
   const candidates = new Map(common ? [] : [[key(canonical), { canonical, aliases: [key(workspacePath)] }]]);
   if (common) {
-    for (const registered of discovered.candidates) {
+    const verifiedCheckouts = await readCheckouts(discovered.candidates, async registered => {
       let resolved;
-      try { resolved = await directory(registered); } catch { continue; }
+      try { resolved = await directory(registered); } catch { return null; }
       // Check each live registration again; a replaced checkout cannot inherit
       // membership solely by occupying a previously registered pathname.
       const verified = await runGit(['rev-parse', '--path-format=absolute', '--git-common-dir'], resolved);
-      if (verified.code !== 0) continue;
+      if (verified.code !== 0) return null;
       let targetCommon;
-      try { targetCommon = await fs.realpath(verified.stdout.trim()); } catch { continue; }
-      if (key(targetCommon) !== key(common)) continue;
+      try { targetCommon = await fs.realpath(verified.stdout.trim()); } catch { return null; }
+      if (key(targetCommon) !== key(common)) return null;
+      return { registered, resolved };
+    });
+    for (const checkout of verifiedCheckouts) {
+      if (!checkout) continue;
+      const { registered, resolved } = checkout;
       const previous = candidates.get(key(resolved));
       candidates.set(key(resolved), { canonical: resolved, aliases: [...(previous?.aliases ?? []), key(registered),
         ...(key(resolved) === key(canonical) ? [key(workspacePath)] : [])] });

@@ -845,7 +845,6 @@ html:not(.mn-phone) .graphite-browser-host .preview-go {
   border: 0;
 }
 
-.graphite-preview-servers[hidden],
 .graphite-preview-devices,
 .graphite-preview-agent {
   display: none;
@@ -881,7 +880,7 @@ html:not(.mn-phone) .graphite-browser-host .preview-go {
   background: var(--mn-graphite-ground, var(--mn-bg));
 }
 
-.graphite-browser-host--expanded .preview-body {
+.graphite-browser-host--expanded:is([data-preview-width="tablet"], [data-preview-width="phone"]) .preview-body {
   align-self: center;
   width: calc(100% - 32px);
   max-width: var(--mn-graphite-preview-width, 100%);
@@ -897,127 +896,3 @@ html:not(.mn-phone) .graphite-browser-host .preview-go {
   --mn-graphite-preview-width: 390px;
 }
 
-.graphite-preview-servers {
-  display: flex;
-  width: min(300px, 34%);
-  min-width: 156px;
-  min-height: 0;
-  flex: none;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  overflow: auto;
-  border-inline-end: 1px solid var(--mn-border);
-  background: var(--mn-graphite-sheet, var(--mn-surface-0));
-}
-
-.graphite-preview-servers__heading,
-.graphite-preview-servers__row,
-.graphite-preview-servers__select {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-}
-
-.graphite-preview-servers__heading,
-.graphite-preview-servers__log-label,
-.graphite-preview-servers__notice {
-  padding-inline: 8px;
-  color: var(--mn-fg-muted);
-  font-size: 12px;
-}
-
-.graphite-preview-servers__list {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.graphite-preview-servers__row {
-  min-height: 52px;
-  padding-inline-end: 8px;
-  border-radius: 8px;
-}
-
-.graphite-preview-servers__row:hover,
-.graphite-preview-servers__row:has([aria-pressed="true"]) {
-  background: var(--mn-sel, var(--mn-surface-1));
-}
-
-.graphite-preview-servers__select {
-  flex: 1;
-  min-height: 52px;
-  gap: 10px;
-  padding: 8px 0 8px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--mn-fg-muted);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.graphite-preview-servers__select[aria-pressed="true"] {
-  color: var(--mn-fg);
-}
-
-.graphite-preview-servers__identity {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-  text-align: start;
-}
-
-.graphite-preview-servers__identity > :is(span, code) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.graphite-preview-servers__identity > code {
-  color: var(--mn-fg-subtle);
-  font: 11px var(--font-mono);
-}
-
-.graphite-preview-servers__dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--mn-fg-subtle);
-}
-
-.graphite-preview-servers__dot[data-state="running"] {
-  background: var(--mn-success);
-}
-
-.graphite-preview-servers__dot:is([data-state="starting"], [data-state="stopping"]) {
-  background: var(--mn-warning);
-}
-
-.graphite-preview-servers__dot[data-state="error"] {
-  background: var(--mn-danger);
-}
-
-.graphite-preview-servers__log-label {
-  margin: 10px 0 0;
-}
-
-.graphite-preview-servers__log {
-  min-height: 70px;
-  flex: 1;
-  margin: 0;
-  padding: 10px 12px;
-  overflow: auto;
-  border: 1px solid var(--mn-border);
-  border-radius: 8px;
-  background: var(--mn-graphite-ground, var(--mn-bg));
-  color: var(--mn-fg-muted);
-  font: 11px/1.6 var(--font-mono);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}

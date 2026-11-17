@@ -729,7 +729,7 @@ export function syncModelMenuReasoningDefaultAction(row: HTMLElement): void {
     choice.tabIndex = selected ? 0 : -1;
     choice.title = entry.effort === null
       ? catalogLabel ? `Use model default: ${catalogLabel}` : 'Use provider default'
-      : `Set default reasoning to ${entry.label}`;
+      : `Make ${entry.label} your favorite reasoning for this model`;
     choices.appendChild(choice);
   }
 }
@@ -800,7 +800,7 @@ export function mountModelMenuActions(
   const reasoningChoices = document.createElement('div');
   reasoningChoices.className = 'model-menu-reasoning-default__choices';
   reasoningChoices.setAttribute('role', 'radiogroup');
-  reasoningChoices.setAttribute('aria-label', 'Default reasoning for this model');
+  reasoningChoices.setAttribute('aria-label', 'Favorite reasoning for this model');
   reasoningChoices.addEventListener('mousedown', (e) => e.stopPropagation());
   reasoningChoices.addEventListener('click', (event) => {
     const choice = (event.target as HTMLElement).closest<HTMLButtonElement>(

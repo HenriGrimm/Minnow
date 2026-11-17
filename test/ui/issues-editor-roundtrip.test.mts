@@ -57,6 +57,32 @@ afterEach(() => {
   for (const window of windows.splice(0)) window.close();
 });
 
+test('placeholder follows visible content, including screenshot-only descriptions', async () => {
+  const screenshot = '![screen.png](/api/issues/attachments?key=draft-example%2Fscreen.png)';
+  const { body, handle } = await mountEditor(screenshot);
+  assert.ok(body.querySelector('img'));
+  assert.equal(body.classList.contains('is-empty'), false);
+  assert.equal(handle.flush(), screenshot);
+
+  for (const value of ['', '   ', '\n\n']) {
+    handle.setValue(value);
+    assert.equal(body.classList.contains('is-empty'), true);
+  }
+  for (const value of [screenshot, `Context\n\n${screenshot}`, '---', 'Description']) {
+    handle.setValue(value);
+    assert.equal(body.classList.contains('is-empty'), false);
+  }
+
+  // Native edits must use the live DOM, not the previous parsed blocks.
+  body.innerHTML = '<p><br></p>';
+  body.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(body.classList.contains('is-empty'), true);
+  body.innerHTML = '<p><img src="/screen.png" alt=""></p>';
+  body.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(body.classList.contains('is-empty'), false);
+  handle.destroy();
+});
+
 test('dropping an image inserts it inline, persists its record, and survives reopening', async () => {
   const store = await import('../../src/state/issues-store.ts');
   const config = await import('../../src/tools/config.ts');

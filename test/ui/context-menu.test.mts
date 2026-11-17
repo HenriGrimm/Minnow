@@ -70,6 +70,24 @@ describe('shared context menu', () => {
     return menu ? [...menu.querySelectorAll<HTMLButtonElement>('.mn-menu__item')] : [];
   }
 
+  test('shifts a tall anchored menu into view when neither side has room', (t) => {
+    const doc = installDom();
+    const win = windows[windows.length - 1];
+    win.happyDOM.setViewport({ width: 1200, height: 1000 });
+    const anchor = doc.createElement('button');
+    doc.body.appendChild(anchor);
+    t.mock.method(win.HTMLElement.prototype, 'getBoundingClientRect', function (this: HTMLElement) {
+      return this === anchor
+        ? new win.DOMRect(40, 420, 30, 20)
+        : new win.DOMRect(0, 0, 300, 570);
+    });
+
+    const { root } = openContextMenu({ anchor, items: [{ id: 'open', label: 'Open' }] });
+
+    assert.equal(root.style.top, '422px');
+    assert.equal(root.style.left, '40px');
+  });
+
   function key(doc: Document, name: string): void {
     doc.dispatchEvent(
       new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', {

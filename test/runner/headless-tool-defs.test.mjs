@@ -39,6 +39,18 @@ test('lazy discovery retains required arguments and canonical descriptions', () 
   assert.ok(tool.function.parameters.required.length > 0);
 });
 
+test('issue creation advertises status and discovers the real correction schema', () => {
+  const session = createLazyToolSession(headlessToolDefinitions(['issue_add', 'issue_update']));
+  const discovered = JSON.parse(session.search({ query: 'select:issue_add' }));
+  assert.deepEqual(discovered.loaded, ['issue_add', 'issue_update']);
+  const [add, update] = discovered.tools;
+  assert.equal(add.parameters.properties.status.type, 'string');
+  assert.match(add.description, /not a test or placeholder/);
+  assert.match(add.parameters.properties.issue_id.description, /not an upsert/);
+  assert.equal(update.parameters.properties.priority.type, 'string');
+  assert.equal(update.parameters.properties.status.type, 'string');
+});
+
 test('server search schemas require query without advertising unused API key overrides', () => {
   for (const tool of headlessToolDefinitions(['web_search_ddg', 'web_search_tavily', 'web_search_searxng'])) {
     assert.deepEqual(tool.function.parameters.required, ['query']);

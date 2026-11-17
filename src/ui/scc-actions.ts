@@ -2,7 +2,7 @@ import '../styles/scc-actions.css';
 import { actionApi, type ActionCommand, type ActionWorkflow } from '../state/actions-api';
 import { createChecksView } from './scc-checks';
 import { type ForgeStatus } from '../state/forge-api';
-import { button, el, emptyState, type SccContext, type SccView } from './scc-shared';
+import { button, detailHead, drillIn, el, emptyState, pageBar, segmented, type RunState, type SccContext, type SccView } from './scc-shared';
 import {
   field,
   labeled,
@@ -12,7 +12,7 @@ import {
   textArea,
 } from './scc-action-form';
 import { confirmAction as appConfirm } from './scc-action-form';
-import { actionHeader, actionRow, selectActionRow } from './scc-action-layout';
+import { actionRow, selectActionRow } from './scc-action-layout';
 import { errorStrip, skeletonRows } from './scc-shared';
 import { getReleaseWorkflow, setReleaseWorkflow } from '../state/release-workflow';
 import { renderRemoteWorkflowForm } from './scc-workflow-form';
@@ -29,11 +29,11 @@ export function createActionsView(
   ctx: SccContext,
   options: { getForgeStatus: () => ForgeStatus | null },
 ): SccView {
-  const root = el('div', 'scc-actions');
-  const toolbar = el('div', 'scc-actions__navigation');
-  const targets = el('div', 'scc-actions__target');
+  const root = el('div', 'scc-page scc-actions');
+  const bar = pageBar('Actions');
+  const targets = bar.actions;
   const body = el('div', 'scc-actions__body');
-  root.append(actionHeader('Actions', 'Follow builds, run workflows, and manage project commands.'), toolbar, body);
+  root.append(bar.root, body);
   let tab = pendingTab || 'runs';
   pendingTab = '';
   let location = 'remote';
@@ -53,40 +53,46 @@ export function createActionsView(
   let loadingLog = false;
   let page = 1;
   let workflowRepo = '';
-  const tabNames = ['runs', 'workflows', 'commands'];
-  const tabs = tabNames.map((name) =>
-    button({
-      label: name[0]!.toUpperCase() + name.slice(1),
-      onClick: () => {
-        tab = name;
-        page = 1;
-        void mount();
-      },
-    }),
-  );
-  const tabHost = el('div', 'scc-actions__tabs');
-  tabHost.setAttribute('role', 'group');
-  tabHost.setAttribute('aria-label', 'Actions views');
-  tabHost.append(...tabs);
-  toolbar.append(tabHost, targets);
+  const tabs = segmented<'runs' | 'workflows' | 'commands'>({
+    label: 'Actions views',
+    items: [
+      { value: 'runs', label: 'Runs' },
+      { value: 'workflows', label: 'Workflows' },
+      { value: 'commands', label: 'Commands' },
+    ],
+    value: tab as 'runs',
+    onChange: (name) => {
+      tab = name;
+      page = 1;
+      void mount();
+    },
+  });
+  bar.controls.append(tabs.root);
   const valid = (g: number) => !destroyed && g === generation && cwd === ctx.getCwd();
+  let drill: ReturnType<typeof drillIn> | null = null;
   function split() {
     const wrap = el('div', 'scc-split');
+    drill = drillIn(wrap);
     const listCol = el('div', 'scc-split__list');
     const list = el('div', 'scc-split__list-body');
+    const foot = el('div', 'scc-split__foot');
     const detail = el('div', 'scc-split__detail scc-action-detail');
-    listCol.append(list);
+    listCol.append(list, foot);
     wrap.append(listCol, detail);
     body.append(wrap);
-    return { list, detail };
+    return { list, detail, foot };
   }
-  function contextLine() {
-    return el(
-      'p',
-      'scc-action-context',
-      `${options.getForgeStatus()?.repo || ''} · ${cwd || 'Current workspace'} · ${branch || 'Detached HEAD'}`,
-    );
+  /** Detail header for a workflow, command or local run, with Back on narrow panes. */
+  function detailTitle(title: string, facts?: string[]) {
+    const repo = options.getForgeStatus()?.repo;
+    return detailHead({
+      title,
+      eyebrow: facts ?? [repo || 'Current workspace', branch || 'Detached HEAD'].filter(Boolean),
+      onBack: () => drill?.close(),
+      backLabel: tab === 'commands' ? 'Commands' : tab === 'workflows' ? 'Workflows' : 'Runs',
+    }).root;
   }
+  const openRow = () => drill?.open();
 
   async function mount() {
     const g = ++generation;
@@ -98,11 +104,8 @@ export function createActionsView(
     cancelRun = null;
     body.replaceChildren();
     targets.replaceChildren();
-    tabs.forEach((node, i) => {
-      const selected = tabNames[i] === tab;
-      node.classList.toggle('is-active', selected);
-      node.setAttribute('aria-pressed', String(selected));
-    });
+    drill = null;
+    tabs.setValue(tab as 'runs');
     if (tab === 'runs') {
       const target = select(
         'Run location',
@@ -116,7 +119,7 @@ export function createActionsView(
         location = target.value;
         void mount();
       });
-      targets.append(labeled('Location', target));
+      targets.append(target);
       if (location === 'remote') {
         checks = createChecksView(ctx, options);
         body.append(checks.root);
@@ -147,8 +150,8 @@ export function createActionsView(
       page = 1;
       void mount();
     });
-    targets.append(labeled('Run on', target));
-    const { list, detail } = split();
+    targets.append(target);
+    const { list, detail, foot } = split();
     list.append(skeletonRows(5));
     const result = await actionApi('workflowList', { cwd, location, page });
     if (!valid(g)) return;
@@ -171,12 +174,13 @@ export function createActionsView(
     for (const workflow of result.workflows || []) {
       const row = actionRow(workflow.name, workflow.path, () => {
         selectActionRow(list, row);
+        openRow();
         void workflowForm(workflow, detail, g);
-      });
+      }, { icon: 'workflow' });
       list.append(row);
     }
     if (page > 1)
-      list.append(
+      foot.append(
         button({
           label: 'Previous',
           onClick: () => {
@@ -186,7 +190,7 @@ export function createActionsView(
         }),
       );
     if (result.hasMore)
-      list.append(
+      foot.append(
         button({
           label: 'Next',
           onClick: () => {
@@ -208,7 +212,7 @@ export function createActionsView(
     const request = ++formRequest;
     const capturedCwd = cwd;
     const local = location === 'local';
-    detail.replaceChildren(el('h2', undefined, summary.name), contextLine());
+    detail.replaceChildren(detailTitle(summary.name));
     if (!local) {
       await renderRemoteWorkflowForm(summary, detail, {
         cwd: capturedCwd, branch, isCurrent: () => valid(g) && request === formRequest,
@@ -407,12 +411,13 @@ export function createActionsView(
       list.append(errorStrip(result.error || 'Could not load commands', () => void mount()));
       return;
     }
-    list.append(button({ label: 'New command', onClick: () => editCommand(undefined, detail, g) }));
+    targets.append(button({ label: 'New command', icon: 'plus', variant: 'primary', onClick: () => { openRow(); editCommand(undefined, detail, g); } }));
     for (const command of result.commands || []) {
       const row = actionRow(command.label, command.command, () => {
         selectActionRow(list, row);
+        openRow();
         editCommand(command, detail, g);
-      });
+      }, { icon: 'terminal' });
       list.append(row);
     }
     if (!result.commands?.length) list.append(emptyState({ title: 'No project commands', body: 'Save a command here, or add scripts to package.json.' }));
@@ -426,7 +431,7 @@ export function createActionsView(
   function editCommand(command: ActionCommand | undefined, detail: HTMLElement, g: number) {
     const capturedCwd = cwd;
     const status = statusLine();
-    detail.replaceChildren(el('h2', undefined, command?.label || 'New command'), contextLine());
+    detail.replaceChildren(detailTitle(command?.label || 'New command'));
     const id = field('ID', command?.id);
     const label = field('Label', command?.label);
     const script = textArea('Command', command?.command);
@@ -524,18 +529,14 @@ export function createActionsView(
     for (const run of result.runs || []) {
       const row = actionRow(run.label, `${run.kind === 'workflow' ? 'Workflow' : 'Command'} · ${run.branch} · ${run.status}`, () => {
             selectActionRow(localList!, row);
+            openRow();
             selectedRun = run.id;
             logOffset = 0;
             logText = '';
             loadingLog = false;
             const host = localDetail!;
             host.replaceChildren(
-              el('h2', undefined, run.label),
-              el(
-                'p',
-                undefined,
-                `${run.cwd} · ${run.branch} · ${run.sha.slice(0, 8)}${run.dirty ? ' · uncommitted edits' : ''}`,
-              ),
+              detailTitle(run.label, [run.branch, run.sha.slice(0, 8), ...(run.dirty ? ['uncommitted edits'] : []), run.cwd]),
             );
             runStatus = statusLine();
             logNode = el('pre', 'scc-log');
@@ -556,7 +557,7 @@ export function createActionsView(
               logNode,
             );
             void refreshLog(g);
-          });
+          }, { state: localRunState(run.status) });
       row.classList.toggle('is-selected', run.id === selectedRun);
       row.setAttribute('aria-pressed', String(run.id === selectedRun));
       nodes.push(row);
@@ -607,4 +608,12 @@ export function createActionsView(
       root.remove();
     },
   };
+}
+
+function localRunState(status: string): RunState {
+  if (status === 'running' || status === 'queued') return 'pending';
+  if (status === 'success' || status === 'succeeded' || status === 'completed') return 'success';
+  if (status === 'failure' || status === 'failed' || status === 'error') return 'failure';
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+  return 'none';
 }

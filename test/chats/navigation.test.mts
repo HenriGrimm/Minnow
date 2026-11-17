@@ -16,6 +16,7 @@ import { syncComposerFromStreamingState, syncComposerReadOnlyState } from '../..
 import { parseOsHash } from '../../src/os/router.ts';
 import { classifyMarkdownHref } from '../../src/markdown/links.ts';
 import { launchCodeWithChat, switchToCodeChat } from '../../src/os/chat-launch.ts';
+import { resetToastsForTests } from '../../src/ui/toast.ts';
 import { setRemoteChatRunning } from '../../src/chat/remote-turn-state.ts';
 import type { Chat, SessionState } from '../../src/types.ts';
 
@@ -45,6 +46,7 @@ function setup(chats: Chat[], activeId = chats[0]!.id, groups: SessionState['gro
 }
 
 afterEach(() => {
+  if (win) resetToastsForTests();
   resetSidebarAgentNavigationForTests(); resetSidebarChatDnDForTests();
   resetSessionPersistenceForTests();
   setStorageModeForTests(null); globalThis.fetch = originalFetch;
@@ -343,6 +345,45 @@ test('a received chat link checks local access without forwarding itself to anot
   assert.equal(sessionState!.activeId, root.id);
 });
 
+test('a local notification launch validates once, reuses known storage, and rechecks the next click', async () => {
+  const root = chat('notification-root'), child = chat('notification-child', root.id);
+  child.historyLoaded = true;
+  setup([root, child]); setStorageModeForTests('server');
+  setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: false, recoveryEnabled: true, reason: 'not_released', conversationStorage: 'sqlite' });
+  const urls: string[] = [];
+  let deleted = false;
+  globalThis.fetch = (async url => {
+    urls.push(String(url));
+    return Response.json({}, { status: deleted ? 404 : 200 });
+  }) as typeof fetch;
+  await launchCodeWithChat(child.id);
+  assert.equal(sessionState!.activeId, child.id);
+  assert.deepEqual(urls.filter(url => url.includes('/api/chats/')), [`/api/chats/${child.id}?view=navigation`]);
+  sessionState!.activeId = root.id;
+  deleted = true;
+  await launchCodeWithChat(child.id);
+  assert.equal(sessionState!.activeId, root.id, 'a later click must check deletion again');
+  assert.equal(urls.filter(url => url === `/api/chats/${child.id}?view=navigation`).length, 2);
+});
+
+test('the route host joins an in-flight notification selection without another access request', { timeout: 10_000 }, async () => {
+  const root = chat('host-root'), child = chat('host-child', root.id);
+  child.historyLoaded = true;
+  const list = setup([root, child]); list.remove();
+  setStorageModeForTests('server');
+  setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: false, recoveryEnabled: true, reason: 'not_released', conversationStorage: 'sqlite' });
+  const urls: string[] = [];
+  globalThis.fetch = (async url => { urls.push(String(url)); return Response.json({}); }) as typeof fetch;
+  const opening = launchCodeWithChat(child.id);
+  for (let i = 0; !window.location.hash.includes(child.id) && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.ok(window.location.hash.includes(child.id), 'Code launches before waiting for the chat surface');
+  const hostSelection = switchToCodeChat(child.id);
+  document.body.append(list);
+  await Promise.all([opening, hostSelection]);
+  assert.equal(sessionState!.activeId, child.id);
+  assert.deepEqual(urls.filter(url => url.includes('/api/chats/')), [`/api/chats/${child.id}?view=navigation`]);
+});
+
 function holdChatNavigation(chatId: string) {
   const requested = Promise.withResolvers<void>();
   const response = Promise.withResolvers<Response>();
@@ -359,6 +400,37 @@ function holdChatNavigation(chatId: string) {
     allow: () => response.resolve(Response.json({ chatId, available: true })),
   };
 }
+
+test('Open review chat leaves Issues even when that chat is already selected', { timeout: 10_000 }, async () => {
+  const reviewChat = chat('issue-review'); reviewChat.historyLoaded = true;
+  setup([reviewChat]); setStorageModeForTests('localStorage');
+  window.location.hash = '#/app/issues/MIN-1';
+  const issues = await import('../../src/state/issues-store.ts');
+  const reviews = await import('../../src/state/pr-review-store.ts');
+  issues.setIssuesStateForTests({ version: 2, nextId: 2, workspaces: {}, issues: [{
+    id: 'MIN-1', title: 'Review navigation', description: '', type: 'bug', status: 'todo',
+    priority: 'none', labels: [], workspacePath: WS, createdAt: 1, updatedAt: 1, source: 'user',
+  }] });
+  reviews.resetPrReviewsForTests({ reviews: { review: {
+    key: 'review', repo: 'fixture/repo', number: 1, url: '', headRef: 'fix', baseRef: 'main', headSha: '',
+    issueId: 'MIN-1', chatId: reviewChat.id, runId: '', status: 'done', summary: 'Reviewed', findings: [], artifacts: [], startedAt: 1,
+  } } });
+  const host = document.createElement('div'); document.body.append(host);
+  const { createIssueDetailController } = await import('../../src/ui/issues-detail.ts');
+  const detail = createIssueDetailController({ host, onClose: () => {}, onNavigate: () => {}, workspaceTabs: false });
+  try {
+    detail.openIssueDetail('MIN-1');
+    const button = [...host.querySelectorAll('button')].find(node => node.textContent === 'Open review chat');
+    assert.ok(button);
+    button.click();
+    for (let i = 0; i < 100 && !window.location.hash.includes('/code/chat'); i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(parseOsHash(window.location.hash).appId, 'code');
+    assert.equal(parseOsHash(window.location.hash).chatId, reviewChat.id);
+    assert.equal(sessionState!.activeId, reviewChat.id);
+  } finally {
+    detail.dispose(); reviews.resetPrReviewsForTests(); issues.setIssuesStateForTests(null);
+  }
+});
 
 test('leaving Code while a chat link is loading cancels the late selection', { timeout: 10_000 }, async () => {
   const root = chat('waiting-root'), child = chat('waiting-child', root.id);

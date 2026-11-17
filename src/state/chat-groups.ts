@@ -15,6 +15,7 @@ import type { Chat, ChatGroup } from '../types';
 import { getChatLastMessageAt } from './session-workspace-scope';
 import {
   markGroupDeleted,
+  findChatById,
   markChatDirty,
   markGroupDirty,
   markSessionScalarsDirty,
@@ -123,8 +124,14 @@ function sortBoardGroupMembers(group: ChatGroup, members: Chat[]): Chat[] {
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
+const pendingPins = new Map<string, { pinnedAt: number; work: Promise<void> }>();
+
+function chatPinTime(chat: Chat): number {
+  return pendingPins.get(chat.id)?.pinnedAt ?? chat.pinnedAt ?? 0;
+}
+
 export function isChatPinned(chat: Chat): boolean {
-  return !chat.agentConversation && typeof chat.pinnedAt === 'number' && chat.pinnedAt > 0;
+  return !chat.agentConversation && chatPinTime(chat) > 0;
 }
 
 /**
@@ -133,12 +140,28 @@ export function isChatPinned(chat: Chat): boolean {
  */
 export function setChatPinned(chat: Chat, pinned: boolean): void {
   if (chat.agentConversation) return;
+  if (pinned === isChatPinned(chat)) return;
   if (shouldRelayChat(chat.id)) {
-    void sendRemoteChatCommand(chat.id, 'configure', { patch: { pinned } })
-      .catch(error => setStatus('err', String(error?.message || error)));
+    const pinnedAt = pinned ? Date.now() : 0;
+    // Placement is immediate, but only acknowledged metadata may be saved.
+    // Serialize rapid toggles so an earlier response cannot undo a later click.
+    const work = (pendingPins.get(chat.id)?.work ?? Promise.resolve()).then(async () => {
+      try {
+        await sendRemoteChatCommand(chat.id, 'configure', { patch: { pinned } });
+        const current = findChatById(chat.id) ?? chat;
+        if (pinned) current.pinnedAt ||= pinnedAt;
+        else delete current.pinnedAt;
+      } catch (error) {
+        setStatus('err', String((error as Error)?.message || error));
+      }
+    }).finally(() => {
+      if (pendingPins.get(chat.id)?.work !== work) return;
+      pendingPins.delete(chat.id);
+      void import('../ui/sidebar').then(({ scheduleRenderSidebar }) => scheduleRenderSidebar());
+    });
+    pendingPins.set(chat.id, { pinnedAt, work });
     return;
   }
-  if (pinned === isChatPinned(chat)) return;
   if (pinned) chat.pinnedAt = Date.now();
   else delete chat.pinnedAt;
   markChatDirty(chat);
@@ -150,7 +173,7 @@ export function splitPinnedChats(chats: Chat[]): { pinned: Chat[]; rest: Chat[] 
   const pinned: Chat[] = [];
   const rest: Chat[] = [];
   for (const chat of chats) (isChatPinned(chat) ? pinned : rest).push(chat);
-  pinned.sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0));
+  pinned.sort((a, b) => chatPinTime(b) - chatPinTime(a));
   return { pinned, rest };
 }
 

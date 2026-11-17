@@ -765,13 +765,65 @@ function renderMtplxInto(block: HTMLElement): void {
   } else {
     block.appendChild(el('p', 'models-muted', 'Could not load the MTPLX runtime status.'));
   }
+  if (server?.supported) {
+    const updates = el('details', 'models-engine__update');
+    updates.appendChild(el('summary', undefined, server.installed ? 'Update MTPLX on this Mac' : 'Install MTPLX on this Mac'));
+    updates.appendChild(el('p', 'models-hint', 'MTPLX is managed outside Minnow. Unload MTPLX models before updating, then use the same installer and Python environment as your existing installation.'));
+    const methods = el('dl', 'models-engine__update-methods');
+    methods.append(
+      el('dt', undefined, 'Mac app'),
+      el('dd', undefined, 'Update through the MTPLX app or download its latest release.'),
+      el('dt', undefined, 'Homebrew'),
+      el('dd', undefined, 'brew update && brew upgrade youssofal/mtplx/mtplx'),
+      el('dt', undefined, 'pip'),
+      el('dd', undefined, 'python3 -m pip install --upgrade mtplx'),
+    );
+    updates.appendChild(methods);
+    const releases = el('a', 'models-engine__link', 'MTPLX releases');
+    releases.href = 'https://mtplx.com/releases/';
+    releases.target = '_blank';
+    releases.rel = 'noopener noreferrer';
+    releases.addEventListener('click', (event) => {
+      if (!window.minnow?.app?.openExternal) return;
+      event.preventDefault();
+      void window.minnow.app.openExternal(releases.href);
+    });
+    updates.append(releases, el('p', 'models-hint', 'After updating, choose Refresh to detect the installed version. Reload a model to use the updated engine.'));
+    block.appendChild(updates);
+  }
+  const feedback = el('p', 'models-hint');
+  feedback.setAttribute('role', 'status');
+  feedback.hidden = true;
   const refresh = textButton('Refresh', () => {
+    const generation = mountGeneration;
+    const updateOpen = block.querySelector<HTMLDetailsElement>('details')?.open ?? false;
     void withButtonBusy(refresh, 'Refreshing…', async () => {
-      await loadManagedRuntimes();
-      if (block.isConnected) renderMtplxInto(block);
+      try {
+        const response = await fetch('/api/models/mtplx/runtime?refresh=1');
+        if (!response.ok) throw new Error('Could not refresh MTPLX. Try again.');
+        const status = await response.json() as { installed: boolean; supported: boolean; version: string | null; reason: string | null };
+        if (generation !== mountGeneration) return;
+        if (mtplx) mtplx = { ...mtplx, ...status, version: status.version ?? undefined };
+        else await loadManagedRuntimes();
+        if (block.isConnected) {
+          renderMtplxInto(block);
+          const details = block.querySelector<HTMLDetailsElement>('details');
+          if (details) details.open = updateOpen;
+          const result = block.querySelector<HTMLElement>('[role="status"]');
+          if (result) {
+            result.hidden = false;
+            result.textContent = status.version ? `Detected MTPLX ${status.version}.` : 'MTPLX status refreshed.';
+          }
+          block.querySelector<HTMLButtonElement>('button')?.focus();
+        }
+      } catch (err) {
+        if (generation !== mountGeneration) return;
+        feedback.hidden = false;
+        feedback.textContent = errMessage(err, 'Could not refresh MTPLX. Try again.');
+      }
     });
   });
-  block.appendChild(refresh);
+  block.append(refresh, feedback);
 }
 
 // ── MLX ──────────────────────────────────────────────────────────────────────

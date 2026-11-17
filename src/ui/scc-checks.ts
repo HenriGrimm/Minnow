@@ -11,20 +11,27 @@ import {
   type WorkflowRunDetail,
   type WorkflowRunSummary,
 } from '../state/forge-api';
-import { field, select as selectField } from './scc-action-form';
+import { select as selectField } from './scc-action-form';
+import { createIcon } from './icon';
 import { gitUiCtx, runGitUiOp } from './git-ui-op';
 import {
   button,
   chip,
+  detailHead,
+  drillIn,
   duration,
   el,
   emptyState,
   errorStrip,
   listNavigator,
   relativeTime,
+  runStateTone,
+  searchBox,
+  segmented,
   skeletonRows,
   stateDot,
   stateLabel,
+  statePill,
   forgeUnavailableCopy,
   unavailableState,
   type RunState,
@@ -50,11 +57,13 @@ export function createChecksView(
   options: { getForgeStatus: () => ForgeStatus | null },
 ): SccView {
   const root = el('div', 'scc-split');
+  const drill = drillIn(root);
 
   const listCol = el('div', 'scc-split__list');
-  const toolbar = el('div', 'scc-list-view__toolbar');
+  const toolbar = el('div', 'scc-split__filters');
   const listBody = el('div', 'scc-split__list-body');
-  listCol.append(toolbar, listBody);
+  const foot = el('div', 'scc-split__foot');
+  listCol.append(toolbar, listBody, foot);
 
   const detailCol = el('div', 'scc-split__detail');
   root.append(listCol, detailCol);
@@ -71,31 +80,27 @@ export function createChecksView(
   let workspace = ctx.getCwd();
   const details = new Map<number, WorkflowRunDetail>();
   const pendingDetails = new Map<number, ReturnType<typeof runView>>();
-  const workflowFilter = field('Workflow filename or ID');
-  workflowFilter.placeholder = 'Workflow filename or ID';
+  const workflowSearch = searchBox('Workflow file or ID', 'Workflow filename or ID');
+  const workflowFilter = workflowSearch.input;
   const statusFilter = selectField('Run status', ['', 'queued', 'in_progress', 'success', 'failure', 'cancelled'].map(value => ({ value, label: value || 'All statuses' })));
   workflowFilter.addEventListener('change', () => { page = 1; void refresh(); });
   statusFilter.addEventListener('change', () => { page = 1; void refresh(); });
-  const previous = button({ label: 'Previous', onClick: () => { page = Math.max(1, page - 1); void refresh(); } });
-  const next = button({ label: 'Next', onClick: () => { page++; void refresh(); } });
+  const previous = button({ label: 'Newer', icon: 'chevronLeft', variant: 'ghost', onClick: () => { page = Math.max(1, page - 1); void refresh(); } });
+  const next = button({ label: 'Older', variant: 'ghost', onClick: () => { page++; void refresh(); } });
 
-  const branchToggle = button({
-    label: 'This branch',
-    title: 'Toggle between this branch and every branch',
-    variant: 'ghost',
-    onClick: () => {
-      branchOnly = !branchOnly;
+  const branchScope = segmented<'branch' | 'all'>({
+    label: 'Runs to show',
+    items: [
+      { value: 'branch', label: 'This branch' },
+      { value: 'all', label: 'All branches' },
+    ],
+    value: 'branch',
+    onChange: (scope) => {
+      branchOnly = scope === 'branch';
       page = 1;
-      branchToggle.querySelector('.scc-btn__label')!.textContent = branchOnly
-        ? 'This branch'
-        : 'All branches';
-      branchToggle.classList.toggle('is-active', branchOnly);
       void refresh();
     },
   });
-  branchToggle.classList.add('is-active');
-  branchToggle.setAttribute('aria-pressed', 'true');
-  branchToggle.addEventListener('click', () => branchToggle.setAttribute('aria-pressed', String(branchOnly)));
 
   const refreshBtn = button({
     icon: 'refresh',
@@ -104,7 +109,9 @@ export function createChecksView(
     onClick: () => void refresh(),
   });
 
-  toolbar.append(branchToggle, workflowFilter, statusFilter, previous, next, refreshBtn);
+  statusFilter.classList.add('scc-select');
+  toolbar.append(branchScope.root, statusFilter, refreshBtn, workflowSearch.root);
+  foot.append(previous, next);
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
@@ -143,6 +150,8 @@ export function createChecksView(
     if (destroyed || generation !== requestGeneration || cwd !== ctx.getCwd()) return;
     previous.disabled = page === 1;
     next.disabled = !result.hasMore;
+    previous.hidden = page === 1;
+    next.hidden = !result.hasMore;
 
     if (!result.ok) {
       listBody.replaceChildren(errorStrip(result.error ?? 'Could not list runs', () => void refresh()));
@@ -212,7 +221,12 @@ export function createChecksView(
             ? button({
                 label: 'Show all branches',
                 variant: 'ghost',
-                onClick: () => branchToggle.click(),
+                onClick: () => {
+                  branchScope.setValue('all');
+                  branchOnly = false;
+                  page = 1;
+                  void refresh();
+                },
               })
             : undefined,
         }),
@@ -227,7 +241,7 @@ export function createChecksView(
 
   function buildRow(run: WorkflowRunSummary): HTMLElement {
     const state = runState(run) as RunState;
-    const row = el('div', 'scc-runrow');
+    const row = el('div', 'scc-row scc-row--wrap scc-runrow');
     row.tabIndex = 0;
     row.dataset.id = String(run.id);
     row.setAttribute('role', 'button');
@@ -235,29 +249,37 @@ export function createChecksView(
     if (run.id === selectedId) row.classList.add('is-selected');
     if (state === 'pending') row.classList.add('is-running');
 
-    const top = el('div', 'scc-runrow__top');
-    top.append(
-      stateDot(state, `${run.workflow}: ${stateLabel(state)}`),
-      el('span', 'scc-runrow__workflow', run.workflow),
-      el('span', 'scc-runrow__state', stateLabel(state)),
-    );
-
-    const meta = el('div', 'scc-runrow__meta');
-    meta.append(chip(run.sha, 'sha'), el('span', undefined, run.branch), el('span', undefined, run.event));
+    const lead = el('span', 'scc-row__lead');
+    lead.appendChild(stateDot(state, `${run.workflow}: ${stateLabel(state)}`));
     const age = relativeTime(run.createdAt);
-    if (age) meta.appendChild(el('span', undefined, age));
-    if (state === 'pending' && run.startedAt) {
-      meta.appendChild(el('span', 'scc-runrow__elapsed', duration(run.startedAt, '')));
-    } else if (run.startedAt && run.updatedAt) {
-      meta.appendChild(el('span', undefined, duration(run.startedAt, run.updatedAt)));
-    }
+    const aside = el('span', 'scc-row__aside', age);
+    aside.title = new Date(run.createdAt).toLocaleString();
 
-    row.append(top, el('div', 'scc-runrow__title', run.title), meta);
-    row.addEventListener('click', () => void select(run.id));
+    const meta = el('span', 'scc-row__meta scc-runrow__meta');
+    meta.append(
+      el('span', 'scc-fact scc-runrow__workflow', run.workflow),
+      el('span', 'scc-fact scc-mono', run.sha.slice(0, 7)),
+      el('span', 'scc-fact', run.branch),
+    );
+    const end = el('span', 'scc-row__end');
+    if (state === 'pending' && run.startedAt) {
+      end.appendChild(el('span', 'scc-runrow__elapsed', duration(run.startedAt, '')));
+    } else if (run.startedAt && run.updatedAt) {
+      end.appendChild(el('span', undefined, duration(run.startedAt, run.updatedAt)));
+    }
+    meta.appendChild(end);
+
+    row.append(lead, el('span', 'scc-row__title scc-runrow__title', run.title), aside, meta);
+    row.title = `${run.workflow}: ${stateLabel(state)}\n${run.title}\n${run.event} on ${run.branch}`;
+    const activate = () => {
+      drill.open();
+      void select(run.id);
+    };
+    row.addEventListener('click', activate);
     row.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        void select(run.id);
+        activate();
       }
     });
     return row;
@@ -341,59 +363,55 @@ export function createChecksView(
 
   function buildDetail(run: WorkflowRunDetail, jobsLoaded = true): HTMLElement {
     const state = runState(run) as RunState;
-    const wrap = el('div', 'scc-rundetail');
-
-    const head = el('header', 'scc-rundetail__head');
-    const titleRow = el('div', 'scc-rundetail__title-row');
-    titleRow.append(
-      stateDot(state, stateLabel(state)),
-      el('h2', 'scc-rundetail__title', run.workflow),
-      el('span', 'scc-rundetail__state', stateLabel(state)),
-    );
-    head.appendChild(titleRow);
-
-    const facts = el('div', 'scc-rundetail__facts');
-    facts.append(el('span', undefined, run.title), chip(run.sha, 'sha'), chip(run.branch, 'branch'));
-    if (run.startedAt) {
-      facts.appendChild(
-        el('span', undefined, `${duration(run.startedAt, state === 'pending' ? '' : run.updatedAt)} elapsed`),
-      );
-    }
-    head.appendChild(facts);
+    const wrap = el('div', 'scc-detail scc-rundetail');
 
     const actions = el('div', 'scc-rundetail__actions');
     if (state === 'pending') {
       actions.appendChild(
         button({
           label: 'Cancel run',
-          variant: 'ghost',
           className: 'scc-btn--danger-hover',
           onClick: () => void cancel(run.id),
         }),
       );
     } else {
-      actions.appendChild(
-        button({ label: 'Re-run all', icon: 'refresh', onClick: () => void rerun(run.id, false) }),
-      );
       if (state === 'failure') {
         actions.appendChild(
           button({
-            label: 'Re-run failed',
+            label: 'Re-run failed jobs',
             variant: 'primary',
             onClick: () => void rerun(run.id, true),
           }),
         );
       }
+      actions.appendChild(
+        button({ label: 'Re-run all', icon: 'refresh', onClick: () => void rerun(run.id, false) }),
+      );
     }
     if (run.url) {
       const link = el('a', 'scc-btn scc-btn--ghost', 'Open on GitHub');
+      link.appendChild(createIcon('externalLink', { size: 13 }));
       link.href = run.url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       actions.appendChild(link);
     }
-    head.appendChild(actions);
-    wrap.appendChild(head);
+
+    const facts: HTMLElement[] = [chip(run.sha, 'sha'), chip(run.branch, 'branch'), el('span', undefined, run.event)];
+    if (run.startedAt) {
+      facts.push(el('span', 'scc-rundetail__elapsed', `${duration(run.startedAt, state === 'pending' ? '' : run.updatedAt)}${state === 'pending' ? ' so far' : ''}`));
+    }
+    const head = detailHead({
+      eyebrow: [statePill(stateLabel(state), runStateTone(state)), el('span', 'scc-rundetail__workflow', run.workflow)],
+      title: run.title,
+      titleClass: 'scc-rundetail__title',
+      facts,
+      actions,
+      onBack: () => drill.close(),
+      backLabel: 'Runs',
+    });
+    head.root.classList.add('scc-rundetail__head');
+    wrap.appendChild(head.root);
 
     if (!jobsLoaded) {
       const loading = el('div', 'scc-run-loading');
@@ -411,9 +429,11 @@ export function createChecksView(
       return wrap;
     }
 
-    const jobs = el('div', 'scc-rundetail__jobs');
+    const jobs = el('div', 'scc-lines scc-rundetail__jobs');
+    const passed = run.jobs.filter(job => runState(job) === 'success').length;
+    const failed = run.jobs.filter(job => runState(job) === 'failure').length;
     const summary = el('div', 'scc-rundetail__summary');
-    summary.append(el('h3', undefined, 'Jobs'), el('span', undefined, `${run.jobs.length} total · ${run.jobs.filter(job => runState(job) === 'success').length} passed · ${run.jobs.filter(job => runState(job) === 'failure').length} failed`));
+    summary.append(el('h3', undefined, 'Jobs'), el('span', undefined, [`${run.jobs.length} total`, `${passed} passed`, ...(failed ? [`${failed} failed`] : [])].join(' · ')));
     wrap.append(summary);
     for (const job of run.jobs) jobs.appendChild(buildJob(run.id, job));
     wrap.appendChild(jobs);

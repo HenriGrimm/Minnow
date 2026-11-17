@@ -1,4 +1,5 @@
 import '../styles/context-menu.css';
+import { placeFloating } from './components/position';
 import { markPreviewOccluder } from './preview-occlusion';
 import { shellOverlayClosed } from './shell-overlay-state';
 
@@ -355,21 +356,7 @@ function positionAtPoint(root: HTMLElement, x: number, y: number): void {
 
 /** Align a menu under an anchor control, flipping above it when it would clip. */
 function positionAtAnchor(root: HTMLElement, anchor: HTMLElement): void {
-  root.style.left = '0px';
-  root.style.top = '0px';
-  const rect = root.getBoundingClientRect();
-  const box = anchor.getBoundingClientRect();
-  const left = Math.min(
-    Math.max(EDGE_GAP, box.left),
-    Math.max(EDGE_GAP, window.innerWidth - rect.width - EDGE_GAP),
-  );
-  const below = box.bottom + 4;
-  const fitsBelow = below + rect.height + EDGE_GAP <= window.innerHeight;
-  const top = fitsBelow
-    ? below
-    : Math.max(EDGE_GAP, box.top - rect.height - 4);
-  root.style.left = `${left}px`;
-  root.style.top = `${top}px`;
+  placeFloating(root, anchor, { edgeGap: EDGE_GAP });
 }
 
 /** Place a submenu beside its owner row, flipping to the left when it would clip. */

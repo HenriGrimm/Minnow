@@ -77,6 +77,11 @@ test('chat switching restores a live browser page without reloading it', async (
       await settle();
       assert.equal(painted, tab.id, calls.join('\n'));
     }
+    assert.equal(stage.querySelector('.graphite-preview-servers'), null);
+    stage.dataset.surfaceMax = 'side';
+    await settle();
+    assert.equal(stage.querySelector('.graphite-preview-servers'), null, 'expanded browser must not mount dev server UI');
+    delete stage.dataset.surfaceMax;
     assert.deepEqual(navigations, [tab.id], 'the loaded document must survive every chat switch');
 
     // Native hidden instances can be evicted independently of the renderer's

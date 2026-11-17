@@ -1,6 +1,7 @@
 import { captureLaunchModel, issueLaunchModel, clearIssueLaunchModel, issueLaunchReasoning } from '../../models/launch-selection';
+import { favoriteReasoningLevel } from '../../models/reasoning-favorite';
 import { ensureBackgroundChat } from '../../state/background-chat';
-import { applyChatRunTargetChoice, isChatWorktreeSetupPending, type ChatRunTargetChoice } from '../../state/chat-worktree';
+import { applyChatRunTargetChoice, enableChatWorktreeOnSend, isChatWorktreeSetupPending, type ChatRunTargetChoice } from '../../state/chat-worktree';
 import { appendIssueActivity, appendIssueLinks, defaultIssuePlanPath, findIssueById, requireIssueStatusForRole, updateIssue } from '../../state/issues-store';
 import { formatCodeRefLabel } from '../../attachments/code-ref-format';
 import type { Attachment } from '../../attachments/types';
@@ -23,7 +24,9 @@ export async function runIssueWorkspaceChat(
     const issue = findIssueById(issueId);
     if (!issue || !canRunIssueWorkflow(issue)) return { ok: false, error: 'Issue is unavailable or closed' };
     const binding = selectedModel ?? await captureLaunchModel(issueLaunchModel(`${issue.workspacePath}\0${issueId}`));
-    const reasoningEffort = issueLaunchReasoning(`${issue.workspacePath}\0${issueId}`);
+    // An explicit launch choice wins; otherwise the model's favorite, then its default.
+    const reasoningEffort = issueLaunchReasoning(`${issue.workspacePath}\0${issueId}`)
+      ?? favoriteReasoningLevel(binding.providerId, binding.modelId);
     await ensureSessionsReady();
     const key = runTarget?.kind === 'automatic'
       ? `issue-chat-setup:${issue.workspacePath}:${issue.id}:${modeId}`
@@ -33,7 +36,13 @@ export async function runIssueWorkspaceChat(
     if (isChatWorktreeSetupPending(chat.id)) return { ok: false, error: 'Worktree setup is already running', chatId: chat.id };
     if (isChatStreaming(chat.id) || getChatRunActivity(chat.id, chat) === 'running') return { ok: false, error: 'This issue chat is already running', chatId: chat.id };
     if (reasoningEffort) chat.reasoningEffort = reasoningEffort;
-    if (runTarget) {
+    if (runTarget?.kind === 'automatic' && !chat.worktreeSetupRequired) {
+      // Like the composer, defer checkout creation and dependency installs to
+      // the first turn so launching returns at once and setup shows in the chat.
+      enableChatWorktreeOnSend(chat);
+      touchChat(chat);
+      scheduleSaveSessions();
+    } else if (runTarget) {
       const setup = applyChatRunTargetChoice(chat, runTarget);
       touchChat(chat);
       scheduleSaveSessions();

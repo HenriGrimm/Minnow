@@ -5,10 +5,10 @@
     "entryJsMaxKb": 1500,
     "entryCssMaxKb": 950,
     "largestLazyJsMaxKb": 3900,
-    "eagerJsMaxKb": 4820,
-    "totalAssetsMaxKb": 12475
+    "eagerJsMaxKb": 4830,
+    "totalAssetsMaxKb": 12485
   },
-  "inputBindingsRationale": "MIN-7 adds validated persistent input translation and a lazy Settings recorder/catalog, plus its searchable manual page. Measured 4808 KB eager and 12459 KB total assets; allow 20 KB eager and 35 KB assets above the prior ceilings. Entry, CSS, lazy chunk and startup ceilings are unchanged.",
+  "inputBindingsRationale": "MIN-7 adds validated persistent input translation and a lazy Settings recorder/catalog, plus its searchable manual page. Initially measured 4808 KB eager and 12459 KB total assets. Integration with current main, MIN-14 worktree titles and MIN-1047 reasoning favorites measures 4826.8 KB eager and 12479.9 KB assets; allow an additional 10 KB each for this combined graph (4830 KB eager, 12485 KB assets). Entry, CSS, lazy chunk and startup ceilings are unchanged.",
   "startup": {
     "appReadyHarnessMaxMs": 2500
   }
