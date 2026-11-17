@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" data-theme="swamp-dark" class="mn-graphite-apps">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engine UI fixture — simulated Mac</title>
+<link rel="stylesheet" href="/src/styles/tokens.css">
+<link rel="stylesheet" href="/src/styles/icons.css">
+<link rel="stylesheet" href="/src/styles/models-page.css">
+<link rel="stylesheet" href="/src/styles/models-workspace.css">
+<link rel="stylesheet" href="/src/styles/models-graphite.css">
+<style>
+  :root { --font-ui: system-ui; --font-mono: ui-monospace, monospace; --mn-workbench-rail-w: 220px; --mn-workbench-rail-inset: 10px; --mn-workbench-gutter: 20px; }
+  body { margin: 0; background: var(--mn-bg); color: var(--mn-fg); font: 14px system-ui; }
+  #modelsView { height: 100dvh; }
+</style>
+<body>
+<script type="module">
+  import { mountEngineSection, teardownEngineSection } from '/src/ui/models/engine-panel.ts';
+  import { mountGraphiteModelsChrome } from '/src/ui/models/graphite-chrome.ts';
+  const html = await fetch('/index.html').then(r => r.text());
+  const page = new DOMParser().parseFromString(html, 'text/html').querySelector('#modelsView');
+  document.body.append(page);
+  page.classList.add('is-open', 'is-inspector-hidden');
+  const mtplx = { id: 'mtplx', supported: true, installed: true, version: '2.12.0', description: 'Apple Silicon inference', reason: null };
+  window.WebSocket = class {
+    static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+    readyState = 0;
+    constructor() { queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send(value) {
+      const request = JSON.parse(value);
+      if (request.type === 'open') queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ id: request.id, type: 'headers', status: 200, contentType: 'text/event-stream' }) }));
+    }
+    close() { this.readyState = 3; this.onclose?.(); }
+  };
+  window.fetch = async (url) => {
+    if (url === '/api/models/llama-engines') return Response.json({ active: 'upstream', build: null, engines: [
+      { id: 'upstream', label: 'llama.cpp', kind: 'upstream', installed: true, supported: true, description: 'Official GGUF runtime.', binaryPath: '/Users/fixture/.minnow/models-runtime/llama-cpp/llama-server' },
+      { id: 'turbo3', label: 'TurboQuant', kind: 'fork', installed: false, supported: false, unsupportedReason: 'CUDA requires an NVIDIA GPU.', description: 'CUDA KV cache compression.' },
+    ] });
+    if (url === '/api/models/llama-runtime') return Response.json({ installedVersion: 'b10448', pinnedVersion: 'b10448', engineId: 'upstream', variant: 'metal', preferredVariant: 'metal', installableVariants: ['metal'], installable: true });
+    if (url === '/api/models/serve') return Response.json({ serves: [] });
+    if (url === '/api/servers') return Response.json({ servers: [mtplx, { id: 'mlx-lm', description: 'Metal-native inference for MLX weights.', installed: false, supported: true, installable: true }] });
+    if (url === '/api/models/mtplx/runtime?refresh=1') { mtplx.version = '2.12.3'; return Response.json(mtplx); }
+    throw new Error('Unexpected fixture request: ' + url);
+  };
+  function navigate(section) {
+    teardownEngineSection();
+    page.dataset.modelsSection = section;
+    page.querySelectorAll('.models-section').forEach(node => node.classList.toggle('is-active', node.id === 'modelsSection-' + section));
+    page.querySelectorAll('[data-models-nav]').forEach(node => node.setAttribute('aria-current', node.dataset.modelsNav === section ? 'page' : 'false'));
+    if (section === 'engine') void mountEngineSection();
+  }
+  mountGraphiteModelsChrome(page, navigate);
+  page.querySelectorAll('[data-models-nav]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.modelsNav)));
+  navigate('engine');
+</script>

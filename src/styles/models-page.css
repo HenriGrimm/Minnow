@@ -3722,6 +3722,30 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   width: 7rem;
 }
 
+.models-engine__update {
+  margin-block: 12px;
+  font-size: 12px;
+}
+
+.models-engine__update > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.models-engine__update-methods {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 16px;
+  margin-block: 12px;
+}
+
+.models-engine__update-methods dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--mn-fg-muted);
+  font: 11px/1.6 var(--font-mono);
+}
+
 @container models (max-width: 560px) {
   .models-engine {
     grid-template-columns: auto minmax(0, 1fr);

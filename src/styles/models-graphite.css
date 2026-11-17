@@ -38,7 +38,7 @@
 }
 
 .mn-graphite-apps #modelsView .models-nav__label.has-graphite-label .models-nav__original-label,
-.mn-graphite-apps #modelsView :is([data-models-nav='thinking'], [data-models-nav='engine']) {
+.mn-graphite-apps #modelsView [data-models-nav='thinking'] {
   display: none;
 }
 
@@ -439,6 +439,57 @@
 }
 
 /* Settings-backed pages share the Models stage without changing Settings. */
+.mn-graphite-apps #modelsView #modelsEngineBody {
+  max-width: 1000px;
+}
+
+.mn-graphite-apps #modelsView #modelsEngineBody > .models-block {
+  margin-block: 0 16px;
+  padding: 16px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.mn-graphite-apps #modelsView #modelsEngineBody .models-block__label {
+  margin-block: 0 6px;
+  color: var(--mn-fg);
+  font-size: 14px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.mn-graphite-apps #modelsView .models-engine-list {
+  border: 0;
+  border-radius: 0;
+}
+
+.mn-graphite-apps #modelsView .models-engine {
+  padding: 14px 0;
+  column-gap: 10px;
+}
+
+.mn-graphite-apps #modelsView .models-engine.is-active {
+  background: transparent;
+}
+
+.mn-graphite-apps #modelsView .models-engine__actions {
+  max-width: 240px;
+}
+
+@container models (width < 900px) {
+  .mn-graphite-apps #modelsView .models-engine {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .mn-graphite-apps #modelsView .models-engine__actions {
+    grid-column: 2;
+    max-width: none;
+    justify-content: flex-start;
+  }
+}
+
 .models-voice-overview,
 .models-providers-heading,
 .router-index,
