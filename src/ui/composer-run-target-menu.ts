@@ -5,11 +5,12 @@
 
 import {
   filterUserFacingWorktrees,
-  formatWorktreeOptionLabel,
   getPrincipalWorktree,
   parseWorktreeListPorcelain,
   worktreePathsEqual,
 } from '../lib/worktree-list-parse.ts';
+import { formatWorktreeOptionLabel } from '../lib/worktree-title.ts';
+import { displayWorktreeTitle, worktreeChatTitle } from './worktree-display.ts';
 import {
   composerGitRepoRoot,
   type ChatRunTargetChoice,
@@ -126,7 +127,9 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
     const current = menuSection(options.currentPath ? 'Current worktree' : 'Local workspace');
     const name = document.createElement('p');
     name.className = 'composer-run-target-menu__current';
-    name.textContent = options.currentPath ? options.currentName || options.currentPath.replace(/\\/g, '/').split('/').pop() || 'Worktree' : getWorkspaceLabel();
+    name.textContent = options.currentPath
+      ? options.currentName || displayWorktreeTitle({ path: options.currentPath, branch: options.currentBranch })
+      : getWorkspaceLabel();
     name.title = options.currentPath || repoRoot;
     current.append(name, menuItem(options.currentBranch ? `Switch branch · ${options.currentBranch}` : 'Select branch…', options.onSelectBranch,
       { icon: 'branch', keepOpen: true }, options.closeMenu));
@@ -203,21 +206,22 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
       for (const wt of entries) {
         const label = formatWorktreeOptionLabel(wt, repoRoot, {
           principalPath: principal?.path,
+          chatTitleFor: worktreeChatTitle,
         });
-        menu.appendChild(
-          menuItem(
-            label,
-            () => {
-              void options.onPick({
-                kind: 'attach',
-                path: wt.path,
-                branch: wt.branch,
-              });
-            },
-            { icon: 'worktree', disabled: Boolean(options.currentPath && worktreePathsEqual(wt.path, options.currentPath)) },
-            options.closeMenu,
-          ),
+        const item = menuItem(
+          label,
+          () => {
+            void options.onPick({
+              kind: 'attach',
+              path: wt.path,
+              branch: wt.branch,
+            });
+          },
+          { icon: 'worktree', disabled: Boolean(options.currentPath && worktreePathsEqual(wt.path, options.currentPath)) },
+          options.closeMenu,
         );
+        item.title = [wt.branch, wt.path].filter(Boolean).join('\n');
+        menu.appendChild(item);
       }
       options.reopenMenu();
     },

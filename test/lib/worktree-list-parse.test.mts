@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {
   filterUserFacingBranches,
   filterUserFacingWorktrees,
-  formatWorktreeOptionLabel,
   getPrincipalWorktree,
   isMinnowBoardBranch,
   parseWorktreeListPorcelain,
   worktreePathsEqual,
 } from '../../src/lib/worktree-list-parse.ts';
+import { formatWorktreeOptionLabel } from '../../src/lib/worktree-title.ts';
 
 describe('parseWorktreeListPorcelain', () => {
   it('parses multiple worktrees with branches', () => {
@@ -74,7 +74,7 @@ describe('formatWorktreeOptionLabel', () => {
       },
       '/repo/main',
     );
-    assert.match(task, /^minnow\/board\/x\/task\/y — task-1$/);
+    assert.equal(task, 'Board task y');
   });
 
   it('labels the git principal as main worktree when Code workspace is a linked slot', () => {
@@ -98,19 +98,23 @@ describe('formatWorktreeOptionLabel', () => {
     assert.equal(workspaceSlot, 'tool-test-run — workspace');
   });
 
-  it('does not repeat a board branch suffix when it is also the worktree folder', () => {
-    for (const leaf of ['integration', 'vin-10-expo-app-wave1-W1-D']) {
+  it('titles board slots instead of showing their generated branch and folder', () => {
+    const expected: Record<string, string> = {
+      integration: 'Board integration',
+      'vin-10-expo-app-wave1-W1-D': 'VIN-10 Expo app · Wave 1 · W1-D',
+    };
+    for (const [leaf, title] of Object.entries(expected)) {
       const branch = `minnow/board/vin-10-expo-app/${leaf}`;
       assert.equal(formatWorktreeOptionLabel({
         path: `/home/.minnow/worktrees/board/${leaf}`,
         head: 'abc', branch, detached: false,
-      }, '/repo/main'), branch);
+      }, '/repo/main'), title);
     }
 
     assert.equal(formatWorktreeOptionLabel({
       path: '/home/.minnow/worktrees/board/task-1',
       head: 'abc', branch: 'minnow/board/vin-10-expo-app/task/W1-D', detached: false,
-    }, '/repo/main'), 'minnow/board/vin-10-expo-app/task/W1-D — task-1');
+    }, '/repo/main'), 'Board task W1-D');
   });
 });
 

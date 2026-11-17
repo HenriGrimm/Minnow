@@ -34,6 +34,7 @@ import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import { checkoutBranchWithChoice, checkoutRecoveryActions } from './git-checkout-confirm';
 import { chatsBoundToWorktree, detachChatsFromRemovedWorktree } from './chat-checkout-guard';
+import { displayWorktreeTitle } from './worktree-display';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
 import { gitUiCtx, inferGitUiLabel, runGitUiOp, type GitUiOpResult } from './git-ui-op';
 import { createIcon } from './icon';
@@ -1172,7 +1173,7 @@ export function createWorktreesView(
       }
 
       const row = refRow({
-          name: worktree.path.split(/[\\/]/).filter(Boolean).pop() ?? worktree.path,
+          name: displayWorktreeTitle(worktree, { principalPath: principal?.path, workspaceRoot: workspace }),
           current: isActive,
           meta,
           actions,

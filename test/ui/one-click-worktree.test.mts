@@ -145,7 +145,11 @@ test('one worktree control switches branches in its checkout and returns to Loca
     const names = [...switchable.querySelectorAll('button')].map(b => b.textContent);
     assert.equal(names.includes('main'), false, 'workspace branch is locked in another checkout');
     assert.equal(names.includes('other'), false, 'other worktree branch is not a switch target');
-    assert.ok(item('other · other'), 'a branch held elsewhere routes to its checkout instead');
+    const held = [...document.querySelectorAll('#composerRunTargetMenu .composer-run-target-menu__section')]
+      .find(section => section.textContent?.startsWith('In other worktrees'))!;
+    // Titled once: the folder and branch are both `other`, so it is not repeated (MIN-14).
+    assert.deepEqual([...held.querySelectorAll('button')].map(b => b.textContent), ['repo · main', 'other'],
+      'a branch held elsewhere routes to its checkout instead');
     item('feature/search')!.click();
     await settle(() => chat.gitBranch === 'feature/search' && !button.disabled);
     assert.ok(requests.some(body => body.op === 'checkoutSwitch' && body.branch === 'feature/search' && body.cwd === '/repo/login-fix'));

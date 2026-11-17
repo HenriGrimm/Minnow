@@ -4,6 +4,7 @@ import type { GitCheckoutSwitchInput, GitOpResult, GitSavedCheckoutChanges } fro
 import { forgeRefresh, prList, type ForgeResult } from '../state/forge-api';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
+import { displayWorktreeTitle } from './worktree-display';
 import { displayRemoteRef, isSkippedRemoteRef, shortLocalNameFromRemote } from '../lib/git-ref-start.mjs';
 import { parseGitError } from '../lib/git-error-parse';
 import { actionApi } from '../state/actions-api';
@@ -120,10 +121,11 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     el.textContent = value;
     return el;
   }
-  function worktreeName(wt?: Pick<ParsedWorktree, 'path'>) {
+  function worktreeName(wt?: Pick<ParsedWorktree, 'path'> & Partial<Pick<ParsedWorktree, 'branch' | 'detached'>>) {
     const path = wt?.path ?? state.cwd;
     if (panelPathsEqual(path, state.workspace)) return 'Workspace';
-    return path.replace(/\\/g, '/').split('/').pop() || 'Worktree';
+    const branch = wt?.branch ?? (panelPathsEqual(path, state.cwd) ? state.branch : undefined);
+    return displayWorktreeTitle({ path, branch, detached: wt?.detached }, { workspaceRoot: state.workspace });
   }
   /** Plain-language failure; the raw output goes behind Technical details. */
   function describeFailure(result: GitOpResult, input: GitCheckoutSwitchInput): string {

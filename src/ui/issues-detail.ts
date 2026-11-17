@@ -118,6 +118,7 @@ import {
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { isLocalServerAvailable } from '../tools/config';
 import { createIcon } from './icon';
+import { worktreeTitle } from '../lib/worktree-title';
 import { isMacComposerPlatform } from './composer-shortcuts';
 import { createBackToChatButton } from './back-to-chat';
 import { returnToChat } from '../os/router';
@@ -939,15 +940,18 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (related) rail.appendChild(related);
 
     rail.appendChild(buildChatsSection(issue));
-    const worktreePath = issueWorkChat(issue)?.worktreeRoot;
+    const workChat = issueWorkChat(issue);
+    const worktreePath = workChat?.worktreeRoot;
     if (worktreePath) {
       const worktree = document.createElement('details');
       worktree.className = 'issues-detail__worktree';
       const summary = document.createElement('summary');
-      summary.append(createIcon('gitWorktree', { size: 14 }), document.createTextNode('Worktree'));
+      const title = worktreeTitle({ path: worktreePath, branch: workChat?.gitBranch });
+      summary.append(createIcon('gitWorktree', { size: 14 }), document.createTextNode(title === 'Worktree' ? 'Worktree' : `Worktree · ${title}`));
       const path = document.createElement('p');
       path.className = 'issues-work-path';
       path.textContent = worktreePath;
+      if (workChat?.gitBranch) path.title = `Branch ${workChat.gitBranch}`;
       worktree.append(summary, path);
       rail.appendChild(worktree);
     }
