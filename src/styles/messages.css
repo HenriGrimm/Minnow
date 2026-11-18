@@ -233,15 +233,16 @@
   /* Bottom of .chat-viewport = just above composer / approval / question strips */
   bottom: var(--chat-jump-gap, 12px);
   z-index: 12;
-  padding: 8px 16px;
-  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
   border: 1px solid var(--mn-border);
   background: var(--mn-surface-1);
   color: var(--mn-fg);
-  font-size: 12px;
-  font-family: inherit;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
+  font-size: 16px;
   box-shadow: var(--shadow-popover);
   cursor: pointer;
   opacity: 1;

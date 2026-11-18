@@ -9,6 +9,9 @@ import { discoverBrowser, launchBrowser } from '../../server/browser-driver/inde
 test('Code and Automations lay out their chat transcripts', { timeout: 30_000 }, async t => {
   const browser = await discoverBrowser();
   if (!browser.available) return t.skip(browser.detail);
+  const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
+  const jumpButton = html.match(/<button [^>]*id="chatJumpLatest"[^>]*>.*?<\/button>/)?.[0];
+  assert.ok(jumpButton, 'Code transcript has a jump button');
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-layout-'));
   const styles = await Promise.all([
     'tokens', 'scrollbars', 'global', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
@@ -45,7 +48,7 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
             <button class="message-actions__trigger" aria-label="Message actions">⋮</button>
           </div>
         </div>
-        <div class="chat-viewport-dock"><button class="chat-jump-latest">Jump to latest</button></div>
+        <div class="chat-viewport-dock">${jumpButton.replace('chat-jump-latest hidden', 'chat-jump-latest')}</div>
         <div class="composer-notices">
           <div class="composer-run-status" hidden>Working</div>
           <section class="managed-chat-requests managed-chat-requests--docked" hidden>Waiting for interrupted work to stop…</section>
@@ -101,6 +104,8 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
     assert.ok(Math.abs(composer.width - expected) < 1, JSON.stringify(composer));
     assert.equal(composer.width, transcript.width);
     assert.equal(composer.left, transcript.left);
+    assert.equal(jump.width, 36);
+    assert.equal(jump.height, 36);
     assert.ok(Math.abs((jump.left + jump.right) - (composer.left + composer.right)) <= 1, 'jump is centered on the composer');
     assert.equal(group.left, transcript.left, `sub-agent group aligns with messages at ${viewport}px`);
     assert.equal(group.right, transcript.right);
@@ -110,6 +115,10 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
     if (expected === 328) assert.ok(cards[1].top >= cards[0].bottom);
     assert.ok(metrics.left >= composer.left && metrics.right <= composer.right);
   }
+  assert.deepEqual(await session.evaluate(`(() => {
+    const button = document.querySelector('#chatJumpLatest');
+    return [button.getAttribute('aria-label'), button.textContent.trim(), Boolean(button.querySelector('.fi-rr-arrow-down[aria-hidden="true"]'))];
+  })()`), ['Jump to latest messages', '', true]);
 
   await session.client.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, mobile: false, deviceScaleFactor: 1 });
   await session.evaluate(`document.querySelector('#chatArea').insertAdjacentHTML('beforeend', \`
