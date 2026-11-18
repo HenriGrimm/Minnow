@@ -6,7 +6,9 @@ import { after, afterEach, describe, test } from 'node:test';
 import { modelCache } from '../../src/app-state.ts';
 import {
   getModelReasoningDefault,
+  MODEL_REASONING_DEFAULTS_STORAGE_KEY,
   resetModelReasoningDefaultsForTests,
+  saveModelReasoningDefault,
 } from '../../src/config/model-reasoning-defaults.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
@@ -29,6 +31,18 @@ describe('model reasoning defaults', { concurrency: false }, () => {
     modelCache.clear();
     resetModelReasoningDefaultsForTests();
     setStorageModeForTests(null);
+  });
+
+  test('Cursor favorites migrate from an exact variant and can be cleared from another variant', async () => {
+    setStorageModeForTests('browser');
+    const high = encodeModelSelectKey('cursor-agent-cli', 'model-high-fast');
+    const low = encodeModelSelectKey('cursor-agent-cli', 'model-low');
+    const thinking = encodeModelSelectKey('cursor-agent-cli', 'model-high-thinking');
+    localStorage.setItem(MODEL_REASONING_DEFAULTS_STORAGE_KEY, JSON.stringify({ [high]: 'high' }));
+    assert.equal(getModelReasoningDefault(low), 'high');
+    assert.equal(getModelReasoningDefault(thinking), undefined);
+    await saveModelReasoningDefault(low, null);
+    assert.equal(getModelReasoningDefault(high), undefined);
   });
 
   test('picker footer appears for level-capable models and persists a selection', async () => {

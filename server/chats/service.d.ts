@@ -113,7 +113,7 @@ export function createChatCommandService(options: {
   admitWorkspacePreparation?: (chatId: string, intent: import('./workspace-preparation.js').ChatWorkspaceIntent) => void;
   applyWorkspaceChoice?: (caller: ChatCaller, input: Parameters<ChatCommandService['chooseWorkspace']>[1]) => Promise<{ chat: import('./repository.js').ChatShell }>;
   admitCausality?: (input: { caller: ChatCaller; command: ChatCommand }) => { causalRootId: string; causalDepth: number; agentCoordination?: boolean };
-  resolveModelSelection?: (input: { target: ChatTargetContext; caller: ChatCaller; input: ChatSendInput | Parameters<ChatCommandService['configure']>[1] | Parameters<ChatCommandService['fork']>[1]; selection: ModelSelection }) =>
+  resolveModelSelection?: (input: { target: ChatTargetContext; caller: ChatCaller; input: ChatSendInput | Parameters<ChatCommandService['configure']>[1] | Parameters<ChatCommandService['fork']>[1]; selection: ModelSelection; resolveCliDefaults?: boolean }) =>
     Promise<ModelSelection | { selection: ModelSelection }> | ModelSelection | { selection: ModelSelection };
   feature?: () => AgentConversationsFeature;
   ordinaryFeature?: () => import('./contracts.js').OrdinaryChatExecutionFeature;

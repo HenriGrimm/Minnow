@@ -13,6 +13,8 @@ import { attachmentImageDataUrl } from '../attachments/attachment-image';
 import { chatReadOnlyReason } from '../state/chat-relationships';
 import { validateChatRequest, validateChatSendIntent, type ChatRequest } from '../../server/chats/contracts';
 import { acceptFirstMessageSubmission } from './first-message-submission';
+import { waitForModelReasoningDefaultsSave } from '../config/model-reasoning-defaults';
+import { usesCliReasoningFavorite } from '../models/cursor-variants.mjs';
 
 const pending = new Map<string, { fingerprint: string; id: string }>();
 const pendingDeletes = new Map<string, string>();
@@ -226,6 +228,7 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
     }
     if (images.length) payload.images = images;
     if (action === 'send') {
+      if (usesCliReasoningFavorite(chat.providerId)) await waitForModelReasoningDefaultsSave();
       let selectedIntent = data.intent;
       if (!selectedIntent) {
         const slash = parseSlashCommand(data.text ?? '');

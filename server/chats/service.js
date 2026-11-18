@@ -178,7 +178,7 @@ export function createChatCommandService({
     return Boolean(record.captured?.delivery && (repository.getChat(record.chatId).subAgentAutoResumeBlocked === true ||
       record.captured.delivery.cancellationEpoch !== undefined && record.captured.delivery.cancellationEpoch !== repository.getCancellationEpoch(record.chatId)));
   }
-  async function selectionFor(target, caller, input) {
+  async function selectionFor(target, caller, input, resolveCliDefaults = true) {
     const options = {
       ...(target.chat.reasoningEffort ? { reasoningEffort: target.chat.reasoningEffort } : {}),
       ...(target.chat.cliFastMode === true ? { fastMode: true } : {}),
@@ -188,8 +188,8 @@ export function createChatCommandService({
       ...(Object.keys(options).length ? { options } : {}),
     };
     const resolved = typeof resolveModelSelection === 'function'
-      ? await resolveModelSelection({ target, caller, input, selection: stored })
-      : await resolveAgentModelSelection({ parentSelection: stored }, { workspacePath: target.chat.worktreeRoot || target.chat.workspacePath });
+      ? await resolveModelSelection({ target, caller, input, selection: stored, resolveCliDefaults })
+      : await resolveAgentModelSelection({ parentSelection: stored, resolveCliDefaults }, { workspacePath: target.chat.worktreeRoot || target.chat.workspacePath });
     return checked(validateModelSelection(resolved?.selection ?? resolved));
   }
   async function sendCommand(caller, input, legacyCompletion = null) {
@@ -365,7 +365,7 @@ export function createChatCommandService({
         if (!state.eligible) failure(state.reason === 'legacy_owner_active' ? 'ownership_conflict' : 'capability_unavailable', 'Ordinary execution cannot promote this conversation: ' + state.reason);
       };
       assertEligible();
-      const selection = await selectionFor(target, caller, { chatId: input.chatId });
+      const selection = await selectionFor(target, caller, { chatId: input.chatId }, false);
       if (typeof captureProfile !== 'function') failure('capability_unavailable', 'The server cannot capture an ordinary execution profile');
       const profile = await captureProfile({ target, selection, caller, input: { chatId: input.chatId, message: '' } });
       if (!profile?.snapshot?.policy) failure('capability_unavailable', 'The ordinary execution profile is incomplete');

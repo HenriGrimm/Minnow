@@ -8,6 +8,7 @@ import { decodeModelSelectKey } from '../lib/model-select-key';
 import { configureManagedChatModel, managedModelReadOnlyReason } from './managed-chat-model';
 import { scheduleCapabilityProbeForSelectValue } from '../providers/first-load-probe';
 import { favoriteReasoningLevel } from '../models/reasoning-favorite';
+import { usesCliReasoningFavorite } from '../models/cursor-variants.mjs';
 import {
   getActiveChat,
   scheduleSaveSessions,
@@ -38,7 +39,7 @@ export function onActiveChatModelChange(selectValue: string, chat = getActiveCha
     if (!selected) { showToast('Select a model with its provider.', 'error'); return; }
     if (selected.providerId === chat.providerId && selected.modelId === chat.modelId) return;
     // A new model starts on the user's favorite level, else the model default.
-    const favorite = favoriteReasoningLevel(selected.providerId, selected.modelId);
+    const favorite = usesCliReasoningFavorite(selected.providerId) ? undefined : favoriteReasoningLevel(selected.providerId, selected.modelId);
     void configureManagedChatModel(chat, { ...selected, options: favorite ? { reasoningEffort: favorite } : {} })
       .catch(error => showToast(String(error?.message || error), 'error')).finally(syncActiveChatModelUi);
     syncActiveChatModelUi();

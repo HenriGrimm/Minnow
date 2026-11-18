@@ -23,6 +23,18 @@ export function cursorVariantFamilyKey(modelId) {
   return parts ? `${parts.baseId}\u001f${parts.thinking ? 'thinking' : 'regular'}` : '';
 }
 
+/** Keep a favorite stable across Cursor effort and Fast variants. */
+export function reasoningFavoriteKey(value) {
+  const prefix = 'cursor-agent-cli\u001f';
+  if (!value.startsWith(prefix)) return value;
+  const id = value.slice(prefix.length);
+  return id && !id.includes('\u001f') ? prefix + cursorVariantFamilyKey(id) : value;
+}
+
+export function usesCliReasoningFavorite(id) {
+  return ['codex-cli', 'claude-code-cli', 'cursor-agent-cli'].includes(id);
+}
+
 /** Use only IDs advertised by this account; never manufacture a Cursor model ID. */
 export function resolveCursorVariantId(selectedId, availableIds, { effort, fast } = {}) {
   const selected = cursorVariantParts(selectedId);

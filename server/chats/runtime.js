@@ -173,7 +173,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       snapshot: await captureChatProfile(target.chat, target.scope, { adapters: preparationAdapters,
         workspaceIds: target.currentPolicy.workspaceIds, modelSelection: selection }),
     }),
-    resolveModelSelection: ({ target, selection, input }) => resolveAgentModelSelection({ target: selection }, {
+    resolveModelSelection: ({ target, selection, input, resolveCliDefaults }) => resolveAgentModelSelection({ target: selection, resolveCliDefaults }, {
       adapters: modelAdapters, workspacePath: target.scope.canonicalKey,
       ...(input.images?.length ? { request: { messages: [{ role: 'user', content: input.images.map(image => ({ type: 'image_url', image_url: { url: image.dataUrl } })) }] } } : {}),
     }),
