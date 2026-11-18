@@ -239,6 +239,9 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
     await import('../ui/main-column-overlay');
   await closeOtherCodeStageViews('boards');
 
+  // Route navigation and explicit plan launch can both await the same teardown.
+  // Don't replace a mount that the other caller has already created.
+  if (isBoardsViewOpen()) return;
   const area = document.getElementById('chatArea');
   if (!area) return;
 
@@ -530,6 +533,7 @@ export async function mountBoardFromPlan(
   handlers: AskPaneHandlers,
 ): Promise<{ boardId: string } | null> {
   const createBoard = handlers.createBoard ?? createBoardFromPlan;
+  const workspacePath = getWorkspacePath();
   const wrap = el('div', 'ov2-create');
   wrap.dataset.planLaunch = 'true';
   wrap.appendChild(el('h2', 'ov2-create__title', 'Creating board…'));
@@ -538,10 +542,10 @@ export async function mountBoardFromPlan(
   pane.replaceChildren(wrap);
   try {
     const { boardId } = await createBoard(planPath);
-    if (pane.contains(wrap)) handlers.onCreated(boardId);
+    if (pane.contains(wrap) && getWorkspacePath() === workspacePath) handlers.onCreated(boardId);
     return { boardId };
   } catch (err) {
-    if (!pane.contains(wrap)) return null;
+    if (!pane.contains(wrap) || getWorkspacePath() !== workspacePath) return null;
     wrap.querySelector('h2')!.textContent = 'Could not create board';
     const retry = button({
       label: 'Retry',

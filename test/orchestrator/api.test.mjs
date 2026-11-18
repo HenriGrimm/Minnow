@@ -17,6 +17,7 @@ import { appendEvent, boardExists, createBoard as createJournal, journalPath, re
 import { createBoardsMiddleware, matchRoute, ROUTES, setEffectorFactory } from '../../server/orchestrator/middleware.js';
 import { getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { runProcess } from '../../server/process-runner.js';
+import { createWorkspaceScopeMiddleware } from '../../server/runtime/workspace-scope-middleware.js';
 import { ensureBoardIntegration, resetEnsuredBoards } from '../../server/orchestrator/worktree-lifecycle.js';
 import { checkpointAttempt, restoreCheckpoint } from '../../server/orchestrator/checkpoint.js';
 import { getWorktreeSlotPath } from '../../server/worktree/paths.js';
@@ -77,11 +78,12 @@ beforeEach(async () => {
   );
 
   const middleware = createBoardsMiddleware();
+  const scope = createWorkspaceScopeMiddleware();
   server = http.createServer((req, res) => {
-    void middleware(req, res, () => {
+    scope(req, res, () => void middleware(req, res, () => {
       res.statusCode = 404;
       res.end('not found');
-    });
+    }));
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -104,13 +106,16 @@ after(() => {
  * @param {string} method
  * @param {string} pathname
  * @param {unknown} [body]
+ * @param {string} [workspace]
  */
-async function call(method, pathname, body) {
+async function call(method, pathname, body, workspace) {
   const response = await fetch(`${base}${pathname}`, {
     method,
-    ...(body === undefined
-      ? {}
-      : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    headers: {
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(workspace ? { 'X-Minnow-Workspace': workspace } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await response.text();
 /** @type {any} */
@@ -888,6 +893,62 @@ describe('GET /api/boards — workspace scope (MIN-752)', () => {
       resetBoardResumeGateForTests();
       await setWorkspaceRoot(originalRoot);
       await fs.rm(emptyRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reclaims an empty reservation and isolates unreadable journals', async () => {
+    await createJournal('demo-board');
+    await createJournal('broken');
+    await fs.writeFile(journalPath('broken'), '{invalid journal\n');
+    assert.deepEqual((await call('GET', '/api/boards')).body.boards, []);
+    const [first, second] = await Promise.all([1, 2].map(() =>
+      call('POST', '/api/boards', { planPath: 'demo.md', markdown: PLAN })));
+    assert.deepEqual([first.status, second.status].sort(), [200, 201]);
+    assert.equal(first.body.boardId, 'demo-board');
+    assert.equal(second.body.boardId, 'demo-board');
+    assert.deepEqual((await call('GET', '/api/boards')).body.boards.map(b => b.boardId), ['demo-board']);
+    const events = (await call('GET', '/api/boards/demo-board/journal')).body.events;
+    assert.equal(events.filter(event => event.type === 'board.created').length, 1);
+    assert.equal(await fs.readFile(journalPath('broken'), 'utf8'), '{invalid journal\n');
+  });
+
+  it('opens a branch-only plan from a linked checkout without taking over the original board', async () => {
+    const originalRoot = getDefaultWorkspaceRoot();
+    const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-board-branch-'));
+    const repo = path.join(fixture, 'repo');
+    const branch = path.join(fixture, 'branch');
+    await fs.mkdir(repo);
+    const git = async (cwd, ...args) => {
+      const result = await runProcess('git', args, { cwd });
+      assert.equal(result.code, 0, result.stderr);
+    };
+    const planPath = 'documentation/plans/branch.md';
+    try {
+      await git(repo, 'init', '-b', 'main');
+      await git(repo, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+        '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'base');
+      await setWorkspaceRoot(repo);
+      const original = await call('POST', '/api/boards', { planPath, markdown: PLAN });
+      assert.equal(original.status, 201);
+      await git(repo, 'worktree', 'add', '-b', 'feature/plan', branch);
+      await fs.mkdir(path.dirname(path.join(branch, planPath)), { recursive: true });
+      await fs.writeFile(path.join(branch, planPath), PLAN);
+      await git(branch, 'add', planPath);
+      await git(branch, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+        '-c', 'commit.gpgsign=false', 'commit', '-m', 'branch plan');
+      const created = await call('POST', '/api/boards', { planPath, baseBranch: 'feature/plan' }, branch);
+      assert.equal(created.status, 201, JSON.stringify(created.body));
+      assert.notEqual(created.body.boardId, original.body.boardId);
+      assert.equal(created.body.state.baseBranch, 'feature/plan');
+      assert.equal(created.body.state.workspacePath, branch);
+      assert.deepEqual((await call('GET', '/api/boards', undefined, branch)).body.boards.map(b => b.boardId), [created.body.boardId]);
+      const reopened = await call('POST', '/api/boards', { planPath: './' + planPath }, branch);
+      assert.equal(reopened.status, 200);
+      assert.equal(reopened.body.boardId, created.body.boardId);
+      assert.deepEqual((await call('GET', '/api/boards')).body.boards.map(b => b.boardId), [original.body.boardId]);
+    } finally {
+      await setWorkspaceRoot(originalRoot);
+      await fs.rm(fixture, { recursive: true, force: true });
     }
   });
 
