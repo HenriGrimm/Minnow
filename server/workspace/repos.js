@@ -17,7 +17,7 @@ import path from 'node:path';
 import { runProcess } from '../process-runner.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { normalizePathForComparison } from './safe-path.js';
-import { parseRemoteHost } from '../git/forge-ops.js';
+import { parseRemoteHost } from '../git/remote-url.js';
 
 /** How deep below the workspace root to look for child repos. */
 export const REPO_SCAN_DEPTH = 2;

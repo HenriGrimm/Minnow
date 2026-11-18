@@ -3,6 +3,9 @@ import { runGh } from './gh-cli.js';
 import { createGhRequests } from './gh-requests.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { parseRemoteHost } from './remote-url.js';
+
+export { parseRemoteHost };
 
 const GH_TIMEOUT_MS = 45_000;
 const GH_LOG_TIMEOUT_MS = 90_000;
@@ -42,46 +45,6 @@ export function processError(result, fallback) {
   const retry = text.match(/Retry after \d{4}-\d{2}-\d{2}T[\d:.]+Z/i)?.[0];
   const lines = text.replace(/^[Xx✗]\s+/, '').split('\n').filter((line) => line !== retry);
   return [...lines.slice(0, retry ? 5 : 6), ...(retry ? [retry] : [])].join('\n');
-}
-
-/**
- * @param {string} url
- * @returns {{ host: string, slug: string, hostname: string }}
- */
-export function parseRemoteHost(url) {
-  const raw = String(url ?? '').trim();
-  if (!raw) return { host: 'none', slug: '', hostname: '' };
-
-  let hostname = '';
-  let pathPart = '';
-
-  const scp = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(raw);
-  if (scp && !raw.includes('://')) {
-    hostname = scp[1] ?? '';
-    pathPart = scp[2] ?? '';
-  } else {
-    try {
-      const parsed = new URL(raw);
-      hostname = parsed.hostname;
-      pathPart = parsed.pathname;
-    } catch {
-      return { host: 'other', slug: '', hostname: '' };
-    }
-  }
-
-  hostname = hostname.toLowerCase();
-  const slug = pathPart
-    .replace(/^\/+/, '')
-    .replace(/\.git$/i, '')
-    .replace(/\/+$/, '');
-
-  let host = 'other';
-  if (hostname === 'github.com' || hostname.endsWith('.github.com')) host = 'github';
-  else if (hostname === 'gitlab.com' || hostname.startsWith('gitlab.')) host = 'gitlab';
-  else if (hostname === 'bitbucket.org') host = 'bitbucket';
-  else if (hostname.includes('github')) host = 'github-enterprise';
-
-  return { host, slug, hostname };
 }
 
 async function readRemoteUrl(cwd) {
