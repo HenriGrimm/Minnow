@@ -14,7 +14,8 @@ function truncatePreview(text: string, maxChars: number): string {
 
 function formatToolCallLine(toolCalls: ToolCall[]): string {
   const parts = toolCalls.map((tc) => {
-    const argsPreview = truncatePreview(tc.function.arguments, MAX_TOOL_ARGS_PREVIEW_CHARS);
+    const args = tc.function.arguments;
+    const argsPreview = truncatePreview(typeof args === 'string' ? args : JSON.stringify(args ?? ''), MAX_TOOL_ARGS_PREVIEW_CHARS);
     return `${tc.function.name}(${argsPreview})`;
   });
   return `Assistant [tool_calls]: ${parts.join('; ')}`;
@@ -24,6 +25,19 @@ function isEvaluatorContinuationUserMessage(content: string): boolean {
   return content.trimStart().startsWith(GOAL_CONTINUATION_PREFIX);
 }
 
+/** Typed as string, but restored/server rows may carry content parts; never throw. */
+function messageText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string'
+        ? (part as { text: string }).text : ''))
+      .filter(Boolean)
+      .join('\n');
+  }
+  return content == null ? '' : String(content);
+}
+
 /** Flatten recent chat history into a readable transcript block for the judge. */
 export function buildGoalTranscriptExcerpt(chat: Chat): string {
   const lines: string[] = [];
@@ -31,8 +45,9 @@ export function buildGoalTranscriptExcerpt(chat: Chat): string {
   for (const message of chat.history) {
     if (message.role === 'user') {
       if (message.goalAchieved) continue;
-      if (isEvaluatorContinuationUserMessage(message.content)) continue;
-      lines.push(`User: ${message.content}`);
+      const text = messageText(message.content);
+      if (isEvaluatorContinuationUserMessage(text)) continue;
+      lines.push(`User: ${text}`);
       continue;
     }
 
@@ -40,14 +55,13 @@ export function buildGoalTranscriptExcerpt(chat: Chat): string {
       if ('tool_calls' in message && message.tool_calls?.length) {
         lines.push(formatToolCallLine(message.tool_calls));
       }
-      const content =
-        typeof message.content === 'string' ? message.content : String(message.content ?? '');
+      const content = messageText(message.content);
       if (content.trim()) lines.push(`Assistant: ${content}`);
       continue;
     }
 
     if (message.role === 'tool') {
-      const preview = truncatePreview(message.content, MAX_TOOL_PREVIEW_CHARS);
+      const preview = truncatePreview(messageText(message.content), MAX_TOOL_PREVIEW_CHARS);
       lines.push(`Tool (${message.tool_call_id}): ${preview}`);
     }
   }

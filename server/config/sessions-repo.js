@@ -40,6 +40,7 @@ import { ChatContractError } from '../chats/contracts.js';
 import { readChatActivity } from '../chats/activity.js';
 import { exportChatArchive } from '../chats/archive.js';
 import { readChatPresentationRevision, readChatPresentationRevisions, advanceChatPresentationRevision, hasChatPresentationChanges } from '../chats/presentation-revision.js';
+import { ensureActiveGoal } from '../../src/state/session-schema.mjs';
 
 const MAX_TERMINAL_HISTORY = 50;
 
@@ -608,6 +609,13 @@ function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory, { repla
       if (Object.prototype.hasOwnProperty.call(chat, key)) {
         meta[key] = chat[key];
       } else if (replacePresentation) delete meta[key];
+    }
+    // /goal loop state is renderer-owned controller metadata, not a presentation
+    // edit: it never advances the presentation revision. Explicit null clears it.
+    if (Object.prototype.hasOwnProperty.call(rawChat, 'activeGoal')) {
+      const goal = ensureActiveGoal(rawChat.activeGoal);
+      if (goal) meta.activeGoal = goal;
+      else delete meta.activeGoal;
     }
     if (replacePresentation && !Number.isFinite(meta.pinnedAt)) delete meta.pinned;
     db.prepare('UPDATE chats SET name = ?, group_id = ?, updated_at = MAX(updated_at, ?), meta_json = ? WHERE id = ?')

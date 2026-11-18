@@ -200,6 +200,8 @@ export interface ActiveGoalState {
   lastReason?: string;
   /** Set when the evaluator confirms the condition; cleared via /goal clear. */
   achieved?: boolean;
+  /** The loop stopped auto-continuing (evaluator failure); Resume loop clears it. */
+  paused?: boolean;
 }
 
 /**

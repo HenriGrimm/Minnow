@@ -11,6 +11,7 @@ import { extractGoalEvalCompletionText } from './completion-text';
 import {
   getGoalEvalToolDefinitions,
   isGoalEvalVerificationTool,
+  MAX_GOAL_EVAL_TOOL_ROUNDS,
   MAX_GOAL_EVAL_VERDICT_RETRIES,
 } from './eval-tools';
 import { buildGoalEvalMessages, GOAL_EVAL_VERDICT_NUDGE } from './prompt';
@@ -21,6 +22,8 @@ import { patchGoalEvalSession } from './eval-session';
 export interface GoalEvalAgentResult {
   raw: string;
   verificationToolCalls: number;
+  /** The evaluator could not produce a verdict (model/config/provider failure), not a NO. */
+  failed?: true;
 }
 
 let goalEvalPortFactory: typeof createGoalEvalProviderPort = createGoalEvalProviderPort;
@@ -91,6 +94,7 @@ async function runGoalEvalAgentInner(
     return {
       raw,
       verificationToolCalls: 0,
+      failed: true,
     };
   }
 
@@ -104,6 +108,7 @@ async function runGoalEvalAgentInner(
 
   let verificationToolCalls = 0;
   let verdictRetries = 0;
+  let toolRounds = 0;
 
   const syncSession = (liveCurrentToolName?: string): void => {
     patchGoalEvalSession(chat.id, {
@@ -117,12 +122,13 @@ async function runGoalEvalAgentInner(
 
   try {
     for (;;) {
+      const toolsAllowed = tools.length > 0 && toolRounds < MAX_GOAL_EVAL_TOOL_ROUNDS;
       const body: ChatCompletionBody = {
         model: modelId,
         messages,
         temperature: config.temperature,
         max_tokens: config.maxTokens,
-        ...(tools.length > 0 ? { tools, tool_choice: 'auto' as const } : {}),
+        ...(toolsAllowed ? { tools, tool_choice: 'auto' as const } : {}),
       };
 
       const chunk = await completeGoalEvalWithRetry(port, body, signal);
@@ -132,7 +138,8 @@ async function runGoalEvalAgentInner(
           ? ((message as { tool_calls?: ToolCall[] }).tool_calls ?? [])
           : [];
 
-      if (toolCalls.length > 0) {
+      if (toolCalls.length > 0 && toolsAllowed) {
+        toolRounds += 1;
         verificationToolCalls += countVerificationToolCalls(toolCalls);
         messages.push({
           role: 'assistant',
@@ -162,6 +169,10 @@ async function runGoalEvalAgentInner(
           });
         }
         syncSession();
+        if (toolRounds >= MAX_GOAL_EVAL_TOOL_ROUNDS) {
+          messages.push({ role: 'user', content: GOAL_EVAL_VERDICT_NUDGE });
+          syncSession();
+        }
         continue;
       }
 
@@ -184,7 +195,7 @@ async function runGoalEvalAgentInner(
             liveCurrentToolName: undefined,
             rawVerdict: fallback,
           });
-          return { raw: fallback, verificationToolCalls };
+          return { raw: fallback, verificationToolCalls, failed: true };
         }
 
         patchGoalEvalSession(chat.id, {
@@ -199,6 +210,7 @@ async function runGoalEvalAgentInner(
       return {
         raw: 'NO: Evaluator returned an empty response.',
         verificationToolCalls,
+        failed: true,
       };
     }
   } catch (err) {
@@ -213,6 +225,7 @@ async function runGoalEvalAgentInner(
     return {
       raw,
       verificationToolCalls,
+      failed: true,
     };
   }
 }

@@ -143,7 +143,7 @@ async function toggleThreadGoal(chat: Chat, anchor: HTMLElement): Promise<void> 
     goalPopover.close('anchor');
     return;
   }
-  const [{ getGoalEvalSession, subscribeGoalEvalSessions }, { isGoalEvaluating }, { maybeContinueGoalAfterTurn }] = await Promise.all([
+  const [{ getGoalEvalSession, subscribeGoalEvalSessions }, { isGoalEvaluating }, { isGoalTurnBusy, maybeContinueGoalAfterTurn }] = await Promise.all([
     import('../chat/goal/eval-session'),
     import('../chat/goal/evaluating-state'),
     import('../chat/goal/evaluate'),
@@ -182,10 +182,10 @@ async function toggleThreadGoal(chat: Chat, anchor: HTMLElement): Promise<void> 
       openSurface('changes', { force: true });
       return;
     }
-    if (isChatTurnInProgress(chat.id) || isGoalEvaluating(chat.id)) return;
+    if (isGoalTurnBusy(chat) || isGoalEvaluating(chat.id)) return;
     resume.disabled = true;
     void ensureChatHistoryLoaded(chat.id).then(() => {
-      if (activeChat()?.id === chat.id && getActiveGoal(chat) === goal && !isChatTurnInProgress(chat.id)) return maybeContinueGoalAfterTurn(chat);
+      if (activeChat()?.id === chat.id && getActiveGoal(chat) === goal && !isGoalTurnBusy(chat)) return maybeContinueGoalAfterTurn(chat);
     }).catch(error => showToast(error instanceof Error ? error.message : 'Could not resume the goal', 'error')).finally(sync);
   }, goal.achieved ? 'gitGraph' : 'loop');
   controls.append(stop, resume);
@@ -193,10 +193,10 @@ async function toggleThreadGoal(chat: Chat, anchor: HTMLElement): Promise<void> 
 
   function sync(): void {
     const latest = getGoalEvalSession(chat.id);
-    const running = isGoalEvaluating(chat.id) || isChatTurnInProgress(chat.id);
-    state.textContent = goal?.achieved ? 'Achieved' : running ? 'Running' : 'Ready';
+    const running = isGoalEvaluating(chat.id) || isGoalTurnBusy(chat);
+    state.textContent = goal?.achieved ? 'Achieved' : running ? 'Running' : goal?.paused ? 'Paused' : 'Ready';
     rounds.textContent = `${goal?.turnCount ?? 0} ${goal?.turnCount === 1 ? 'round' : 'rounds'}`;
-    result.textContent = latest?.reason || goal?.lastReason || (running ? 'Evaluating…' : 'Waiting for the next round');
+    result.textContent = (goal?.paused ? goal.lastReason : undefined) || latest?.reason || goal?.lastReason || (running ? 'Evaluating…' : 'Waiting for the next round');
     inspect.hidden = !latest;
     stop.hidden = Boolean(goal?.achieved);
     resume.disabled = running && !goal?.achieved;
