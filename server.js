@@ -108,6 +108,15 @@ function launchElectronShell(port, localUrl, appRoot) {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  const supervised = Boolean(process.env.MINNOW_DEV_USER_DATA && process.send);
+  let stopRequested = false;
+  let stopFromSupervisor = () => { stopRequested = true; };
+  if (supervised) {
+    process.once('disconnect', () => stopFromSupervisor());
+    process.on('message', message => {
+      if (message?.type === 'minnow-dev-stop') stopFromSupervisor();
+    });
+  }
   // A staged restore swaps folders in the home, so it goes before the first read.
   reportPendingRestore(applyPendingRestore());
   clearDevHostState();
@@ -239,17 +248,24 @@ async function main() {
     deleteGenerationsForProviderShutdown();
     void disposeCodexSessions();
   };
+  let shuttingDown = false;
+  function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void onShutdown()
+      .catch((err) => console.error('[shutdown]', err))
+      .finally(() => process.exit(0));
+  }
   process.on('exit', onShutdownSync);
-  process.on('SIGINT', () => {
-    void onShutdown()
-      .catch((err) => console.error('[shutdown]', err))
-      .finally(() => process.exit(0));
-  });
-  process.on('SIGTERM', () => {
-    void onShutdown()
-      .catch((err) => console.error('[shutdown]', err))
-      .finally(() => process.exit(0));
-  });
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+  if (supervised) {
+    if (stopRequested || !process.connected) return shutdown();
+    stopFromSupervisor = shutdown;
+    process.send({ type: 'minnow-dev-ready', localUrl, port: boundPort }, (err) => {
+      if (err) shutdown();
+    });
+  }
   if (process.env.MINNOW_HEADLESS === '1') {
     console.log('Headless: UI auto-open skipped (MINNOW_HEADLESS=1)');
   } else if (process.env.BROWSER === 'none' || process.env.MINNOW_ELECTRON === '1') {

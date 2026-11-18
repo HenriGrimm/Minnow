@@ -103,14 +103,18 @@ async function fixture(t, respond, extraNames = [], runtimeOptions = {}, beforeS
   runtime = modules.createProductionChatRuntime({ ...runtimeOptions, repository, turns, preparationAdapters, modelAdapters });
   const chatMiddleware = modules.createChatMiddleware({ getRuntime: () => runtime });
   const turnMiddleware = modules.createChatTurnsMiddleware(turns);
-  server = http.createServer((req, res) => modules.runWithViewWorkspace(workspace, () =>
-    chatMiddleware(req, res, () => turnMiddleware(req, res, () => { res.statusCode = 404; res.end('{}'); }))));
+  server = http.createServer((req, res) => {
+    if (req.headers['x-fixture-host'] === '1') req.minnowAuth = { kind: 'host' };
+    modules.runWithViewWorkspace(workspace, () =>
+      chatMiddleware(req, res, () => turnMiddleware(req, res, () => { res.statusCode = 404; res.end('{}'); })));
+  });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   await beforeStart?.({ repository, db, workspace, runtime });
   await runtime.start();
-  async function request(route, body, timeoutMs = 5000) {
+  async function request(route, body, timeoutMs = 5000, asHost = false) {
     const response = await fetch('http://127.0.0.1:' + server.address().port + route,
-      { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'X-Minnow-Chat-Protocol': '1' }, signal: AbortSignal.timeout(timeoutMs),
+      { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'X-Minnow-Chat-Protocol': '1',
+        ...(asHost ? { 'X-Fixture-Host': '1' } : {}) }, signal: AbortSignal.timeout(timeoutMs),
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() };
   }
@@ -243,7 +247,7 @@ test('ordinary HTTP Local clears a saved worktree preference before the first se
   assert.equal(f.calls.length, 1);
 });
 
-test('ordinary HTTP worktree send binds the final checkout before inference and later turns retain it', { timeout: 30000 }, async t => {
+test('ordinary HTTP worktree sends stay isolated until an authenticated read reconciles a deleted worktree', { timeout: 30000 }, async t => {
   const f = await fixture(t, input => input.messages.some(row => row.role === 'tool')
     ? 'Verified isolated checkout.' : [toolCall('save_file', { path: 'isolated.txt', content: 'only in checkout' }, 'isolated-write')]);
   const git = args => promisify(execFile)('git', args, { cwd: f.workspace, windowsHide: true });
@@ -278,6 +282,40 @@ test('ordinary HTTP worktree send binds the final checkout before inference and 
   assert.equal(f.repository.getChat('chat').worktreeRoot, saved.worktreeRoot);
   const snapshot = await f.request('/api/chats/chat');
   assert.equal(snapshot.body.chat.workspacePreparation.intent.id, initial.captured.workspacePreparation.id);
+
+  const history = f.repository.readTranscript('chat');
+  const callsBeforeRecovery = f.calls.length;
+  const queued = f.repository.admitCommand({
+    version: 1, chatId: 'chat', commandId: 'old-checkout-input', kind: 'send', requestedAt: 1, message: 'Queued for old checkout',
+    provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' },
+  }, { producerId: 'human', requestKey: 'old-checkout-input' });
+  await fs.rm(path.join(saved.worktreeRoot, 'isolated.txt'));
+  await git(['worktree', 'remove', saved.worktreeRoot]);
+  const blocked = await f.request('/api/chats/chat/commands', { action: 'send', text: 'Do not silently run locally', clientRequestId: 'orphan-send' });
+  assert.equal(blocked.status, 403);
+  assert.equal((await f.request('/api/chats/chat?view=navigation')).status, 403, 'non-host reads do not detach');
+  assert.equal(f.repository.getChat('chat').worktreeRoot, saved.worktreeRoot);
+  const reads = await Promise.all([f.request('/api/chats/chat?view=navigation', undefined, 5000, true), f.request('/api/chats/chat/requests', undefined, 5000, true)]);
+  assert.deepEqual(reads.map(result => result.status), [200, 200], JSON.stringify(reads));
+  const local = f.repository.getChat('chat');
+  assert.equal(local.worktreeRoot || '', '');
+  assert.equal(local.workspacePreparation, null);
+  const restored = await f.request('/api/chats/chat');
+  assert.equal(restored.body.frame.fields.worktreeRoot, '');
+  assert.equal(restored.body.frame.fields.chatWorktreeManaged, false);
+  assert.equal(restored.body.frame.fields.pendingMessageQueue.length, 0);
+  assert.equal(f.repository.getCommand(queued.commandId).state, 'cancelled');
+  assert.equal(f.repository.getCommand(queued.commandId).result.disposition, 'worktree_removed');
+  assert.deepEqual(f.repository.readTranscript('chat').messages, history.messages);
+  assert.equal(f.calls.length, callsBeforeRecovery, 'recovering the checkout never runs inference');
+  assert.equal((await f.runtime.context.resolveTarget('chat')).scope.workspaceId, saved.workspacePreparation.intent.sourceWorkspaceId);
+  const next = await f.request('/api/chats/chat/commands', { action: 'send', text: 'Continue in Local', clientRequestId: 'after-worktree-removal' });
+  assert.equal(next.status, 202, JSON.stringify(next.body));
+  await f.runtime.service.idle('chat');
+  const resumed = f.repository.getCommand(next.body.receipt.commandId);
+  assert.equal(resumed.state, 'settled');
+  assert.equal(resumed.captured.scope.workspaceId, saved.workspacePreparation.intent.sourceWorkspaceId);
+  assert.equal(f.calls.length, callsBeforeRecovery + 1);
 });
 
 test('default idle HTTP promotion preserves saved history; rollback only blocks new ownership', { timeout: 15000 }, async t => {

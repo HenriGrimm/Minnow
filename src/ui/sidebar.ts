@@ -147,6 +147,8 @@ import {
 } from './default-model';
 import { syncActiveChatModelUi, onActiveChatModelChange } from './chat-model-ui';
 import { setStatus } from './status';
+import { getActiveComposerSurface } from './composer-surface';
+import type { ComposerDrop } from './composer-drop';
 import {
   applyChatItemDotClasses,
   applyGroupHeaderDotClasses,
@@ -2604,20 +2606,27 @@ export async function createChatWithMode(
   };
 }
 
-export async function createChat(): Promise<void> {
+export async function createChat(drop?: ComposerDrop): Promise<void> {
   const active = getActiveChat();
   const leavingOrchestrate =
     isBoardViewActive() || normalizeModeId(active.modeId) === 'orchestrate';
   const result = await createChatWithMode({
     modeId: leavingOrchestrate ? 'general' : normalizeModeId(active.modeId),
+    forceNewChat: Boolean(drop),
   });
   if (!result.ok) {
     setStatus('err', result.error || 'Could not create chat');
     return;
   }
   const { launchApp } = await import('../os/router');
+  if (drop && sessionState?.activeId !== result.chatId) return;
   const route = getCurrentRoute();
   if (route.appId !== 'code' || route.codeSection !== 'chat' || route.chatId) {
     launchApp('code', { codeSection: 'chat' });
+  }
+  if (drop && sessionState?.activeId === result.chatId) {
+    const input = getActiveComposerSurface().inputEl;
+    drop(input);
+    input?.focus();
   }
 }

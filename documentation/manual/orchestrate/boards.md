@@ -9,6 +9,8 @@ Use a board when a change can be split into tasks with their own checks and chec
 3. Open **Boards** from the workspace sidebar or use **Open boards** in the command palette. Pick the plan. If parsing fails, use **Repair** and review the validation error and suggested changes.
 4. Check the starting branch, model, and **Concurrency**, then select **Start**. Set concurrency to 1 to run tasks sequentially.
 
+The board shows the current setup step and elapsed time while it checks the model, prepares the checkout and dependencies, and checks verification requirements. Each task card also shows its worker setup step and elapsed time before a builder or tester starts. **Stop** cancels setup and waits for its processes to exit; **Stopping setup** stays visible during cleanup. Start again to retry using the retained checkout.
+
 Here is a one-task starting point. Replace its paths and checks with ones that exist in your project. Keep each task ID in both `todos` and the task heading.
 
 ```markdown

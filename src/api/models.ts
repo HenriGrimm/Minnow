@@ -15,6 +15,8 @@ import {
   fetchModelsForAllProviders,
   type ProviderModelsResult,
 } from '../providers/fetch-all-models';
+import { fetchModelsForProvider, ModelCatalogPendingError } from '../providers/fetch-models';
+import type { ProviderPublic } from '../providers/types';
 import { providerSupportsModelLoadUnload } from '../providers/capabilities';
 import { resolveProviderEndpoints } from '../providers/resolve';
 import { listProviders } from '../providers/store';
@@ -438,6 +440,7 @@ export async function populateMultiProviderModelSelect(
     const { providers } = await listProviders();
     const { loadRouterConfig, routerOptions } = await import('../models/routers');
     const routerConfig = await loadRouterConfig().catch(() => null);
+    signal?.throwIfAborted();
     const enabled = providers.filter((p) => p.enabled !== false);
 
     if (enabled.length === 0) {
@@ -448,10 +451,12 @@ export async function populateMultiProviderModelSelect(
     }
 
     let results = await fetchModelsForAllProviders(enabled, signal ?? new AbortController().signal, { refresh: options?.refresh });
+    signal?.throwIfAborted();
     // Never list llama.cpp / mlx-lm catalogs — My Models is the only picker surface.
     results = omitLocalRuntimeCatalogModels(results);
 
     const libraryMerge = await fetchLibraryModelSelectMerge(signal).catch(() => null);
+    signal?.throwIfAborted();
 
     const withModels = results.filter((r) => r.models.length > 0);
     const providerModelCount = withModels.reduce((n, r) => n + r.models.length, 0);
@@ -459,7 +464,9 @@ export async function populateMultiProviderModelSelect(
     const totalModels = providerModelCount + libraryCount;
 
     if (totalModels === 0) {
-      select.innerHTML = '<option value="">No models found</option>';
+      select.innerHTML = results.some(result => result.retryAfterMs !== undefined)
+        ? '<option value="">Waiting for Codex models…</option>'
+        : '<option value="">No models found</option>';
       if (routerConfig) routerOptions(select, routerConfig);
       syncModelSelectPicker();
       return results;
@@ -494,13 +501,15 @@ export async function populateMultiProviderModelSelect(
       }
     }
 
-    for (const { provider, error } of results) {
-      if (error || provider.enabled === false) continue;
+    for (const { provider, error, retryAfterMs } of results) {
+      if (error || retryAfterMs !== undefined || provider.enabled === false || signal?.aborted) continue;
       try {
         const capsFile = await fetchProviderCapabilities(provider.id, signal);
+        signal?.throwIfAborted();
         mergeCapabilitiesIntoModelCache(capsFile);
       } catch {}
     }
+    signal?.throwIfAborted();
 
     scheduleFirstLoadCapabilityProbes(
       results,
@@ -619,17 +628,36 @@ function pickInitialSelectValue(
 
 // ── Fetch ────────────────────────────────────────────────────────────────────
 
-/** Keep the chosen default visible even while its provider is unavailable. */
-function restoreDefaultModelOption(select: HTMLSelectElement): void {
+/** Keep the chosen default visible while its provider's catalog is missing. */
+function restoreDefaultModelOption(select: HTMLSelectElement, pendingProviderId?: string): void {
   const value = readPersistedDefaultModelValue();
   if (!value) return;
   if (![...select.options].some((option) => option.value === value)) {
     const option = document.createElement('option');
     option.value = value;
-    option.textContent = `${decodeModelSelectKey(value)?.modelId ?? value} (unavailable)`;
+    const selected = decodeModelSelectKey(value);
+    const pending = selected && selected.providerId === pendingProviderId;
+    option.textContent = `${selected?.modelId ?? value} (${pending ? 'checking availability' : 'unavailable'})`;
     select.append(option);
   }
   select.value = value;
+}
+
+async function retryPendingModelCatalog(provider: ProviderPublic, delay: number, signal: AbortSignal): Promise<void> {
+  while (!signal.aborted) {
+    await new Promise<void>(resolve => setTimeout(resolve, delay));
+    if (signal.aborted) return;
+    try {
+      await fetchModelsForProvider(provider, signal);
+    } catch (error) {
+      if (error instanceof ModelCatalogPendingError) {
+        delay = error.retryAfterMs;
+        continue;
+      }
+    }
+    if (!signal.aborted) await fetchModels();
+    return;
+  }
 }
 
 /** Load models from every enabled provider and populate the model select. */
@@ -640,6 +668,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
   const controller = new AbortController();
   setModelsFetchAbort(controller);
   const { signal } = controller;
+  let pendingCatalog = false;
 
   sel.innerHTML = '<option value="">Loading models…</option>';
   sel.setAttribute('aria-busy', 'true');
@@ -656,12 +685,14 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
     ]);
     if (signal.aborted) return;
     const { providers } = await listProviders();
+    if (signal.aborted) return;
     const enabled = providers.filter((p) => p.enabled !== false);
 
     if (enabled.length === 0) {
       sel.innerHTML = '<option value="">No providers enabled</option>';
       const { loadRouterConfig, routerOptions } = await import('../models/routers');
       const routers = await loadRouterConfig().catch(() => null);
+      if (signal.aborted) return;
       if (routers) routerOptions(sel, routers);
       restoreDefaultModelOption(sel);
       syncModelSelectPicker();
@@ -671,9 +702,11 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
     }
 
     const results = await populateMultiProviderModelSelect(sel, { signal, refresh: options.refresh });
+    if (signal.aborted) return;
     if (!results) {
       restoreDefaultModelOption(sel);
       const { providers: listed } = await listProviders();
+      if (signal.aborted) return;
       const enabledCount = listed.filter((p) => p.enabled !== false).length;
       if (enabledCount === 0) {
         setStatus('err', 'Open Models → Providers to enable or add a provider.');
@@ -684,11 +717,17 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
       return;
     }
 
-    restoreDefaultModelOption(sel);
+    const pending = results.find(result => result.retryAfterMs !== undefined);
+    if (pending?.retryAfterMs !== undefined) {
+      pendingCatalog = true;
+      void retryPendingModelCatalog(pending.provider, pending.retryAfterMs, signal);
+    }
+    restoreDefaultModelOption(sel, pending?.provider.id);
     const failures = results.filter((r) => r.error);
     const catalogCount = [...sel.options].filter((o) => o.value.trim()).length;
 
     if (catalogCount === 0) {
+      if (pendingCatalog && failures.length === 0) return;
       const names = failures.map((f) => f.provider.label).join(', ');
       setStatus(
         'err',
@@ -700,7 +739,6 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
       return;
     }
 
-    const ac = getActiveChat();
     const optionValues = [...sel.options].map((o) => o.value);
 
     const savedDefault = resolveDefaultModelSelectValue(optionValues);
@@ -727,20 +765,20 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
     void import('../ui/benchmark/roster-picker.ts').then((m) => m.refreshBenchmarkRosterPicker());
   } catch (err) {
     const e = err as { name?: string };
-    if (e && e.name === 'AbortError') return;
+    if (signal.aborted || e?.name === 'AbortError') return;
     sel.innerHTML = '<option value="">Cannot reach providers</option>';
     restoreDefaultModelOption(sel);
     syncModelSelectPicker();
     setStatus('err', err instanceof Error ? err.message : 'Cannot reach providers. Check the host connection and retry.');
   } finally {
-    setModelCatalogEntries([...sel.options].map((option) => ({ value: option.value, label: option.label })));
     if (modelsFetchAbort && modelsFetchAbort.signal === signal) {
-      setModelsFetchAbort(null);
+      setModelCatalogEntries([...sel.options].map((option) => ({ value: option.value, label: option.label })));
+      if (!pendingCatalog) setModelsFetchAbort(null);
       sel.removeAttribute('aria-busy');
+      updateModelLoadUnloadButtons();
+      updateModelStateDot(sel.value);
+      syncModelSelectPicker();
     }
-    updateModelLoadUnloadButtons();
-    updateModelStateDot(sel.value);
-    syncModelSelectPicker();
   }
 }
 

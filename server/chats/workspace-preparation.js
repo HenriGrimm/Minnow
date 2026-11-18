@@ -15,6 +15,7 @@ const key = value => process.platform === 'win32' ? path.resolve(value).toLowerC
 const same = isDeepStrictEqual;
 const fail = (code, message) => { throw new ChatContractError(code, message, { retryable: true }); };
 const pendingStates = ['accepted', 'queued', 'waiting_for_host'];
+const localFlags = { worktreeEnabled: false, worktreeSetupRequired: false, chatWorktreeManaged: false };
 const active = new Set(['running', 'waiting', 'loading_model', 'waiting_for_model', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_host']);
 
 /** Rebind only the already-authorized source workspace, without widening tools,
@@ -243,7 +244,6 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
         fail('stale_revision', 'Worktree setup changed. Refresh before choosing Local.');
       }
       if (repository.getLease(chatId)?.state === 'active') fail('ownership_conflict', 'Stop the active setup or turn before choosing Local');
-      const localFlags = { worktreeEnabled: false, worktreeSetupRequired: false, chatWorktreeManaged: false };
       if (current === null) {
         // Before admission, Local only clears the deferred selection.
         if (chat.worktreeRoot?.trim()) fail('workspace_denied', 'This conversation already has a worktree binding.');
@@ -262,6 +262,24 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     });
     changed(chatId);
     return result;
+  }
+  /** Discard the dead binding, not the transcript or any checkout files. */
+  function detachMissingWorktree(observed) {
+    const detached = repository.atomic(() => {
+      const chat = repository.getChat(observed.id);
+      if (chat.revision !== observed.revision || chat.worktreeRoot !== observed.worktreeRoot ||
+          chat.workspacePath !== observed.workspacePath || repository.getLease(chat.id)?.state === 'active') return false;
+      // Inputs admitted for the deleted checkout must never be replayed in Local.
+      for (let pending; (pending = repository.listCommands({ chatId: chat.id, states: pendingStates, limit: 1000 })).length;) {
+        for (const record of pending) repository.updateCommand(record.commandId,
+          { state: 'cancelled', result: { disposition: 'worktree_removed' } });
+      }
+      db.prepare("UPDATE chats SET worktree_root='',git_branch='' WHERE id=?").run(chat.id);
+      write(chat.id, null, localFlags);
+      return true;
+    });
+    if (detached) changed(observed.id);
+    return detached;
   }
   /** Explicit human Retry: setup only, never replay the failed model command. */
   function retry({ chatId, expectedIntentId, signal }) {
@@ -368,5 +386,5 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     if (target.chat.agentConversation || target.chat.chatCommandVersion !== 1) fail('policy_denied', 'This control requires an ordinary canonical conversation');
     return { chat: input.action === 'local' ? chooseLocal(input) : await retry(input) };
   }
-  return { capture, admit, prepare, read, chooseLocal, retry, stopRetry, applyChoice };
+  return { capture, admit, prepare, read, chooseLocal, detachMissingWorktree, retry, stopRetry, applyChoice };
 }

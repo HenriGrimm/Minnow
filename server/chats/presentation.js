@@ -4,7 +4,8 @@ const active = new Set(['running', 'loading_model']);
 const terminal = new Set(['completed', 'failed', 'stopped', 'settled', 'cancelled', 'recovery_required']);
 const fields = ['name', 'groupId', 'pinnedAt', 'archivedAt', 'composerDraft', 'workspacePath', 'worktreeRoot', 'worktreeEnabled', 'providerId', 'modelId', 'modeId',
   'updatedAt', 'lastMessageAt', 'messageCount', 'lastStats', 'modelInfo', 'reasoningEffort',
-  'agentConversation', 'agentTypeId', 'chatCommandVersion', 'profileReference', 'todos', 'todosUpdatedAt', 'worktreeSetupRequired', 'workspacePreparation'];
+  'agentConversation', 'agentTypeId', 'chatCommandVersion', 'profileReference', 'todos', 'todosUpdatedAt',
+  'gitBranch', 'chatWorktreeManaged', 'worktreeSetupRequired', 'workspacePreparation'];
 const summaryFields = ['name', 'workspacePath', 'worktreeRoot', 'modelId', 'providerId', 'modeId', 'messageCount',
   'lastMessageAt', 'updatedAt', 'agentConversation', 'agentTypeId', 'chatCommandVersion', 'agentExecution',
   'agentPendingCommand', 'agentRequestSummary', 'agentActivityCursor', 'agentPresentationRevision', 'agentTitleCandidate', 'unread', 'turnError'];

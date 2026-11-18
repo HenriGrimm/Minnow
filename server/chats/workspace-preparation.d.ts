@@ -33,6 +33,7 @@ export function createChatWorkspacePreparation(options: {
   read(chatId: string): ChatWorkspaceState | null;
   /** Authenticated human-only action. Null expects no admitted setup. */
   chooseLocal(input: { chatId: string; expectedIntentId: string | null }): ChatShell;
+  detachMissingWorktree(observed: ChatShell): boolean;
   /** Authenticated human Retry; prepares dependencies but never replays inference. */
   retry(input: { chatId: string; expectedIntentId: string; signal?: AbortSignal }): Promise<ChatShell>;
   stopRetry(chatId: string, executionId?: string): boolean;

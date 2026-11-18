@@ -300,8 +300,9 @@ export function wantsReuse(desired) {
  *   } | null,
  * } | { ok: false, error: string }>}
  */
-export async function ensureBoardWorkspaceGit() {
-  const result = await initializeWorkspaceGit();
+export async function ensureBoardWorkspaceGit(options = {}) {
+  options.signal?.throwIfAborted();
+  const result = await initializeWorkspaceGit(undefined, options);
   if (!result.ok) {
     return { ok: false, error: result.error || 'git init failed' };
   }
@@ -331,16 +332,17 @@ export async function ensureBoardWorkspaceGit() {
  *   gitInitialized?: Record<string, unknown>,
  * }>}
  */
-export async function ensureBoardIntegration(boardId) {
-  const git = await ensureBoardWorkspaceGit();
+export async function ensureBoardIntegration(boardId, options = {}) {
+  const { signal, onProgress } = options;
+  const git = await ensureBoardWorkspaceGit(options);
   if (!git.ok) {
     return { ok: false, error: git.error };
   }
   if (ensuredBoards.has(boardId)) {
     const intPath = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
     try {
-      if (!(await isWorktreeCheckout(intPath))) throw new Error('integration checkout is no longer valid');
-      const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath);
+      if (!(await isWorktreeCheckout(intPath, { signal }))) throw new Error('integration checkout is no longer valid');
+      const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath, options);
       if (!deps.ok) return { ok: false, path: intPath, error: 'deps', output: deps.failed.map(failure => failure.reason).join('; '), deps };
       return {
         ok: true,
@@ -349,7 +351,8 @@ export async function ensureBoardIntegration(boardId) {
         deps,
         ...(git.event ? { gitInitialized: git.event } : {}),
       };
-    } catch {
+    } catch (error) {
+      if (signal?.aborted || error?.code === 'recovery_required') throw error;
       ensuredBoards.delete(boardId);
     }
   }
@@ -357,6 +360,7 @@ export async function ensureBoardIntegration(boardId) {
     boardId,
     branch: integrationBranch(boardId),
     baseRef: (await loadState(boardId)).baseBranch ?? undefined,
+    signal, onProgress,
   });
   if (result.ok) ensuredBoards.add(boardId);
   return git.event ? { ...result, gitInitialized: git.event } : result;
@@ -369,8 +373,10 @@ export async function ensureBoardIntegration(boardId) {
  * @param {string} boardId
  * @param {string | null | undefined} planPath
  */
-export async function ensureBoardPlan(boardId, planPath) {
-  const integration = await ensureBoardIntegration(boardId);
+export async function ensureBoardPlan(boardId, planPath, options = {}) {
+  const { signal, onProgress } = options;
+  const integration = await ensureBoardIntegration(boardId, options);
+  signal?.throwIfAborted();
   if (!integration.ok || !integration.path) return integration;
   if (typeof planPath !== 'string' || !planPath.trim()) return integration;
 
@@ -401,14 +407,17 @@ export async function ensureBoardPlan(boardId, planPath) {
   }
 
   const targetPath = path.join(integration.path, relativePath);
+  onProgress?.({ stage: 'plan', message: 'Preparing board plan…' });
+  signal?.throwIfAborted();
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  await fs.writeFile(targetPath, markdown);
+  await fs.writeFile(targetPath, markdown, { signal });
   const gitPath = relativePath.split(path.sep).join('/');
   const committed = await commitWorktree({
     boardId,
     slotId: INTEGRATION_SLOT,
     message: 'Add board plan',
     paths: [gitPath],
+    signal,
   });
   if (!committed.ok) {
     return {
@@ -440,24 +449,25 @@ export async function ensureBoardPlan(boardId, planPath) {
  * }>}
  */
 export async function allocateAttemptWorktree(input) {
-  const { boardId, taskId, desired, state } = input;
+  const { boardId, taskId, desired, state, signal, onProgress } = input;
+  signal?.throwIfAborted();
   /** @type {Record<string, unknown>[]} */
   const discarded = [];
 
-  const integration = await ensureBoardIntegration(boardId);
-  if (!integration.ok) {
-    return {
-      ok: false,
-      discarded,
-      error: integration.output || integration.error || 'ensureIntegration failed',
-    };
-  }
-  const gitInitialized = integration.gitInitialized;
+  let gitInitialized;
+  const prepareIntegration = async () => {
+    onProgress?.({ stage: 'workspace', message: 'Preparing integration checkout…' });
+    const integration = await ensureBoardIntegration(boardId, { signal, onProgress });
+    if (!integration.ok) return { ok: false, discarded, error: integration.output || integration.error || 'ensureIntegration failed' };
+    gitInitialized = integration.gitInitialized;
+    return null;
+  };
 
   const reuse = wantsReuse(desired) || state.recoveryVersion > 0;
   const previous = previousWorktreeForTask(state, taskId);
 
   if (reuse && previous) {
+    onProgress?.({ stage: 'workspace', message: 'Reusing task checkout…' });
     // Keep live UUID (or other) paths; only name a slot when the journal path is gone.
     const slotId = slotIdFromWorktreePath(boardId, previous) ?? slotIdForTask(state, taskId);
     const pendingPath = path.join(boardDir(boardId), 'recovery', `restore-${sanitizePathSegment(slotId)}.json`);
@@ -471,12 +481,11 @@ export async function allocateAttemptWorktree(input) {
       await fs.rm(pendingPath);
     };
     let exists = false;
-    try {
-      await fs.access(previous);
-      exists = true;
-    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try { await fs.access(previous); exists = true; }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (exists) {
       if (state.recoveryVersion) await finishRestore(previous);
+      signal?.throwIfAborted();
       return {
         ok: true,
         path: previous,
@@ -486,6 +495,8 @@ export async function allocateAttemptWorktree(input) {
         ...(gitInitialized ? { gitInitialized } : {}),
       };
     } else {
+      const failed = await prepareIntegration();
+      if (failed) return failed;
       const checkpoint = state.recoveryVersion && [...(state.tasks.get(taskId)?.attempts ?? [])].reverse().find((attempt) => attempt.evidence?.checkpoint);
       if (checkpoint) {
         await fs.mkdir(path.dirname(pendingPath), { recursive: true });
@@ -504,6 +515,7 @@ export async function allocateAttemptWorktree(input) {
         // Restore the builder's snapshot; integration may have advanced with
         // conflicting sibling work. The merge queue owns integration conflicts.
         syncBase: false,
+        signal, onProgress,
       });
       if (!created.ok) {
         return {
@@ -524,6 +536,9 @@ export async function allocateAttemptWorktree(input) {
     }
   }
 
+  const failed = await prepareIntegration();
+  if (failed) return failed;
+
   if (previous) {
     const prevSlot = slotIdFromWorktreePath(boardId, previous);
     if (prevSlot && prevSlot !== INTEGRATION_SLOT) {
@@ -540,12 +555,14 @@ export async function allocateAttemptWorktree(input) {
   const slotId = slotIdForTask(state, taskId);
   // Fresh retry reuses this slot path. Removing the worktree leaves the old
   // attempt branch; delete it so createWorktree checks out integration again.
-  await deleteLocalBranch(attemptBranch(boardId, slotId));
+  signal?.throwIfAborted();
+  await deleteLocalBranch(attemptBranch(boardId, slotId), { signal });
   const created = await createWorktree({
     boardId,
     slotId,
     branch: attemptBranch(boardId, slotId),
     baseRef: integrationBranch(boardId),
+    signal, onProgress,
   });
   if (!created.ok) {
     return {

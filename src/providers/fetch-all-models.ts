@@ -2,7 +2,7 @@
  * Load model catalogs from every enabled provider in parallel (top-bar picker).
  */
 
-import { fetchModelsForProvider } from './fetch-models';
+import { fetchModelsForProvider, ModelCatalogPendingError } from './fetch-models';
 import type { ProviderPublic } from './types';
 import type { LmModelRecord } from '../types';
 
@@ -10,6 +10,7 @@ export interface ProviderModelsResult {
   provider: ProviderPublic;
   models: LmModelRecord[];
   error?: string;
+  retryAfterMs?: number;
 }
 
 /**
@@ -44,6 +45,10 @@ export async function fetchModelsForAllProviders(
       out.push(r.value);
     } else {
       const reason = r.reason;
+      if (reason instanceof ModelCatalogPendingError) {
+        out.push({ provider, models: [], retryAfterMs: reason.retryAfterMs });
+        continue;
+      }
       const message = reason instanceof Error ? reason.message : String(reason);
       out.push({ provider, models: [], error: message });
     }

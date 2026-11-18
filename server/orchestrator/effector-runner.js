@@ -788,11 +788,14 @@ export function createRunnerEffector(options = {}) {
     /**
      * @returns {Promise<{ gitInitialized?: Record<string, unknown> } | void>}
      */
-    async preflight() {
+    async preflight({ signal, onProgress } = {}) {
+      signal?.throwIfAborted();
+      onProgress?.({ stage: 'model', message: 'Checking board model…' });
       const state = boardId || options.getState ? await currentState() : null;
       if (state?.recoveryVersion && state.workspacePath && !(await fs.stat(state.workspacePath)).isDirectory()) throw new Error('The recorded workspace is unavailable');
       const model = await resolveLibraryAttemptBinding(
         await resolveAttemptModel(options.model ?? state?.model ?? null, state?.workspacePath),
+        {}, { signal },
       );
       if (state?.recoveryVersion && !usingFakeTurn && model.providerId !== 'minnow-router') {
         const { profile, secrets } = await getProviderRuntime(model.providerId);
@@ -803,30 +806,36 @@ export function createRunnerEffector(options = {}) {
       }
       await loadRolePrompt('builder');
       await loadRolePrompt('tester');
+      signal?.throwIfAborted();
       if (!isolateWorktrees) return;
+      onProgress?.({ stage: 'workspace', message: 'Preparing board checkout…' });
       if (!boardId || !state) {
-        const git = await ensureBoardWorkspaceGit();
+        const git = await ensureBoardWorkspaceGit({ signal });
         if (!git.ok) throw new Error(git.error || 'Workspace is not a git repository');
         if (git.event) return { gitInitialized: git.event };
         return;
       }
-      const prepared = await ensureBoardPlan(boardId, state.planPath);
+      const prepared = await ensureBoardPlan(boardId, state.planPath, { signal, onProgress });
+      signal?.throwIfAborted();
       if (!prepared.ok) {
         throw new Error(prepared.error || prepared.output || 'Could not prepare the board worktree');
       }
       if (state.recoveryVersion && !usingFakeTurn) {
+        onProgress?.({ stage: 'verification', message: 'Checking verification requirements…' });
         const cwd = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
         const markdown = await loadPlanMarkdown(cwd, state.planPath);
-        await prepareVerificationInputs({ workspace: state.workspacePath || await boardWorkspaceRoot(), cwd, markdown, boardId });
+        await prepareVerificationInputs({ workspace: state.workspacePath || await boardWorkspaceRoot(), cwd, markdown, boardId, signal });
         let packageJson;
         try { packageJson = JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf8')); } catch {}
         const rungs = resolveLadderRungs({ planMarkdown: markdown, packageJson });
         // Resolve the verifier and commands before allocating paid builders.
         if (deriveBrowserAssertions(markdown).assertions.length && !await prerequisitesReady([{ kind: 'browser' }], cwd)) throw prerequisiteError('Required browser verification is unavailable. Enable browser automation and install a supported Chromium browser.', [{ kind: 'browser' }], 'verification');
         for (const name of new Set(rungs.map((rung) => /^\s*(npm|npx|node|python3?|uv|cargo|go)\b/.exec(rung.command)?.[1]).filter(Boolean))) {
+          signal?.throwIfAborted();
           if (!await prerequisitesReady([{ kind: 'executable', name }], cwd)) throw prerequisiteError(`Required verifier executable ${name} is unavailable.`, [{ kind: 'executable', name }], 'verification');
         }
       }
+      signal?.throwIfAborted();
       if (prepared.gitInitialized) return { gitInitialized: prepared.gitInitialized };
     },
 
@@ -874,6 +883,7 @@ export function createRunnerEffector(options = {}) {
       if (contract.length) seed += `\n\n## Required verification contract\n${JSON.stringify(contract)}\nReport checks:[{id,outcome:"pass",evidence:["command and observed output"]}] for every required ID. Include toolCallIds when citing a recorded command or interaction. Describe the observed behavior separately for each criterion. A blocked or unexecuted required check cannot pass. The server binds accepted evidence to the tested commit.`;
       const model = await resolveLibraryAttemptBinding(
         await resolveAttemptModel(options.model ?? state.model, state.workspacePath),
+        {}, { signal: startOptions.signal },
       );
       const reasoning = options.model ? null : state.model?.reasoning ?? null;
       const thinkingOn = reasoning === 'on' || isComposerReasoningLevel(reasoning);
@@ -924,6 +934,8 @@ export function createRunnerEffector(options = {}) {
           attemptId,
           desired,
           state,
+          signal: startOptions.signal,
+          onProgress: startOptions.onProgress,
         });
         if (!allocated.ok || !allocated.path || !allocated.slotId) {
           throw new Error(`runner effector: worktree allocate failed: ${allocated.error || 'unknown'}`);
@@ -1171,8 +1183,8 @@ export function createRunnerEffector(options = {}) {
   // the detached run that outlives `start()` returning.
   const rawPreflight = effector.preflight.bind(effector);
   const rawStart = effector.start.bind(effector);
-  effector.preflight = async () =>
-    runWithToolContext(rawPreflight, { workspaceRoot: await boardWorkspaceRoot() });
+  effector.preflight = async (setupOptions) =>
+    runWithToolContext(() => rawPreflight(setupOptions), { workspaceRoot: await boardWorkspaceRoot() });
   effector.start = async (desired, startOptions) =>
     runWithToolContext(() => rawStart(desired, startOptions), {
       workspaceRoot: await boardWorkspaceRoot(),

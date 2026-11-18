@@ -10,6 +10,7 @@ export interface ChatTargetContext {
 export interface ChatContext {
   setWorkspaceEdgesLoader(loader: (project: ChatProject) => Promise<import('./caller.js').DerivedChatWorkspaceEdge[]>): void;
   project(workspacePath?: string): Promise<ChatProject>;
+  findMissingWorktree(chatId: string, workspacePath?: string): Promise<ChatShell | null>;
   resolveTarget(chatId: string, options?: { project?: ChatProject; workspacePath?: string }): Promise<ChatTargetContext>;
   humanCaller(chatId: string, options?: { workspacePath?: string; ingress?: 'renderer' | 'device' | 'cli' | 'scheduler' }): Promise<{ caller: ChatCaller; target: ChatTargetContext }>;
   executionCaller(executionId: string): Promise<{ caller: ChatCaller; target: ChatTargetContext; execution: ExecutionRecord; fence: ExecutionFence }>;

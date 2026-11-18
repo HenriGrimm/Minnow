@@ -388,6 +388,77 @@ describe('board client — reading', () => {
     }
   });
 
+  it('streams setup progress, restores it on reconnect, and clears it after Stop', async () => {
+    const entered = Promise.withResolvers<void>();
+    let signal: AbortSignal | undefined;
+    setEffectorFactory(() => ({
+      ...createScriptedEffector({ script: [{ emit: { outcome: 'pass', delayMs: 60_000 } }] }),
+      async preflight(options: { signal: AbortSignal; onProgress: (progress: { stage: string; message: string }) => void }) {
+        signal = options.signal;
+        options.onProgress({ stage: 'dependencies', message: 'Installing dependencies with pnpm…' });
+        entered.resolve();
+        await new Promise(resolve => signal!.addEventListener('abort', resolve, { once: true }));
+        signal.throwIfAborted();
+      },
+    }));
+    const boardId = await makeBoard();
+    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const restored = createBoardClient(boardId, { openStream: openTestStream });
+    try {
+      client.connect();
+      await until(() => client.getState() !== null, 'baseline');
+      const starting = client.start(1);
+      await entered.promise;
+      await until(() => client.getSetupProgress()?.stage === 'dependencies', 'setup progress');
+      assert.equal(client.getState()?.tasks.get('W1-A')?.attempts.length, 0);
+      // A new observer must see current setup without replaying journal events.
+      restored.connect();
+      await until(() => restored.getSetupProgress()?.stage === 'dependencies', 'restored setup progress');
+      assert.equal(restored.getSetupProgress()?.message, 'Installing dependencies with pnpm…');
+      await client.stop();
+      await starting;
+      await until(() => restored.getSetupProgress() === null && restored.getState()?.status === 'stopped', 'settled stop');
+      assert.equal(signal?.aborted, true);
+      assert.equal(client.getState()?.tasks.get('W1-A')?.attempts.length, 0);
+      assert.equal((await readEvents(boardId)).some(event => event.type === 'recovery.held'), false);
+    } finally {
+      client.close();
+      restored.close();
+    }
+  });
+
+  it('restores pending task preparation independently of board setup and clears it on Stop', async () => {
+    const entered = Promise.withResolvers<void>();
+    setEffectorFactory(() => ({
+      ...createScriptedEffector({ script: [{ emit: { outcome: 'pass', delayMs: 60_000 } }] }),
+      async start(want: { taskId: string | null }, options: { signal: AbortSignal; onProgress: (progress: { stage: string; message: string }) => void }) {
+        options.onProgress({ stage: 'dependencies', message: 'Installing dependencies with pnpm…' });
+        entered.resolve();
+        await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true }));
+        throw options.signal.reason;
+      },
+    }));
+    const boardId = await makeBoard();
+    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const restored = createBoardClient(boardId, { openStream: openTestStream });
+    try {
+      client.connect();
+      await until(() => client.getState() !== null, 'baseline');
+      const starting = client.start(1);
+      await entered.promise;
+      await until(() => client.getTaskSetups().has('W1-A'), 'task preparation');
+      assert.equal(client.getSetupProgress(), null);
+      restored.connect();
+      await until(() => restored.getTaskSetups().has('W1-A'), 'restored task preparation');
+      assert.equal(restored.getTaskSetups().get('W1-A')?.role, 'builder');
+      assert.equal(restored.getState()?.tasks.get('W1-A')?.attempts.length, 0);
+      await client.stop();
+      await starting;
+      await until(() => restored.getTaskSetups().size === 0, 'cancelled task preparation');
+      assert.equal(restored.getState()?.tasks.get('W1-A')?.attempts.length, 0);
+    } finally { client.close(); restored.close(); }
+  });
+
   it('surfaces live tool calls without folding them into the journal', async () => {
     const boardId = await makeBoard();
     const trackedStream = trackTestStream();

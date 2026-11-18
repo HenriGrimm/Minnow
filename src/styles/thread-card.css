@@ -306,7 +306,7 @@ html.is-electron-shell .graphite-thread-header__actions {
   --chat-composer-max: min(clamp(660px, 57.5cqi, 840px), calc(100cqi - 2 * var(--mn-graphite-thread-gutter)));
 }
 
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) #chatArea.chat-thread {
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) #chatArea.chat-thread:not(.chat-area--orchestrator-boards) {
   --chat-reading-width: min(var(--chat-composer-max), 100%);
   /* Count the reserved scrollbar space toward the transcript's side gutters. */
   --chat-thread-padding-inline: max(0px, calc(var(--mn-graphite-thread-gutter, 36px) - var(--mn-scrollbar-size, 10px)));

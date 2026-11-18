@@ -71,6 +71,25 @@ npm start
 
 This starts Vite + the Node tool server on **port 9473** (or the next free port — watch the terminal) and launches the **Electron desktop shell**. It also prints `Minnow data: <path>` showing your `~/.minnow` home.
 
+### Develop Minnow from installed Minnow
+
+Keep installed Minnow open for your coding chats. From the source checkout, run:
+
+```bash
+npm run dev:isolated
+```
+
+This opens **Minnow Dev** on the source checkout's server. It prefers port
+**19473** (or your `PORT`) and prints the actual URL after binding. Server data and
+Electron data are stored separately under `~/.minnow-dev/<checkout-id>/` and
+reused on restart; the command does not use or copy your installed profile,
+even if the terminal inherits `MINNOW_HOME`. Only one isolated launch per
+checkout can run at a time.
+
+Stop the command with Ctrl+C and rerun it to restart. For browser-only testing,
+set `MINNOW_HEADLESS=1` and open the printed URL in a browser or installed Minnow's
+Preview. Set up providers you need in the dev profile separately.
+
 ### Dev variants
 
 `npm start`, `npm run desktop`, and `npm run electron:dev` save server and Electron output under `~/.minnow/logs/runtime/server/` and `~/.minnow/logs/runtime/electron/` (or your `MINNOW_HOME`). Each run has `stdout.log`, `stderr.log`, and `events.log` files prefixed with its timestamp and supervisor PID. Check the newest stderr and events files after an unexpected exit; events include child PIDs, exit codes, and signals. If the server crashes after it has been running for 30 seconds, the supervisor restarts it once the old process is gone (at most three times in ten minutes) and logs a `restart` event; the open window reconnects. Set `MINNOW_SERVER_RESTART=0` to keep the old exit-on-crash behavior. Previous runs survive restart. Files rotate at 4 MiB with two backups, and old inactive runs are pruned on startup to retain ten runs, plus older live supervisors. Logging starts on the next launch after updating source. These logs are local and may contain application output; review them before sharing.

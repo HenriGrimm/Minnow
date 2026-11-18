@@ -58,6 +58,7 @@ export interface ChatCommandService {
   promote(caller: ChatCaller, input: { chatId: string; expectedRevision: number; clientRequestId: string }): Promise<{ chatId: string; disposition: string; revision: number; replayed: boolean }>;
   send(caller: ChatCaller, input: ChatSendInput): Promise<ChatCommandReceipt>;
   chooseWorkspace(caller: ChatCaller, input: { chatId: string; action: 'retry' | 'local'; expectedIntentId: string | null; clientRequestId?: string }): Promise<{ chat: import('./repository.js').ChatShell }>;
+  recoverMissingWorktree(chatId: string, workspacePath: string): Promise<boolean>;
   fork(caller: ChatCaller, input: {
     chatId: string; messageId: string; expectedRevision: number; message?: string; selection?: ModelSelection; clientRequestId: string;
   }): Promise<{ chatId: string; sourceChatId: string; sourceMessageId: string; commandId: string; revision: number;
@@ -112,6 +113,7 @@ export function createChatCommandService(options: {
   captureWorkspacePreparation?: (target: ChatTargetContext) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
   admitWorkspacePreparation?: (chatId: string, intent: import('./workspace-preparation.js').ChatWorkspaceIntent) => void;
   applyWorkspaceChoice?: (caller: ChatCaller, input: Parameters<ChatCommandService['chooseWorkspace']>[1]) => Promise<{ chat: import('./repository.js').ChatShell }>;
+  detachMissingWorktree?: (observed: import('./repository.js').ChatShell) => boolean;
   admitCausality?: (input: { caller: ChatCaller; command: ChatCommand }) => { causalRootId: string; causalDepth: number; agentCoordination?: boolean };
   resolveModelSelection?: (input: { target: ChatTargetContext; caller: ChatCaller; input: ChatSendInput | Parameters<ChatCommandService['configure']>[1] | Parameters<ChatCommandService['fork']>[1]; selection: ModelSelection; resolveCliDefaults?: boolean }) =>
     Promise<ModelSelection | { selection: ModelSelection }> | ModelSelection | { selection: ModelSelection };

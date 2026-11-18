@@ -8,14 +8,27 @@ export function hasChatDrag(transfer: DataTransfer | null): boolean {
   return Boolean(transfer && Array.from(transfer.types).includes(CHAT_DRAG_MIME));
 }
 
+export function readChatReferenceDrag(transfer: DataTransfer | null): string | undefined {
+  if (!transfer || !hasChatDrag(transfer)) return;
+  const sourceId = transfer.getData(CHAT_DRAG_MIME).trim();
+  return sessionState?.chats.find(chat => chat.id === sourceId)?.id;
+}
+
 /** Add a reference to an unsent draft without opening or sending either chat. */
 export function applyChatReferenceDrop(
   transfer: DataTransfer | null,
   targetId = sessionState?.activeId,
   input?: HTMLTextAreaElement | null,
 ): boolean {
-  if (!hasChatDrag(transfer)) return false;
-  const sourceId = transfer!.getData(CHAT_DRAG_MIME).trim();
+  const sourceId = readChatReferenceDrag(transfer);
+  return sourceId ? insertChatReferenceDraft(sourceId, targetId, input) : false;
+}
+
+export function insertChatReferenceDraft(
+  sourceId: string,
+  targetId = sessionState?.activeId,
+  input?: HTMLTextAreaElement | null,
+): boolean {
   const source = sessionState?.chats.find(chat => chat.id === sourceId);
   const target = sessionState?.chats.find(chat => chat.id === targetId);
   if (!source || !target || source.id === target.id || chatReadOnlyReason(target)) return false;

@@ -152,6 +152,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     captureWorkspacePreparation: target => workspacePreparation.capture(target),
     admitWorkspacePreparation: (chatId, intent) => workspacePreparation.admit(chatId, intent),
     applyWorkspaceChoice: (caller, input) => workspacePreparation.applyChoice(caller, input),
+    detachMissingWorktree: workspacePreparation.detachMissingWorktree,
     canResumeQuestionExecution: executionId => questionRecovery?.canResume(repository.getExecution(executionId)) === true,
     admitCausality: input => causality.admit(input),
     hasExternalOwner: chatId => Boolean(getExternalOwner(chatId)) || generations().some(row => row.chatId === chatId &&

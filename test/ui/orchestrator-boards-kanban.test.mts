@@ -78,6 +78,24 @@ const NO_ACTIONS: BoardActions = {
 
 const OPTIONS = { selectedTaskId: null, pendingTaskIds: new Set<string>() };
 
+test('preparing workers show setup and elapsed time on their own task card', () => {
+  setupDom();
+  const state = board();
+  const prepared = { taskId: 'W1-D', role: 'builder', stage: 'dependencies', message: 'Installing dependencies with pnpm…', startedAt: 1000 };
+  for (const stage of ['dependencies', 'stopping']) {
+    const taskSetups = new Map([['W1-D', { ...prepared, stage,
+      message: stage === 'stopping' ? 'Stopping setup…' : prepared.message }]]);
+    const root = renderTaskList(state, NO_ACTIONS, { ...OPTIONS, taskSetups, now: 5000 });
+    const card = root.querySelector('[data-task-id="W1-D"]')!;
+    assert.equal(card.getAttribute('aria-busy'), 'true');
+    assert.match(card.querySelector('.ov2-task__setup')!.textContent!, stage === 'stopping' ? /Stopping setup/ : /builder: Installing dependencies with pnpm/);
+    assert.equal(card.querySelector('.ov2-task__setup .ov2-activity__elapsed')?.textContent, '0:04');
+    assert.equal(root.querySelectorAll('.ov2-task__setup').length, 1);
+    assert.equal(root.querySelector('.ov2-setup-status'), null);
+    assert.equal(state.tasks.get('W1-D')!.attempts.length, 0);
+  }
+});
+
 test('task model follows the selected attempt and live routing without replacing the thread', () => {
   setupDom();
   const state = board();

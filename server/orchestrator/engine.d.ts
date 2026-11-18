@@ -5,6 +5,22 @@ import type * as diskJournal from './journal';
 export const DEFAULT_TICK_MS: number;
 export const DEFAULT_ENGINE_NAMESPACE: 'boards';
 
+export interface SetupProgress {
+  stage: string;
+  message: string;
+  startedAt: number;
+}
+
+export interface PreflightOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: Pick<SetupProgress, 'stage' | 'message'>) => void;
+}
+
+export interface TaskSetupProgress extends SetupProgress {
+  taskId: string;
+  role: string;
+}
+
 export const systemClock: {
   now: () => number;
   setTimer: (fn: () => void, ms: number) => unknown;
@@ -16,7 +32,7 @@ export interface Effector {
   reattach?(state: unknown): Promise<Array<{ handle: { attemptId: string; executionId?: string; commandId?: string }; desired: Desired }>>;
   recoveryReady?(hold: import('./core/types').RecoveryHold): Promise<boolean>;
   inspect(): Array<{ taskId: string | null; role: string; attemptId: string; handle?: unknown }>;
-  start(desired: Desired, options?: { signal?: AbortSignal }): Promise<{ deferred: true; reason?: string } | {
+  start(desired: Desired, options?: PreflightOptions): Promise<{ deferred: true; reason?: string } | {
     attemptId: string;
     deferred?: false;
     executionId?: string;
@@ -30,7 +46,7 @@ export interface Effector {
   stop(attemptId: string): Promise<void>;
   setPaused?(paused: boolean): void;
   onEnd?(handler: (end: AttemptEnd) => Promise<void> | void): void;
-  preflight?(): Promise<{ gitInitialized?: Record<string, unknown> } | void>;
+  preflight?(options?: PreflightOptions): Promise<{ gitInitialized?: Record<string, unknown> } | void>;
 }
 
 export interface AttemptEnd {
@@ -124,6 +140,9 @@ export interface Engine {
   getEvents(): Promise<Record<string, unknown>[]>;
   append(events: Record<string, unknown>[], options?: { idempotencyKey?: string }): Promise<Record<string, unknown>[]>;
   preflight(): Promise<void>;
+  getSetupProgress(): SetupProgress | null;
+  getTaskSetups(): TaskSetupProgress[];
+  subscribeSetup(handler: (progress: SetupProgress | null, tasks: TaskSetupProgress[]) => void): () => void;
   getStartFailures(): Array<{
     role: string;
     taskId: string | null;

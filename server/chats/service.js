@@ -53,7 +53,7 @@ function receipt(record, replayed = false) {
  */
 export function createChatCommandService({
   repository = createChatRepository(), context, resolveModelSelection, captureProfile, captureTurnIntent = captureChatTurnIntent,
-  captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice,
+  captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice, detachMissingWorktree,
   captureNativeSelection,
   feature = getAgentConversationsFeature, ordinaryFeature = getOrdinaryChatExecutionFeature, now = Date.now, id = randomUUID,
   hasExternalOwner = () => false, getExternalOwner, stopExternalOwner, isExternalExecutionActive, cancelTree, admitChildTask, admitCausality,
@@ -391,6 +391,15 @@ export function createChatCommandService({
     requireCaller(caller);
     if (typeof applyWorkspaceChoice !== 'function') failure('capability_unavailable', 'Workspace recovery is unavailable on this host');
     return applyWorkspaceChoice(caller, input);
+  });
+  // The authenticated host read adapter is the only caller. Serialize with
+  // admission and recheck ownership after asynchronous filesystem verification.
+  const recoverMissingWorktree = (chatId, workspacePath) => serialized(chatId, async () => {
+    const busy = () => disposed || active.has(chatId) || externallyOwned(chatId) ||
+      repository.getLease(chatId)?.state === 'active';
+    if (typeof detachMissingWorktree !== 'function' || busy()) return false;
+    const observed = await context.findMissingWorktree(chatId, workspacePath);
+    return Boolean(observed && !busy() && detachMissingWorktree(observed));
   });
   /** A same-chat replay admits a fresh command in the same transaction as the rewind. */
   async function rewriteHistory(caller, input) {
@@ -1132,7 +1141,7 @@ export function createChatCommandService({
   }
   const service = {
     ordinaryEligibility, promote,
-    send, configure, fork, rewriteHistory, chooseWorkspace, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
+    send, configure, fork, rewriteHistory, chooseWorkspace, recoverMissingWorktree, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
     stopExecution(executionId) {
       checked(validateChatId(executionId));
       const entry = [...active.values()].find(value => value.execution.executionId === executionId);

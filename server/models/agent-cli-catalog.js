@@ -363,13 +363,7 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
     }))));
   }
   if (providerId !== CODEX_CLI_ID) return applyContext(staticRows);
-  try {
-    return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));
-  } catch (error) {
-    // Busy with a turn or usage probe before any catalog was discovered.
-    if (error?.code === 'CODEX_CATALOG_BUSY') return applyContext(staticRows);
-    throw error;
-  }
+  return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));
 }
 
 /** Keep CLI model values for requests, adding pinned IDs only when the CLI resolves them. */

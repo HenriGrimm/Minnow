@@ -144,17 +144,19 @@ async function removeDepLink(target) {
  * @param {string} wtPath
  * @returns {Promise<string | null>}
  */
-async function resolveExcludePath(wtPath) {
+async function resolveExcludePath(wtPath, signal) {
   try {
-    const r = await runProcess('git', ['rev-parse', '--git-path', 'info/exclude'], {
+    const r = await runWorktreeSetupProcess('git', ['rev-parse', '--git-path', 'info/exclude'], {
       cwd: wtPath,
       timeout: 30_000,
+      signal,
     });
     if (r.code !== 0) return null;
     const p = `${r.stdout ?? ''}`.trim();
     if (!p) return null;
     return path.isAbsolute(p) ? p : path.resolve(wtPath, p);
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || error?.code === 'recovery_required') throw error;
     return null;
   }
 }
@@ -173,11 +175,12 @@ async function resolveExcludePath(wtPath) {
  * @param {Iterable<string>} dirs
  * @returns {Promise<{ ok: boolean, excludePath?: string, dirs: string[], reason?: string }>}
  */
-export async function ensureDepDirsExcluded(wtPath, dirs) {
+export async function ensureDepDirsExcluded(wtPath, dirs, { signal } = {}) {
+  signal?.throwIfAborted();
   const wanted = [...new Set([...dirs].filter(Boolean))].sort();
   if (wanted.length === 0) return { ok: true, dirs: [] };
 
-  const excludePath = await resolveExcludePath(wtPath);
+  const excludePath = await resolveExcludePath(wtPath, signal);
   if (!excludePath) return { ok: false, dirs: wanted, reason: 'could not resolve info/exclude' };
 
   let existing = '';
@@ -202,9 +205,11 @@ export async function ensureDepDirsExcluded(wtPath, dirs) {
   if (next === existing) return { ok: true, excludePath, dirs: wanted };
 
   try {
+    signal?.throwIfAborted();
     await fs.mkdir(path.dirname(excludePath), { recursive: true });
-    await fs.writeFile(excludePath, next, 'utf8');
+    await fs.writeFile(excludePath, next, { encoding: 'utf8', signal });
   } catch (err) {
+    if (signal?.aborted || err?.code === 'recovery_required') throw err;
     return { ok: false, excludePath, dirs: wanted, reason: errMessage(err) };
   }
   return { ok: true, excludePath, dirs: wanted };
@@ -336,20 +341,38 @@ async function ensurePnpmWorkspaceInstall(sourceRoot, wtPath, install, signal) {
   if (!(await pathExists(path.join(sourceRoot, 'pnpm-workspace.yaml')))) return { handled: false, installed: false };
   if (!(await pathExists(path.join(wtPath, 'pnpm-lock.yaml')))) return { handled: false, installed: false };
   const targetLink = path.join(wtPath, 'node_modules');
+  const pendingInstall = path.join(targetLink, '.minnow-pnpm-setup-pending');
   const state = await inspectDepDir(targetLink);
   signal?.throwIfAborted();
-  if (state === 'real-dir') return { handled: true, installed: false };
-  if (state !== 'missing' && !(await removeDepLink(targetLink))) {
+  if (state === 'real-dir' && !(await pathExists(pendingInstall))) return { handled: true, installed: false };
+  if (state !== 'missing' && state !== 'real-dir' && !(await removeDepLink(targetLink))) {
     return { handled: false, installed: false, reason: `existing node_modules link could not be removed (${targetLink})` };
   }
   let outcome;
   try {
+    signal?.throwIfAborted();
+    await fs.mkdir(targetLink, { recursive: true });
+    await fs.writeFile(pendingInstall, '', { signal });
     outcome = await install(wtPath);
+    signal?.throwIfAborted();
+    if (outcome.ok) await fs.rm(pendingInstall, { force: true });
   } catch (err) {
+    // pnpm can replace node_modules while installing. Once cancellation has
+    // reaped the installer, restore the retry marker in its partial directory.
+    if (signal?.aborted && err?.code !== 'recovery_required' && await inspectDepDir(targetLink) === 'real-dir') {
+      await fs.writeFile(pendingInstall, '');
+    }
     if (signal?.aborted || err?.code === 'recovery_required') throw err;
     outcome = { ok: false, reason: errMessage(err) };
   }
   if (outcome.ok) return { handled: true, installed: true };
+  // An install that never populated modules can still use the legacy link fallback.
+  // Keep partial installations and their retry marker intact.
+  const contents = await fs.readdir(targetLink).catch(() => []);
+  if (contents.length === 1 && contents[0] === path.basename(pendingInstall)) {
+    await fs.rm(pendingInstall, { force: true });
+    await fs.rmdir(targetLink);
+  }
   return { handled: false, installed: false, reason: outcome.reason };
 }
 
@@ -394,7 +417,10 @@ export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
   const symlinkType = process.platform === 'win32' ? 'junction' : 'dir';
 
   const npm = await ensureNpmWorkspaceInstall(sourceRoot, wtPath,
-    root => signal ? (options.installNpm ?? runNpmWorkspaceInstall)(root, { signal }) : (options.installNpm ?? runNpmWorkspaceInstall)(root), signal);
+    root => {
+      options.onProgress?.({ stage: 'dependencies', message: 'Installing dependencies with npm…' });
+      return signal ? (options.installNpm ?? runNpmWorkspaceInstall)(root, { signal }) : (options.installNpm ?? runNpmWorkspaceInstall)(root);
+    }, signal);
   signal?.throwIfAborted();
   if (npm.handled) {
     seen.add('node_modules');
@@ -402,7 +428,10 @@ export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
     if (npm.reason) failed.push({ dir: 'node_modules', reason: npm.reason });
   }
   const pnpm = npm.handled ? { handled: false } : await ensurePnpmWorkspaceInstall(sourceRoot, wtPath,
-    root => signal ? (options.installPnpm ?? runPnpmInstall)(root, { signal }) : (options.installPnpm ?? runPnpmInstall)(root), signal);
+    root => {
+      options.onProgress?.({ stage: 'dependencies', message: 'Installing dependencies with pnpm…' });
+      return signal ? (options.installPnpm ?? runPnpmInstall)(root, { signal }) : (options.installPnpm ?? runPnpmInstall)(root);
+    }, signal);
   signal?.throwIfAborted();
   if (pnpm.handled) {
     seen.add('node_modules');
@@ -512,7 +541,7 @@ export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
   // Exclude every dep dir of a matched ecosystem, whether or not we linked it
   // this pass: a link from an earlier run is exactly the case that needs it.
   signal?.throwIfAborted();
-  const excluded = await ensureDepDirsExcluded(wtPath, seen);
+  const excluded = await ensureDepDirsExcluded(wtPath, seen, { signal });
   signal?.throwIfAborted();
   if (!excluded.ok && excluded.reason) {
     console.warn(`[dep-symlinks] ${wtPath}: could not exclude dep dirs: ${excluded.reason}`);

@@ -99,6 +99,35 @@ test('an unavailable directory or unverified git registry fails before authority
 });
 
 
+test('missing worktree reconciliation needs a verified source and never adopts an unrelated checkout', async t => {
+  const { dirs, runGit, validateRoot } = await fixture(t);
+  const chat = { id: 'chat', chatCommandVersion: 1, workspacePath: dirs.main, worktreeRoot: dirs.child };
+  const { projectId } = await loadChatProjectRegistry(dirs.main, { validateRoot, runGit });
+  let savedProjectId = projectId;
+  let registered = true;
+  const context = createChatContext({
+    repository: { getChat: () => chat, getChatProjectId: () => savedProjectId },
+    validateRoot, resolvePolicyInput: async () => { throw new Error('Recovery is not an execution authorization'); },
+    runGit: (args, cwd) => !registered && args[0] === 'worktree'
+      ? { code: 0, stdout: `worktree ${dirs.main}\0\0` } : runGit(args, cwd),
+  });
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'registered checkout stays selected');
+  chat.worktreeRoot = dirs.other;
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'an existing Git-listed path that fails verification stays selected');
+  chat.worktreeRoot = dirs.child;
+  registered = false;
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), chat, 'unregistered worktree with leftover files can detach');
+  assert.ok((await fs.stat(dirs.child)).isDirectory());
+  savedProjectId = 'other-project';
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'a different project cannot detach this chat');
+  savedProjectId = projectId;
+  chat.agentConversation = {};
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'delegated chats retain their separate execution scope');
+  delete chat.agentConversation;
+  chat.workspacePreparation = { intent: { chatId: chat.id, projectId, sourceWorkspaceId: 'not-the-saved-source' } };
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'a mismatched saved source cannot become Local');
+});
+
 test('unchanged revisions reuse per-checkout verification, not live allowlists or policy', async t => {
   const { dirs, runGit, validateRoot } = await fixture(t);
   let scans = 0, allowed = true, permission = 'full';

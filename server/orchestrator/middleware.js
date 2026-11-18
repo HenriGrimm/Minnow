@@ -411,7 +411,7 @@ async function dispatch(route, req, res) {
       const events = engine ? null : await readEvents(boardId);
       const state = engine ? engine.getState() : derive(events);
       const seq = engine ? engine.getHighestSeq() : Number(events.at(-1)?.seq) || 0;
-      return json(res, 200, { ok: true, state: serialiseState(state), seq });
+      return json(res, 200, { ok: true, state: serialiseState(state), seq, setup: engine?.getSetupProgress() ?? null, taskSetups: engine?.getTaskSetups() ?? [] });
     }
 
     case 'report': {
@@ -964,6 +964,7 @@ async function streamEvents(req, res, boardId) {
   let unsubscribe = () => {};
   let unsubscribeLive = () => {};
   let unsubscribeErrors = () => {};
+  let unsubscribeSetup = () => {};
   req.on('close', cleanup);
   req.on('error', cleanup);
   res.on('close', cleanup);
@@ -1021,6 +1022,9 @@ async function streamEvents(req, res, boardId) {
     if (!send('event', event, seq)) cleanup();
   };
   unsubscribe = engine.subscribe(deliver);
+  unsubscribeSetup = engine.subscribeSetup((setup, taskSetups) => {
+    if (!send('setup', { setup, taskSetups })) cleanup();
+  });
   unsubscribeLive = subscribeLive(boardId, (payload) => {
     if (!send('live', payload)) cleanup();
   });
@@ -1056,6 +1060,8 @@ async function streamEvents(req, res, boardId) {
   const pending = buffered;
   buffered = [];
   for (const event of pending) deliver(event);
+  // Setup is transient, so always send its current value, even on journal replay.
+  send('setup', { setup: engine.getSetupProgress(), taskSetups: engine.getTaskSetups() });
 
   for (const failure of engine.getStartFailures()) {
     send('error', {
@@ -1084,6 +1090,7 @@ async function streamEvents(req, res, boardId) {
     unsubscribe();
     unsubscribeLive();
     unsubscribeErrors();
+    unsubscribeSetup();
     try {
       res.end();
     } catch {

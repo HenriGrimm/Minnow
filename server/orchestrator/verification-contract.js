@@ -7,13 +7,15 @@ import { commitWorktree } from '../worktree/worktree-ops.js';
 
 /** A plan's Inputs section explicitly authorizes staging those exact files in
  * the isolated board. Never stage, commit or overwrite the user's workspace. */
-export async function prepareVerificationInputs({ workspace, cwd, markdown, boardId }) {
+export async function prepareVerificationInputs({ workspace, cwd, markdown, boardId, signal }) {
+  signal?.throwIfAborted();
   const sections = [...markdown.matchAll(/^## (?:Inputs|Reference assets)\s*\r?\n([\s\S]*?)(?=^## |$(?![\s\S]))/gm)];
   const names = [...new Set(sections.flatMap(section => [...section[1].matchAll(/`([^`\r\n]+)`/g)].map(match => match[1])))];
   const copied = [];
   const declared = [];
   const root = await fs.realpath(workspace);
   for (const name of names) {
+    signal?.throwIfAborted();
     let prerequisite;
     try { [prerequisite] = normalizePrerequisites([{ kind: 'file', path: name }]); }
     catch { throw prerequisiteError(`Plan input must name a workspace-relative file: ${name}`, []); }
@@ -38,12 +40,13 @@ export async function prepareVerificationInputs({ workspace, cwd, markdown, boar
       catch (error) { if (error.code !== 'ENOENT') throw error; }
     }
     await fs.mkdir(path.dirname(target), { recursive: true });
+    signal?.throwIfAborted();
     await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
     copied.push(name);
   }
   if (declared.length) {
     // Also commit a previously copied prefix after interruption before commit.
-    const committed = await commitWorktree({ boardId, slotId: 'integration', message: 'Stage declared board inputs', paths: declared });
+    const committed = await commitWorktree({ boardId, slotId: 'integration', message: 'Stage declared board inputs', paths: declared, signal });
     if (!committed.ok) throw prerequisiteError('Could not stage declared board inputs in the integration checkout.', []);
   }
   return copied;

@@ -29,8 +29,8 @@ async function harness({ preflight, startError, events = [created()] } = {}) {
     inspect: () => [...live.values()],
     onEnd: (handler) => { listener = handler; },
     preflight,
-    async start(want) {
-      if (startError) await startError(want);
+    async start(want, options) {
+      if (startError) await startError(want, options);
       const value = { ...want, attemptId: `attempt-${++serial}` };
       live.set(value.attemptId, value);
       starts.push(value);
@@ -85,12 +85,137 @@ test('first Start persists accepted intent and resumes after a recoverable prefl
   assert.equal(h.starts.filter(item => item.taskId === 'A').length, 1);
 });
 
+test('setup reports its phase, coalesces Start, and launches only after readiness', async () => {
+  const entered = Promise.withResolvers();
+  const ready = Promise.withResolvers();
+  let calls = 0;
+  const h = await harness({ preflight: async ({ onProgress }) => {
+    calls++;
+    onProgress({ stage: 'dependencies', message: 'Installing dependencies with pnpm…' });
+    entered.resolve();
+    await ready.promise;
+  } });
+  const updates = [];
+  h.engine.subscribeSetup(progress => updates.push(progress));
+  const starting = h.engine.startBoard(1, { recovery: true });
+  await entered.promise;
+  assert.equal(h.engine.getSetupProgress().stage, 'dependencies');
+  assert.equal(h.engine.getState().status, 'running');
+  assert.equal(h.starts.length, 0);
+  const duplicate = h.engine.startBoard(1, { recovery: true });
+  ready.resolve();
+  await Promise.all([starting, duplicate]);
+  assert.equal(calls, 1);
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.engine.getSetupProgress(), null);
+  assert.equal(updates.at(-1), null);
+  assert.equal((await h.journal.readEvents('recovery')).filter(event => event.type === 'board.started').length, 1);
+});
+
+test('Stop aborts setup and waits for cleanup; a later Start retries without a false hold', async () => {
+  const entered = Promise.withResolvers();
+  const aborted = Promise.withResolvers();
+  const cleanup = Promise.withResolvers();
+  let calls = 0;
+  const h = await harness({ preflight: async ({ signal, onProgress }) => {
+    if (++calls > 1) return;
+    onProgress({ stage: 'dependencies', message: 'Installing dependencies with pnpm…' });
+    entered.resolve();
+    await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
+    aborted.resolve();
+    await cleanup.promise;
+    // A cancelled worker must not publish late progress.
+    onProgress({ stage: 'plan', message: 'Preparing board plan…' });
+    signal.throwIfAborted();
+  } });
+  const starting = h.engine.startBoard(1, { recovery: true });
+  await entered.promise;
+  let stopped = false;
+  const stopping = h.engine.stopBoard().then(() => { stopped = true; });
+  await aborted.promise;
+  await Promise.resolve();
+  assert.equal(stopped, false);
+  assert.equal(h.engine.getSetupProgress().stage, 'stopping');
+  assert.equal(h.starts.length, 0);
+  cleanup.resolve();
+  await Promise.all([starting, stopping]);
+  assert.equal(h.engine.getState().status, 'stopped');
+  assert.equal(h.engine.getSetupProgress(), null);
+  assert.deepEqual(h.engine.getState().recoveryHolds, {});
+  assert.equal(h.starts.length, 0);
+  await h.engine.startBoard(1, { recovery: true });
+  assert.equal(calls, 2);
+  assert.equal(h.starts.length, 1);
+});
+
 test('a startup failure is durable without fabricating an attempt-start event', async () => {
   const h = await harness({ startError: async () => { throw new Error('CLI process limit reached'); } });
   await h.engine.startBoard(1, { recovery: true });
   const events = await h.journal.readEvents('recovery');
   assert.equal(events.filter((event) => event.type === 'task.attempt.started').length, 0);
   assert.equal(derive(events).recoveryHolds['builder:A'].stage, 'start');
+});
+
+test('disposing the engine cancels setup and cannot start a late attempt', async () => {
+  const entered = Promise.withResolvers();
+  const h = await harness({ preflight: async ({ signal }) => {
+    entered.resolve();
+    await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    signal.throwIfAborted();
+  } });
+  const starting = h.engine.startBoard(1, { recovery: true });
+  await entered.promise;
+  h.engine.dispose();
+  assert.equal(await starting, false);
+  assert.equal(h.starts.length, 0);
+  assert.equal(h.engine.getSetupProgress(), null);
+});
+
+test('task preparation is scoped to its card and Stop waits for cancellation', async () => {
+  const entered = Promise.withResolvers();
+  const cancelled = Promise.withResolvers();
+  const cleanup = Promise.withResolvers();
+  const h = await harness({ startError: async (want, { signal, onProgress }) => {
+    onProgress({ stage: 'dependencies', message: 'Installing dependencies with pnpm…' });
+    entered.resolve();
+    await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    cancelled.resolve();
+    await cleanup.promise;
+    signal.throwIfAborted();
+  } });
+  const starting = h.engine.startBoard(1, { recovery: true });
+  await entered.promise;
+  assert.equal(h.engine.getSetupProgress(), null, 'worker setup is separate from board preflight');
+  assert.equal(h.engine.getTaskSetups()[0].taskId, 'A');
+  assert.equal(h.engine.getTaskSetups()[0].stage, 'dependencies');
+  assert.equal(h.engine.getState().tasks.get('A').attempts.length, 0);
+  let stopped = false;
+  const stopping = h.engine.stopBoard().then(() => { stopped = true; });
+  await cancelled.promise;
+  assert.equal(h.engine.getTaskSetups()[0].stage, 'stopping');
+  assert.equal(stopped, false);
+  cleanup.resolve();
+  await Promise.all([starting, stopping]);
+  assert.deepEqual(h.engine.getTaskSetups(), []);
+  assert.equal(h.starts.length, 0);
+  assert.deepEqual(h.engine.getState().recoveryHolds, {});
+});
+
+test('unconfirmed setup shutdown blocks a replacement setup', async () => {
+  const entered = Promise.withResolvers();
+  const h = await harness({ preflight: async ({ signal }) => {
+    entered.resolve();
+    await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    throw Object.assign(new Error('Setup process has not confirmed shutdown'), { code: 'recovery_required' });
+  } });
+  const starting = h.engine.startBoard(1, { recovery: true });
+  await entered.promise;
+  await assert.rejects(h.engine.stopBoard(), /not confirmed shutdown/);
+  await starting;
+  assert.equal(h.engine.getSetupProgress().stage, 'blocked');
+  await assert.rejects(h.engine.startBoard(1, { recovery: true }), /not confirmed shutdown/);
+  await h.engine.tick();
+  assert.equal(h.starts.length, 0);
 });
 
 test('Stop and Pause suppress due recovery and retain its evidence', async () => {

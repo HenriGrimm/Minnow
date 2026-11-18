@@ -335,6 +335,8 @@ function readSse(pathname, enough, headers = {}) {
             else if (line.startsWith('event: ')) frame.event = line.slice(7);
             else if (line.startsWith('data: ')) frame.data = JSON.parse(line.slice(6));
           }
+          // These assertions concern journal replay; setup has its own transient channel.
+          if (frame.event === 'setup') continue;
           frames.push(frame);
           if (enough(frames)) {
             request.destroy();

@@ -19,7 +19,9 @@ import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { derive } from '../../server/orchestrator/core/derive.js';
 import { canonicalise } from '../../server/orchestrator/core/snapshot.js';
 import { focusableWithin } from '../../src/ui/components/internal.ts';
+import { installChatWorkView, disposeChatWorkView } from '../../src/ui/chat-work.ts';
 const {
+  closeBoardsView,
   openBoardsView,
   resetBoardsViewForTests,
   showBoard,
@@ -59,14 +61,22 @@ let activeWindow: Window | undefined;
 let previousFetch: typeof fetch | undefined;
 let previousEventSource: typeof EventSource | undefined;
 let streamOpens = 0;
+let boardStream: FakeEventSource | undefined;
 
 class FakeEventSource {
+  listeners = new Map<string, Array<(event: { data: string }) => void>>();
   url: string;
   constructor(url: string) {
     this.url = url;
     streamOpens += 1;
+    if (url.includes('/events')) boardStream = this;
   }
-  addEventListener(): void {}
+  addEventListener(type: string, listener: (event: { data: string }) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  emit(type: string, value: unknown): void {
+    for (const listener of this.listeners.get(type) ?? []) listener({ data: JSON.stringify(value) });
+  }
   close(): void {}
 }
 
@@ -170,6 +180,97 @@ afterEach(() => {
 });
 
 describe('V2 Boards last-opened resume', () => {
+  test('task preparation appears on the task instead of the board header', async () => {
+    setupDom(canonicalise(derive([
+      { v: 1, seq: 1, type: 'board.created', boardId: BOARD_ID, name: BOARD_SUMMARY.name,
+        planPath: BOARD_SUMMARY.planPath, waves: [{ n: 1, name: 'Fixture' }],
+        tasks: [{ id: 'W1-A', title: 'Prepare fixture', wave: 1, dependsOn: [], touches: ['README.md'] }] },
+      { v: 1, seq: 2, type: 'board.started', concurrency: 1 },
+    ])));
+    await openBoardsView();
+    await showBoard(BOARD_ID);
+    await waitForBoardHeader();
+    boardStream!.emit('setup', { setup: null, taskSetups: [
+      { taskId: 'W1-A', role: 'builder', stage: 'dependencies', message: 'Installing dependencies with pnpm…', startedAt: Date.now() - 3000 },
+    ] });
+    assert.equal(document.querySelector('.board-header .ov2-setup-status'), null);
+    const card = document.querySelector('.ov2-task[data-task-id="W1-A"]')!;
+    assert.match(card.querySelector('.ov2-task__setup')?.textContent ?? '', /builder: Installing dependencies with pnpm/);
+    assert.match(card.querySelector('.ov2-task__badges')?.textContent ?? '', /Setting up/);
+    assert.equal(document.querySelectorAll('.ov2-task__setup').length, 1);
+    boardStream!.emit('setup', { setup: null, taskSetups: [] });
+    assert.equal(document.querySelector('.ov2-task__setup'), null);
+  });
+  test('opening Boards removes the floating chat checklist and restores it on return', async () => {
+    setupDom();
+    const area = document.getElementById('chatArea')!;
+    const viewport = document.createElement('div');
+    viewport.className = 'chat-viewport';
+    document.getElementById('mainColumn')!.append(viewport);
+    viewport.append(area);
+    const chat = createEmptyChatObject('chat-checklist');
+    chat.todos = [{ text: 'Finish the chat task', status: 'in_progress' }];
+    chat.history = [
+      { role: 'user', content: 'Work on this task' },
+      { role: 'assistant', content: 'Working on it.' },
+    ];
+    setSessionStateForTests({ version: 5, activeId: chat.id, sidebarCollapsed: false, groups: [], chats: [chat] });
+    area.innerHTML = '<div class="msg assistant" data-history-index="1">Working on it.</div>';
+    installChatWorkView(area, chat, () => false);
+    try {
+      const panel = viewport.querySelector<HTMLDetailsElement>(':scope > .chat-todo-panel')!;
+      assert.ok(panel);
+      panel.querySelector<HTMLElement>('summary')!.click();
+      assert.equal(panel.open, false);
+
+      await openBoardsView();
+      assert.ok(area.querySelector('#orchestratorBoardsRoot'));
+      assert.equal(viewport.querySelector('.chat-todo-panel'), null);
+      window.dispatchEvent(new window.Event('minnow:todos-changed'));
+      await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()));
+      assert.equal(viewport.querySelector('.chat-todo-panel'), null);
+
+      // A late stream callback must not reinstall chat work over the board.
+      const staleRow = document.createElement('div');
+      staleRow.className = 'msg assistant';
+      staleRow.dataset.historyIndex = '1';
+      area.append(staleRow);
+      installChatWorkView(area, chat, () => false);
+      assert.equal(viewport.querySelector('.chat-todo-panel'), null);
+      staleRow.remove();
+
+      await closeBoardsView({ skipNavigate: true });
+      const restored = viewport.querySelector<HTMLDetailsElement>(':scope > .chat-todo-panel');
+      assert.ok(restored);
+      assert.match(restored.textContent ?? '', /Finish the chat task/);
+      assert.equal(restored.open, false);
+      assert.equal(viewport.querySelectorAll('.chat-todo-panel').length, 1);
+    } finally {
+      disposeChatWorkView(area);
+    }
+  });
+
+  test('setup progress stays visible, exposes Stop, and clears when setup ends', async () => {
+    setupDom();
+    await openBoardsView();
+    await showBoard(BOARD_ID);
+    await waitForBoardHeader();
+    boardStream!.emit('setup', { setup: {
+      stage: 'dependencies', message: 'Installing dependencies with pnpm…', startedAt: Date.now() - 3000,
+    } });
+    const status = document.querySelector('.ov2-setup-status');
+    assert.equal(status?.getAttribute('role'), 'status');
+    assert.match(status?.textContent ?? '', /Setting up board.*Installing dependencies with pnpm/);
+    assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="Board setup in progress"]')?.disabled, true);
+    assert.equal(document.querySelector('[aria-label="Board setup in progress"]')?.textContent, 'Starting…');
+    assert.equal([...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Stop')?.disabled, false);
+    boardStream!.emit('setup', { setup: { stage: 'stopping', message: 'Stopping setup…', startedAt: Date.now() } });
+    assert.match(document.querySelector('.ov2-setup-status')?.textContent ?? '', /Stopping setup/);
+    assert.equal([...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Stop')?.disabled, true);
+    boardStream!.emit('setup', { setup: null });
+    assert.equal(document.querySelector('.ov2-setup-status'), null);
+    assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="Pause board"]')?.disabled, false);
+  });
   test('task dialog contains focus and restores the task when closed', async () => {
     setupDom(canonicalise(derive([{
       v: 1, seq: 1, type: 'board.created', boardId: BOARD_ID, name: BOARD_SUMMARY.name,

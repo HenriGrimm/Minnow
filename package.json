@@ -71,6 +71,7 @@
     "sandbox:build-helper": "bash native/minnow-sandbox/build.sh",
     "sandbox:ensure-helper": "node scripts/ensure-minnow-sandbox-helper.mjs",
     "start": "node scripts/dev-server.mjs",
+    "dev:isolated": "node scripts/isolated-dev.mjs",
     "minnow:run": "node bin/minnow.mjs run",
     "test:notifications": "node test/run-all.mjs --suite notifications",
     "test:terminal-pty": "node test/terminal/pty-session.test.mjs",

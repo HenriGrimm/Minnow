@@ -2,6 +2,8 @@
 
 Start in an open workspace and choose a thread or **New thread**. The thread header opens the side and bottom panels. Use **+** in an open panel to add another surface. See [Workspace navigation](overview.md) for the launcher and thread card.
 
+Drop a file, editor selection, editor or preview tab, or an existing thread onto **New thread** to open a fresh composer with that item already added. Nothing is sent until you send the message.
+
 ## Find and edit a file
 
 1. Open **Side panel → Files**. Expand a folder and select a file to open an editor tab.

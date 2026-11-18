@@ -303,7 +303,13 @@ export async function handleProviderRequest(req, res, pathname) {
         return true;
       }
       const query = new URL(req.url ?? pathname, 'http://localhost').searchParams;
-      sendJson(res, 200, await proxyModels(id, { refresh: query.get('refresh') === '1' }));
+      try {
+        sendJson(res, 200, await proxyModels(id, { refresh: query.get('refresh') === '1' }));
+      } catch (error) {
+        if (error?.code !== 'CODEX_CATALOG_BUSY') throw error;
+        res.setHeader('Retry-After', '5');
+        sendJson(res, 503, { code: error.code, error: error.message });
+      }
       return true;
     }
 
