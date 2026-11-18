@@ -69,6 +69,24 @@ describe('multi-repo chat worktrees', () => {
     assert.equal(again.branch, result.branch);
   });
 
+  test('local dotenv files are copied per repo into the mirror', async () => {
+    // The workspace folder is not a repository, so each repo supplies its own.
+    const backend = path.join(root, 'backend');
+    await fs.writeFile(path.join(backend, '.gitignore'), '.env\n');
+    git(backend, 'add', '.gitignore');
+    git(backend, 'commit', '-q', '-m', 'ignore env');
+    await fs.writeFile(path.join(backend, '.env'), 'API_KEY=local\n');
+
+    const result = await inWorkspace(() => enableChatWorktree({ chatId: 'c-env', title: 'Env' }));
+    assert.equal(result.ok, true, result.error);
+    assert.equal((await fs.readFile(path.join(result.path, 'backend', '.env'), 'utf8')).trim(), 'API_KEY=local');
+    await assert.rejects(fs.access(path.join(result.path, 'frontend', '.env')));
+    await assert.rejects(fs.access(path.join(result.path, '.env')));
+
+    const removed = await inWorkspace(() => removeChatWorktree({ chatId: 'c-env' }));
+    assert.equal(removed.ok, true);
+  });
+
   test('merge lands only the repos the chat changed, then removes the mirror', async () => {
     const enabled = await inWorkspace(() => enableChatWorktree({ chatId: 'c1', title: 'Add endpoint' }));
     const wtBackend = path.join(enabled.path, 'backend');
