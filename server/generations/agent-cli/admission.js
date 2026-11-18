@@ -12,12 +12,27 @@ export function beginAgentCliMaintenance(providerId) {
 /** A background probe that can renew credentials runs only between active turns. */
 export function tryAdmitAgentCliProbe(providerId) {
   if (maintenance.has(providerId) || providers.has(providerId)) return null;
-  const pool = { active: 0, queue: [], probing: true };
+  let finish;
+  const probeDone = new Promise(resolve => { finish = resolve; });
+  const pool = { active: 0, queue: [], probing: true, probeDone };
   providers.set(providerId, pool);
   return () => {
     pool.probing = false;
     drain(providerId, pool);
+    finish();
   };
+}
+
+/** Wait only for a current probe, never for turns or maintenance. */
+export async function waitForAgentCliProbe(providerId, timeoutMs) {
+  const pool = providers.get(providerId);
+  if (!pool?.probing || pool.queue.length) return;
+  let timer;
+  try {
+    await Promise.race([pool.probeDone, new Promise(resolve => {
+      timer = setTimeout(resolve, timeoutMs);
+    })]);
+  } finally { clearTimeout(timer); }
 }
 
 function drain(providerId, pool) {

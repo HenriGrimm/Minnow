@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { resolveAgentCliBin, applyAgentCliCaptureEnv } from '../generations/agent-cli/resolve-bin.js';
 import { codexSourceHome, prepareCodexAuth } from '../generations/agent-cli/codex-auth.js';
 import { createCodexRpc } from '../generations/codex-app-server/rpc.js';
-import { tryAdmitAgentCliProbe } from '../generations/agent-cli/admission.js';
+import { tryAdmitAgentCliProbe, waitForAgentCliProbe } from '../generations/agent-cli/admission.js';
 
 const TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
@@ -78,11 +78,19 @@ export async function fetchCodexModelCatalog(options = {}) {
   if (!options.refresh && cached && Date.now() - cached.at < TTL_MS) return cached.models;
   if (inflight.has(key)) return inflight.get(key);
   const work = (async () => {
-    const release = tryAdmitAgentCliProbe('codex-cli');
+    let release = tryAdmitAgentCliProbe('codex-cli');
     if (!release) {
       const known = cached ?? lastKnown.get(stableKey);
       if (known) return known.models;
-      throw Object.assign(new Error('The Codex model list can refresh when Codex is idle.'), { code: 'CODEX_CATALOG_BUSY' });
+      // At startup the usage meter can win the probe slot. Don't publish the
+      // static fallback just because that short-lived probe started first.
+      await waitForAgentCliProbe('codex-cli', 15_000);
+      const discovered = lastKnown.get(stableKey);
+      if (discovered) return discovered.models;
+      release = tryAdmitAgentCliProbe('codex-cli');
+      if (!release) {
+        throw Object.assign(new Error('The Codex model list can refresh when Codex is idle.'), { code: 'CODEX_CATALOG_BUSY' });
+      }
     }
     let home;
     let syncAuth;

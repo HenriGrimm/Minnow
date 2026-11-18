@@ -4,9 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { clearAgentCliModelCatalogCache, listAgentCliModels, listAgentCliModelsWithConfig, resetAgentCliCatalogCacheForTests } from '../../server/models/agent-cli-catalog.js';
 import { readCodexModelCatalog } from '../../server/models/codex-cli-catalog.js';
-import { tryAdmitAgentCliProbe } from '../../server/generations/agent-cli/admission.js';
+import { admitAgentCli, tryAdmitAgentCliProbe } from '../../server/generations/agent-cli/admission.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-codex-catalog.mjs', import.meta.url));
 
@@ -51,14 +52,37 @@ test('Codex token refreshes keep the catalog cached; a busy Codex serves the las
   }
 });
 
-test('Codex busy before any discovery falls back to the static catalog', async () => {
+test('Cold Codex discovery waits for a competing background probe and returns installed models', async () => {
+  resetAgentCliCatalogCacheForTests();
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-discovery-overlap-'));
+  try {
+    const binPath = await fakeCodex(root);
+    const trace = path.join(root, 'trace.jsonl');
+    const options = { binPath, env: { ...process.env, CODEX_HOME: root, CODEX_CATALOG_TRACE: trace } };
+    const release = tryAdmitAgentCliProbe('codex-cli');
+    assert.ok(release);
+    const releaseUsage = delay(250).then(release);
+    try {
+      const results = await Promise.all([
+        listAgentCliModelsWithConfig('codex-cli', options),
+        listAgentCliModelsWithConfig('codex-cli', options),
+      ]);
+      for (const rows of results) assert.deepEqual(rows.map(row => row.id), ['cli-model']);
+      assert.equal((await traceRuns(trace)).length, 1, 'overlapping startup reads share discovery');
+    } finally { await releaseUsage; }
+  } finally {
+    resetAgentCliCatalogCacheForTests();
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test('An active Codex turn before any discovery falls back to the static catalog', async () => {
   resetAgentCliCatalogCacheForTests();
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-discovery-cold-'));
   try {
     const binPath = await fakeCodex(root);
     await fs.writeFile(path.join(root, 'auth.json'), '{"account":"cold"}');
-    const release = tryAdmitAgentCliProbe('codex-cli');
-    assert.ok(release);
+    const release = await admitAgentCli('codex-cli');
     try {
       const rows = await listAgentCliModelsWithConfig('codex-cli', { binPath, env: { ...process.env, CODEX_HOME: root } });
       assert.deepEqual(rows.map(row => row.id), listAgentCliModels('codex-cli').map(row => row.id));
