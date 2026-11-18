@@ -57,7 +57,7 @@ Every switch control (the thread's **Checkout** row, the composer's worktree men
 
 - With uncommitted files, Minnow asks whether to **Bring my changes** or **Leave changes** on the current branch. Changes that stay behind are saved and offered for restore when you return to that branch.
 - Git keeps a branch in one worktree at a time. When the branch or pull request is already checked out in another worktree, Minnow offers **Open worktree** (side panel and Source Control) or **Use that checkout** (a thread) instead of failing. Fork pull requests are matched by their tracking branch or head commit.
-- Threads on **Local** share the workspace folder and its branch. If other threads use that folder, switching asks first; **Switch in a new worktree** keeps the change to the current thread, and **Switch workspace anyway** moves every Local thread.
+- Threads on **Local** share the workspace folder and its branch. Switching from a thread asks first if other unarchived threads listed in the sidebar use that folder, even if they're idle. **Switch in a new worktree** keeps the change to the current thread; **Switch workspace anyway** changes the branch for the shared folder.
 - When a switch fails, the message names the cause, such as local changes that would be overwritten, a branch that is not fetched yet, or a running local action, and offers the matching action. The original Git output stays under **Technical details**.
 - When a local action is using the checkout, the picker shows **Waiting for** the action's name, with **Stop and switch** and **Try again**.
 - The branch list starts with **Recent**: branches you last switched to or from in that checkout. Use the arrow keys to move, **Enter** to switch and the left and right arrows to change tabs.
