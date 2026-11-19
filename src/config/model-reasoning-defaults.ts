@@ -3,6 +3,7 @@
 import { isComposerReasoningLevel } from '../lib/reasoning-effort';
 import type { ReasoningEffortOption } from '../types';
 import { isServerStorageMode } from './storage-mode';
+import { reasoningFavoriteKey } from '../models/cursor-variants.mjs';
 
 export const MODEL_REASONING_DEFAULTS_STORAGE_KEY = 'minnow.modelReasoningDefaults';
 
@@ -11,13 +12,18 @@ export type ModelReasoningDefaults = Record<string, ReasoningEffortOption>;
 let cachedDefaults: ModelReasoningDefaults | null = null;
 let pendingSave = Promise.resolve();
 
+/** Managed sends resolve favorites on the server, after any in-flight save. */
+export function waitForModelReasoningDefaultsSave(): Promise<void> {
+  return pendingSave;
+}
+
 function parseDefaults(raw: unknown): ModelReasoningDefaults {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const parsed: ModelReasoningDefaults = {};
   for (const [key, value] of Object.entries(raw)) {
     const trimmed = key.trim();
     if (!trimmed || trimmed.length > 4096 || !isComposerReasoningLevel(value)) continue;
-    parsed[trimmed] = value;
+    parsed[reasoningFavoriteKey(trimmed)] = value;
   }
   return parsed;
 }
@@ -58,7 +64,7 @@ export async function loadModelReasoningDefaults(): Promise<ModelReasoningDefaul
 export function getModelReasoningDefault(
   selectValue: string,
 ): ReasoningEffortOption | undefined {
-  const key = selectValue.trim();
+  const key = reasoningFavoriteKey(selectValue.trim());
   if (!key) return undefined;
   return (cachedDefaults ?? readLocalDefaults())[key];
 }
@@ -68,7 +74,7 @@ export function saveModelReasoningDefault(
   selectValue: string,
   effort: ReasoningEffortOption | null,
 ): Promise<void> {
-  const key = selectValue.trim();
+  const key = reasoningFavoriteKey(selectValue.trim());
   if (!key) return Promise.resolve();
   if (effort !== null && !isComposerReasoningLevel(effort)) {
     return Promise.reject(new Error('Expected a reasoning level'));
@@ -86,6 +92,7 @@ export function saveModelReasoningDefault(
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ defaults: next }),
+      signal: AbortSignal.timeout(10_000),
       keepalive: true,
     });
     if (!response.ok) throw new Error('Could not save model reasoning default');

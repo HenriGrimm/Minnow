@@ -8,7 +8,7 @@ import { CHAT_DRAG_MIME } from '../../src/attachments/chat-drag.ts';
 import { resetSessionPersistenceForTests, sessionState } from '../../src/state/sessions.ts';
 import { clearAttachments, getPendingAttachments } from '../../src/attachments/store.ts';
 import { PREVIEW_TAB_MIME, VIEWER_TAB_MIME, resetTabDragForTests } from '../../src/attachments/tab-drag.ts';
-import { initComposerDrop } from '../../src/ui/composer-drop.ts';
+import { bindNewThreadDrop, initComposerDrop, type ComposerDrop } from '../../src/ui/composer-drop.ts';
 import { syncChatLinkChipsFromChat } from '../../src/ui/chat-link-chips.ts';
 import {
   createEmptyChatObject,
@@ -22,6 +22,7 @@ function setupNestedCodeComposerDom(): { input: HTMLTextAreaElement; window: Win
   globalThis.HTMLTextAreaElement = window.HTMLTextAreaElement;
   globalThis.window = window as unknown as Window & typeof globalThis.window;
   globalThis.File = window.File;
+  globalThis.FileReader = window.FileReader;
   globalThis.DragEvent = window.DragEvent;
 
   const viewport = document.createElement('div');
@@ -99,6 +100,41 @@ describe('initComposerDrop', () => {
     document.body.replaceChildren();
     testWindow?.close();
     testWindow = undefined;
+  });
+
+  it('captures dropped file bytes before opening a thread, even from a read-only chat', async () => {
+    const { input, window } = setupNestedCodeComposerDom(); testWindow = window;
+    const source = seedChat();
+    input.readOnly = true;
+    const button = document.createElement('button');
+    const captured: ComposerDrop[] = [];
+    bindNewThreadDrop(button, drop => captured.push(drop));
+    const dispatchDrop = (transfer: DataTransfer) => {
+      const event = new DragEvent('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: transfer });
+      button.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    assert.equal(dispatchDrop(makeTypedTransfer({ 'text/plain': 'not an attachment' })), false);
+    assert.equal(dispatchDrop(makeTypedTransfer({ [VIEWER_TAB_MIME]: '{}' })), true);
+    assert.equal(captured.length, 0);
+    const file = new File(['hello'], 'note.txt', { type: 'text/plain' });
+    const transfer = makeFileDropTransfer(file);
+    assert.equal(dispatchDrop(transfer), true);
+    assert.equal(captured.length, 1);
+    assert.equal(getPendingAttachments().length, 0);
+    Object.defineProperty(transfer, 'files', { value: [] });
+    const target = createEmptyChatObject('');
+    sessionState!.chats.push(target);
+    sessionState!.activeId = target.id;
+    input.readOnly = false;
+    captured[0]!(input);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(getPendingAttachments()[0]?.name, 'note.txt');
+    assert.match(getPendingAttachments()[0]?.text ?? '', /\nhello\n/);
+    assert.equal(source.history.length, 0);
+    assert.equal(target.history.length, 0);
   });
 
   it('a disabled inspect-only composer rejects files and durable tab links before any mutation', async () => {

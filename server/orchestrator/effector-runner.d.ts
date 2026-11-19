@@ -19,7 +19,7 @@ export interface RunnerEffector {
     role: string;
     seedKind?: string;
     sameWorktree?: boolean;
-  }): Promise<{
+  }, options?: import('./engine').PreflightOptions): Promise<{
     attemptId: string;
     worktree?: string;
     discarded?: Record<string, unknown>[];
@@ -30,7 +30,7 @@ export interface RunnerEffector {
   /**
    * Check the model binding (including My Models remap/auto-load), role prompts, and isolated-worktree git init.
    */
-  preflight(): Promise<{ gitInitialized?: Record<string, unknown> } | void>;
+  preflight(options?: import('./engine').PreflightOptions): Promise<{ gitInitialized?: Record<string, unknown> } | void>;
   onEnd(
     handler: (end: {
       attemptId: string;

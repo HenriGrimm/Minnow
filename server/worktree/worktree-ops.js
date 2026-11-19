@@ -48,12 +48,13 @@ const depFailureOutput = (deps) => deps.failed.map((f) => f.reason).join('; ');
  * @param {string} intPath
  * @returns {Promise<{ ok: true, deps: { ok: boolean, linked: string[], repaired: string[], failed: Array<{ dir: string, reason: string }> } } | { ok: false, error: 'deps', deps: object, output: string }>}
  */
-async function seedTaskWorktreeDeps(wtPath, intPath) {
+async function seedTaskWorktreeDeps(wtPath, intPath, options = {}) {
+  options.signal?.throwIfAborted();
   const workspace = getEffectiveWorkspaceRoot();
   const preferred = (await pathExists(intPath)) ? intPath : workspace;
-  let deps = await prepareWorktreeDependencies(preferred, wtPath);
+  let deps = await prepareWorktreeDependencies(preferred, wtPath, options);
   if (!deps.ok && !deps.environment && preferred !== workspace) {
-    deps = await prepareWorktreeDependencies(workspace, wtPath);
+    deps = await prepareWorktreeDependencies(workspace, wtPath, options);
   }
   if (!deps.ok || await hasBrokenDepDir(wtPath)) {
     return {
@@ -90,9 +91,9 @@ async function pathExists(targetPath) {
  * @param {string} wtPath
  * @returns {Promise<boolean>}
  */
-export async function isWorktreeCheckout(wtPath) {
+export async function isWorktreeCheckout(wtPath, options = {}) {
   if (!(await pathExists(path.join(wtPath, '.git')))) return false;
-  const r = await git(['rev-parse', '--is-inside-work-tree'], wtPath);
+  const r = await git(['rev-parse', '--is-inside-work-tree'], wtPath, options);
   return ok(r) && (r.stdout ?? '').trim() === 'true';
 }
 
@@ -106,12 +107,13 @@ export async function isWorktreeCheckout(wtPath) {
  * @param {string} wtPath
  * @returns {Promise<{ ok: boolean, output?: string }>}
  */
-async function reclaimStaleWorktreeDir(wtPath) {
+async function reclaimStaleWorktreeDir(wtPath, options = {}) {
+  options.signal?.throwIfAborted();
   if (!isPathUnderWorktreesRoot(wtPath)) {
     return { ok: false, output: 'refusing to reclaim a path outside the worktrees root' };
   }
   // Drop any stale registration still pointing here before reusing the path.
-  await git(['worktree', 'prune', '--expire', 'now']);
+  await git(['worktree', 'prune', '--expire', 'now'], undefined, options);
   /** @type {string[]} */
   let entries = [];
   try {
@@ -120,6 +122,7 @@ async function reclaimStaleWorktreeDir(wtPath) {
     return { ok: true };
   }
   for (const entry of entries) {
+    options.signal?.throwIfAborted();
     // Junction/symlink dep dirs must be unlinked, never recursed into: the
     // targets are the real workspace node_modules.
     try {
@@ -149,8 +152,8 @@ async function reclaimStaleWorktreeDir(wtPath) {
   return { ok: true };
 }
 
-async function branchExists(branch) {
-  const r = await git(['rev-parse', '--verify', '--quiet', branch]);
+async function branchExists(branch, options = {}) {
+  const r = await git(['rev-parse', '--verify', '--quiet', branch], undefined, options);
   return r.code === 0;
 }
 
@@ -160,20 +163,20 @@ async function branchExists(branch) {
  * @param {string} branch
  * @returns {Promise<{ ok: boolean, output: string }>}
  */
-export async function deleteLocalBranch(branch) {
+export async function deleteLocalBranch(branch, options = {}) {
   const name = String(branch || '').trim();
   if (!name || name.includes('..') || name.includes('\0')) {
     return { ok: false, output: 'invalid branch name' };
   }
-  const r = await git(['branch', '-D', name]);
+  const r = await git(['branch', '-D', name], undefined, options);
   const text = out(r);
   // Missing refs are success: first allocate never created the branch.
   if (ok(r) || /not found/i.test(text)) return { ok: true, output: text };
   return { ok: false, output: text };
 }
 
-async function resolveRef(ref, cwd = getEffectiveWorkspaceRoot()) {
-  const r = await git(['rev-parse', '--verify', ref], cwd);
+async function resolveRef(ref, cwd = getEffectiveWorkspaceRoot(), options = {}) {
+  const r = await git(['rev-parse', '--verify', ref], cwd, options);
   if (!ok(r)) return null;
   const sha = `${r.stdout ?? ''}`.trim().split(/\s/)[0];
   return sha || null;
@@ -288,15 +291,16 @@ function parseNameOnly(stdout) {
 /**
  * @param {{ boardId: string, branch: string, baseRef?: string }} input
  */
-export async function ensureIntegration({ boardId, branch, baseRef }) {
+export async function ensureIntegration({ boardId, branch, baseRef, signal, onProgress }) {
+  signal?.throwIfAborted();
   const base = (baseRef && baseRef.trim()) || 'HEAD';
-  if (!(await branchExists(branch))) {
-    const b = await git(['branch', branch, base]);
+  if (!(await branchExists(branch, { signal }))) {
+    const b = await git(['branch', branch, base], undefined, { signal });
     if (!ok(b)) return { ok: false, stage: 'branch', output: out(b) };
   }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   if (await pathExists(intPath)) {
-    if (!(await isWorktreeCheckout(intPath))) {
+    if (!(await isWorktreeCheckout(intPath, { signal }))) {
       return {
         ok: false,
         stage: 'worktree',
@@ -304,20 +308,20 @@ export async function ensureIntegration({ boardId, branch, baseRef }) {
         error: `Board integration folder is not a valid Git worktree: ${intPath}. Preserve any work in this folder, then repair or move it before retrying.`,
       };
     }
-    const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath);
+    const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath, { signal, onProgress });
     if (!deps.ok) return { ok: false, stage: 'deps', path: intPath, deps, output: depFailureOutput(deps) };
     return { ok: true, path: intPath, branch, created: false, deps };
   }
   await fs.mkdir(path.dirname(intPath), { recursive: true });
-  const w = await git(['worktree', 'add', intPath, branch]);
+  const w = await git(['worktree', 'add', intPath, branch], undefined, { signal });
   if (!ok(w)) return { ok: false, stage: 'worktree', path: intPath, output: out(w) };
-  const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath);
+  const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath, { signal, onProgress });
   if (!deps.ok) return { ok: false, stage: 'deps', path: intPath, deps, output: depFailureOutput(deps) };
   return { ok: true, path: intPath, branch, created: true, deps };
 }
 
-async function mergeBaseIntoWorktree(wtPath, baseRef) {
-  const m = await git(['merge', baseRef, '--no-edit'], wtPath);
+async function mergeBaseIntoWorktree(wtPath, baseRef, options = {}) {
+  const m = await git(['merge', baseRef, '--no-edit'], wtPath, options);
   if (ok(m)) return { ok: true, output: out(m) };
   await git(['merge', '--abort'], wtPath);
   return { ok: false, conflict: true, output: out(m) };
@@ -326,17 +330,19 @@ async function mergeBaseIntoWorktree(wtPath, baseRef) {
 /**
  * @param {{ boardId: string, slotId: string, branch: string, baseRef?: string, syncBase?: boolean }} input
  */
-export async function createWorktree({ boardId, slotId, branch, baseRef, syncBase = true }) {
+export async function createWorktree({ boardId, slotId, branch, baseRef, syncBase = true, signal, onProgress }) {
+  signal?.throwIfAborted();
+  onProgress?.({ stage: 'workspace', message: 'Preparing task checkout…' });
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   const base = (baseRef && baseRef.trim()) || 'HEAD';
   const intPath = getWorktreeSlotPath(boardId, 'integration');
 
   let exists = await pathExists(wtPath);
 
-  if (exists && !(await isWorktreeCheckout(wtPath))) {
+  if (exists && !(await isWorktreeCheckout(wtPath, { signal }))) {
     // Husk from a release whose `fs.rm` failed. Reclaim the path instead of
     // reusing it, or every later git call runs in a non-repo.
-    const reclaimed = await reclaimStaleWorktreeDir(wtPath);
+    const reclaimed = await reclaimStaleWorktreeDir(wtPath, { signal });
     if (!reclaimed.ok) {
       return {
         ok: false,
@@ -351,7 +357,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
 
   if (exists) {
     // Validate/copy against the final base's ignore rules, not the old branch.
-    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base, { signal }) : { ok: true };
     if (!synced.ok) {
       return {
         ok: false,
@@ -361,7 +367,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
         output: synced.output,
       };
     }
-    const seeded = await seedTaskWorktreeDeps(wtPath, intPath);
+    const seeded = await seedTaskWorktreeDeps(wtPath, intPath, { signal, onProgress });
     if (!seeded.ok) {
       return {
         ok: false,
@@ -377,15 +383,15 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
   }
 
   await fs.mkdir(path.dirname(wtPath), { recursive: true });
-  const baseSha = await resolveRef(base);
+  const baseSha = await resolveRef(base, undefined, { signal });
   if (!baseSha) {
     return { ok: false, error: `invalid baseRef: ${base}`, path: wtPath, branch };
   }
 
-  if (await branchExists(branch)) {
-    const w = await git(['worktree', 'add', wtPath, branch]);
+  if (await branchExists(branch, { signal })) {
+    const w = await git(['worktree', 'add', wtPath, branch], undefined, { signal });
     if (!ok(w)) return { ok: false, path: wtPath, branch, output: out(w) };
-    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base, { signal }) : { ok: true };
     if (!synced.ok) {
       return {
         ok: false,
@@ -395,7 +401,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
         output: synced.output,
       };
     }
-    const seeded = await seedTaskWorktreeDeps(wtPath, intPath);
+    const seeded = await seedTaskWorktreeDeps(wtPath, intPath, { signal, onProgress });
     if (!seeded.ok) {
       return {
         ok: false,
@@ -410,9 +416,9 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
     return { ok: true, path: wtPath, branch, created: true, deps: seeded.deps };
   }
 
-  const r = await git(['worktree', 'add', '-b', branch, wtPath, baseSha]);
+  const r = await git(['worktree', 'add', '-b', branch, wtPath, baseSha], undefined, { signal });
   if (!ok(r)) return { ok: false, path: wtPath, branch, output: out(r) };
-  const seeded = await seedTaskWorktreeDeps(wtPath, intPath);
+  const seeded = await seedTaskWorktreeDeps(wtPath, intPath, { signal, onProgress });
   if (!seeded.ok) {
     return {
       ok: false,
@@ -549,7 +555,8 @@ async function rebaseOntoIntegrationUnlocked({ boardId, slotId }) {
 /**
  * @param {{ boardId: string, slotId: string, message?: string, paths?: string[] }} input
  */
-export async function commitWorktree({ boardId, slotId, message, paths }) {
+export async function commitWorktree({ boardId, slotId, message, paths, signal }) {
+  signal?.throwIfAborted();
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   try {
     await fs.access(wtPath);
@@ -557,14 +564,14 @@ export async function commitWorktree({ boardId, slotId, message, paths }) {
     return { ok: false, error: 'worktree missing' };
   }
   const pathspec = Array.isArray(paths) && paths.length > 0 ? ['--', ...paths] : [];
-  const add = await git(['add', '-A', ...pathspec], wtPath);
+  const add = await git(['add', '-A', ...pathspec], wtPath, { signal });
   if (!ok(add)) return { ok: false, output: out(add) };
-  const staged = await git(['diff', '--cached', '--quiet', ...pathspec], wtPath);
+  const staged = await git(['diff', '--cached', '--quiet', ...pathspec], wtPath, { signal });
   if (staged.code === 0) {
     return { ok: true, committed: false };
   }
   const commitMsg = expandGitmojiShortcodes((message && message.trim()) || 'Board task commit');
-  const commit = await git(['commit', '-m', commitMsg, ...pathspec], wtPath);
+  const commit = await git(['commit', '-m', commitMsg, ...pathspec], wtPath, { signal });
   if (!ok(commit)) return { ok: false, output: out(commit) };
   return { ok: true, committed: true, output: out(commit) };
 }

@@ -6,6 +6,7 @@ import { satisfiesDependents } from '../../server/orchestrator/core/derive.js';
 import type { DiffLine } from '../chat/prompts/text-diff';
 import type { EngineError, LiveActivity, TaskFileStat } from './client';
 import type { BoardNotice } from './board-attention';
+import type { TaskSetupProgress } from '../../server/orchestrator/engine';
 import {
   bucketWave,
   COLUMNS,
@@ -72,6 +73,7 @@ export interface BoardViewOptions {
   pendingTaskIds: ReadonlySet<string>;
   desktopLayout?: boolean;
   liveActivity?: ReadonlyMap<string, LiveActivity>;
+  taskSetups?: ReadonlyMap<string, TaskSetupProgress>;
   /** When recorded attempts started. View-only; never part of the fold. */
   attemptStartedAt?: ReadonlyMap<string, number>;
   attemptEndedAt?: ReadonlyMap<string, number>;
@@ -490,6 +492,9 @@ function renderTaskCard(
   const blocked = isBlocked(state, task);
   if (blocked) card.classList.add('ov2-task--blocked');
   const activeAttempt = runningAttempt(task);
+  const setup = options.taskSetups?.get(task.id);
+  const setupLabel = setup?.stage === 'stopping' ? 'Stopping setup' : setup?.stage === 'blocked' ? 'Setup blocked' : 'Setting up';
+  if (setup) card.setAttribute('aria-busy', String(setup.stage !== 'blocked'));
   const interruption = activeAttempt ? attemptInterruption(state, activeAttempt) : null;
   if (interruption) card.dataset.interruption = interruption;
 
@@ -500,7 +505,7 @@ function renderTaskCard(
   head.setAttribute('aria-haspopup', 'dialog');
   head.setAttribute(
     'aria-label',
-    `${task.id} ${task.title}, ${phaseLabel(state, task)}`,
+    `${task.id} ${task.title}, ${setup ? setupLabel : phaseLabel(state, task)}`,
   );
   head.dataset.focusKey = `task:${task.id}`;
   head.addEventListener('click', () => {
@@ -510,17 +515,17 @@ function renderTaskCard(
   if (options.desktopLayout) {
     const identity = el('span', 'ov2-task__identity');
     identity.append(el('span', 'ov2-task__id', task.id));
-    const role = activeAttempt?.role ?? task.attempts.filter(attempt => !attempt.retired && attempt.role !== 'merge').at(-1)?.role;
+    const role = setup?.role ?? activeAttempt?.role ?? task.attempts.filter(attempt => !attempt.retired && attempt.role !== 'merge').at(-1)?.role;
     if (role) identity.append(el('span', 'ov2-task__role', role));
     head.append(identity);
   } else head.append(el('span', 'ov2-task__id', task.id));
   head.appendChild(el('span', 'ov2-task__title', task.title));
   const badges = el('span', 'ov2-task__badges');
-  badges.appendChild(pill(phaseLabel(state, task), interruption ? 'neutral' : blocked ? 'warn' : PHASE_TONE[task.phase]));
+  badges.appendChild(pill(setup ? setupLabel : phaseLabel(state, task), setup ? 'live' : interruption ? 'neutral' : blocked ? 'warn' : PHASE_TONE[task.phase]));
   // `task.outcome` describes the previous ended attempt. Once a retry has
   // started, showing that stale failure beside the live phase makes the new
   // attempt look crashed too.
-  if (task.outcome && !activeAttempt) {
+  if (task.outcome && !activeAttempt && !setup) {
     badges.appendChild(pill(task.outcome, OUTCOME_TONE[task.outcome] ?? 'neutral'));
   }
   if (!activeAttempt) {
@@ -547,7 +552,19 @@ function renderTaskCard(
     card.appendChild(el('p', 'ov2-task__blocked', `waiting on ${waiting.join(', ')}`));
   }
 
-  if (activeAttempt && !interruption) {
+  if (setup) {
+    const status = el('div', 'ov2-activity ov2-task__setup');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    const label = el('span', 'ov2-activity__label', `${setup.role}: ${setup.message}`);
+    label.title = label.textContent ?? '';
+    status.append(label);
+    const clock = el('span', 'ov2-activity__elapsed', formatElapsed((options.now ?? Date.now()) - setup.startedAt));
+    clock.dataset.startedAt = String(setup.startedAt);
+    clock.title = 'Time preparing this worker';
+    status.append(clock);
+    card.append(status);
+  } else if (activeAttempt && !interruption) {
     card.appendChild(
       renderActivity(
         options.liveActivity?.get(task.id) ?? null,

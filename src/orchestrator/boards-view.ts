@@ -63,6 +63,7 @@ import {
 import { button, el, empty, pill } from './dom';
 import { createIcon } from '../ui/icon';
 import { createBackToChatButton } from '../ui/back-to-chat';
+import { disposeChatWorkView } from '../ui/chat-work';
 import { closeContextMenu, deferUntilContextMenuClosed, isContextMenuOpen, openContextMenu } from '../ui/context-menu';
 import { markPreviewOccluder, unmarkPreviewOccluder } from '../ui/preview-occlusion';
 import { refreshGraphiteSurfaceLayout, usesGraphiteContentTabs } from '../ui/surfaces/surface-bridge';
@@ -239,6 +240,9 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
     await import('../ui/main-column-overlay');
   await closeOtherCodeStageViews('boards');
 
+  // Route navigation and explicit plan launch can both await the same teardown.
+  // Don't replace a mount that the other caller has already created.
+  if (isBoardsViewOpen()) return;
   const area = document.getElementById('chatArea');
   if (!area) return;
 
@@ -258,6 +262,8 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
   }));
   root.append(header, listPane, boardPane);
 
+  // Chat-owned panels live beside the transcript and must leave with it.
+  disposeChatWorkView(area);
   area.replaceChildren(root);
   stripMainColumnOverlayClasses();
   area.classList.add(CHAT_AREA_CLASS);
@@ -530,6 +536,7 @@ export async function mountBoardFromPlan(
   handlers: AskPaneHandlers,
 ): Promise<{ boardId: string } | null> {
   const createBoard = handlers.createBoard ?? createBoardFromPlan;
+  const workspacePath = getWorkspacePath();
   const wrap = el('div', 'ov2-create');
   wrap.dataset.planLaunch = 'true';
   wrap.appendChild(el('h2', 'ov2-create__title', 'Creating board…'));
@@ -538,10 +545,10 @@ export async function mountBoardFromPlan(
   pane.replaceChildren(wrap);
   try {
     const { boardId } = await createBoard(planPath);
-    if (pane.contains(wrap)) handlers.onCreated(boardId);
+    if (pane.contains(wrap) && getWorkspacePath() === workspacePath) handlers.onCreated(boardId);
     return { boardId };
   } catch (err) {
-    if (!pane.contains(wrap)) return null;
+    if (!pane.contains(wrap) || getWorkspacePath() !== workspacePath) return null;
     wrap.querySelector('h2')!.textContent = 'Could not create board';
     const retry = button({
       label: 'Retry',
@@ -1373,6 +1380,19 @@ function paintBoard(): void {
   pane.replaceChildren();
   const header = renderBoardHeader(state, connected, renderControls(state), surface.desktopLayout);
   pane.appendChild(header);
+  const setup = client?.getSetupProgress();
+  if (setup) {
+    const progress = el('p', 'ov2-setup-status');
+    progress.setAttribute('role', 'status');
+    progress.setAttribute('aria-live', 'polite');
+    progress.setAttribute('aria-atomic', 'true');
+    progress.append(el('strong', '', setup.stage === 'stopping' ? 'Stopping setup' : 'Setting up board'));
+    progress.append(el('span', '', setup.message));
+    const elapsed = el('span', 'ov2-activity__elapsed', formatElapsed(Date.now() - setup.startedAt));
+    elapsed.dataset.startedAt = String(setup.startedAt);
+    progress.append(elapsed);
+    header.append(progress);
+  }
   const recoveryClient = client;
   const headerControls = pane.querySelector('.board-header__controls');
   let attention: BoardAttentionItem[] = [];
@@ -1582,7 +1602,8 @@ function boardViewOptions() {
   return {
     selectedTaskId,
     desktopLayout: surface?.desktopLayout,
-    pendingTaskIds: pendingTasks,
+    pendingTaskIds: new Set([...pendingTasks, ...(client?.getTaskSetups().keys() ?? [])]),
+    taskSetups: client?.getTaskSetups(),
     liveActivity: client?.getLiveActivity(),
     attemptStartedAt: client?.getAttemptStartedAt(),
     attemptEndedAt: client?.getAttemptEndedAt(),
@@ -1655,7 +1676,7 @@ function syncElapsedTicker(state: BoardState): void {
     const attempt = runningAttempt(task);
     return attempt && !attemptInterruption(state, attempt);
   });
-  if (!anyRunning || !surface) {
+  if ((!anyRunning && !client?.getSetupProgress() && !client?.getTaskSetups().size) || !surface) {
     stopElapsedTicker();
     return;
   }
@@ -1881,6 +1902,9 @@ function renderControls(state: BoardState): HTMLElement {
   const finished = state.finished;
   const running = state.status === 'running';
   const paused = state.stopReason === 'paused';
+  const setup = client?.getSetupProgress();
+  const taskSetupBusy = Boolean(client?.getTaskSetups().size);
+  const stoppingTaskSetup = [...(client?.getTaskSetups().values() ?? [])].some(item => item.stage === 'stopping');
 
   const modelSlot = el('div', 'board-header__model-slot mn-os-mb-model-slot');
   modelSlot.title = state.model
@@ -1900,13 +1924,15 @@ function renderControls(state: BoardState): HTMLElement {
     running ? 'board-header__run-btn board-header__run-btn--stop' : 'board-header__run-btn',
   );
   runBtn.type = 'button';
-  runBtn.disabled = false;
-  runBtn.textContent = running ? 'Pause' : paused ? 'Resume' : rerunInstead ? 'Rerun' : 'Start';
+  runBtn.disabled = Boolean(setup) || (taskSetupBusy && !running);
+  runBtn.textContent = setup ? (setup.stage === 'stopping' ? 'Stopping…' : 'Starting…')
+    : running ? 'Pause' : paused ? 'Resume' : rerunInstead ? 'Rerun' : 'Start';
   runBtn.setAttribute(
     'aria-label',
-    running ? 'Pause board' : paused ? 'Resume board' : rerunInstead ? 'Rerun failed work' : 'Start board',
+    setup ? 'Board setup in progress'
+      : running ? 'Pause board' : paused ? 'Resume board' : rerunInstead ? 'Rerun failed work' : 'Start board',
   );
-  runBtn.title = running
+  runBtn.title = setup ? 'Tasks start after setup finishes. Stop cancels setup.' : running
     ? 'Pause chats at the next model or tool boundary. Current operations may finish; Resume continues the same chats.'
     : paused
       ? 'Continue the paused chats with their current context and work.'
@@ -1919,9 +1945,10 @@ function renderControls(state: BoardState): HTMLElement {
     else void commandStart(readConcurrencyInput());
   });
   controls.appendChild(runBtn);
-  if (running || paused) {
+  if (running || paused || setup || taskSetupBusy) {
     const stop = el('button', 'board-btn board-btn--compact', 'Stop');
     stop.type = 'button';
+    stop.disabled = setup?.stage === 'stopping' || stoppingTaskSetup;
     stop.title = 'End current attempts. Start runs replacement attempts using retained work.';
     stop.addEventListener('click', () => void commandStop());
     controls.appendChild(stop);

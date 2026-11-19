@@ -295,4 +295,28 @@ describe('board git ensure at Start', { concurrency: false }, () => {
       await fs.rm(sandbox, { recursive: true, force: true });
     }
   });
+
+  test('the real preflight forwards cancellation into checkout preparation before copying the plan', async () => {
+    const created = await call('POST', '/api/boards', {
+      planPath: 'demo.md', markdown: PLAN, boardId: 'git-cancel-setup',
+    });
+    assert.equal(created.status, 201);
+    const controller = new AbortController();
+    const phases = [];
+    const effector = createRunnerEffector({
+      boardId: created.body.boardId, model: MODEL, worktrees: true,
+      runTurn: async () => assert.fail('cancelled setup must not run a model'),
+    });
+    await assert.rejects(effector.preflight({
+      signal: controller.signal,
+      onProgress(progress) {
+        phases.push(progress.stage);
+        if (progress.stage === 'environment') controller.abort(new Error('fixture stop'));
+      },
+    }), /fixture stop/);
+    assert.ok(phases.includes('workspace'));
+    assert.ok(phases.includes('environment'));
+    assert.equal(phases.includes('plan'), false);
+    assert.deepEqual(effector.inspect(), []);
+  });
 });

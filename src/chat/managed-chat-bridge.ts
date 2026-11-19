@@ -23,6 +23,11 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
     if (chat?.agentTitleCandidate && chat.agentExecution?.status === 'completed') {
       void import('./titles/schedule').then(module => { if (!disposed) module.scheduleManagedChatTitleGeneration(chatId); }).catch(() => {});
     }
+    if (chat?.activeGoal && chat.agentExecution) {
+      // Capture now: a later frame may change the execution before the import resolves.
+      const execution = { executionId: chat.agentExecution.executionId, status: chat.agentExecution.status };
+      void import('./goal/evaluate').then(module => { if (!disposed) module.noteManagedGoalExecution(chat, execution); }).catch(() => {});
+    }
   }
   function canonicalFields(chatId: string, fields?: Record<string, unknown>): Record<string, unknown> | null | undefined {
     if (!fields || findChatById(chatId)?.chatCommandVersion !== 1 || !Object.hasOwn(fields, 'chatCommandVersion') || fields.chatCommandVersion === 1) return fields;

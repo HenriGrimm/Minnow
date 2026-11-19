@@ -4,15 +4,14 @@ import { addAttachments } from '../attachments/store';
 import {
   classifyFileDrag,
   filesFromDataTransfer,
-  hasWorkspaceFileDrag,
   readWorkspaceDragPath,
 } from '../attachments/external-file-drop';
-import { hasTabDrag, parseTabDragData, endTabDrag } from '../attachments/tab-drag';
+import { hasTabDrag, parseTabDragData, endTabDrag, type TabDragPayload } from '../attachments/tab-drag';
 import { addChatLinkToActiveChat } from '../chat/links';
 import { getActiveComposerSurface } from './composer-surface';
 import { attachWorkspacePathToComposer } from './workspace-composer-link';
 import { syncChatLinkChipsFromActiveChat } from './chat-link-chips';
-import { applyChatReferenceDrop, hasChatDrag } from './chat-reference-drop';
+import { hasChatDrag, insertChatReferenceDraft, readChatReferenceDrag } from './chat-reference-drop';
 
 const DROP_ACTIVE_CLASS = 'composer-drop-active';
 
@@ -58,32 +57,52 @@ function setDropActive(targets: HTMLElement[], active: boolean): void {
 }
 
 /** True when this drag can land on the composer or chat transcript. */
-function hasComposerDrag(dataTransfer: DataTransfer | null): boolean {
-  if (hasChatDrag(dataTransfer)) return true;
-  if (hasTabDrag(dataTransfer)) return true;
-  return classifyFileDrag(dataTransfer) !== null;
+function composerDragKind(dataTransfer: DataTransfer | null) {
+  if (hasChatDrag(dataTransfer)) return 'chatLink';
+  if (hasTabDrag(dataTransfer)) return 'tabLink';
+  return classifyFileDrag(dataTransfer);
 }
 
 /** Pin a dropped editor/browser tab as a standing chat link chip. */
-function applyTabDrop(dataTransfer: DataTransfer): boolean {
-  const payload = parseTabDragData(dataTransfer);
-  endTabDrag();
-  if (!payload) return false;
-  const link =
-    payload.kind === 'file'
-      ? addChatLinkToActiveChat({
-          kind: 'file',
-          path: payload.path,
-          label: payload.label,
-        })
-      : addChatLinkToActiveChat({
-          kind: 'url',
-          url: payload.url,
-          label: payload.label,
-        });
-  if (!link) return false;
-  syncChatLinkChipsFromActiveChat();
-  return true;
+function applyTabDrop(payload: TabDragPayload): void {
+  if (addChatLinkToActiveChat(payload)) syncChatLinkChipsFromActiveChat();
+}
+
+export type ComposerDrop = (input: HTMLTextAreaElement | null) => void;
+
+/** Capture transfer data synchronously; the browser protects it after drop dispatch. */
+function captureComposerDrop(
+  transfer: DataTransfer,
+  kind: NonNullable<ReturnType<typeof composerDragKind>>,
+): ComposerDrop | undefined {
+  switch (kind) {
+    case 'chatLink': {
+      const id = readChatReferenceDrag(transfer);
+      if (id) return input => { insertChatReferenceDraft(id, undefined, input); };
+      break;
+    }
+    case 'tabLink': {
+      const payload = parseTabDragData(transfer);
+      endTabDrag();
+      if (payload) return () => applyTabDrop(payload);
+      break;
+    }
+    case 'external': {
+      const files = filesFromDataTransfer(transfer);
+      if (files.length) return () => { void addAttachments(files); };
+      break;
+    }
+    case 'codeSelection': {
+      const payload = parseCodeSelectionDragData(transfer);
+      if (payload) return () => addCodeReferenceToComposer(payload);
+      break;
+    }
+    case 'workspace': {
+      const path = readWorkspaceDragPath(transfer);
+      if (path) return input => attachWorkspacePathToComposer(path, input);
+      break;
+    }
+  }
 }
 
 /** One handler per composer surface — nested targets would each see the same bubbling drop. */
@@ -98,33 +117,34 @@ function outermostDropTargets(targets: HTMLElement[]): HTMLElement[] {
 function bindDropTarget(
   element: HTMLElement,
   dropTargets: HTMLElement[],
+  openNewThread?: (drop: ComposerDrop) => void,
 ): void {
   if (element.dataset.composerDropBound === '1') return;
   element.dataset.composerDropBound = '1';
   let dragDepth = 0;
 
   element.addEventListener('dragenter', (event) => {
-    if (!hasComposerDrag(event.dataTransfer)) return;
+    if (!composerDragKind(event.dataTransfer)) return;
     event.preventDefault();
-    const input = resolveComposerInputFromDropTarget(element);
+    const input = openNewThread ? null : resolveComposerInputFromDropTarget(element);
     if (input?.disabled || input?.readOnly) return;
     dragDepth += 1;
     setDropActive(dropTargets, true);
   });
 
   element.addEventListener('dragover', (event) => {
-    if (!hasComposerDrag(event.dataTransfer)) return;
+    const kind = composerDragKind(event.dataTransfer);
+    if (!kind) return;
     event.preventDefault();
-    const input = resolveComposerInputFromDropTarget(element);
+    const input = openNewThread ? null : resolveComposerInputFromDropTarget(element);
     if (input?.disabled || input?.readOnly) { if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'; return; }
     if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hasChatDrag(event.dataTransfer) ? 'link' : 'copy';
+      event.dataTransfer.dropEffect = kind === 'chatLink' ? 'link' : 'copy';
     }
     setDropActive(dropTargets, true);
   });
 
-  element.addEventListener('dragleave', (event) => {
-    if (!hasComposerDrag(event.dataTransfer)) return;
+  element.addEventListener('dragleave', () => {
     dragDepth = Math.max(0, dragDepth - 1);
     if (dragDepth === 0) {
       setDropActive(dropTargets, false);
@@ -132,50 +152,25 @@ function bindDropTarget(
   });
 
   element.addEventListener('drop', (event) => {
-    const tabDrag = hasTabDrag(event.dataTransfer);
-    const kind = hasChatDrag(event.dataTransfer) ? 'chatLink' : tabDrag ? 'tabLink' : classifyFileDrag(event.dataTransfer);
-    if (!kind) return;
-    event.preventDefault();
-    event.stopPropagation();
     dragDepth = 0;
     setDropActive(dropTargets, false);
-    const input = resolveComposerInputFromDropTarget(element);
+    const kind = composerDragKind(event.dataTransfer);
+    if (!kind || !event.dataTransfer) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const input = openNewThread ? null : resolveComposerInputFromDropTarget(element);
     if (input?.disabled || input?.readOnly) return;
 
-    if (kind === 'chatLink') {
-      applyChatReferenceDrop(event.dataTransfer, undefined, input);
-      return;
-    }
-
-    if (kind === 'tabLink' && event.dataTransfer) {
-      applyTabDrop(event.dataTransfer);
-      return;
-    }
-
-    if (kind === 'external' && event.dataTransfer) {
-      const files = filesFromDataTransfer(event.dataTransfer);
-      if (files.length) {
-        void addAttachments(files);
-      }
-      return;
-    }
-
-    if (kind === 'codeSelection' && event.dataTransfer) {
-      const payload = parseCodeSelectionDragData(event.dataTransfer);
-      if (payload) {
-        addCodeReferenceToComposer(payload);
-      }
-      return;
-    }
-
-    if (event.dataTransfer && hasWorkspaceFileDrag(event.dataTransfer)) {
-      const path = readWorkspaceDragPath(event.dataTransfer);
-      if (path) {
-        const input = resolveComposerInputFromDropTarget(event.currentTarget as HTMLElement);
-        attachWorkspacePathToComposer(path, input);
-      }
-    }
+    const drop = captureComposerDrop(event.dataTransfer, kind);
+    if (!drop) return;
+    if (openNewThread) openNewThread(drop);
+    else drop(input);
   });
+}
+
+/** Route a composer drop to a fresh thread, without consulting the old composer. */
+export function bindNewThreadDrop(button: HTMLButtonElement, openNewThread: (drop: ComposerDrop) => void): void {
+  bindDropTarget(button, [button], openNewThread);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

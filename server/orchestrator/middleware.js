@@ -15,7 +15,8 @@ import { listPendingBoardResumes, resolveBoardResume } from './resume-gate.js';
 import {
   appendEvent,
   boardExists,
-  createBoard,
+  boardDir,
+  journalPath,
   deleteBoard,
   listBoards,
   loadState,
@@ -33,6 +34,7 @@ import { validateBoardPlan } from './validate-plan.js';
 import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { runProcess } from '../process-runner.js';
 import { readConfigJson } from '../config/store.js';
 import { boardFailure } from './failure.js';
@@ -335,8 +337,11 @@ async function dispatch(route, req, res) {
         let state;
         try {
           state = await loadState(id);
+          if (state.boardId !== id) throw new Error('Missing creation event');
         } catch (err) {
-          const identity = await readBoardIdentity(id);
+          // An unreadable journal may not even have a recoverable owner.
+          // It must not prevent other boards from being listed.
+          const identity = await readBoardIdentity(id).catch(() => null);
           if (!(await boardBelongsToWorkspace(identity, workspaceRoot))) continue;
           boards.push({
             ...identity,
@@ -406,7 +411,7 @@ async function dispatch(route, req, res) {
       const events = engine ? null : await readEvents(boardId);
       const state = engine ? engine.getState() : derive(events);
       const seq = engine ? engine.getHighestSeq() : Number(events.at(-1)?.seq) || 0;
-      return json(res, 200, { ok: true, state: serialiseState(state), seq });
+      return json(res, 200, { ok: true, state: serialiseState(state), seq, setup: engine?.getSetupProgress() ?? null, taskSetups: engine?.getTaskSetups() ?? [] });
     }
 
     case 'report': {
@@ -765,22 +770,57 @@ function normaliseConcurrency(value) {
  */
 async function createFromPlan(req, res) {
   const body = await readJsonBody(req);
+  const cwd = getEffectiveWorkspaceRoot();
+  // ID selection and the first durable append must not race another open.
+  const previous = boardCreation;
+  let release;
+  boardCreation = new Promise(resolve => { release = resolve; });
+  await previous;
+  try {
+    await openOrCreateBoard(body, res, cwd);
+  } finally {
+    release();
+  }
+}
+
+let boardCreation = Promise.resolve();
+
+/** An interrupted create can leave only a zero-byte journal. Never reuse an
+ * ID with other evidence (snapshots, transcripts, or a nonempty journal). */
+async function isEmptyBoardReservation(boardId) {
+  const dir = boardDir(boardId);
+  if (!(await fs.lstat(dir)).isDirectory()) return false;
+  const file = journalPath(boardId);
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  if (entries.length !== 1 || entries[0].name !== path.basename(file) || !entries[0].isFile()) return false;
+  return (await fs.lstat(file)).size === 0;
+}
+
+async function openOrCreateBoard(body, res, cwd) {
   const planPath = typeof body.planPath === 'string' ? body.planPath.trim() : '';
   if (!planPath) return json(res, 400, { ok: false, error: 'planPath is required' });
+  const planKey = value => normalizeWorkspacePathKey(path.resolve(cwd, value));
+  const samePlan = async (identity) => Boolean(identity?.planPath && planKey(identity.planPath) === planKey(planPath)
+    && await boardBelongsToWorkspace(identity, cwd));
+  const explicitId = typeof body.boardId === 'string' && body.boardId.trim();
+
+  async function reopen(boardId) {
+    try {
+      const state = await loadState(boardId);
+      if (state.boardId !== boardId) throw new Error('Missing creation event');
+      return json(res, 200, { ok: true, boardId, state: serialiseState(state), existing: true });
+    } catch {
+      return json(res, 409, { ok: false, error: `Board "${boardId}" needs recovery. Find it in the Boards list.` });
+    }
+  }
 
   // Opening a plan is also the entry point for returning to its board. Check
   // before parsing so a plan edited after creation still opens its existing
   // board, where the user can review or re-sync it.
-  if (!(typeof body.boardId === 'string' && body.boardId.trim())) {
+  if (!explicitId) {
     for (const existingId of await listBoards()) {
-      const existing = await loadState(existingId);
-      if (existing.planPath !== planPath || !(await boardBelongsToWorkspace(existing))) continue;
-      return json(res, 200, {
-        ok: true,
-        boardId: existingId,
-        state: serialiseState(existing),
-        existing: true,
-      });
+      const identity = await readBoardIdentity(existingId).catch(() => null);
+      if (await samePlan(identity)) return reopen(existingId);
     }
   }
 
@@ -808,18 +848,18 @@ async function createFromPlan(req, res) {
     });
   }
 
-  const boardId = deriveBoardId(body.boardId, parsed.name, planPath);
-  if (await boardExists(boardId)) {
-    const existing = await loadState(boardId);
-    if (existing.planPath === planPath && await boardBelongsToWorkspace(existing)) {
-      return json(res, 200, {
-        ok: true,
-        boardId,
-        state: serialiseState(existing),
-        existing: true,
-      });
+  const preferredId = deriveBoardId(body.boardId, parsed.name, planPath);
+  let boardId = preferredId;
+  for (let attempt = 0; await boardExists(boardId); attempt++) {
+    const identity = await readBoardIdentity(boardId).catch(() => null);
+    if (await samePlan(identity)) return reopen(boardId);
+    if (!identity && await isEmptyBoardReservation(boardId)) break;
+    if (explicitId) {
+      return json(res, 409, { ok: false, error: `Board ID "${boardId}" is already in use. Choose another ID or leave it blank.` });
     }
-    return json(res, 409, { ok: false, error: `board ${boardId} already exists` });
+    // Journals and Git refs use global IDs; ownership remains checkout-local.
+    const hash = createHash('sha256').update(JSON.stringify([planKey(planPath), attempt])).digest('hex').slice(0, 12);
+    boardId = `${preferredId.slice(0, 51)}-${hash}`;
   }
 
   const validation = await validateBoardPlan(markdown);
@@ -833,7 +873,6 @@ async function createFromPlan(req, res) {
   }
   const { repoFiles } = validation;
 
-  const cwd = getEffectiveWorkspaceRoot();
   let baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : '';
   if (body.baseBranch !== undefined && (typeof body.baseBranch !== 'string' || !baseBranch)) {
     return json(res, 400, { ok: false, error: 'baseBranch must be a branch name' });
@@ -856,7 +895,6 @@ async function createFromPlan(req, res) {
     }
   }
 
-  await createBoard(boardId);
   const tasks = attachTouchesExpansion(parsed.tasks, repoFiles);
   await appendEvent(
     boardId,
@@ -866,7 +904,7 @@ async function createFromPlan(req, res) {
       name: parsed.name,
       tasks,
       waves: parsed.waves,
-      workspacePath: path.resolve(getEffectiveWorkspaceRoot()),
+      workspacePath: path.resolve(cwd),
       ...(baseBranch ? { baseBranch } : {}),
     }),
   );
@@ -926,6 +964,7 @@ async function streamEvents(req, res, boardId) {
   let unsubscribe = () => {};
   let unsubscribeLive = () => {};
   let unsubscribeErrors = () => {};
+  let unsubscribeSetup = () => {};
   req.on('close', cleanup);
   req.on('error', cleanup);
   res.on('close', cleanup);
@@ -983,6 +1022,9 @@ async function streamEvents(req, res, boardId) {
     if (!send('event', event, seq)) cleanup();
   };
   unsubscribe = engine.subscribe(deliver);
+  unsubscribeSetup = engine.subscribeSetup((setup, taskSetups) => {
+    if (!send('setup', { setup, taskSetups })) cleanup();
+  });
   unsubscribeLive = subscribeLive(boardId, (payload) => {
     if (!send('live', payload)) cleanup();
   });
@@ -1018,6 +1060,8 @@ async function streamEvents(req, res, boardId) {
   const pending = buffered;
   buffered = [];
   for (const event of pending) deliver(event);
+  // Setup is transient, so always send its current value, even on journal replay.
+  send('setup', { setup: engine.getSetupProgress(), taskSetups: engine.getTaskSetups() });
 
   for (const failure of engine.getStartFailures()) {
     send('error', {
@@ -1046,6 +1090,7 @@ async function streamEvents(req, res, boardId) {
     unsubscribe();
     unsubscribeLive();
     unsubscribeErrors();
+    unsubscribeSetup();
     try {
       res.end();
     } catch {

@@ -5,6 +5,7 @@ export interface AgentModelAdapters {
   listProviders(): Promise<unknown>;
   listModels(providerId: string): Promise<unknown>;
   readCapabilities(providerId: string): Promise<any>;
+  readReasoningDefaults(): Promise<Record<string, string> | undefined>;
   listPools(): Promise<any>;
   resolvePoolId(id: string, workspacePath?: string): Promise<string>;
   poolAvailability(pool: any, request: Record<string, unknown>): Promise<Record<string, { available: boolean; reason?: string }>>;
@@ -32,6 +33,7 @@ export interface ModelOptionSupport {
   };
 }
 export interface AgentModelSelectionInput {
+  resolveCliDefaults?: boolean;
   target?: ModelSelection;
   typeConfig?: { enabled?: boolean; providerId?: string; modelId?: string; options?: ModelOptions; reasoningEffort?: string; thinkingMode?: 'inherit' | 'on' | 'off'; thinkingBudgetTokens?: number | null };
   defaultModel?: ModelSelection | null;

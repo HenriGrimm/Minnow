@@ -1,4 +1,5 @@
 import { ChatContractError, resolveModelSelection, validateModelOptions, validateModelSelection } from './contracts.js';
+import { cursorVariantParts, reasoningFavoriteKey, resolveCursorVariantId, usesCliReasoningFavorite } from '../../src/models/cursor-variants.mjs';
 import { ensureGlm53ReasoningAllowedOptions, ensureQwen38ReasoningAllowedOptions, normalizeReasoningAllowedOptions } from '../runner/reasoning-effort.js';
 
 export const AGENT_POOL_PROVIDER_ID = 'minnow-router';
@@ -21,6 +22,7 @@ export function createAgentModelAdapters(overrides = {}) {
     listProviders: async () => (await import('../providers/store.js')).listProviders(),
     listModels: async (id) => (await import('../providers/proxy.js')).proxyModels(id),
     readCapabilities: async (id) => (await import('../providers/capabilities-store.js')).readCapabilities(id),
+    readReasoningDefaults: async () => (await (await import('../config/store.js')).readConfigJson('model-reasoning-defaults.json'))?.defaults,
     listPools: async () => {
       const store = await (await import('../model-routers/store.js')).getRouterWorkspace();
       return { routers: store.routers, revision: store.revision };
@@ -255,7 +257,7 @@ export async function resolveAgentModelSelection(input = {}, context = {}) {
     inherited,
   );
   if (explicit?.options) defaults = overlayOptions(defaults, explicit.options);
-  const selection = parsed(resolveModelSelection({
+  let selection = parsed(resolveModelSelection({
     providerId: selected.providerId, modelId: selected.modelId,
     ...(clears ? { options: {} } : {}),
   }, { defaults }));
@@ -269,7 +271,32 @@ export async function resolveAgentModelSelection(input = {}, context = {}) {
       pool: { id: inspected.pool.id, revision: inspected.revision, eligibleEntryIds: inspected.eligible.map((member) => member.entry.id) },
     };
   }
-  const inspected = await inspectAgentModel(selection, snapshot);
+  let inspected = await inspectAgentModel(selection, snapshot);
+  // Freeze the effective effort on the admitted command, not the chat profile.
+  if (input.resolveCliDefaults && usesCliReasoningFavorite(selection.providerId)) {
+    const options = selection.options ?? {};
+    if (!options.reasoningEffort && options.thinkingMode !== 'off' && options.thinkingBudgetTokens !== 0) {
+      const favorites = await snapshot.adapters.readReasoningDefaults();
+      abort(snapshot);
+      const key = reasoningFavoriteKey(`${selection.providerId}\u001f${selection.modelId}`);
+      const favorite = Object.entries(favorites ?? {}).reverse().find(([id]) => reasoningFavoriteKey(id) === key)?.[1];
+      if (favorite && inspected.support.reasoningEffort.includes(favorite)) {
+        selection = { ...selection, options: { ...options, reasoningEffort: favorite } };
+      }
+    }
+    if (selection.providerId === 'cursor-agent-cli' && selection.options?.reasoningEffort) {
+      assertSupportedModelOptions(selection.options, inspected.support);
+      const catalog = await snapshot.catalog(selection.providerId);
+      const ids = (Array.isArray(catalog) ? catalog : catalog?.data ?? []).filter(row => row.enabled !== false).map(row => row.id);
+      const modelId = resolveCursorVariantId(selection.modelId, ids, {
+        effort: selection.options.reasoningEffort, fast: cursorVariantParts(selection.modelId)?.fast,
+      });
+      if (modelId !== selection.modelId) {
+        selection = { ...selection, modelId };
+        inspected = await inspectAgentModel(selection, snapshot);
+      }
+    }
+  }
   if (inspected.availability.state === 'unavailable') unavailable(inspected.availability.reason);
   assertSupportedModelOptions(selection.options, inspected.support);
   return { selection, source, exactModel: source === 'explicit', availability: inspected.availability, sendCapabilities: inspected.support.sendCapabilities, vision: inspected.vision };

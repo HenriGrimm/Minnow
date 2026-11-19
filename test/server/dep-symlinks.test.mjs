@@ -19,6 +19,7 @@ import {
 import { createWorktree, ensureIntegration } from '../../server/worktree/worktree-ops.js';
 import { getWorktreeSlotPath } from '../../server/worktree/paths.js';
 import { setWorkspaceRoot } from '../../server/workspace/root.js';
+import { runWorktreeSetupProcess } from '../../server/worktree/setup-process.js';
 
 const execFileAsync = promisify(execFile);
 const BOARD_ID = 'dep-symlink-board-22222222';
@@ -572,6 +573,44 @@ describe('dep-symlinks', () => {
     assert.deepEqual(res.linked, ['node_modules']);
     assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'link-ok');
     await fs.rm(base, { recursive: true, force: true });
+  });
+
+  test('cancelling a pnpm setup kills its process and retries its partial installation', async () => {
+    const { base, source, wt } = await pnpmFixture('cancel');
+    const controller = new AbortController();
+    const spawned = Promise.withResolvers();
+    let child;
+    const progress = [];
+    try {
+      const installing = ensureDependencyDirs(source, wt, {
+        signal: controller.signal,
+        onProgress: value => progress.push(value.message),
+        installPnpm: async (dir, { signal }) => {
+          // Package managers can replace the modules directory during an install.
+          await fs.rename(path.join(dir, 'node_modules'), path.join(dir, 'initial_modules'));
+          await fs.mkdir(path.join(dir, 'node_modules'));
+          return runWorktreeSetupProcess(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+            cwd: dir, signal,
+            onSpawn(value) { child = value; spawned.resolve(); },
+          });
+        },
+      });
+      // Attach the rejection handler before aborting to avoid an unhandled rejection.
+      const cancelled = assert.rejects(installing, /fixture stop/);
+      await spawned.promise;
+      controller.abort(new Error('fixture stop'));
+      await cancelled;
+      assert.ok(child.exitCode != null || child.signalCode != null, 'setup process must exit before cancellation settles');
+      assert.ok(progress.includes('Installing dependencies with pnpm…'));
+      assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'real-dir');
+      let retries = 0;
+      await ensureDependencyDirs(source, wt, { installPnpm: async () => { retries++; return { ok: true }; } });
+      assert.equal(retries, 1, 'a partial real directory is not a completed install');
+      await ensureDependencyDirs(source, wt, { installPnpm: async () => assert.fail('successful setup should be reused') });
+    } finally {
+      controller.abort();
+      await fs.rm(base, { recursive: true, force: true });
+    }
   });
 
   test('an agent install in a linked worktree drops the shared node_modules link first', async () => {

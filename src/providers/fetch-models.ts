@@ -6,6 +6,13 @@ import type { LmModelRecord } from '../types';
 import { resolveModelApi } from './resolve-model-api';
 import { resolveProviderEndpoints } from './resolve';
 import type { ProviderPublic } from './types';
+import { CODEX_CLI_ID } from '../models/runtime-ids.mjs';
+
+export class ModelCatalogPendingError extends Error {
+  constructor(readonly retryAfterMs: number) {
+    super('Waiting for Codex model discovery.');
+  }
+}
 
 /** Normalize provider model rows to LM Studio-shaped records for modelCache. */
 export function normalizeModelsForUi(
@@ -52,6 +59,13 @@ export async function fetchModelsForProvider(
     ? `${endpoints.modelsUrl}?refresh=1` : endpoints.modelsUrl;
   const res = await fetch(modelsUrl, { signal, cache: 'no-store' });
   if (!res.ok) {
+    if (provider.id === CODEX_CLI_ID && res.status === 503) {
+      const result = await res.json().catch(() => null);
+      const delay = Number(res.headers.get('Retry-After')) * 1000;
+      if (result?.code === 'CODEX_CATALOG_BUSY') {
+        throw new ModelCatalogPendingError(delay > 0 && delay <= 60_000 ? delay : 5000);
+      }
+    }
     throw new Error(`HTTP ${res.status}`);
   }
   const json = (await res.json()) as {

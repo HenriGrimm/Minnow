@@ -3,6 +3,31 @@ import { describe, it } from 'node:test';
 import { modelOptionSupport, resolveAgentModelSelection } from '../../server/chats/model-selection.js';
 import { listAgentCapabilities } from '../../server/chats/capabilities.js';
 import { normalizeCapabilitiesFile } from '../../server/providers/capabilities-schema.js';
+import { cursorReasoningForModels } from '../../src/models/cursor-variants.mjs';
+
+it('captures a supported CLI favorite without changing the configured selection', async () => {
+  for (const providerId of ['codex-cli', 'claude-code-cli', 'cursor-agent-cli']) {
+    const { adapters, providers, models } = fixture();
+    const cursor = providerId === 'cursor-agent-cli';
+    const modelId = cursor ? 'cli-model-low-fast' : 'cli-model';
+    providers.push({ id: providerId, enabled: true, apiKind: 'agent-cli-v1' });
+    models[providerId] = cursor ? cursorReasoningForModels([
+      { id: modelId }, { id: 'cli-model-high-fast' },
+    ]) : [{ id: modelId, reasoning: { allowed_options: ['off', 'low', 'high'], default: 'low' } }];
+    let saved = 'high';
+    adapters.readReasoningDefaults = async () => ({ [`${providerId}\u001f${cursor ? 'cli-model-high-fast' : modelId}`]: saved });
+    const target = { providerId, modelId, options: {} };
+    const resolve = (options, resolveCliDefaults = true) => resolveAgentModelSelection({ target: { ...target, options }, resolveCliDefaults }, { adapters });
+    const capture = await resolve({});
+    assert.deepEqual(capture.selection, { providerId, modelId: cursor ? 'cli-model-high-fast' : modelId, options: { reasoningEffort: 'high' } });
+    assert.deepEqual((await resolve({}, false)).selection, target);
+    assert.deepEqual((await resolve({ reasoningEffort: 'low' })).selection, { ...target, options: { reasoningEffort: 'low' } });
+    if (!cursor) assert.deepEqual((await resolve({ thinkingMode: 'off' })).selection.options, { thinkingMode: 'off' });
+    saved = 'max';
+    assert.deepEqual((await resolve({})).selection, target);
+    assert.equal(capture.selection.options.reasoningEffort, 'high');
+  }
+});
 
 function fixture() {
   const calls = [];

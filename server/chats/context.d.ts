@@ -10,6 +10,7 @@ export interface ChatTargetContext {
 export interface ChatContext {
   setWorkspaceEdgesLoader(loader: (project: ChatProject) => Promise<import('./caller.js').DerivedChatWorkspaceEdge[]>): void;
   project(workspacePath?: string): Promise<ChatProject>;
+  findMissingWorktree(chatId: string, workspacePath?: string): Promise<ChatShell | null>;
   verifyMirroredSlot(intent: import('./workspace-preparation.js').ChatWorkspaceIntent,
     expected?: import('./workspace-preparation.js').MirrorBinding | null, options?: { ready?: boolean }):
     Promise<{ binding: import('./workspace-preparation.js').MirrorBinding; project: ChatProject; scope: ChatProjectScope }>;

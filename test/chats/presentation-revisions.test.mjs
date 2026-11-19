@@ -369,3 +369,22 @@ test('archive configuration is durable, projected and fenced against stale prese
   });
   assert.equal(invalid.status, 400);
 });
+
+test('managed /goal state persists without advancing the presentation fence and clears with null', async t => {
+  const f = await fixture(t);
+  const goal = { conditionText: 'Ship the plan', startedAt: 1, turnCount: 2, tokenBaseline: 0, lastReason: 'Paused: no model', paused: true };
+  const saved = await f.request('/api/config/sessions', 'PATCH', patch({ activeGoal: goal }));
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(f.counter(), 0, 'goal loop bookkeeping is not a presentation edit');
+  const loaded = (await f.request('/api/config/sessions')).body.chats.find(chat => chat.id === 'managed');
+  assert.deepEqual(loaded.activeGoal, goal);
+  // Omitted means preserve, like other managed presentation fields.
+  assert.equal((await f.request('/api/config/sessions', 'PATCH', patch({ composerDraft: 'Draft' }))).status, 200);
+  assert.deepEqual((await f.request('/api/config/sessions')).body.chats.find(chat => chat.id === 'managed').activeGoal, goal);
+  const cleared = await f.request('/api/config/sessions', 'PATCH', patch({ composerDraft: 'Draft', activeGoal: null }, 1));
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+  assert.equal(f.counter(), 1, 'clearing the goal is not a presentation edit');
+  assert.equal((await f.request('/api/config/sessions')).body.chats.find(chat => chat.id === 'managed').activeGoal, undefined);
+  assert.equal((await f.request('/api/config/sessions', 'PATCH', patch({ composerDraft: 'Draft', activeGoal: { conditionText: '   ' } }, 1))).status, 200);
+  assert.equal((await f.request('/api/config/sessions')).body.chats.find(chat => chat.id === 'managed').activeGoal, undefined);
+});

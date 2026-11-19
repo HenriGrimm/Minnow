@@ -3,12 +3,26 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test } from 'node:test';
-import { clearAgentCliModelCatalogCache, listAgentCliModels, listAgentCliModelsWithConfig, resetAgentCliCatalogCacheForTests } from '../../server/models/agent-cli-catalog.js';
+import { after, before, test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
+import { clearAgentCliModelCatalogCache, listAgentCliModelsWithConfig, resetAgentCliCatalogCacheForTests } from '../../server/models/agent-cli-catalog.js';
 import { readCodexModelCatalog } from '../../server/models/codex-cli-catalog.js';
-import { tryAdmitAgentCliProbe } from '../../server/generations/agent-cli/admission.js';
+import { admitAgentCli, tryAdmitAgentCliProbe } from '../../server/generations/agent-cli/admission.js';
+import { handleProviderRequest } from '../../server/providers/routes.js';
+import { setAgentCliProviderEnabled, updateAgentCliProviderSettings } from '../../server/providers/store.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-codex-catalog.mjs', import.meta.url));
+const previousMinnowHome = process.env.MINNOW_HOME;
+let minnowHome;
+before(async () => {
+  minnowHome = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-catalog-profile-'));
+  process.env.MINNOW_HOME = minnowHome;
+});
+after(async () => {
+  if (previousMinnowHome === undefined) delete process.env.MINNOW_HOME;
+  else process.env.MINNOW_HOME = previousMinnowHome;
+  await fs.rm(minnowHome, { recursive: true, force: true, maxRetries: 5 });
+});
 
 async function fakeCodex(root) {
   const binPath = path.join(root, process.platform === 'win32' ? 'codex.cmd' : 'codex');
@@ -51,18 +65,103 @@ test('Codex token refreshes keep the catalog cached; a busy Codex serves the las
   }
 });
 
-test('Codex busy before any discovery falls back to the static catalog', async () => {
+test('Cold Codex discovery waits for a competing background probe and returns installed models', async () => {
   resetAgentCliCatalogCacheForTests();
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-discovery-cold-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-discovery-overlap-'));
   try {
     const binPath = await fakeCodex(root);
-    await fs.writeFile(path.join(root, 'auth.json'), '{"account":"cold"}');
+    const trace = path.join(root, 'trace.jsonl');
+    const options = { binPath, env: { ...process.env, CODEX_HOME: root, CODEX_CATALOG_TRACE: trace } };
     const release = tryAdmitAgentCliProbe('codex-cli');
     assert.ok(release);
+    const releaseUsage = delay(250).then(release);
     try {
-      const rows = await listAgentCliModelsWithConfig('codex-cli', { binPath, env: { ...process.env, CODEX_HOME: root } });
-      assert.deepEqual(rows.map(row => row.id), listAgentCliModels('codex-cli').map(row => row.id));
+      const results = await Promise.all([
+        listAgentCliModelsWithConfig('codex-cli', options),
+        listAgentCliModelsWithConfig('codex-cli', options),
+      ]);
+      for (const rows of results) assert.deepEqual(rows.map(row => row.id), ['cli-model']);
+      assert.equal((await traceRuns(trace)).length, 1, 'overlapping startup reads share discovery');
+    } finally { await releaseUsage; }
+  } finally {
+    resetAgentCliCatalogCacheForTests();
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test('The model endpoint reports a cold busy Codex catalog as retryable and discovers models once idle', async () => {
+  resetAgentCliCatalogCacheForTests();
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-discovery-cold-'));
+  const previousCodexHome = process.env.CODEX_HOME;
+  try {
+    const binPath = await fakeCodex(root);
+    process.env.CODEX_HOME = root;
+    await fs.writeFile(path.join(root, 'auth.json'), '{"account":"cold"}');
+    await updateAgentCliProviderSettings('codex', { binPath });
+    await setAgentCliProviderEnabled('codex', true);
+    const route = '/api/providers/codex-cli/models';
+    async function getCatalog() {
+      const headers = new Map();
+      let body;
+      const response = {
+        statusCode: 200,
+        setHeader(name, value) { headers.set(name, value); },
+        end(value) { body = JSON.parse(value); },
+      };
+      assert.equal(await handleProviderRequest({ method: 'GET', url: route }, response, route), true);
+      return { status: response.statusCode, headers, body };
+    }
+    const release = await admitAgentCli('codex-cli');
+    try {
+      const pending = await getCatalog();
+      assert.equal(pending.status, 503);
+      assert.equal(pending.body.code, 'CODEX_CATALOG_BUSY');
+      assert.equal(pending.headers.get('Retry-After'), '5');
+      assert.equal(pending.body.data, undefined);
     } finally { release(); }
+    const ready = await getCatalog();
+    assert.equal(ready.status, 200);
+    assert.deepEqual(ready.body.data.map(row => row.id), ['cli-model']);
+  } finally {
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
+    resetAgentCliCatalogCacheForTests();
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test('A restarted Minnow keeps the discovered Codex catalog scoped to the same login', async () => {
+  resetAgentCliCatalogCacheForTests();
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-discovery-restart-'));
+  try {
+    const binPath = await fakeCodex(root);
+    const authFile = path.join(root, 'auth.json');
+    const trace = path.join(root, 'trace.jsonl');
+    const options = { binPath, env: { ...process.env, CODEX_HOME: root, CODEX_CATALOG_TRACE: trace } };
+    const login = (account_id, access_token) => JSON.stringify({ tokens: { account_id, access_token } });
+    await fs.writeFile(authFile, login('account-1', 'first-token'));
+    const discovered = await listAgentCliModelsWithConfig('codex-cli', options);
+    assert.deepEqual(discovered.map(row => row.id), ['cli-model']);
+
+    resetAgentCliCatalogCacheForTests();
+    await fs.writeFile(authFile, login('account-1', 'renewed-token'));
+    const release = await admitAgentCli('codex-cli');
+    try {
+      assert.deepEqual(await listAgentCliModelsWithConfig('codex-cli', options), discovered);
+      assert.equal((await traceRuns(trace)).length, 1);
+      await fs.writeFile(authFile, login('account-2', 'other-token'));
+      await assert.rejects(listAgentCliModelsWithConfig('codex-cli', options), { code: 'CODEX_CATALOG_BUSY' });
+    } finally { release(); }
+
+    await fs.writeFile(authFile, login('account-1', 'renewed-token'));
+    const failedProbe = { ...options, env: { ...options.env, CODEX_CATALOG_SCENARIO: 'error' } };
+    assert.deepEqual(await listAgentCliModelsWithConfig('codex-cli', failedProbe), discovered);
+    assert.equal((await traceRuns(trace)).length, 2, 'an idle restart still attempts live discovery');
+
+    const refreshed = { ...options, refresh: true, env: { ...options.env, CODEX_CATALOG_SCENARIO: 'empty' } };
+    assert.deepEqual(await listAgentCliModelsWithConfig('codex-cli', refreshed), []);
+    resetAgentCliCatalogCacheForTests();
+    assert.deepEqual(await listAgentCliModelsWithConfig('codex-cli', failedProbe), [], 'a successful refresh replaces the saved catalog');
   } finally {
     resetAgentCliCatalogCacheForTests();
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5 });

@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
+import { beginChatTurnSetup, endChatTurnSetup } from '../../src/chat/chat-turn-guard.ts';
 import { createEmptyChatObject, flushScheduledSessionSaveForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { invalidateWorkspaceReposCache } from '../../src/state/workspace-repos.ts';
+import { resetAppDialogForTests } from '../../src/ui/app-dialog.ts';
 import { mountThreadCheckout } from '../../src/ui/thread-checkout.ts';
 
 test('thread checkout switches a canonical chat Local and back through the server', async () => {
@@ -145,3 +147,68 @@ test('thread checkout lists PRs and switches branches in the selected repository
     globalThis.fetch = originalFetch;
   }
 });
+
+for (const peerState of ['hidden empty', 'visible idle', 'running'] as const) {
+  test(`thread branch switch with a ${peerState} peer in the same checkout`, async () => {
+    const dom = new Window();
+    const originalFetch = globalThis.fetch;
+    const workspace = '/repo';
+    const chat = createEmptyChatObject('model', workspace);
+    const peer = createEmptyChatObject('model', workspace);
+    const archived = createEmptyChatObject('model', workspace);
+    archived.history.push({ role: 'user', content: 'Archived task' });
+    archived.archivedAt = Date.now();
+    if (peerState === 'visible idle') peer.history.push({ role: 'user', content: 'Earlier task' });
+    const checkoutOps: string[] = [];
+    installHappyDomGlobals(dom, { fetch: async (_url, init) => {
+      const { op } = JSON.parse(String(init?.body || '{}'));
+      if (op === 'checkoutPlan' || op === 'checkoutSwitch') checkoutOps.push(op);
+      if (op === 'checkoutPlan') return Response.json({ ok: true, location: 'here' });
+      if (op === 'checkoutSwitch') return Response.json({ ok: true, branch: 'feature' });
+      return Response.json({ ok: true, current: 'main', local: ['main', 'feature'], savedChanges: [], worktrees: [] });
+    } });
+    setStorageModeForTests('localStorage');
+    setLocalServerAvailableForTests(true);
+    setWorkspaceFromServer({ path: workspace, label: 'repo', isDefault: false });
+    setSessionStateForTests({ version: 6, sidebarCollapsed: false, chats: [chat, peer, archived], activeId: chat.id });
+    const controller = new AbortController();
+    const host = document.createElement('div');
+    document.body.append(host);
+    let switched = false;
+    const dialog = () => document.querySelector('#appDialogPanel');
+    const runningError = () => host.textContent?.includes('Another conversation is running in this checkout.');
+    try {
+      if (peerState === 'running') assert.ok(beginChatTurnSetup(peer.id));
+      await mountThreadCheckout({ host, chat, workspace, signal: controller.signal,
+        isCurrent: () => !switched, onChanged() { switched = true; }, reposition() {} });
+      const feature = [...host.querySelectorAll('button')].find(node => node.textContent?.trim() === 'feature');
+      assert.ok(feature, 'Missing feature branch');
+      feature.click();
+      for (let i = 0; i < 100 && !switched && !dialog() && !runningError(); i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+
+      if (peerState === 'visible idle') {
+        assert.match(dialog()?.textContent ?? '', /1 other chat uses the workspace folder/);
+        assert.deepEqual(checkoutOps, ['checkoutPlan']);
+      } else if (peerState === 'running') {
+        assert.ok(runningError(), host.textContent ?? '');
+        assert.equal(dialog(), null);
+        assert.deepEqual(checkoutOps, []);
+      } else {
+        assert.equal(dialog(), null, 'Hidden empty chats must not trigger a warning');
+        assert.equal(switched, true);
+        assert.deepEqual(checkoutOps, ['checkoutSwitch']);
+      }
+    } finally {
+      controller.abort();
+      resetAppDialogForTests();
+      endChatTurnSetup(peer.id);
+      setSessionStateForTests(null);
+      flushScheduledSessionSaveForTests();
+      setLocalServerAvailableForTests(false);
+      await teardownHappyDomAsync(dom);
+      globalThis.fetch = originalFetch;
+    }
+  });
+}

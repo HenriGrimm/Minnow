@@ -8,6 +8,7 @@ import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { readDisplayedBoardModelSeed } from './board-model-bind';
 import type { LiveRoundMetrics, RoundMetrics } from './board-usage';
 import type { TurnEvent } from '../../server/runner/run-turn';
+import type { SetupProgress, TaskSetupProgress } from '../../server/orchestrator/engine';
 import type {
   Attempt,
   BoardState,
@@ -86,6 +87,8 @@ export interface BoardClient {
   /** When each completed attempt ended, keyed by attempt id. */
   getAttemptEndedAt(): ReadonlyMap<string, number>;
   getEngineErrors(): ReadonlyMap<string, EngineError>;
+  getSetupProgress(): SetupProgress | null;
+  getTaskSetups(): ReadonlyMap<string, TaskSetupProgress>;
   subscribe(listener: (state: BoardState | null) => void): () => void;
   /**
    * Thinking and in-flight tool frames. These must not go through `subscribe`:
@@ -478,6 +481,9 @@ export function createBoardClient(
 
   let source: EventStream | null = null;
   let connected = false;
+  let setupProgress: SetupProgress | null = null;
+  let setupReceived = false;
+  const taskSetups = new Map<string, TaskSetupProgress>();
 
   let pending: Record<string, unknown>[] = [];
 
@@ -508,6 +514,33 @@ export function createBoardClient(
   const publish = () => {
     view = internal === null ? null : readOnlyState(internal);
     emit();
+  };
+
+  const adoptSetup = (value: unknown) => {
+    const progress = value as SetupProgress | null;
+    setupProgress = progress && typeof progress.stage === 'string' && typeof progress.message === 'string'
+      && Number.isFinite(progress.startedAt) ? Object.freeze({ ...progress }) : null;
+  };
+
+  const onSetup = (event: { data: string }) => {
+    try {
+      const payload = JSON.parse(event.data);
+      adoptSetup(payload.setup);
+      adoptTaskSetups(payload.taskSetups);
+      setupReceived = true;
+      emit();
+    } catch {}
+  };
+
+  const adoptTaskSetups = (value: unknown) => {
+    taskSetups.clear();
+    if (!Array.isArray(value)) return;
+    for (const task of value) {
+      if (typeof task?.taskId === 'string' && typeof task.role === 'string' && typeof task.stage === 'string'
+        && typeof task.message === 'string' && Number.isFinite(task.startedAt)) {
+        taskSetups.set(task.taskId, Object.freeze({ ...task }));
+      }
+    }
   };
 
   const applyEvent = (event: Record<string, unknown>): boolean => {
@@ -733,6 +766,8 @@ export function createBoardClient(
     baselineRequest = (async () => {
       try {
         const body = await request(`/${encodeURIComponent(boardId)}`);
+        // Once the stream has supplied setup, a slower GET must not overwrite it.
+        if (!setupReceived) { adoptSetup(body.setup); adoptTaskSetups(body.taskSetups); }
         if (adopt(stateFromJSON(body.state), Number(body.seq) || 0)) publish();
       } catch (err) {
         console.error('[orchestrator] could not establish a baseline for the board', err);
@@ -754,6 +789,8 @@ export function createBoardClient(
     getAttemptStartedAt: () => attemptStartedAt,
     getAttemptEndedAt: () => attemptEndedAt,
     getEngineErrors: () => engineErrors,
+    getSetupProgress: () => setupProgress,
+    getTaskSetups: () => taskSetups,
 
     subscribe(listener) {
       listeners.add(listener);
@@ -771,6 +808,7 @@ export function createBoardClient(
       source = openStream(`/api/boards/${encodeURIComponent(boardId)}/events`);
       source.addEventListener('snapshot', onSnapshot);
       source.addEventListener('event', onEvent);
+      source.addEventListener('setup', onSetup);
       source.addEventListener('live', onLive);
       source.addEventListener('error', onError);
       source.addEventListener('open', () => {

@@ -109,7 +109,7 @@ export async function ensureElectronBuild() {
 }
 
 /**
- * @param {{ port?: number | string, devUrl?: string, dev?: boolean, foreground?: boolean }} options
+ * @param {{ port?: number | string, devUrl?: string, dev?: boolean, foreground?: boolean, supervised?: boolean, env?: NodeJS.ProcessEnv }} options
  * @returns {import('node:child_process').ChildProcess | null}
  */
 export async function spawnElectronShell(options = {}) {
@@ -129,7 +129,7 @@ export async function spawnElectronShell(options = {}) {
 
   const mainJs = mainJsPath();
   const env = {
-    ...process.env,
+    ...(options.env ?? process.env),
     PORT: port,
     MINNOW_DEV_URL: devUrl,
     MINNOW_ELECTRON: '1',
@@ -140,7 +140,7 @@ export async function spawnElectronShell(options = {}) {
   const child = spawn(electronBin, args, {
     cwd: repoRoot,
     env,
-    stdio: [foreground ? 'inherit' : 'ignore', 'pipe', 'pipe'],
+    stdio: [foreground ? 'inherit' : 'ignore', 'pipe', 'pipe', ...(options.supervised ? ['ipc'] : [])],
     detached: !foreground,
     windowsHide: false,
   });

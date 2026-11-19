@@ -38,12 +38,26 @@
  * `.main-column--board-chat` exception.
  */
 .main-column.main-column--orchestrator-boards .input-bar,
+.main-column.main-column--orchestrator-boards .composer-notices,
 .main-column.main-column--orchestrator-boards .tool-approval-host,
 .main-column.main-column--orchestrator-boards .question-host,
 .main-column.main-column--orchestrator-boards .code-change-strip-wrap,
 .main-column.main-column--orchestrator-boards .chat-jump-latest,
+.main-column.main-column--orchestrator-boards .chat-todo-panel,
 .main-column.main-column--orchestrator-boards .stats-strip {
   display: none;
+}
+
+/* Retained chat panels must neither paint over Boards nor reserve checklist rails. */
+.main-column.main-column--orchestrator-boards > .chat-viewport {
+  display: flex;
+  container-type: normal;
+}
+
+.main-column.main-column--orchestrator-boards > .chat-viewport > .chat-area {
+  padding: 0;
+  scrollbar-gutter: auto;
+  mask-image: none;
 }
 
 /* The status-bar metrics button opens this board-scoped rollup. */
@@ -1211,6 +1225,27 @@
   border-color: transparent;
   background: transparent;
   color: var(--mn-fg-muted);
+}
+
+.ov2-setup-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--mn-space-2);
+  margin: 0;
+  padding-block: var(--mn-space-2);
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
+  overflow-wrap: anywhere;
+}
+
+.ov2-setup-status strong {
+  color: var(--mn-fg);
+}
+
+.ov2-task__setup .ov2-activity__label {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .ov2-notice {

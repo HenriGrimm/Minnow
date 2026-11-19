@@ -26,7 +26,7 @@ import { isComposerRecoveryBlocked } from './composer-send';
 import { modelCache } from '../app-state';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { favoriteReasoningLevel, savedReasoningFavorite, saveReasoningFavorite } from '../models/reasoning-favorite';
-import { cursorVariantFamilyKey, cursorVariantParts, resolveCursorVariantId } from '../models/cursor-variants.mjs';
+import { cursorVariantFamilyKey, cursorVariantParts, resolveCursorVariantId, usesCliReasoningFavorite } from '../models/cursor-variants.mjs';
 import { syncComposerModelTriggers } from './composer-model-trigger';
 import { configureManagedChatModel, isManagedModelBusy, managedChatModelSelection, managedModelReadOnlyReason, managedReasoningSelection } from './managed-chat-model';
 import { showToast } from './toast';
@@ -84,7 +84,9 @@ function resolveDisplayEffort(levels: EffortOption[]): EffortOption | undefined 
     agentKey: agent?.id ?? null,
     chatThinkingMode: chat.thinkingMode,
   });
-  const effort = resolveEffectiveReasoningEffort(chat, caps, resolved.mode);
+  const favorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId) && chat.thinkingMode !== 'off'
+    ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined;
+  const effort = resolveEffectiveReasoningEffort(favorite ? { reasoningEffort: favorite } : chat, caps, favorite ? 'on' : resolved.mode);
   if (effort && levels.includes(effort)) return effort;
   return levels.includes('medium') ? 'medium' : levels[0];
 }
@@ -147,7 +149,10 @@ export function getComposerReasoningState() {
   const resolved = resolveThinkingMode({
     kind: 'work-agent', agentKey: agent?.id ?? null, chatThinkingMode: chat.thinkingMode,
   });
-  const effective = resolveEffectiveReasoningEffort(chat, caps, resolved.mode) ?? resolved.mode;
+  const favorite = levels.length ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined;
+  const followsCliFavorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId)
+    && !chat.reasoningEffort && chat.thinkingMode !== 'off' && favorite;
+  const effective = followsCliFavorite || resolveEffectiveReasoningEffort(chat, caps, resolved.mode) || resolved.mode;
   const choices: ComposerReasoningChoice[] = [];
   if (levels.length || toggle) {
     choices.push({ value: 'inherit', label: 'Default' });
@@ -164,7 +169,7 @@ export function getComposerReasoningState() {
   return {
     label: choices.length && (caps?.reasoning === true || getAllowedOptions().length || chat.thinkingMode || chat.reasoningEffort) ? label : '', choices,
     selected: (chat.reasoningEffort ?? chat.thinkingMode ?? 'inherit') as ComposerReasoningChoice['value'],
-    favorite: levels.length ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined,
+    favorite,
     disabled: (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked(),
   };
 }
@@ -175,7 +180,7 @@ export function setComposerReasoningChoice(value: string): void {
   if (state.disabled || !state.choices.some(choice => choice.value === value)) return;
   const chat = getActiveChat();
   if (chat.chatCommandVersion === 1) {
-    const target = value === 'inherit' ? state.favorite ?? value : value;
+    const target = value === 'inherit' && !usesCliReasoningFavorite(chat.providerId) ? state.favorite ?? value : value;
     void configureManagedChatModel(chat, managedReasoningSelection(chat, target, getLevelOptions().length > 0))
       .catch(error => showToast(String(error?.message || error), 'error')).finally(syncComposerReasoningEffortFromActiveChat);
     syncComposerReasoningEffortFromActiveChat(); return;
@@ -208,7 +213,8 @@ export function toggleComposerReasoningFavorite(level: string): void {
   const next = state.favorite === choice.level ? null : choice.level;
   void saveReasoningFavorite(chat.providerId, chat.modelId, next)
     .catch(error => showToast(`Could not save favorite reasoning: ${String(error?.message || error)}`, 'error'));
-  if (next && state.selected === 'inherit' && !state.disabled) setComposerReasoningChoice('inherit');
+  if (next && state.selected === 'inherit' && !state.disabled &&
+      !(chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId))) setComposerReasoningChoice('inherit');
   else syncComposerReasoningEffortFromActiveChat();
 }
 

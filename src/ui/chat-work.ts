@@ -16,6 +16,7 @@ import { supportsLocalHistoryMutation, supportsManagedHistoryMutation } from '..
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { groupWorkedToolRows } from './chat-work-tool-groups';
 import { TOOL_START_INDICATOR_CHANGED } from './stream-status';
+import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 
 interface WorkGroup {
   button: HTMLButtonElement;
@@ -359,6 +360,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
 
   function sync(): void {
     if (disposed) return;
+    if (!options.isolated && mount.id === 'chatArea' && isMainColumnOverlaySuppressingChatDom()) {
+      dispose();
+      return;
+    }
     if (frame !== undefined) { view!.cancelAnimationFrame(frame); frame = undefined; }
     observer.disconnect();
     if (timer) { clearTimeout(timer); timer = undefined; }

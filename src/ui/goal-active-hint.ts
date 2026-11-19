@@ -31,7 +31,7 @@ export function syncGoalActiveHint(): void {
     return;
   }
 
-  const suffix = goal.achieved ? ' · achieved' : '';
+  const suffix = goal.achieved ? ' · achieved' : goal.paused ? ' · paused' : '';
   const evaluating = isGoalEvaluating(chat.id);
   const phase = evaluating ? ' · evaluating…' : '';
   el.textContent = `◎ goal active${suffix}${phase} · ${goal.turnCount} turn(s)`;

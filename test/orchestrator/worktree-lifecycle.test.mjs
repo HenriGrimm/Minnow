@@ -199,6 +199,47 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     assert.equal(await fs.readFile(path.join(restored.path, 'progress.txt'), 'utf8'), 'retained unfinished work');
   });
 
+  test('tester reuse skips integration dependency preparation and preserves builder work', async () => {
+    const state = boardState(['FAST']);
+    state.boardId = 'fast-tester-reuse';
+    state.recoveryVersion = 1;
+    const first = await allocateAttemptWorktree({ boardId: state.boardId, taskId: 'FAST', attemptId: 'builder', state,
+      desired: { taskId: 'FAST', role: 'builder', seedKind: 'initial', sameWorktree: false } });
+    assert.equal(first.ok, true, first.error);
+    await fs.writeFile(path.join(first.path, 'builder-work.txt'), 'retained');
+    state.tasks.get('FAST').attempts.push({ attemptId: 'builder', role: 'builder', ended: true, outcome: 'pass', worktree: first.path });
+    const phases = [];
+    const second = await allocateAttemptWorktree({ boardId: state.boardId, taskId: 'FAST', attemptId: 'tester', state,
+      desired: { taskId: 'FAST', role: 'tester', seedKind: 'initial', sameWorktree: true },
+      onProgress(progress) { phases.push(progress.stage); } });
+    assert.equal(second.ok, true, second.error);
+    assert.equal(second.path, first.path);
+    assert.equal(second.created, false);
+    assert.equal(await fs.readFile(path.join(second.path, 'builder-work.txt'), 'utf8'), 'retained');
+    assert.ok(!phases.includes('environment') && !phases.includes('dependencies'), 'reuse must not prepare integration dependencies');
+  });
+
+  test('worker start forwards cancellation to worktree preparation before inference', async () => {
+    const state = boardState(['CANCEL']);
+    state.boardId = 'cancel-worker-setup';
+    const controller = new AbortController();
+    const phases = [];
+    const effector = createRunnerEffector({ boardId: state.boardId, getState: () => state,
+      model: { providerId: 'local-fake', id: 'fake' }, worktrees: true,
+      resolveModelContextLimit: async () => null,
+      runTurn: async () => assert.fail('cancelled preparation must not start inference') });
+    await assert.rejects(effector.start({ taskId: 'CANCEL', role: 'builder', seedKind: 'initial' }, {
+      signal: controller.signal,
+      onProgress(progress) {
+        phases.push(progress.stage);
+        if (progress.stage === 'environment') controller.abort(new Error('fixture stop'));
+      },
+    }), /fixture stop/);
+    assert.ok(phases.includes('workspace'));
+    assert.ok(phases.includes('environment'));
+    assert.deepEqual(effector.inspect(), []);
+  });
+
   test('declared reference inputs are staged only in the board and survive preflight replay', async () => {
     const boardId = 'declared-inputs';
     const integration = await ensureBoardIntegration(boardId);

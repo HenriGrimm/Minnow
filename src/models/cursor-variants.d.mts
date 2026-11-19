@@ -14,3 +14,5 @@ export function resolveCursorVariantId(
   options?: { effort?: ReasoningEffortOption; fast?: boolean },
 ): string;
 export function cursorReasoningForModels<T extends { id: string }>(rows: T[]): T[];
+export function reasoningFavoriteKey(value: string): string;
+export function usesCliReasoningFavorite(id?: string): boolean;

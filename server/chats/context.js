@@ -117,7 +117,8 @@ async function buildProjectRegistry(workspacePath, discovered, runGit) {
     projectId, workspaceId: identity('workspace', key(row.canonical)),
     canonicalKey: key(row.canonical), aliases: [...new Set(row.aliases)],
   })));
-  return { registry, projectId, scope: resolveProjectScope(registry, { projectId, workspaceKey: key(canonical) }) };
+  return { registry, projectId, registeredPaths: discovered.candidates.map(key),
+    scope: resolveProjectScope(registry, { projectId, workspaceKey: key(canonical) }) };
 }
 
 /** Real directories and git's registration, never a lexical worktree prefix, establish membership. */
@@ -156,6 +157,46 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
     if (!loadWorkspaceEdges) return base;
     const registry = createChatProjectRegistry(base.registry.entries, await loadWorkspaceEdges(base));
     return { ...base, registry, scope: resolveProjectScope(registry, { projectId: base.projectId, workspaceKey: base.scope.canonicalKey }) };
+  }
+  /** Read-only probe for host-side reconciliation, never used as a send target. */
+  async function findMissingWorktree(chatId, workspacePath = getRequestWorkspaceRoot()) {
+    const chat = repository.getChat(chatId);
+    if (chat.chatCommandVersion !== 1 || chat.agentConversation || !chat.worktreeRoot?.trim() ||
+        !chat.workspacePath?.trim() || key(chat.worktreeRoot) === key(chat.workspacePath)) return null;
+    const intent = chat.workspacePreparation?.intent;
+    const projectId = repository.getChatProjectId(chatId);
+    if (!projectId || (intent && (intent.chatId !== chatId || intent.projectId !== projectId))) return null;
+    const root = await project(workspacePath);
+    if (root.projectId !== projectId) return null;
+    const source = await directory(chat.workspacePath);
+    const scope = resolveProjectScope(root.registry, { projectId, workspaceKey: key(source) });
+    const mirrored = Boolean(intent?.source?.repos);
+    if (intent) {
+      if (scope.workspaceId !== intent.sourceWorkspaceId ||
+          await readChatCheckoutIdentity(source) !== intent.source?.checkoutIdentity) return null;
+      if (mirrored) {
+        const binding = chat.workspacePreparation.binding;
+        if (!binding || key(binding.path) !== key(chat.worktreeRoot) || key(intent.slotPath) !== key(chat.worktreeRoot)) return null;
+      } else {
+        const common = await (runGit ?? git)(['rev-parse', '--path-format=absolute', '--git-common-dir'], source);
+        if (common.code !== 0 || !common.stdout?.trim() ||
+            await readChatCheckoutIdentity(common.stdout.trim()) !== intent.source.commonIdentity) return null;
+      }
+    }
+
+    let checkout;
+    try { checkout = await fs.realpath(chat.worktreeRoot); }
+    catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+      return chat;
+    }
+    // Git registers a mirror's individual repositories, not its parent folder.
+    if (mirrored) return null;
+    // An existing directory is only orphaned after Git drops its registration.
+    // A failed per-checkout verification is not itself evidence of removal.
+    const paths = [key(checkout), key(chat.worktreeRoot)];
+    return paths.some(candidate => root.registeredPaths.includes(candidate) ||
+      root.registry.entries.some(entry => entry.aliases.includes(candidate))) ? null : chat;
   }
   async function resolveTarget(chatId, options = {}) {
     const chat = repository.getChat(chatId);
@@ -242,7 +283,7 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
       executionId, ...(execution.attemptId ? { attemptId: execution.attemptId } : {}), executionActive: true, scope: target.scope, policy });
     return { caller, target, execution, fence: lease };
   }
-  return { project, resolveTarget, humanCaller, executionCaller, verifyMirroredSlot,
+  return { project, findMissingWorktree, resolveTarget, humanCaller, executionCaller, verifyMirroredSlot,
     setWorkspaceEdgesLoader(loader) {
       if (typeof loader !== 'function') throw new TypeError('A verified workspace edge loader is required');
       loadWorkspaceEdges = loader;

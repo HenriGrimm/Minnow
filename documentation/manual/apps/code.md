@@ -2,6 +2,8 @@
 
 Start in an open workspace and choose a thread or **New thread**. The thread header opens the side and bottom panels. Use **+** in an open panel to add another surface. See [Workspace navigation](overview.md) for the launcher and thread card.
 
+Drop a file, editor selection, editor or preview tab, or an existing thread onto **New thread** to open a fresh composer with that item already added. Nothing is sent until you send the message.
+
 ## Find and edit a file
 
 1. Open **Side panel → Files**. Expand a folder and select a file to open an editor tab.
@@ -57,7 +59,7 @@ Every switch control (the thread's **Checkout** row, the composer's worktree men
 
 - With uncommitted files, Minnow asks whether to **Bring my changes** or **Leave changes** on the current branch. Changes that stay behind are saved and offered for restore when you return to that branch.
 - Git keeps a branch in one worktree at a time. When the branch or pull request is already checked out in another worktree, Minnow offers **Open worktree** (side panel and Source Control) or **Use that checkout** (a thread) instead of failing. Fork pull requests are matched by their tracking branch or head commit.
-- Threads on **Local** share the workspace folder and its branches. If other threads use that checkout, switching asks first. In a thread, **Switch in a new worktree** can keep the change to that thread. **Switch workspace anyway** changes the branch for everyone using the selected checkout.
+- Threads on **Local** share the workspace folder and its branches. Switching from a thread asks first if other unarchived threads listed in the sidebar use that checkout, even if they're idle. Where available, **Switch in a new worktree** keeps the change to the current thread. **Switch workspace anyway** changes the branch for everyone using the selected checkout.
 - When a switch fails, the message names the cause, such as local changes that would be overwritten, a branch that is not fetched yet, or a running local action, and offers the matching action. The original Git output stays under **Technical details**.
 - When a local action is using the checkout, the picker shows **Waiting for** the action's name, with **Stop and switch** and **Try again**.
 - The branch list starts with **Recent**: branches you last switched to or from in that checkout. Use the arrow keys to move, **Enter** to switch and the left and right arrows to change tabs.

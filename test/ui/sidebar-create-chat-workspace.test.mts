@@ -11,9 +11,13 @@ import {
   teardownHappyDomAsync,
 } from '../os/dom-helpers.mts';
 import { defaultSessionState } from '../../src/config/defaults.ts';
+import { CHAT_DRAG_MIME } from '../../src/attachments/chat-drag.ts';
+import { initGraphiteWorkspace } from '../../src/os/graphite-workspace.ts';
+import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
 import {
   createEmptyChatObject,
   findChatById,
+  getActiveChat,
   flushScheduledSessionSaveForTests,
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
@@ -175,4 +179,59 @@ describe('createChatWithMode workspace option', () => {
     assert.equal(created.modelId, 'source-model');
     assert.equal(created.providerId, 'source-provider');
   });
+});
+
+test('dropping the active chat onto New thread opens a separate unsent draft', async () => {
+  setup();
+  setWorkspaceFromServer(workspaceInfo(WS_A));
+  const source = seedActiveChat(WS_A);
+  const input = document.querySelector<HTMLTextAreaElement>('#msgInput')!;
+  input.value = 'Keep this draft';
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="appBody"><aside id="chatSidebar"></aside></div>
+    <div id="osStage"></div>
+    <nav id="osAppRail"><div class="mn-os-app-rail__nav"></div></nav>
+    <div id="osMenubar"></div>
+  `);
+  launchInstance('code');
+  window.location.hash = '#/app/code/chat';
+  const dispose = initGraphiteWorkspace(document.getElementById('osAppRail')!, document.getElementById('osMenubar')!);
+  try {
+    const button = document.querySelector('.mn-graphite-thread-new')!;
+    let readable = false;
+    const transfer = {
+      types: [CHAT_DRAG_MIME],
+      getData: () => readable ? source.id : '',
+      dropEffect: 'none',
+    };
+    const dispatch = (type: string) => {
+      const event = new win!.DragEvent(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: transfer });
+      button.querySelector('span')!.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    assert.equal(dispatch('dragover'), true);
+    assert.equal(transfer.dropEffect, 'link');
+    assert.ok(button.classList.contains('composer-drop-active'));
+    dispatch('dragleave');
+    assert.ok(!button.classList.contains('composer-drop-active'));
+    dispatch('dragover');
+    readable = true;
+    assert.equal(dispatch('drop'), true);
+    readable = false;
+    assert.ok(!button.classList.contains('composer-drop-active'));
+    const link = `#/app/code/chat?chatId=${source.id}`;
+    for (let attempts = 0; attempts < 100 && input.value !== link; attempts++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    const created = getActiveChat();
+    assert.notEqual(created.id, source.id);
+    assert.equal(source.composerDraft, 'Keep this draft');
+    assert.equal(created.composerDraft, link);
+    assert.equal(input.value, link);
+    assert.equal(created.history.length, 0);
+  } finally {
+    dispose();
+    resetInstancesForTests();
+  }
 });

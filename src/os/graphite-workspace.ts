@@ -1,5 +1,6 @@
 import '../styles/graphite-workspace.css';
 import { registerCommandSource } from '../ui/command-registry';
+import { bindNewThreadDrop } from '../ui/composer-drop';
 import { createIcon } from '../ui/icon';
 import { CHAT_SIDEBAR_CHANGED_EVENT } from '../ui/layout-events';
 import { isNarrowLayout, NARROW_MQ } from '../ui/mobile-layout';
@@ -47,6 +48,9 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   create.append(label, shortcut);
   create.addEventListener('click', () => {
     void import('../ui/sidebar').then(({ createChat }) => createChat());
+  });
+  bindNewThreadDrop(create, drop => {
+    void import('../ui/sidebar').then(({ createChat }) => createChat(drop));
   });
   actions.appendChild(create);
 

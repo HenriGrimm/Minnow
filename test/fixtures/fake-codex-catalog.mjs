@@ -3,6 +3,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 
+if (process.argv.includes('--version')) {
+  console.log('codex-cli 0.170.0');
+  process.exit(0);
+}
+
 const home = process.env.CODEX_HOME;
 const trace = process.env.CODEX_CATALOG_TRACE;
 const inheritedCache = await fs.readFile(path.join(home, 'models_cache.json'), 'utf8').catch(() => null);
@@ -20,6 +25,7 @@ lines.on('line', async line => {
     if (process.env.CODEX_CATALOG_HANG) return;
     if (process.env.CODEX_CATALOG_SCENARIO === 'malformed') { respond({ id: request.id, result: { data: {} } }); return; }
     if (process.env.CODEX_CATALOG_SCENARIO === 'error') { respond({ id: request.id, error: { code: -32603, message: 'secret-must-not-appear' } }); return; }
+    if (process.env.CODEX_CATALOG_SCENARIO === 'empty') { respond({ id: request.id, result: { data: [], nextCursor: null } }); return; }
     await fs.writeFile(path.join(home, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'cli-model', context_window: 272000, input_modalities: ['text'] }] }));
     respond({ id: request.id, result: { data: [{ id: 'cli-model', model: 'cli-model', displayName: 'CLI Model',
       serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Faster responses' }],

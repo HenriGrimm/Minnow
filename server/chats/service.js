@@ -53,7 +53,7 @@ function receipt(record, replayed = false) {
  */
 export function createChatCommandService({
   repository = createChatRepository(), context, resolveModelSelection, captureProfile, captureTurnIntent = captureChatTurnIntent,
-  captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice,
+  captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice, detachMissingWorktree,
   captureNativeSelection,
   feature = getAgentConversationsFeature, ordinaryFeature = getOrdinaryChatExecutionFeature, now = Date.now, id = randomUUID,
   hasExternalOwner = () => false, getExternalOwner, stopExternalOwner, isExternalExecutionActive, cancelTree, admitChildTask, admitCausality,
@@ -178,7 +178,7 @@ export function createChatCommandService({
     return Boolean(record.captured?.delivery && (repository.getChat(record.chatId).subAgentAutoResumeBlocked === true ||
       record.captured.delivery.cancellationEpoch !== undefined && record.captured.delivery.cancellationEpoch !== repository.getCancellationEpoch(record.chatId)));
   }
-  async function selectionFor(target, caller, input) {
+  async function selectionFor(target, caller, input, resolveCliDefaults = true) {
     const options = {
       ...(target.chat.reasoningEffort ? { reasoningEffort: target.chat.reasoningEffort } : {}),
       ...(target.chat.cliFastMode === true ? { fastMode: true } : {}),
@@ -188,8 +188,8 @@ export function createChatCommandService({
       ...(Object.keys(options).length ? { options } : {}),
     };
     const resolved = typeof resolveModelSelection === 'function'
-      ? await resolveModelSelection({ target, caller, input, selection: stored })
-      : await resolveAgentModelSelection({ parentSelection: stored }, { workspacePath: target.chat.worktreeRoot || target.chat.workspacePath });
+      ? await resolveModelSelection({ target, caller, input, selection: stored, resolveCliDefaults })
+      : await resolveAgentModelSelection({ parentSelection: stored, resolveCliDefaults }, { workspacePath: target.chat.worktreeRoot || target.chat.workspacePath });
     return checked(validateModelSelection(resolved?.selection ?? resolved));
   }
   async function sendCommand(caller, input, legacyCompletion = null) {
@@ -365,7 +365,7 @@ export function createChatCommandService({
         if (!state.eligible) failure(state.reason === 'legacy_owner_active' ? 'ownership_conflict' : 'capability_unavailable', 'Ordinary execution cannot promote this conversation: ' + state.reason);
       };
       assertEligible();
-      const selection = await selectionFor(target, caller, { chatId: input.chatId });
+      const selection = await selectionFor(target, caller, { chatId: input.chatId }, false);
       if (typeof captureProfile !== 'function') failure('capability_unavailable', 'The server cannot capture an ordinary execution profile');
       const profile = await captureProfile({ target, selection, caller, input: { chatId: input.chatId, message: '' } });
       if (!profile?.snapshot?.policy) failure('capability_unavailable', 'The ordinary execution profile is incomplete');
@@ -391,6 +391,15 @@ export function createChatCommandService({
     requireCaller(caller);
     if (typeof applyWorkspaceChoice !== 'function') failure('capability_unavailable', 'Workspace recovery is unavailable on this host');
     return applyWorkspaceChoice(caller, input);
+  });
+  // The authenticated host read adapter is the only caller. Serialize with
+  // admission and recheck ownership after asynchronous filesystem verification.
+  const recoverMissingWorktree = (chatId, workspacePath) => serialized(chatId, async () => {
+    const busy = () => disposed || active.has(chatId) || externallyOwned(chatId) ||
+      repository.getLease(chatId)?.state === 'active';
+    if (typeof detachMissingWorktree !== 'function' || busy()) return false;
+    const observed = await context.findMissingWorktree(chatId, workspacePath);
+    return Boolean(observed && !busy() && detachMissingWorktree(observed));
   });
   /** A same-chat replay admits a fresh command in the same transaction as the rewind. */
   async function rewriteHistory(caller, input) {
@@ -1132,7 +1141,7 @@ export function createChatCommandService({
   }
   const service = {
     ordinaryEligibility, promote,
-    send, configure, fork, rewriteHistory, chooseWorkspace, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
+    send, configure, fork, rewriteHistory, chooseWorkspace, recoverMissingWorktree, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
     stopExecution(executionId) {
       checked(validateChatId(executionId));
       const entry = [...active.values()].find(value => value.execution.executionId === executionId);

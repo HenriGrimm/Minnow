@@ -28,7 +28,7 @@ export function wantsReuse(desired: Desired): boolean;
 
 export function multiRepoBoardError(ids: string[]): string;
 
-export function ensureBoardWorkspaceGit(): Promise<
+export function ensureBoardWorkspaceGit(options?: import('./engine').PreflightOptions): Promise<
   | {
       ok: true;
       event: {
@@ -41,7 +41,7 @@ export function ensureBoardWorkspaceGit(): Promise<
   | { ok: false; error: string }
 >;
 
-export function ensureBoardIntegration(boardId: string): Promise<{
+export function ensureBoardIntegration(boardId: string, options?: import('./engine').PreflightOptions): Promise<{
   ok: boolean;
   path?: string;
   branch?: string;
@@ -62,6 +62,8 @@ export function allocateAttemptWorktree(input: {
   attemptId: string;
   desired: Desired;
   state: BoardState;
+  signal?: AbortSignal;
+  onProgress?: import('./engine').PreflightOptions['onProgress'];
 }): Promise<{
   ok: boolean;
   path?: string;

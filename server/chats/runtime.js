@@ -152,6 +152,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     captureWorkspacePreparation: target => workspacePreparation.capture(target),
     admitWorkspacePreparation: (chatId, intent) => workspacePreparation.admit(chatId, intent),
     applyWorkspaceChoice: (caller, input) => workspacePreparation.applyChoice(caller, input),
+    detachMissingWorktree: workspacePreparation.detachMissingWorktree,
     canResumeQuestionExecution: executionId => questionRecovery?.canResume(repository.getExecution(executionId)) === true,
     admitCausality: input => causality.admit(input),
     hasExternalOwner: chatId => Boolean(getExternalOwner(chatId)) || generations().some(row => row.chatId === chatId &&
@@ -173,7 +174,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       snapshot: await captureChatProfile(target.chat, target.scope, { adapters: preparationAdapters,
         workspaceIds: target.currentPolicy.workspaceIds, modelSelection: selection }),
     }),
-    resolveModelSelection: ({ target, selection, input }) => resolveAgentModelSelection({ target: selection }, {
+    resolveModelSelection: ({ target, selection, input, resolveCliDefaults }) => resolveAgentModelSelection({ target: selection, resolveCliDefaults }, {
       adapters: modelAdapters, workspacePath: target.scope.canonicalKey,
       ...(input.images?.length ? { request: { messages: [{ role: 'user', content: input.images.map(image => ({ type: 'image_url', image_url: { url: image.dataUrl } })) }] } } : {}),
     }),

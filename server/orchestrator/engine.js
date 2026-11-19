@@ -266,6 +266,61 @@ export function createEngine(options) {
   const pendingStarts = new Set();
   const startControllers = new Map();
   const identityChecks = new Map();
+  const setupListeners = new Set();
+  let setupProgress = null;
+  let setupOperation = null;
+  let boardStart = null;
+  let stoppingBoard = 0;
+  let setupFailure = null;
+  const taskSetups = new Map();
+
+  function publishSetup(progress) {
+    setupProgress = progress && Object.freeze(progress);
+    for (const listener of setupListeners) {
+      try { listener(setupProgress, [...taskSetups.values()]); } catch {}
+    }
+  }
+
+  function cancelSetup() {
+    if (!setupOperation || setupOperation.controller.signal.aborted) return;
+    publishSetup({ ...setupProgress, stage: 'stopping', message: 'Stopping setup…' });
+    setupOperation.controller.abort(Object.assign(new Error('Board setup cancelled'), { code: 'BOARD_SETUP_CANCELLED' }));
+  }
+
+  /** One owned setup at a time, including recovery probes. Stop waits for its cleanup. */
+  function runPreflight() {
+    if (setupFailure) return Promise.reject(setupFailure);
+    if (setupOperation) return setupOperation.promise;
+    const controller = new AbortController();
+    const startedAt = clock.now();
+    const operation = { controller, promise: null };
+    setupOperation = operation;
+    checkingPreflight++;
+    const onProgress = ({ stage, message }) => {
+      if (!disposed && !controller.signal.aborted && setupOperation === operation) {
+        publishSetup({ stage, message, startedAt });
+      }
+    };
+    // Defer entry until the operation's promise is available to Stop/subscribers.
+    operation.promise = Promise.resolve().then(async () => {
+      controller.signal.throwIfAborted();
+      onProgress({ stage: 'model', message: 'Checking board model…' });
+      const result = await effector.preflight?.({ signal: controller.signal, onProgress });
+      controller.signal.throwIfAborted();
+      return result;
+    }).catch((error) => {
+      if (error?.code === 'recovery_required') setupFailure = error;
+      if (controller.signal.aborted && !setupFailure) throw controller.signal.reason;
+      throw error;
+    }).finally(() => {
+      checkingPreflight--;
+      if (setupOperation === operation) {
+        setupOperation = null;
+        publishSetup(setupFailure ? { stage: 'blocked', message: setupFailure.message, startedAt } : null);
+      }
+    });
+    return operation.promise;
+  }
 
   /**
    * @param {Record<string, unknown>[]} events
@@ -275,6 +330,7 @@ export function createEngine(options) {
     if (disposed || events.length === 0) return [];
     if (options.idempotencyKey && events.length !== 1) throw new Error('An idempotent journal append requires exactly one event');
     if (state?.recoveryVersion && events.some((event) => ['board.stopped', 'board.model.set', 'board.reopened', 'board.rewound', 'task.reset', 'task.updated', 'task.waived', 'task.abandoned'].includes(event.type))) {
+      if (events.some(event => event.type === 'board.stopped')) cancelSetup();
       for (const controller of startControllers.values()) controller.abort();
     }
     let stamped;
@@ -304,18 +360,18 @@ export function createEngine(options) {
   }
 
   async function prepareRecovery() {
-    if (!graph.recoveryEnabled || !state.recoveryVersion) return;
+    if (!graph.recoveryEnabled || !state.recoveryVersion || state.status !== 'running') return;
     const revision = state.recoveryRevision;
-    checkingPreflight++;
     try {
-      const result = await effector.preflight?.();
+      const result = await runPreflight();
       if (!disposed && revision === state.recoveryRevision) {
         const events = graph.eventsForPreflight?.(result) ?? [];
         if (events.length) await append(events);
       }
     } catch (error) {
+      if (error?.code === 'BOARD_SETUP_CANCELLED') return;
       if (!disposed && revision === state.recoveryRevision && state.status === 'running') await append([makeEvent('recovery.held', { hold: recoveryHold(state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ message: error.message, failure: error.failure }, clock.now()), now: clock.now() }) })]);
-    } finally { checkingPreflight--; }
+    }
   }
 
   /**
@@ -338,7 +394,7 @@ export function createEngine(options) {
   /** @returns {Promise<void>} */
   async function runOnce() {
     if (disposed || !state) return;
-    if (checkingPreflight) return;
+    if (checkingPreflight || stoppingBoard || setupFailure) return;
     if (state.stopReason === 'paused') return;
 
     // A finished run is quiescent: extra ticks must not journal more events
@@ -359,11 +415,12 @@ export function createEngine(options) {
           if (ready && !disposed && revision === state.recoveryRevision && state.status === 'running' && state.recoveryHolds[hold.key] === hold) {
             if (hold.stage === 'preflight') {
               try {
-                const result = await effector.preflight?.();
+                const result = await runPreflight();
                 if (disposed || revision !== state.recoveryRevision || state.status !== 'running' || state.recoveryHolds[hold.key] !== hold) continue;
                 const events = graph.eventsForPreflight?.(result) ?? [];
                 if (events.length) await append(events);
               } catch (error) {
+                if (error?.code === 'BOARD_SETUP_CANCELLED') return;
                 if (!disposed && revision === state.recoveryRevision && state.status === 'running' && state.recoveryHolds[hold.key] === hold) await append([makeEvent('recovery.held', { hold: recoveryHold(state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ message: error.message, failure: error.failure }, clock.now()), now: clock.now() }) })]);
                 continue;
               }
@@ -377,13 +434,14 @@ export function createEngine(options) {
         const revision = state.recoveryRevision;
         if (hold.stage === 'preflight') {
           try {
-            const result = await effector.preflight?.();
+            const result = await runPreflight();
             if (!disposed && revision === state.recoveryRevision && state.status === 'running') {
               const events = graph.eventsForPreflight?.(result) ?? [];
               if (events.length) await append(events);
             }
           }
           catch (error) {
+            if (error?.code === 'BOARD_SETUP_CANCELLED') return;
             if (!disposed && revision === state.recoveryRevision && state.status === 'running') {
               await append([makeEvent('recovery.held', { hold: { ...recoveryHold(state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ message: error.message, failure: error.failure }, clock.now()), now: clock.now() }), ...(hold.probe ? { probe: true } : {}) } })]);
             }
@@ -543,7 +601,7 @@ export function createEngine(options) {
    * @returns {Promise<void>}
    */
   function startAttempt(want) {
-    const operation = startAttemptImpl(want);
+    const operation = Promise.resolve().then(() => startAttemptImpl(want));
     pendingStarts.add(operation);
     return operation.finally(() => pendingStarts.delete(operation));
   }
@@ -558,10 +616,22 @@ export function createEngine(options) {
     let handle;
     const startController = new AbortController();
     startControllers.set(key, startController);
+    const startedAt = clock.now();
+    const onProgress = ({ stage, message }) => {
+      if (disposed || startController.signal.aborted || !isAgentRole(want.role)) return;
+      taskSetups.set(key, Object.freeze({ stage, message, startedAt, taskId: want.taskId, role: want.role }));
+      publishSetup(setupProgress);
+    };
     if (state.recoveryVersion && !isAgentRole(want.role)) startingEngineRoles.add(key);
     try {
-      handle = await effector.start(want, { signal: startController.signal });
+      onProgress({ stage: 'model', message: 'Preparing worker…' });
+      handle = await effector.start(want, { signal: startController.signal, onProgress });
     } catch (err) {
+      if (err?.code === 'recovery_required') {
+        setupFailure = err;
+        taskSetups.set(key, Object.freeze({ taskId: want.taskId, role: want.role, startedAt, stage: 'blocked', message: err.message }));
+        publishSetup(setupProgress);
+      }
       if (disposed || startController.signal.aborted || revision !== state.recoveryRevision) return;
       const message = /** @type {Error} */ (err)?.message ?? String(err);
       const consecutive = (startFailures.get(key)?.consecutive ?? 0) + 1;
@@ -578,6 +648,8 @@ export function createEngine(options) {
       }
       return;
     } finally {
+      if (taskSetups.get(key)?.stage !== 'blocked') taskSetups.delete(key);
+      publishSetup(setupProgress);
       if (startControllers.get(key) === startController) startControllers.delete(key);
       startingEngineRoles.delete(key);
     }
@@ -814,7 +886,7 @@ export function createEngine(options) {
 
     /** @returns {Promise<void>} */
     async preflight() {
-      const result = await effector.preflight?.();
+      const result = await runPreflight();
       const extra = graph.eventsForPreflight?.(result) ?? [];
       if (extra.length > 0) await append(extra);
     },
@@ -984,24 +1056,35 @@ export function createEngine(options) {
      * @returns {Promise<void>}
      */
     async startBoard(concurrency, options = {}) {
-      if (!state) throw new Error('engine not loaded');
-      if (state.finished) return false;
-      if (graph.recoveryEnabled && options.recovery && journal === diskJournal && !releaseOwner) releaseOwner = await acquireBoardOwner(boardId);
-      if (graph.recoveryEnabled && options.recovery && !state.recoveryVersion) {
-        const failed = new Set([...state.tasks.values()].filter(task => !task.waived && !task.mergedSha && task.abandonedReason && task.abandonedReason !== 'user').map(task => task.id));
-        const taskIds = [...state.tasks.values()].filter(task => !task.waived && !task.mergedSha && (failed.has(task.id) || failed.has(task.skippedBy))).map(task => task.id);
-        if (taskIds.length) await append([makeEvent('board.reopened', { taskIds, reason: 'recovery-policy-upgrade' })]);
-      }
-      await append([makeEvent('board.started', { concurrency, ...(graph.recoveryEnabled && options.recovery ? { recoveryVersion: 1, ...(options.limits ? { recoveryLimits: options.limits } : {}) } : {}) })]);
-      if (state.recoveryHolds?.['preflight:']?.stage === 'budget') {
-        const spent = recoverySpent(state);
-        if (spent < state.recoveryLimits.board) await append([makeEvent('recovery.released', { key: 'preflight:' })]);
-      }
-      await prepareRecovery();
-      effector.setPaused?.(state.stopReason === 'paused');
-      startTimer();
-      await tick();
-      return true;
+      if (boardStart) return boardStart;
+      const start = async () => {
+        if (setupOperation) await setupOperation.promise.catch(() => {});
+        if (setupFailure) throw setupFailure;
+        if (!state) throw new Error('engine not loaded');
+        if (disposed) return false;
+        if (state.finished) return false;
+        if (graph.recoveryEnabled && options.recovery && journal === diskJournal && !releaseOwner) releaseOwner = await acquireBoardOwner(boardId);
+        if (graph.recoveryEnabled && options.recovery && !state.recoveryVersion) {
+          const failed = new Set([...state.tasks.values()].filter(task => !task.waived && !task.mergedSha && task.abandonedReason && task.abandonedReason !== 'user').map(task => task.id));
+          const taskIds = [...state.tasks.values()].filter(task => !task.waived && !task.mergedSha && (failed.has(task.id) || failed.has(task.skippedBy))).map(task => task.id);
+          if (taskIds.length) await append([makeEvent('board.reopened', { taskIds, reason: 'recovery-policy-upgrade' })]);
+        }
+        await append([makeEvent('board.started', { concurrency, ...(graph.recoveryEnabled && options.recovery ? { recoveryVersion: 1, ...(options.limits ? { recoveryLimits: options.limits } : {}) } : {}) })]);
+        const revision = state.recoveryRevision;
+        if (state.recoveryHolds?.['preflight:']?.stage === 'budget') {
+          const spent = recoverySpent(state);
+          if (spent < state.recoveryLimits.board) await append([makeEvent('recovery.released', { key: 'preflight:' })]);
+        }
+        await prepareRecovery();
+        if (disposed || state.status !== 'running' || revision !== state.recoveryRevision) return false;
+        effector.setPaused?.(state.stopReason === 'paused');
+        startTimer();
+        await tick();
+        return true;
+      };
+      boardStart = start();
+      try { return await boardStart; }
+      finally { boardStart = null; }
     },
 
     /** A prerequisite acknowledgement rechecks setup and releases one held step.
@@ -1013,7 +1096,7 @@ export function createEngine(options) {
       const revision = state.recoveryRevision;
       if (hold.failure.prerequisites?.length && !await effector.recoveryReady?.(hold)) return false;
       let prepared;
-      try { prepared = await effector.preflight?.(); }
+      try { prepared = await runPreflight(); }
       catch { return false; }
       if (disposed || revision !== state.recoveryRevision || state.recoveryHolds[key] !== hold) return false;
       const preflightEvents = graph.eventsForPreflight?.(prepared) ?? [];
@@ -1052,8 +1135,21 @@ export function createEngine(options) {
      * @returns {Promise<void>}
      */
     async stopBoard(reason = 'user') {
-      for (const id of state.tasks.keys()) taskGenerations.set(id, (taskGenerations.get(id) ?? 0) + 1);
-      await append([makeEvent('board.stopped', { reason })]);
+      const pendingSetup = setupOperation?.promise;
+      const pendingTaskSetups = [...pendingStarts];
+      stoppingBoard++;
+      cancelSetup();
+      for (const [key, progress] of taskSetups) {
+        taskSetups.set(key, Object.freeze({ ...progress, stage: 'stopping', message: 'Stopping setup…' }));
+      }
+      if (taskSetups.size) publishSetup(setupProgress);
+      try {
+        for (const id of state.tasks.keys()) taskGenerations.set(id, (taskGenerations.get(id) ?? 0) + 1);
+        await append([makeEvent('board.stopped', { reason })]);
+        await pendingSetup?.catch((error) => { if (error?.code === 'recovery_required') throw error; });
+        await Promise.allSettled(pendingTaskSetups);
+        if (setupFailure) throw setupFailure;
+      } finally { stoppingBoard--; }
       stopTimer();
       startFailures.clear();
       await tick();
@@ -1280,6 +1376,14 @@ export function createEngine(options) {
       return () => subscribers.delete(handler);
     },
 
+    getSetupProgress: () => setupProgress,
+    getTaskSetups: () => [...taskSetups.values()],
+
+    subscribeSetup(handler) {
+      setupListeners.add(handler);
+      return () => setupListeners.delete(handler);
+    },
+
     /** @returns {boolean} */
     wasHeldAtLoad() {
       return heldAtLoad;
@@ -1297,19 +1401,21 @@ export function createEngine(options) {
       if (disposed) return;
       disposed = true;
       lifecycle.abort();
+      cancelSetup();
       for (const controller of startControllers.values()) controller.abort();
       stopTimer();
       subscribers.clear();
+      setupListeners.clear();
       const stopping = effector.inspect().map((attempt) => effector.stop(attempt.attemptId).catch((err) => {
           console.warn(`[orchestrator] ${boardId}: attempt cancellation failed:`, err);
           throw err;
         }));
-      if (stopping.length || pendingStarts.size) {
-        void Promise.allSettled([...stopping, ...pendingStarts]).then(() => {
-          if (effector.inspect().length === 0) { releaseOwner?.(); releaseOwner = null; }
+      if (stopping.length || pendingStarts.size || setupOperation) {
+        void Promise.allSettled([...stopping, ...pendingStarts, ...(setupOperation ? [setupOperation.promise] : [])]).then(() => {
+          if (!setupFailure && effector.inspect().length === 0) { releaseOwner?.(); releaseOwner = null; }
         }).catch(() => {});
       } else {
-        releaseOwner?.();
+        if (!setupFailure) releaseOwner?.();
         releaseOwner = null;
       }
     },

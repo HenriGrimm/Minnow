@@ -144,6 +144,7 @@ function trayIconFallbackPath(): string {
 // ── Shell state ──────────────────────────────────────────────────────────────
 
 const isDev = process.env.MINNOW_ELECTRON_DEV === '1';
+const devUserData = !app.isPackaged && isDev ? process.env.MINNOW_DEV_USER_DATA?.trim() : '';
 // Vite HMR needs eval in dev; suppress Electron's expected CSP warning.
 if (isDev) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
@@ -1051,7 +1052,11 @@ async function createShellWindow(
     untrust: untrustShellWebContents,
     openExternal: (url) => shell.openExternal(url),
   });
-  if (appId) {
+  if (devUserData) {
+    const title = appId ? `Minnow Dev — ${appId.charAt(0).toUpperCase()}${appId.slice(1)}` : 'Minnow Dev';
+    win.setTitle(title);
+    win.on('page-title-updated', (event) => event.preventDefault());
+  } else if (appId) {
     win.setTitle(`Minnow — ${appId.charAt(0).toUpperCase()}${appId.slice(1)}`);
   }
   // App windows ride the main window's filesystem claim. Claiming here would
@@ -1792,7 +1797,19 @@ if (!readHardwareAccelerationSync()) app.disableHardwareAcceleration();
 // the Start Menu for an installed build. `scripts/brand-electron-win.mjs` keeps
 // the dev binary named `Minnow Dev`; the id is split here to match, so dev toasts
 // never bind to the shipped app's shortcut either.
-app.setName('Minnow');
+app.setName(devUserData ? 'Minnow Dev' : 'Minnow');
+if (devUserData) {
+  fs.mkdirSync(devUserData, { recursive: true, mode: 0o700 });
+  app.setPath('userData', devUserData);
+  app.setPath('sessionData', devUserData);
+  if (process.send) {
+    if (!process.connected) app.exit(0);
+    process.once('disconnect', () => app.quit());
+    process.on('message', (message: { type?: string } | null) => {
+      if (message?.type === 'minnow-dev-stop') app.quit();
+    });
+  }
+}
 if (process.platform === 'win32') {
   app.setAppUserModelId(app.isPackaged ? 'org.grimmedia.minnow' : 'org.grimmedia.minnow.dev');
 }

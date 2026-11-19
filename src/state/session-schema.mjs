@@ -860,7 +860,7 @@ function ensureSuperPlanSummary(raw) {
 }
 
 /** Coerce /goal loop state (mirror src/state/sessions.ts ensureActiveGoal). */
-function ensureActiveGoal(raw) {
+export function ensureActiveGoal(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const goal = /** @type {Record<string, unknown>} */ (raw);
   const conditionText =
@@ -884,6 +884,7 @@ function ensureActiveGoal(raw) {
       ? { lastReason: goal.lastReason.trim() }
       : {}),
     ...(goal.achieved === true ? { achieved: true } : {}),
+    ...(goal.paused === true ? { paused: true } : {}),
   };
 }
 
