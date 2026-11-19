@@ -136,7 +136,7 @@
     {
       "path": "documentation/manual/apps/code.md",
       "title": "Edit, run, and review in Code",
-      "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Workspace navigation for the launcher and thread card. Find and edit a file 1. Open Side panel → Files . Expand a ",
+      "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Workspace navigation for the launcher and thread card. Drop a file, editor selection, editor or preview tab, or an",
       "headings": [
         "Find and edit a file",
         "Local environments in worktrees",
@@ -149,7 +149,7 @@
         "Code map"
       ],
       "section": "Apps",
-      "hash": "fbf14c660a2387b9a9362a9288b7014311efe0ad504bb6308c548e36443356c0"
+      "hash": "91ab1d3d30d3e3be9e8a8f6cce0d8531c47b3157faffc924dbed5cb3b59514e8"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -220,7 +220,7 @@
         "Decide whether the result is ready"
       ],
       "section": "Orchestrate",
-      "hash": "ac6028bf35d7312495ddc92e44e10939093e1802e8b33325673857a87d0fe98c"
+      "hash": "c86b133b4d3e0391f3b8777fb6c8adb6d4cf9f72b9ea96d8ad3ab4e8cac4d5b4"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -417,7 +417,7 @@
         "Limits"
       ],
       "section": "Core concepts",
-      "hash": "665ff26ab6c41428082c8737ef36634d0f26fe3600ca94040dffa765aaf737d6"
+      "hash": "9c79d040ab6ddbbe18b816c29aa6b8298dbbbd11a2f2ef9f315353f70659f991"
     }
   ]
 }
