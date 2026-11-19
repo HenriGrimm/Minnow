@@ -234,6 +234,50 @@ test('merge sends the reviewed snapshot and records delivery without deleting th
   assert.equal(findIssueById('MIN-1')!.activity?.at(-1)?.kind, 'work-merged');
 });
 
+test('Work delivers the selected repository and keeps the issue open while another repository has work', async () => {
+  const issue = findIssueById('MIN-1')!;
+  issue.repos = ['backend', 'frontend'];
+  const chat = sessionState!.chats[0];
+  const rows = issue.repos.map(id => ({ id, path: `C:/worktree/${id}`, checkoutIdentity: id,
+    commonIdentity: id, gitIdentity: id, branch: 'minnow/fix', head: 'a'.repeat(40) }));
+  chat.workspacePreparation = {
+    status: 'ready', binding: { path: 'C:/worktree', checkoutIdentity: 'mirror', branch: 'minnow/fix', repos: rows },
+    intent: { version: 1, kind: 'automatic', id: 'fixture', chatId: chat.id, projectId: 'project', sourceWorkspaceId: 'source',
+      slotPath: 'C:/worktree', title: 'Fix it', source: { path: 'C:/repo', checkoutIdentity: 'source', repos: rows } },
+  };
+  const landed = new Set<string>();
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('/api/workspace/repos')) return Response.json({ repos: rows.map(row => ({
+      id: row.id, relPath: row.id, absPath: `C:/repo/${row.id}`, isRoot: false, remote: null,
+    })) });
+    const input = JSON.parse(String(init?.body || '{}'));
+    const repo = input.mirror?.repoId;
+    const branch = repo === 'backend' ? 'main' : 'develop';
+    if (input.op === 'issueWorkInspect') return Response.json({ ...inspect, repoId: repo, targetBranch: branch,
+      dirty: false, ahead: landed.has(repo) ? 0 : 1 });
+    if (input.op === 'issueWorkMerge') {
+      calls.push({ action: 'Merge', input });
+      landed.add(repo);
+      return Response.json({ ...result, repoId: repo, targetBranch: branch, worktreeRemoved: false, branchRemoved: false });
+    }
+    return Response.json({ ok: true });
+  };
+  click('Work'); await flush();
+  const picker = document.querySelector<HTMLSelectElement>('.issues-work-content select')!;
+  assert.deepEqual(Array.from(picker.options, option => option.value), ['backend', 'frontend']);
+  click('Merge'); click('Merge into main'); await flush();
+  assert.equal(findIssueById(issue.id)!.status, 'review');
+  const refreshedPicker = document.querySelector<HTMLSelectElement>('.issues-work-content select')!;
+  refreshedPicker.value = 'frontend'; refreshedPicker.dispatchEvent(new window.Event('change'));
+  await flush();
+  click('Merge'); click('Merge into develop'); await flush();
+  assert.equal(findIssueById(issue.id)!.status, 'done');
+  assert.equal(chat.worktreeRoot, 'C:/worktree');
+  assert.deepEqual(calls.map(({ input }) => [input.mirror.repoId, input.targetBranch, input.cleanup]), [
+    ['backend', 'main', false], ['frontend', 'develop', false],
+  ]);
+});
+
 test('merge failure keeps the issue in Review and exposes retry information', async () => {
   result = { ok: false, conflict: true, error: 'Merge conflict. Worktree preserved.' };
   click('Work'); await flush(); click('Commit & merge'); click('Merge into main'); await flush();

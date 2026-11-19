@@ -18,6 +18,7 @@ import {
   type GitOpResult,
 } from '../state/git-api';
 import { getWorkspacePath } from '../state/workspace';
+import { getChatMirrorBinding } from '../state/chat-worktree';
 import { listWorktrees } from '../state/worktree-service';
 import {
   filterUserFacingWorktrees,
@@ -1191,7 +1192,7 @@ export function createWorktreesView(
           }),
         );
       }
-      if (removable) {
+      if (removable && !bound.some(chat => getChatMirrorBinding(chat)?.repos.some(repo => worktreePathsEqual(repo.path, worktree.path)))) {
         if (!missing && ctx.newThreadInCheckout) actions.push(button({
           label: 'New thread here',
           title: 'New thread in this checkout',

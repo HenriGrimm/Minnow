@@ -5,7 +5,7 @@
  */
 
 import { isChatArchived } from '../state/session-workspace-scope';
-import { applyChatRunTargetChoice, resolveChatWorktreeRoot } from '../state/chat-worktree';
+import { applyChatRunTargetChoice, getChatMirrorBinding, resolveChatWorktreeRoot } from '../state/chat-worktree';
 import { scheduleSaveSessions, sessionState, touchChat } from '../state/sessions';
 import type { GitCheckoutSwitchInput, GitOpResult } from '../state/git-api';
 import type { Chat } from '../types';
@@ -78,7 +78,7 @@ export function chatsBoundToWorktree(path: string): Chat[] {
   return (sessionState?.chats ?? []).filter((chat) => {
     if (isChatArchived(chat)) return false;
     const root = resolveChatWorktreeRoot(chat);
-    return Boolean(root && panelPathsEqual(root, path));
+    return Boolean(root && panelPathsEqual(root, path) || getChatMirrorBinding(chat)?.repos.some(repo => panelPathsEqual(repo.path, path)));
   });
 }
 

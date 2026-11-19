@@ -45,6 +45,8 @@ import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-n
 import { resolvePanelBrowseCwd, resolvePanelWorktreeCwd } from './panel-worktree-cwd';
 import { displayWorktreeTitle } from './worktree-display';
 import { getActiveChat, sessionState } from '../state/sessions';
+import { getChatMirrorBinding } from '../state/chat-worktree';
+import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { lookupWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
 import { listWorktrees } from '../state/worktree-service';
 import { otherChatsUsingCheckout } from './chat-checkout-guard';
@@ -184,6 +186,15 @@ export function refreshSourceControlCenter(): void {
   void mountSourceControlCenter();
 }
 
+/** Carry a view following the chat to its newly prepared checkout. */
+export function syncSourceControlChatCheckout(previous: string): void {
+  if (!isSourceControlCenterOpen()) return;
+  const next = activeChatCheckout();
+  if (next !== null && worktreePathsEqual(viewingCheckout() ?? getWorkspacePath(), previous)) {
+    void showCheckoutScope(next, false, selectedRepoId);
+  } else paintHeader();
+}
+
 // ── Shell ────────────────────────────────────────────────────────────────────
 
 function effectiveCwd(): string | undefined {
@@ -259,6 +270,14 @@ function sectionContext(): SccContext {
     getBranch: () => current() ? currentBranch : '',
     repoKey: repo ? `${workspace}\0${repo.id}` : cwd,
     sharedCheckout: () => current() && cwd ? sharedCheckout(cwd, workspace) : undefined,
+    chatWorktreeMerge: () => {
+      if (!current() || !cwd || !repo || !sessionState) return undefined;
+      const owner = chatMirrorAt(cwd);
+      const chat = owner?.chat;
+      if (!owner || !chat?.workspacePath || owner.repo.id !== repo.id) return undefined;
+      return { request: { cwd: chat.workspacePath, mirror: { chatId: chat.id, repoId: repo.id } }, repoLabel: repoLabel(repo).label,
+        busy: isChatTurnInProgress(chat.id) };
+    },
     newThreadInCheckout: async (path, branch) => {
       if (!current()) return;
       const checkout = repo && worktreePathsEqual(path, repo.absPath) ? repoScopePath : path;
@@ -275,7 +294,7 @@ function sectionContext(): SccContext {
     refreshSection: async () => { if (current()) await activeView?.refresh(); },
     goTo: (section) => { if (current()) void showSection(section); },
     setBadge: (section, badge) => { if (current()) applyRailBadge(section, badge); },
-    openWorktree: async (path) => { if (current()) await setCwd(path, repo?.id); },
+    openWorktree: async (path) => { if (current()) await showCheckoutScope(path, false, repo?.id); },
   };
 }
 
@@ -659,6 +678,15 @@ function currentRepository(): WorkspaceRepo | null {
   return workspaceRepos.find(repo => repo.id === selectedRepoId) ?? null;
 }
 
+function chatMirrorAt(cwd: string) {
+  for (const chat of sessionState?.chats ?? []) {
+    const mirror = getChatMirrorBinding(chat);
+    const repo = mirror?.repos.find(row => worktreePathsEqual(row.path, cwd));
+    if (mirror && repo) return { chat, mirror, repo };
+  }
+  return undefined;
+}
+
 /** The full checkout folder a chat would use for the current Git target. */
 function viewingCheckout(): string | undefined {
   return repoForPanelCwd(panelCwd, workspaceRepos, repoScopePath)
@@ -763,14 +791,21 @@ async function loadWorkspaceRepos(cwd: string | undefined, refresh = false, pref
   const workspace = getWorkspacePath();
   const discovered = await lookupWorkspaceRepos({ workspacePath: workspace, refresh });
   let repos = discovered ?? (checkoutWorkspace === workspace && repoScopePath === workspace ? workspaceRepos : []);
-  const checkout = resolvePanelWorktreeCwd(cwd);
+  const owner = cwd ? chatMirrorAt(cwd) : undefined;
+  const checkout = resolvePanelWorktreeCwd(owner?.mirror.path ?? cwd);
+  const knownMirror = checkout && (owner?.mirror ?? sessionState?.chats.map(getChatMirrorBinding)
+    .find(binding => binding && worktreePathsEqual(binding.path, checkout)));
   let scope = workspace;
+  let checkoutDiscoveryFailed = false;
   let repo = repoForPanelCwd(checkout, repos, workspace);
   if (checkout && !repo) {
     const checkoutRepos = await lookupWorkspaceRepos({ checkoutPath: checkout, refresh });
-    if (checkoutRepos?.some(repo => !repo.isRoot)) {
-      repos = checkoutRepos;
+    if (knownMirror || checkoutRepos?.some(repo => !repo.isRoot)) {
+      // A failed mirror scan must never send a bulk operation to the originals.
+      repos = checkoutRepos?.filter(repo => !repo.isRoot) ?? [];
       scope = checkout;
+      checkoutDiscoveryFailed = knownMirror ? repos.length !== knownMirror.repos.length : false;
+      if (checkoutDiscoveryFailed) repos = [];
     } else if (checkoutRepos?.length) {
       const listed = await listWorktrees(checkout);
       const principal = getPrincipalWorktree(listed.worktrees ?? parseWorktreeListPorcelain(listed.output ?? ''));
@@ -780,12 +815,12 @@ async function loadWorkspaceRepos(cwd: string | undefined, refresh = false, pref
   if (request !== scopeRequest || workspace !== getWorkspacePath()) return null;
   workspaceRepos = repos;
   repoScopePath = scope;
-  discoveryFailed = discovered === null;
+  discoveryFailed = checkoutDiscoveryFailed || discovered === null;
   if (checkout && scope === workspace) return { cwd: checkout, repoId: repo?.id };
   const pick = pickDefaultRepo(repos, {
     workspacePath: scope,
     activeFilePath: getActiveViewerTabPath(),
-    remembered: preferredRepoId ?? readRememberedRepo(workspace),
+    remembered: owner?.repo.id ?? preferredRepoId ?? readRememberedRepo(workspace),
   });
   return { cwd: pick?.isRoot ? resolvePanelWorktreeCwd(scope) : pick?.absPath ?? checkout, repoId: pick?.id };
 }
@@ -1260,7 +1295,7 @@ function buildCommands(): Command[] {
       group: 'Worktree',
       keywords: 'switch root workspace',
       available: () => Boolean(panelCwd),
-      run: () => void setCwd(undefined),
+      run: () => void showCheckoutScope(undefined, false, selectedRepoId),
     },
 
     {

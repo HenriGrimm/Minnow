@@ -16,6 +16,7 @@ export interface GitFileEntry {
 export interface IssueWorkSnapshot {
   ok: boolean;
   error?: string;
+  repoId?: string;
   source?: string;
   isolated?: boolean;
   sourceBranch?: string;
@@ -41,6 +42,8 @@ export interface IssueWorkSnapshot {
 
 export interface IssueWorkRequest {
   cwd: string;
+  /** Resolve a child of the managed chat worktree and its original base branch. */
+  mirror?: { chatId: string; repoId: string };
   /** Inspect-only comparison against a local branch instead of the workspace HEAD. */
   comparisonBranch?: string;
   worktreePath?: string;

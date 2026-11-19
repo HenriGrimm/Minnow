@@ -15,7 +15,7 @@ import { ISSUES_COMPAT_VERSION, ISSUES_SCHEMA_VERSION } from '../../src/types.ts
 import type { Chat, SessionState } from '../../src/types.ts';
 import { defaultSessionState } from '../../src/config/defaults.ts';
 import { setChatRunActivity, disposeChatRunActivity } from '../../src/state/chat-run-activity.ts';
-import { setSessionStateForTests } from '../../src/state/sessions.ts';
+import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 
 const { findIssueById, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');
 const { closeIssueDetail, openIssueDetail, refreshIssueDetailIfOpen } = await import('../../src/ui/issues-detail.ts');
@@ -131,7 +131,7 @@ describe('issues detail display', () => {
       const body = JSON.parse(String(init?.body));
       calls.push(body);
       if (body.op === 'forgeStatus') return Response.json({ ok: true, supported: true, authenticated: true });
-      if (body.op === 'branches') return Response.json({ ok: true, local: [] });
+      if (body.op === 'branches') return Response.json({ ok: true, local: [], ...(String(body.cwd).startsWith('/trees/issue') ? { current: 'minnow/issue' } : {}) });
       if (body.op === 'checkoutSwitch') return Response.json({ ok: true, branch: body.branch });
       if (body.op === 'push') return Response.json({ ok: true });
       if (body.op === 'prCreate') return Response.json({ ok: true, url: 'https://github.com/acme/web/pull/7' });
@@ -176,6 +176,31 @@ describe('issues detail display', () => {
     assert.equal(mutations[3].head, mutations[2].branch);
     assert.deepEqual(findIssueById('GET-3')?.gitLinks?.map((link) => [link.kind, link.repo]), [
       ['branch', 'apps/api/backend'], ['branch', 'frontend'], ['pr', 'frontend'],
+    ]);
+
+    const chat = createEmptyChatObject('model', workspacePath);
+    const mirror = '/trees/issue';
+    const rows = repos.map(repo => ({ id: repo.id, path: repo.absPath, checkoutIdentity: repo.id,
+      commonIdentity: repo.id, gitIdentity: repo.id, branch: 'develop', head: 'a'.repeat(40) }));
+    chat.worktreeRoot = mirror;
+    chat.workspacePreparation = {
+      status: 'ready', binding: { path: mirror, checkoutIdentity: 'mirror', branch: 'minnow/issue',
+        repos: rows.map(row => ({ ...row, path: `${mirror}/${row.id}`, branch: 'minnow/issue' })) },
+      intent: { version: 1, kind: 'automatic', id: 'setup', chatId: chat.id, projectId: 'project', sourceWorkspaceId: 'source',
+        slotPath: mirror, title: chat.name, source: { path: workspacePath, checkoutIdentity: 'source', repos: rows } },
+    };
+    setSessionStateForTests({ chats: [chat], activeId: chat.id });
+    findIssueById('GET-3')!.chatIds = [chat.id];
+    refreshIssueDetailIfOpen();
+    calls.length = 0;
+    await choose('git-pr', 'apps/api/backend');
+    for (let i = 0; i < 20 && !calls.some((call) => call.op === 'prCreate'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.deepEqual(calls.filter(call => ['checkoutSwitch', 'push', 'prCreate'].includes(String(call.op)))
+      .map(call => [call.op, call.cwd, call.branch || call.head, call.base]), [
+      ['push', `${mirror}/apps/api/backend`, 'minnow/issue', undefined],
+      ['prCreate', `${mirror}/apps/api/backend`, 'minnow/issue', 'develop'],
     ]);
   });
 

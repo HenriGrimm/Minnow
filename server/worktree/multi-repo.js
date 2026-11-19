@@ -17,6 +17,8 @@ import path from 'node:path';
 import { runProcess } from '../process-runner.js';
 import { discoverWorkspaceRepos } from '../workspace/repos.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
+import { normalizeWorkspacePathKey } from '../workspace/root.js';
+import { getChatWorktreesDir, isPathUnderWorktreesRoot } from './paths.js';
 
 export const MIRROR_MANIFEST = '.minnow-worktree.json';
 const MANIFEST_VERSION = 1;
@@ -34,9 +36,9 @@ const git = (cwd, args, options = {}) => runProcess('git', args, { cwd, timeout:
  * repo); null for an ordinary single-repo workspace or a plain folder.
  * @param {string} workspaceRoot
  */
-export async function multiRepoSources(workspaceRoot) {
+export async function multiRepoSources(workspaceRoot, options) {
   if (!workspaceRoot || await isGitRepository(workspaceRoot)) return null;
-  const repos = (await discoverWorkspaceRepos(workspaceRoot)).filter((repo) => !repo.isRoot);
+  const repos = (await discoverWorkspaceRepos(workspaceRoot, options)).filter((repo) => !repo.isRoot);
   return repos.length ? repos : null;
 }
 
@@ -49,6 +51,47 @@ export async function readMirrorManifest(wtPath) {
   } catch {
     return null;
   }
+}
+
+/** A separately listed child is part of an indivisible chat checkout. */
+export async function mirrorBranchForCheckout(cwd) {
+  if (!isPathUnderWorktreesRoot(cwd)) return null;
+  const key = normalizeWorkspacePathKey;
+  for (let parent = path.dirname(cwd); isPathUnderWorktreesRoot(parent); parent = path.dirname(parent)) {
+    const manifest = await readMirrorManifest(parent);
+    if (typeof manifest?.workspaceRoot !== 'string' || typeof manifest.branch !== 'string' ||
+        key(path.dirname(parent)) !== key(getChatWorktreesDir(manifest.workspaceRoot))) continue;
+    if (manifest.repos.some(repo => typeof repo?.worktreePath === 'string' && key(repo.worktreePath) === key(cwd))) return manifest.branch;
+  }
+  return null;
+}
+
+/** Resolve a manifest row through source discovery and Git's live registration. */
+export async function verifyMirrorRepo(wtPath, workspaceRoot, row) {
+  const repos = await multiRepoSources(workspaceRoot);
+  const original = repos?.find(repo => repo.id === row?.id);
+  if (!original || row.relPath !== original.relPath || typeof row.source !== 'string' ||
+      typeof row.worktreePath !== 'string' || typeof row.baseBranch !== 'string' ||
+      !/^[a-f0-9]{40,64}$/i.test(row.baseSha ?? '')) throw new Error('The worktree repository no longer matches the workspace.');
+  const source = await fs.realpath(original.absPath);
+  const target = path.join(wtPath, original.relPath);
+  const key = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
+  const same = (a, b) => typeof a === 'string' && typeof b === 'string' && key(a) === key(b);
+  if (!same(source, original.absPath) || !same(source, row.source) || !same(target, row.worktreePath) ||
+      !same(target, await fs.realpath(target))) throw new Error(`The worktree path for ${row.id} changed.`);
+  const [listed, targetGit, sourceGit] = await Promise.all([
+    git(source, ['worktree', 'list', '--porcelain', '-z']),
+    git(target, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir']),
+    git(source, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir']),
+  ]);
+  const [targetTop, targetCommon] = targetGit.stdout.trim().split(/\r?\n/);
+  const [sourceTop, sourceCommon] = sourceGit.stdout.trim().split(/\r?\n/);
+  if ([listed, targetGit, sourceGit].some(result => result.code !== 0 || result.accumulationTruncated) ||
+      !same(targetTop, target) || !same(sourceTop, source) || !same(targetCommon, sourceCommon) ||
+      !listed.stdout.split('\0').some(entry => entry.startsWith('worktree ') && same(entry.slice(9), target))) {
+    throw new Error(`The worktree for ${row.id} is no longer registered in its original repository.`);
+  }
+  return { ...row, source, worktreePath: target };
 }
 
 async function writeManifest(wtPath, manifest) {
@@ -168,11 +211,13 @@ export async function mirroredWorktreeStatus(manifest) {
  * committed to are left alone. One repo's conflict does not undo another's
  * merge — the result reports each repo separately.
  * @param {MirrorManifest} manifest
- * @param {{ branch: string, targetBranch?: string }} input
+ * @param {{ branch: string, targetBranch?: string, keepWorktree?: boolean }} input
  * @param {(repoRoot: string, worktree: string, branch: string, targetBranch: string) => Promise<any>} mergeOne
  */
 export async function mergeMirroredWorktree(wtPath, manifest, input, mergeOne) {
   const statuses = await mirroredWorktreeStatus(manifest);
+  const unavailable = statuses.filter((row) => !row.ok).map((row) => row.id);
+  if (unavailable.length) return { ok: false, error: `Could not verify ${unavailable.join(', ')}. The worktree has been kept.` };
   const dirty = statuses.filter((row) => row.dirty).map((row) => row.id);
   if (dirty.length) {
     return { ok: false, error: `Commit the agent’s changes in ${dirty.join(', ')} before approving. The worktree has been kept.` };
@@ -196,8 +241,35 @@ export async function mergeMirroredWorktree(wtPath, manifest, input, mergeOne) {
   }
   const failed = repos.filter((row) => !row.ok);
   if (!failed.length) {
-    await removeMirroredWorktree(wtPath);
-    return { ok: true, removed: true, path: wtPath, repos };
+    if (input.keepWorktree) return { ok: true, removed: false, path: wtPath, repos };
+    // Once a newly changed file/tip is visible, leave the whole allocation in
+    // place. Git's ordinary remove also rejects edits made after this check.
+    const after = await mirroredWorktreeStatus(manifest);
+    if (after.some((row, index) => !row.ok || row.dirty || row.head !== statuses[index].head || row.branch !== input.branch)) {
+      return { ok: true, removed: false, path: wtPath, repos };
+    }
+    const directories = new Map([[wtPath, new Set([MIRROR_MANIFEST])]]);
+    for (const { worktreePath } of manifest.repos) {
+      for (let child = worktreePath; child !== wtPath; child = path.dirname(child)) {
+        const parent = path.dirname(child);
+        if (!directories.has(parent)) directories.set(parent, new Set());
+        directories.get(parent).add(path.basename(child));
+      }
+    }
+    for (const [dir, contents] of directories) {
+      if ((await fs.readdir(dir)).some(name => !contents.has(name))) return { ok: true, removed: false, path: wtPath, repos };
+    }
+    for (const repo of manifest.repos) {
+      const removed = await git(repo.source, ['worktree', 'remove', repo.worktreePath]);
+      if (removed.code !== 0) return { ok: true, removed: false, path: wtPath, repos, cleanupError: out(removed) };
+    }
+    try {
+      await fs.unlink(path.join(wtPath, MIRROR_MANIFEST));
+      for (const dir of [...directories.keys()].sort((a, b) => b.length - a.length)) await fs.rmdir(dir);
+      return { ok: true, removed: true, path: wtPath, repos };
+    } catch (error) {
+      return { ok: true, removed: false, path: wtPath, repos, cleanupError: error.message };
+    }
   }
   return {
     ok: false,

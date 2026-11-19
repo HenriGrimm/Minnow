@@ -11,13 +11,14 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { resolveRepoCwd } from '../../server/git/repo-resolve.js';
 import { handleGitRequest } from '../../server/git/middleware.js';
-import { setWorkspaceRoot } from '../../server/workspace/root.js';
+import { getDefaultWorkspaceRoot, resetDefaultWorkspaceRootForTests, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { handleWorkspaceRequest } from '../../server/workspace/middleware.js';
 import { getWorktreesRoot } from '../../server/worktree/paths.js';
 import { invalidateRegisteredWorktreeCache } from '../../server/worktree/allowlist.js';
 import { runWithViewWorkspace } from '../../server/runtime/path-access.js';
 import { invalidateWorkspaceRepos } from '../../server/workspace/repos.js';
 import { httpRequest } from '../config/test-helpers.js';
+import { resetMinnowHomeCache } from '../../server/config/home.js';
 
 function git(cwd, ...args) {
   execFileSync('git', args, { cwd, stdio: 'ignore', windowsHide: true });
@@ -39,12 +40,19 @@ describe('repo resolution', () => {
   let single;
   let server;
   let baseUrl;
+  let fixture;
+  let oldHome;
+  const oldWorkspace = getDefaultWorkspaceRoot();
 
   before(async () => {
-    root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mn-multi-')));
+    fixture = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mn-multi-')));
+    oldHome = process.env.MINNOW_HOME;
+    process.env.MINNOW_HOME = path.join(fixture, 'home');
+    resetMinnowHomeCache();
+    root = path.join(fixture, 'workspace');
     await makeRepo(path.join(root, 'frontend'), 'git@github.com:acme/web.git', 'web-main');
     await makeRepo(path.join(root, 'backend'), 'https://github.com/acme/api.git', 'api-main');
-    single = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mn-single-')));
+    single = path.join(fixture, 'single');
     await makeRepo(single, 'https://github.com/acme/solo.git', 'main');
     invalidateWorkspaceRepos();
     server = http.createServer((req, res) => {
@@ -59,6 +67,11 @@ describe('repo resolution', () => {
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve));
+    if (oldHome === undefined) delete process.env.MINNOW_HOME;
+    else process.env.MINNOW_HOME = oldHome;
+    resetMinnowHomeCache();
+    resetDefaultWorkspaceRootForTests(oldWorkspace);
+    await fs.rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('a repo id, its remote slug, or a path picks the repo', async () => {
@@ -98,7 +111,7 @@ describe('repo resolution', () => {
     await setWorkspaceRoot(root);
     const child = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: path.join(root, 'frontend') });
     assert.equal(child.json.branch, 'web-main');
-    const outsider = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mn-outsider-')));
+    const outsider = path.join(fixture, 'outsider');
     await makeRepo(outsider, 'https://github.com/x/y.git', 'main');
     const rejected = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: outsider });
     assert.equal(rejected.json.ok, false);

@@ -1083,6 +1083,9 @@ async function toolGitCheckout(args) {
   }
   const target = await resolveGitTarget(args);
   if ('error' in target) return target.error;
+  const { mirrorBranchForCheckout } = await import('../worktree/multi-repo.js');
+  const mirrorBranch = await mirrorBranchForCheckout(target.cwd);
+  if (mirrorBranch && (args?.create || branch !== mirrorBranch)) return `Error: This chat’s worktree uses ${mirrorBranch}. Use a separate checkout to switch branches.`;
   const gitArgs = args?.create ? ['checkout', '-b', branch] : ['checkout', branch];
   return withWorktreeMutation(target.cwd, () => runGit(gitArgs, target));
 }

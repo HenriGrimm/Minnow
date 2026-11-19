@@ -13,6 +13,7 @@ import {
   gitStageAll,
   gitStatus,
   gitUnstage,
+  issueWorkOperation,
   type GitFileEntry,
   type GitOpResult,
 } from '../state/git-api';
@@ -137,10 +138,43 @@ export function createChangesView(ctx: SccContext): SccView {
     onClick: () => void runCommit(true),
   });
 
+  let merging = false;
+  const mergeBtn = button({ label: 'Merge worktree', icon: 'gitMerge', onClick: () => void mergeChatRepository() });
+  mergeBtn.hidden = !ctx.chatWorktreeMerge?.();
+
+  async function mergeChatRepository(): Promise<void> {
+    const scope = ctx.chatWorktreeMerge?.();
+    if (!scope || scope.busy || merging) return;
+    merging = mergeBtn.disabled = true;
+    const stillCurrent = () => {
+      const current = ctx.chatWorktreeMerge?.();
+      return !destroyed && current && !current.busy && current.request.mirror?.chatId === scope.request.mirror?.chatId;
+    };
+    try {
+      const review = await issueWorkOperation('Inspect', scope.request);
+      if (!stillCurrent()) return;
+      if (!review.ok) { showToast(review.error || 'Could not review the worktree.', 'error'); return; }
+      if (review.dirty) { showToast(`Commit changes in ${scope.repoLabel} before merging.`, 'error'); return; }
+      if (!review.ahead) { showToast(`${scope.repoLabel} is already up to date with ${review.targetBranch}.`); return; }
+      if (review.conflict) { showToast(`Resolve the merge conflicts in ${scope.repoLabel} before merging.`, 'error'); return; }
+      if (!await appConfirm(`Merge ${review.ahead} ${review.ahead === 1 ? 'commit' : 'commits'} from ${review.sourceBranch} into ${review.targetBranch} in ${scope.repoLabel}?`, {
+        title: 'Merge worktree changes', confirmLabel: 'Merge',
+      }) || !stillCurrent()) return;
+      const result = await issueWorkOperation('Merge', { ...scope.request, sourceBranch: review.sourceBranch,
+        sourceHead: review.sourceHead, targetBranch: review.targetBranch, targetHead: review.targetHead, fingerprint: review.fingerprint });
+      if (!result.ok) { showToast(result.error || 'Could not merge this repository.', 'error'); return; }
+      showToast(`Merged ${scope.repoLabel} into ${result.targetBranch}.`);
+      await ctx.refreshAll();
+    } finally {
+      merging = false;
+      mergeBtn.disabled = Boolean(ctx.chatWorktreeMerge?.()?.busy);
+    }
+  }
+
   const commitHint = el('span', 'scc-commit__hint');
 
   const commitActions = el('div', 'scc-commit__actions');
-  commitActions.append(commitHint, commitBtn, commitPushBtn);
+  commitActions.append(commitHint, mergeBtn, commitBtn, commitPushBtn);
   const generationStatus = createCommitGenerationStatus();
   const messageField = el('div', 'scc-commit__field');
   messageField.append(messageInput, generateBtn);
@@ -182,6 +216,9 @@ export function createChangesView(ctx: SccContext): SccView {
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
+    const mergeScope = ctx.chatWorktreeMerge?.();
+    mergeBtn.hidden = !mergeScope;
+    mergeBtn.disabled = merging || Boolean(mergeScope?.busy);
     const sequence = ++refreshSequence;
     const cwd = effectiveCwd();
 

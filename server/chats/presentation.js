@@ -4,7 +4,7 @@ const active = new Set(['running', 'loading_model']);
 const terminal = new Set(['completed', 'failed', 'stopped', 'settled', 'cancelled', 'recovery_required']);
 const fields = ['name', 'groupId', 'pinnedAt', 'archivedAt', 'composerDraft', 'workspacePath', 'worktreeRoot', 'worktreeEnabled', 'providerId', 'modelId', 'modeId',
   'updatedAt', 'lastMessageAt', 'messageCount', 'lastStats', 'modelInfo', 'reasoningEffort',
-  'agentConversation', 'agentTypeId', 'chatCommandVersion', 'profileReference', 'todos', 'todosUpdatedAt', 'worktreeSetupRequired', 'workspacePreparation'];
+  'agentConversation', 'agentTypeId', 'chatCommandVersion', 'profileReference', 'todos', 'todosUpdatedAt', 'worktreeSetupRequired', 'workspacePreparation', 'gitBranch', 'chatWorktreeManaged'];
 const summaryFields = ['name', 'workspacePath', 'worktreeRoot', 'modelId', 'providerId', 'modeId', 'messageCount',
   'lastMessageAt', 'updatedAt', 'agentConversation', 'agentTypeId', 'chatCommandVersion', 'agentExecution',
   'agentPendingCommand', 'agentRequestSummary', 'agentActivityCursor', 'agentPresentationRevision', 'agentTitleCandidate', 'unread', 'turnError'];
@@ -27,6 +27,8 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
     return { kind: 'chat-changed', chatId, sequence: ++sequence, at: now(),
       execution: execution ? { executionId: execution.executionId, status: execution.status } : null, requests,
       fields: { ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId),
+        ...(chat.workspacePreparation ? { workspacePreparation: chat.workspacePreparation, worktreeSetupRequired: chat.worktreeSetupRequired ?? null,
+          worktreeEnabled: chat.worktreeEnabled ?? null, gitBranch: chat.gitBranch ?? null, chatWorktreeManaged: chat.chatWorktreeManaged ?? null } : {}),
         ...(chat.historyRewrite ? { historyRewriteRevision: chat.historyRewrite.revision } : {}) },
     };
   }

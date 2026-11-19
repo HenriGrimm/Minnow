@@ -11,6 +11,7 @@ import { buildPrDetail, prMergeLabel, renderPrMarkdown } from '../../src/ui/scc-
 import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
 import { setWorkspaceFromServer, resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
 import { invalidateWorkspaceReposCache } from '../../src/state/workspace-repos.ts';
+import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import type { ForgeStatus, PullRequestDetail } from '../../src/state/forge-api.ts';
 import type { SccContext, SccView } from '../../src/ui/scc-shared.ts';
 
@@ -455,6 +456,69 @@ test('one sync menu runs bulk actions and remembers the main-button scope per wo
     resetSourceControlCenterForTests();
     resetInstancesForTests();
     resetWorkspaceStateForTests();
+    invalidateWorkspaceReposCache();
+  }
+});
+
+test('opening one mirror child keeps Source Control and bulk sync inside the chat worktree', async () => {
+  setup();
+  const { mountSourceControlCenter, openSourceControlCenter, resetSourceControlCenterForTests } = await import('../../src/ui/source-control-center.ts');
+  const { resetAppDialogForTests } = await import('../../src/ui/app-dialog.ts');
+  const workspace = '/mirror-project';
+  const mirror = '/trees/chat-mirror';
+  const chat = createEmptyChatObject('model', workspace);
+  chat.worktreeRoot = mirror;
+  const rows = ['backend', 'frontend'].map(id => ({ id, path: `${mirror}/${id}`, checkoutIdentity: id,
+    commonIdentity: id, gitIdentity: id, branch: 'minnow/fix', head: 'a'.repeat(40) }));
+  chat.workspacePreparation = {
+    status: 'ready', binding: { path: mirror, checkoutIdentity: 'mirror', repos: rows, branch: 'minnow/fix' },
+    intent: { version: 1, kind: 'automatic', id: 'fixture', chatId: chat.id, projectId: 'project', sourceWorkspaceId: 'source',
+      slotPath: mirror, title: 'Fix it', source: { path: workspace, checkoutIdentity: 'project', repos: rows } },
+  };
+  const calls: any[] = [];
+  globalThis.fetch = async (url, init) => {
+    const request = new URL(String(url), 'http://localhost');
+    if (request.pathname === '/api/workspace/repos') {
+      const checkout = request.searchParams.get('checkout');
+      return Response.json({ repos: rows.map(row => ({ id: row.id, relPath: row.id,
+        absPath: checkout === mirror ? row.path : `${workspace}/${row.id}`, isRoot: false, remote: null })) });
+    }
+    const input = JSON.parse(String(init?.body || '{}'));
+    calls.push(input);
+    if (input.op === 'issueWorkInspect') return Response.json({ ok: true, sourceBranch: 'minnow/fix', targetBranch: 'develop',
+      sourceHead: 'a'.repeat(40), targetHead: 'b'.repeat(40), fingerprint: 'review', ahead: 1 });
+    if (input.op === 'issueWorkMerge') return Response.json({ ok: true, targetBranch: 'develop' });
+    return Response.json({ ok: true, branch: 'minnow/fix', current: 'minnow/fix' });
+  };
+  setWorkspaceFromServer({ path: workspace, label: 'Mirror project', isDefault: false });
+  setSessionStateForTests({ chats: [chat], activeId: chat.id });
+  const area = document.createElement('main');
+  area.id = 'sourceControlView';
+  document.body.append(area);
+  launchInstance('source-control');
+  const byText = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === label);
+  try {
+    await mountSourceControlCenter();
+    await openSourceControlCenter({ cwd: `${mirror}/frontend`, section: 'changes' });
+    assert.equal(calls.filter(call => call.op === 'status').at(-1).cwd, `${mirror}/frontend`);
+    area.querySelector<HTMLButtonElement>('button[aria-label="Sync options"]')!.click();
+    byText('Fetch all')!.click();
+    await settle();
+    assert.deepEqual(calls.filter(call => call.op === 'fetch').map(call => call.cwd), [`${mirror}/backend`, `${mirror}/frontend`]);
+    byText('Merge worktree')!.click();
+    await settle();
+    assert.match(document.querySelector('#appDialogPanel')?.textContent ?? '', /into develop in frontend/);
+    byText('Merge')!.click();
+    await settle();
+    const merged = calls.find(call => call.op === 'issueWorkMerge');
+    assert.deepEqual(merged.mirror, { chatId: chat.id, repoId: 'frontend' });
+    assert.equal(merged.fingerprint, 'review');
+  } finally {
+    resetAppDialogForTests();
+    resetSourceControlCenterForTests();
+    resetInstancesForTests();
+    resetWorkspaceStateForTests();
+    setSessionStateForTests(null);
     invalidateWorkspaceReposCache();
   }
 });

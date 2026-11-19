@@ -4,6 +4,9 @@ import { forgeStatus, prCreate } from '../../state/forge-api.ts';
 import { getWorkspacePath } from '../../state/workspace.ts';
 import { lookupWorkspaceRepos, repoRemoteSlug } from '../../state/workspace-repos.ts';
 import { issueGithubSlug } from '../../issues/repo-scope.ts';
+import { issueWorkChat } from '../../issues/work-state.ts';
+import { getChatMirrorBinding } from '../../state/chat-worktree.ts';
+import { worktreePathsEqual } from '../../lib/worktree-list-parse.ts';
 import { expandGitmojiShortcodes } from '../../lib/gitmoji-shortcodes.mjs';
 import { commitUrl, githubIssueWebUrl, pullRequestUrl } from '../../lib/git-remote-url.ts';
 import { executeTool } from '../../tools/client.ts';
@@ -69,7 +72,13 @@ async function issueGitScope(issue: IssueCard, repoId?: string) {
   const repos = await issueGitRepositories(issue);
   const repo = repoId === undefined && repos.length === 1 ? repos[0] : repos.find((entry) => entry.id === repoId);
   if (!repo) throw new Error(repoId === undefined ? 'Choose a repository for this Git action.' : 'That repository is no longer available for this issue.');
-  return { cwd: issue.workspacePath || getWorkspacePath(), repo: repo.id };
+  const linked = issueWorkChat(issue);
+  const mirror = getChatMirrorBinding(linked);
+  const source = linked?.workspacePreparation?.intent.source;
+  const origin = source && 'repos' in source ? source.repos.find(row => worktreePathsEqual(row.path, repo.absPath)) : undefined;
+  const checkout = mirror?.repos.find(row => row.id === origin?.id);
+  return { cwd: issue.workspacePath || getWorkspacePath(), repo: repo.id,
+    worktree: checkout && mirror ? { cwd: checkout.path, branch: mirror.branch, base: origin?.branch } : undefined };
 }
 
 /** Create/checkout `issue/iss-n-<slug>` and append a branch git link. */
@@ -92,20 +101,21 @@ async function withIssueGitScope(
 }
 
 async function checkoutIssueBranch(issue: IssueCard, scope: IssueGitScope): Promise<IssueGitActionResult> {
-  const branch = resolveIssueBranchName(issue, scope);
-  const branches = await gitBranches(scope.cwd, undefined, scope.repo);
+  const branch = scope.worktree?.branch ?? resolveIssueBranchName(issue, scope);
+  const branches = await gitBranches(scope.worktree?.cwd ?? scope.cwd, undefined, scope.worktree ? undefined : scope.repo);
   if (!branches.ok) return { ok: false, error: branches.error ?? 'Could not list branches' };
+  if (scope.worktree && branches.current !== branch) return { ok: false, error: `Restore ${branch} in the chat’s worktree before continuing.` };
   const existing = branches.current === branch || branches.local?.includes(branch) || branches.lockedLocal?.includes(branch);
-  // The shared flow asks about uncommitted files instead of carrying them silently.
-  const { runCheckoutFlow } = await import('../../ui/git-checkout-confirm');
-  const input = { ...scope, branch };
-  let result = await runCheckoutFlow({ ...input, create: !existing });
-  if (!existing && !result.ok && /branch .+ already exists/i.test(result.error ?? '')) {
-    result = await runCheckoutFlow(input);
+  let checkedOut = branch;
+  if (!scope.worktree) {
+    // The shared flow asks about uncommitted files instead of carrying them silently.
+    const { runCheckoutFlow } = await import('../../ui/git-checkout-confirm');
+    const input = { cwd: scope.cwd, repo: scope.repo, branch };
+    let result = await runCheckoutFlow({ ...input, create: !existing });
+    if (!existing && !result.ok && /branch .+ already exists/i.test(result.error ?? '')) result = await runCheckoutFlow(input);
+    if (!result.ok) return { ok: false, error: result.error ?? 'Could not create or check out the branch' };
+    checkedOut = result.branch || branch;
   }
-  if (!result.ok) return { ok: false, error: result.error ?? 'Could not create or check out the branch' };
-
-  const checkedOut = result.branch || branch;
   const linked = issue.gitLinks?.some((link) => link.kind === 'branch' && link.ref === checkedOut &&
     (link.repo ?? '.') === scope.repo);
   if (!linked) {
@@ -203,7 +213,8 @@ export async function createPrFromIssue(issue: IssueCard, repoId?: string): Prom
 }
 
 async function openIssuePr(issue: IssueCard, scope: IssueGitScope): Promise<IssueGitActionResult> {
-  const status = await forgeStatus(scope.cwd, scope.repo);
+  const gitScope = scope.worktree ? { cwd: scope.worktree.cwd } : { cwd: scope.cwd, repo: scope.repo };
+  const status = await forgeStatus(gitScope.cwd, gitScope.repo);
   if (!status.ok || !status.supported || !status.authenticated) {
     return { ok: false, error: status.reason || 'GitHub pull requests are unavailable in this repository' };
   }
@@ -211,12 +222,12 @@ async function openIssuePr(issue: IssueCard, scope: IssueGitScope): Promise<Issu
   const branchResult = await checkoutIssueBranch(issue, scope);
   if (!branchResult.ok) return branchResult;
 
-  const push = await gitPush({ ...scope, setUpstream: true, branch: branchResult.branch });
+  const push = await gitPush({ ...gitScope, setUpstream: true, branch: branchResult.branch });
   if (!push.ok) return { ok: false, error: push.error ?? 'Push failed' };
 
   const title = buildIssuePrTitle(issue);
   const body = buildIssuePrBody(issue);
-  const prRes = await prCreate({ ...scope, title, body, head: branchResult.branch });
+  const prRes = await prCreate({ ...gitScope, title, body, head: branchResult.branch, ...(scope.worktree?.base ? { base: scope.worktree.base } : {}) });
   if (!prRes.ok) {
     const detail = prRes.error || 'Could not create the pull request';
     return { ok: false, error: detail };

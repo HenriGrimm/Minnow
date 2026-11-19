@@ -28,7 +28,7 @@ export function issueAgentCaption(issue: IssueCard): { text: string; tone: strin
   if (issue.agent?.phase === 'running' || issue.agent?.phase === 'queued') return { text: issue.agent.step || (issue.agent.phase === 'running' ? 'Working' : 'Queued'), tone: 'running' };
   if (status === 'failed' || status === 'stopped' || status === 'interrupted') return { text: status === 'failed' ? 'Chat failed' : status === 'stopped' ? 'Stopped' : 'Interrupted', tone: 'failed', status };
   const delivery = issueDelivery(issue);
-  if (delivery && (!chat || delivery.data?.chatId === chat.id)) return { text: 'Merged', tone: 'review' };
+  if (delivery && (!chat || delivery.data?.chatId === chat.id)) return { text: delivery.data?.complete === false ? 'Partially merged' : 'Merged', tone: 'review' };
   if (status === 'completed') return { text: 'Chat finished', tone: 'review', status };
   if (issue.agent) return { text: issue.agent.step || issue.agent.phase.replace(/_/g, ' '), tone: issue.agent.phase };
   return { text: chat ? 'Ready' : '—', tone: '' };

@@ -13,6 +13,7 @@ import {
 } from '../tools/result-cache';
 import { getFilePanelState, patchFilePanelState } from '../state/file-panel';
 import { getWorkspacePath } from '../state/workspace';
+import { lookupWorkspaceRepos } from '../state/workspace-repos';
 import {
   buildFileTreeToolContext,
   fileTreeListingRootsEqual,
@@ -203,27 +204,28 @@ async function pollFileTreeGitStatus(): Promise<void> {
   gitStatusPollInFlight = true;
   try {
     const { gitStatus } = await import('../state/git-api');
-    const { getWorkspacePath } = await import('../state/workspace');
     const ws = getWorkspacePath().trim();
-    const cwdArg =
-      gitStatusPollCwd && ws && gitStatusPollCwd.replace(/\\/g, '/') !== ws.replace(/\\/g, '/')
-        ? gitStatusPollCwd
-        : undefined;
-
-    const result = await gitStatus(cwdArg, AbortSignal.timeout(10_000));
-    if (!result.ok) {
-      setFileTreeGitStatus(new Map());
+    const cwd = gitStatusPollCwd;
+    const repos = await lookupWorkspaceRepos(cwd ? { checkoutPath: cwd } : { workspacePath: ws });
+    const targets = repos?.some(repo => !repo.isRoot)
+      ? repos.map(repo => ({ cwd: repo.absPath, prefix: repo.isRoot ? '' : `${repo.relPath}/` }))
+      : [{ cwd, prefix: '' }];
+    const statuses = await Promise.all(targets.map(async target => ({ ...target,
+      result: await gitStatus(target.cwd, AbortSignal.timeout(10_000)),
+    })));
+    if (cwd !== gitStatusPollCwd || ws !== getWorkspacePath().trim()) return;
+    if (statuses.every(row => !row.result.ok)) {
       if (!isFileTreeServerAvailable() && gitStatusPollTimer !== undefined) {
         clearInterval(gitStatusPollTimer);
         gitStatusPollTimer = undefined;
       }
-      return;
     }
 
     const map = new Map<string, string>();
-    for (const bucket of [result.staged, result.unstaged, result.untracked]) {
-      for (const entry of bucket ?? []) {
-        map.set(entry.path.replace(/\\/g, '/'), entry.status);
+    for (const { result, prefix } of statuses) {
+      if (!result.ok) continue;
+      for (const bucket of [result.staged, result.unstaged, result.untracked]) {
+        for (const entry of bucket ?? []) map.set(prefix + entry.path.replace(/\\/g, '/'), entry.status);
       }
     }
     setFileTreeGitStatus(map);

@@ -60,7 +60,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
       const { context, service, repository, presentation } = runtime;
       const ingress = req.minnowAuth?.kind === 'device' ? 'device'
         : ['cli', 'scheduler'].includes(req.headers['x-minnow-chat-client']) ? req.headers['x-minnow-chat-client'] : 'renderer';
-      const human = chatId => context.humanCaller(chatId, { workspacePath: getRequestWorkspaceRoot(), ingress });
+      const human = (chatId, workspaceRecovery = false) => context.humanCaller(chatId, { workspacePath: getRequestWorkspaceRoot(), ingress, workspaceRecovery });
       if (url.pathname === '/api/chats/archive/export' || url.pathname === '/api/chats/archive/import') {
         if (req.minnowAuth?.kind !== 'host') throw new ChatContractError('caller_denied', 'Only the authenticated local host may transfer a conversation archive');
         if (useJsonSessionsStore()) throw new ChatContractError('capability_unavailable', 'Versioned conversation archives require the SQLite session store');
@@ -168,7 +168,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         });
         await finish(receipt); return;
       }
-      const { caller, target } = await human(chatId);
+      const { caller, target } = await human(chatId, operation === 'workspace' && req.method === 'POST');
       assertCallerCanTarget(caller, target, { operation: 'read', currentPolicy: target.currentPolicy, registry: target.registry });
       if (operation === 'recovery' && !requestId) {
         if (req.minnowAuth?.kind !== 'host' || caller.actor !== 'human') throw new ChatContractError('caller_denied', 'Recovery requires the authenticated local user.');

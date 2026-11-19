@@ -8,7 +8,7 @@ Minnow searches the workspace folder and its subfolders for repositories. Folder
 
 When the workspace holds two or more repositories, the Source Control header shows a **repository switcher** next to the project name, followed by the checkout and branch. Pick a repository and every section follows it. The Git panel in Code uses the same repository preference. The command palette (**Ctrl+K** / **Cmd+K**) lists a *Switch to repository* command for each repository.
 
-**Fetch**, **Pull**, and **Push** act on the selected checkout by default. The **Sync options** menu at the right of the group offers **Fetch all**, **Pull all**, and **Push all**. Turn on **Main buttons sync all repos** to use those actions directly from the buttons. Minnow remembers the setting for this workspace. When you’re browsing a linked worktree, bulk sync uses that worktree for its repository and the existing checkouts for the others. Minnow reports any repositories that were skipped or could not sync.
+**Fetch**, **Pull**, and **Push** act on the selected checkout by default. The **Sync options** menu at the right of the group offers **Fetch all**, **Pull all**, and **Push all**. Turn on **Main buttons sync all repos** to use those actions directly from the buttons. Minnow remembers the setting for this workspace. In a chat worktree, bulk sync uses that chat’s isolated checkouts. If you open a standalone worktree for a single repository, bulk sync uses that checkout for its repository and the workspace checkouts for the others. Minnow reports any repositories that were skipped or could not sync.
 
 In Code, the Changes panel and the thread's **Checkout** picker also let you choose a repository for changes, branches, and pull requests. You can switch repositories while the editor and chat continue to use the full workspace. Minnow remembers the last repository you picked for each workspace. The first time, it picks the repository of the file open in the editor, when available.
 
@@ -39,7 +39,11 @@ With GitHub sync on, each issue syncs with its own repository:
 
 ## Isolated chats
 
-An isolated chat worktree in a folder of repositories is a copy of the folder with one git worktree per repository, each on the chat's branch. Relative paths between the repositories work inside the copy as they do in your folder. When you approve the chat's work, each repository the agent committed to is merged into its own branch; repositories it did not touch are left alone. A merge conflict in one repository keeps the worktree and names the repository; the others stay merged.
+Choose **Enable worktree** in the chat composer, then send a message. Minnow creates a Git worktree for each repository at the same relative path. Each starts from that repository’s committed state. The chat, Files, editor, and new terminal tabs use the folder containing both checkouts. The repository switcher in Changes and Source Control selects where Git actions run.
+
+Open **Review worktree changes** from the composer, select a repository in **Source Control → Changes**, and commit its edits. Select **Merge worktree** to review and merge those commits into that repository’s starting branch. Repeat for the other repository when it’s ready. Any conflict stays with its repository, and both isolated checkouts stay available. **Back to Local** switches the chat to the original folder and keeps the isolated work.
+
+For a linked issue, use **Work → Repository** to review, commit, or merge one repository at a time. **Create pull request** publishes the linked chat’s branch for the selected repository.
 
 ## Limits
 

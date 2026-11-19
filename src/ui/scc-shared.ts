@@ -1,6 +1,7 @@
 import { createIcon, iconHtml, type IconName } from './icon';
 import type { CheckState, ForgeStatus } from '../state/forge-api';
 import type { SharedFolderGuard } from './git-checkout-confirm';
+import type { IssueWorkRequest } from '../state/git-api';
 
 /** Everything a section needs from the shell. */
 export interface SccContext {
@@ -11,6 +12,7 @@ export interface SccContext {
   /** Repository identity shared by all of its checkouts in this workspace. */
   repoKey?: string;
   sharedCheckout?: () => SharedFolderGuard | undefined;
+  chatWorktreeMerge?: () => { request: IssueWorkRequest; repoLabel: string; busy: boolean } | undefined;
   newThreadInCheckout?: (path: string, branch?: string) => Promise<void>;
   /** Re-read git state and repaint the shell chrome plus the active section. */
   refreshAll: () => Promise<void>;

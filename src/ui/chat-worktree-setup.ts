@@ -11,6 +11,8 @@ import { getActiveChatMountElement } from './chat-mount';
 import { createGitWorktreeIcon } from './git-worktree-icons';
 import { scrollChatIfPinned } from './chat-scroll';
 import { teardownHub } from './hub';
+import { worktreePathsEqual } from '../lib/worktree-list-parse';
+import { reportBackgroundError } from '../boot/report-background-error';
 
 /** Keep setup visible across chat switches and transcript repaints. */
 export function syncChatWorktreeSetup(chat: Chat, mount: HTMLElement | null): void {
@@ -85,8 +87,20 @@ subscribeChatWorktreeSetup(chat => {
   syncChatWorktreeSetup(chat, getActiveChatMountElement());
   if (getActiveChat().id === chat.id) scrollChatIfPinned();
 });
+let projectedCheckout: { chatId: string; path: string } | undefined;
 subscribeManagedChatMetadata(chatId => {
   if (typeof document === 'undefined' || sessionState?.activeId !== chatId) return;
   const chat = findChatById(chatId);
-  if (chat) syncChatWorktreeSetup(chat, getActiveChatMountElement());
+  if (!chat) return;
+  syncChatWorktreeSetup(chat, getActiveChatMountElement());
+  if (!chat.workspacePreparation || !chat.workspacePath) return;
+  const from = projectedCheckout?.chatId === chatId ? projectedCheckout.path : chat.workspacePath;
+  const to = chat.worktreeRoot || chat.workspacePath;
+  projectedCheckout = { chatId, path: to };
+  if (worktreePathsEqual(from, to)) return;
+  void Promise.all([import('./git-panel'), import('./source-control-center')]).then(([panel, sourceControl]) => {
+    if (sessionState?.activeId !== chatId || !worktreePathsEqual(chat.worktreeRoot || chat.workspacePath, to)) return;
+    panel.syncPanelFromActiveChat({ forceFileTree: true });
+    sourceControl.syncSourceControlChatCheckout(from);
+  }).catch(error => reportBackgroundError('chat-worktree-checkout', error));
 });

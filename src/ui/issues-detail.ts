@@ -40,7 +40,7 @@ import {
 import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
 import { createIssuesWorkflowDropdown, closeIssuesWorkflowMenu } from './issues-workflow-menu';
 import { promptIssueChatRunTarget, pickIssueLaunchModel, issueLaunchModelLabel, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
-import type { ChatRunTargetChoice } from '../state/chat-worktree';
+import { getChatMirrorBinding, type ChatRunTargetChoice } from '../state/chat-worktree';
 import {
   createBranchFromIssue,
   createPrFromIssue,
@@ -1598,11 +1598,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   /** Everything git can do to this issue, in one menu. */
   function gitMenuItems(issue: IssueCard, ctx: GitMenuContext): IssuesContextMenuItem[] {
+    const mirror = getChatMirrorBinding(issueWorkChat(issue));
     const items: IssuesContextMenuItem[] = [
       {
         id: 'git-branch',
-        label: 'Create branch',
-        hint: 'Creates and checks out the issue branch',
+        label: mirror ? 'Link worktree branch' : 'Create branch',
+        hint: mirror ? 'Links the chat’s branch in the selected repository' : 'Creates and checks out the issue branch',
         disabled: ctx.busy,
         iconClass: 'fi-sr-code-branch',
         onSelect: () => pickGitRepository(issue.id, 'branch', ctx.anchor),
