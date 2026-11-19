@@ -13,6 +13,12 @@ import { createChatWorkspacePreparation } from '../../server/chats/workspace-pre
 import { rebindChatWorkspacePolicy } from '../../server/chats/workspace-preparation.js';
 import { enableChatWorktree } from '../../server/worktree/worktree-ops.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
+import { executeServerTool } from '../../server/runtime/tools-middleware.js';
+import { runWithViewWorkspace } from '../../server/runtime/path-access.js';
+import { issueWorkInspect, issueWorkMerge } from '../../server/git/issue-work-ops.js';
+import { checkoutSwitch } from '../../server/git/checkout-switch.js';
+import { worktreeRemove } from '../../server/git/git-ops.js';
+import { MIRROR_MANIFEST } from '../../server/worktree/multi-repo.js';
 
 const exec = promisify(execFile);
 async function fixture(t, options = {}) {
@@ -21,13 +27,20 @@ async function fixture(t, options = {}) {
   process.env.MINNOW_HOME = path.join(root, 'home'); resetMinnowHomeCache();
   const git = (args, cwd = repo) => exec('git', args, { cwd, windowsHide: true });
   await fs.mkdir(repo);
-  await git(['init']); await git(['config', 'user.email', 'test@example.com']); await git(['config', 'user.name', 'Test']);
-  await fs.writeFile(path.join(repo, 'file.txt'), 'committed');
-  if (options.dependencyFailure || options.installScript) await fs.writeFile(path.join(repo, 'package.json'), JSON.stringify({
-    name: 'canonical-setup-test', version: '1.0.0', private: true,
-    scripts: { install: options.installScript ?? 'node -e "console.error(\'canonical fixture dependency failure\'); process.exit(1)"' },
-  }));
-  await git(['add', '.']); await git(['commit', '-m', 'initial']);
+  const repos = options.multiRepo ? [['backend', 'main'], ['apps/frontend', 'develop']] : [['.', 'main']];
+  for (const [location, branch] of repos) {
+    const cwd = path.join(repo, location);
+    await fs.mkdir(cwd, { recursive: true });
+    await git(['init', '-b', branch], cwd);
+    await git(['config', 'user.email', 'test@example.com'], cwd);
+    await git(['config', 'user.name', 'Test'], cwd);
+    await fs.writeFile(path.join(cwd, 'file.txt'), 'committed');
+    if (options.dependencyFailure || options.installScript) await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({
+      name: 'canonical-setup-test', version: '1.0.0', private: true,
+      scripts: { install: options.installScript ?? 'node -e "console.error(\'canonical fixture dependency failure\'); process.exit(1)"' },
+    }));
+    await git(['add', '.'], cwd); await git(['commit', '-m', 'initial'], cwd);
+  }
   const db = new Database(':memory:'); db.pragma('foreign_keys=ON'); initSessionsSchema(db);
   const repository = createChatRepository({ db });
   repository.createChat({ id: 'ordinary', name: 'Fix setup', workspacePath: repo, modeId: 'build',
@@ -78,6 +91,83 @@ async function fixture(t, options = {}) {
   return { root, repo, git, db, repository, context, admit, reserve, release, setupCalls: () => setupCalls,
     get adapter() { return adapter; }, reload(extra) { adapter = makeAdapter(extra); return adapter; } };
 }
+
+test('an ordinary chat uses both registered checkouts and can deliver each repo to its original branch', async t => {
+  const f = await fixture(t, { multiRepo: true });
+  const original = await f.context.resolveTarget('ordinary');
+  const first = f.reserve(await f.admit()), queued = await f.admit();
+  const ready = await f.adapter.prepare(first);
+  const mirror = ready.target.chat.worktreeRoot;
+  assert.equal(ready.target.scope.projectId, original.scope.projectId);
+  assert.equal((await f.context.humanCaller('ordinary', { workspacePath: f.repo })).target.scope.workspaceId, ready.target.scope.workspaceId);
+  assert.equal((await f.context.executionCaller(first.execution.executionId)).target.scope.workspaceId, ready.target.scope.workspaceId);
+  await assert.rejects(f.context.humanCaller('ordinary', { workspacePath: path.join(f.repo, 'backend') }), /outside the active project/);
+  assert.deepEqual(ready.target.chat.workspacePreparation.binding.repos.map(repo => repo.id), ['apps/frontend', 'backend']);
+  const tool = async (name, args) => String((await executeServerTool(name, args, {
+    workspaceRoot: ready.target.scope.canonicalKey, filesystemAccessCeiling: 'workspace',
+  })).result);
+  for (const id of ['backend', 'apps/frontend']) {
+    assert.doesNotMatch(await tool('save_file', { path: `${id}/chat.txt`, content: `${id} chat change\n` }), /^Error/);
+    assert.match(await tool('read_file', { path: `${id}/chat.txt` }), /chat change/);
+    assert.match(await tool('git_status', { repo: id }), /chat\.txt/);
+    assert.doesNotMatch(await tool('git_add', { paths: [`${id}/chat.txt`] }), /^Error/);
+    assert.doesNotMatch(await tool('git_commit', { repo: id, message: `Update ${id}` }), /^Error/);
+    await assert.rejects(fs.access(path.join(f.repo, id, 'chat.txt')));
+  }
+  assert.match(await tool('git_status', {}), /several repos/);
+  const child = path.join(mirror, 'backend');
+  assert.equal((await checkoutSwitch({ cwd: child, branch: 'new-work', create: true })).ok, false);
+  assert.equal((await worktreeRemove({ cwd: path.join(f.repo, 'backend'), path: child, force: true })).ok, false);
+  f.release(first, 'completed');
+  const next = f.reserve(queued);
+  await f.reload().prepare(next);
+  f.release(next, 'completed');
+  assert.equal(f.setupCalls(), 1);
+
+  const frontend = path.join(f.repo, 'apps/frontend');
+  await f.git(['switch', '-c', 'another-task'], frontend);
+  const inProject = fn => runWithViewWorkspace(f.repo, fn);
+  for (const [repoId, branch] of [['backend', 'main'], ['apps/frontend', 'develop']]) {
+    const input = { cwd: f.repo, mirror: { chatId: 'ordinary', repoId } };
+    const review = await inProject(() => issueWorkInspect(input));
+    assert.equal(review.ok, true, review.error);
+    assert.equal(review.targetBranch, branch);
+    assert.equal(review.ahead, 1);
+    const landed = await inProject(() => issueWorkMerge({ ...review, ...input, cleanup: true }));
+    assert.equal(landed.ok, true, landed.error);
+    assert.equal(landed.repoId, repoId);
+    assert.ok(landed.mergeSha);
+    assert.match((await f.git(['show', `${branch}:chat.txt`], path.join(f.repo, repoId))).stdout, /chat change/);
+    if (repoId === 'backend') await assert.rejects(f.git(['show', 'develop:chat.txt'], frontend));
+  }
+  assert.equal((await f.git(['branch', '--show-current'], frontend)).stdout.trim(), 'another-task');
+  await assert.rejects(fs.access(path.join(frontend, 'chat.txt')));
+  assert.equal((await f.context.resolveTarget('ordinary')).chat.worktreeRoot, mirror, 'both checkouts stay bound after merge');
+
+  // A conflicted rebase detaches Git's HEAD while retaining the chat branch.
+  // The chat can still edit its copy to resolve the conflict.
+  const backend = path.join(f.repo, 'backend');
+  for (const [cwd, content] of [[backend, 'destination change'], [child, 'chat change']]) {
+    await fs.writeFile(path.join(cwd, 'file.txt'), content);
+    await f.git(['commit', '-am', content], cwd);
+  }
+  await assert.rejects(f.git(['rebase', 'main'], child), /CONFLICT|could not apply/);
+  assert.equal((await f.context.resolveTarget('ordinary')).chat.worktreeRoot, mirror);
+  await f.git(['rebase', '--abort'], child);
+
+  const manifestPath = path.join(mirror, MIRROR_MANIFEST);
+  const originalManifest = await fs.readFile(manifestPath, 'utf8');
+  const replaced = JSON.parse(originalManifest);
+  replaced.repos[0].worktreePath = replaced.repos[1].worktreePath;
+  await fs.writeFile(manifestPath, JSON.stringify(replaced));
+  await assert.rejects(f.context.resolveTarget('ordinary'), /no longer matches apps\/frontend/);
+  const intentId = ready.target.chat.workspacePreparation.intent.id;
+  const { caller } = await f.context.humanCaller('ordinary', { workspacePath: f.repo, workspaceRecovery: true });
+  await f.adapter.applyChoice(caller, { chatId: 'ordinary', action: 'local', expectedIntentId: intentId });
+  assert.equal((await f.context.resolveTarget('ordinary')).scope.workspaceId, original.scope.workspaceId);
+  await fs.writeFile(manifestPath, originalManifest);
+  assert.equal((await f.adapter.retry({ chatId: 'ordinary', expectedIntentId: intentId })).worktreeRoot, mirror);
+});
 
 test('durable intent precedes allocation; concurrent sends share one verified final checkout', async t => {
   const f = await fixture(t);

@@ -8,6 +8,10 @@ import { setLocalServerAvailable } from '../../src/tools/config.ts';
 import { createPullsView, suggestPrTitle } from '../../src/ui/scc-pulls.ts';
 import { createChecksView } from '../../src/ui/scc-checks.ts';
 import { buildPrDetail, prMergeLabel, renderPrMarkdown } from '../../src/ui/scc-pr-detail.ts';
+import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
+import { setWorkspaceFromServer, resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
+import { invalidateWorkspaceReposCache } from '../../src/state/workspace-repos.ts';
+import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import type { ForgeStatus, PullRequestDetail } from '../../src/state/forge-api.ts';
 import type { SccContext, SccView } from '../../src/ui/scc-shared.ts';
 
@@ -242,4 +246,279 @@ test('new pull request titles follow GitHub: one commit uses its subject, severa
   assert.equal(suggestPrTitle('feat/thing', { ahead: 1, subject: 'fix(ui): one commit' }), 'fix(ui): one commit');
   assert.equal(suggestPrTitle('minnow/min-7-customizable-keyboard-shortcuts-68e0536535', { ahead: 3, subject: 'x' }), 'Min 7 customizable keyboard shortcuts');
   assert.equal(suggestPrTitle('worktree-multi-repo-workspaces', { ahead: 13, subject: 'x' }), 'Worktree multi repo workspaces');
+});
+
+test('Source Control switches sibling repo views, restores PR drafts, and labels linked worktrees', async () => {
+  setup();
+  const { openSourceControlCenter, mountSourceControlCenter, resetSourceControlCenterForTests } =
+    await import('../../src/ui/source-control-center.ts');
+  const workspace = '/coltiva';
+  const worktree = '/worktrees/backend-review';
+  const repos = ['backend', 'frontend'].map(id => ({
+    id, relPath: id, absPath: `${workspace}/${id}`, isRoot: false, remote: null,
+  }));
+  const listCalls: string[] = [];
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).startsWith('/api/workspace/repos')) return Response.json({ repos });
+    const args = JSON.parse(String(init?.body || '{}'));
+    const name = args.cwd === worktree ? 'backend' : args.cwd?.split('/').at(-1);
+    const entry = pr(7, { title: `${name} pull request`, url: `https://github.com/test/${name}/pull/7` });
+    if (args.op === 'prList') { listCalls.push(args.cwd); return Response.json({ ok: true, prs: [entry] }); }
+    if (args.op === 'prView') return Response.json({ ok: true, pr: entry });
+    if (args.op === 'checkoutPlan' && args.cwd === `${workspace}/backend`) {
+      return Response.json({ ok: true, location: 'worktree', worktreePath: worktree });
+    }
+    if (args.op === 'forgeStatus' || args.op === 'forgeRefresh') {
+      return Response.json({ ok: true, supported: true, host: 'github', repo: `test/${name}` });
+    }
+    return Response.json({ ok: true, current: 'feature/7', local: ['main', 'feature/7'] });
+  }) as typeof fetch;
+  setWorkspaceFromServer({ path: workspace, label: 'Coltiva', isDefault: false });
+  const area = document.createElement('main');
+  area.id = 'sourceControlView';
+  document.body.append(area);
+  launchInstance('source-control');
+  const { getGitPanelCwd, resetGitPanelForTests } = await import('../../src/ui/git-panel.ts');
+  function pickRepo(id: string) {
+    area.querySelector<HTMLButtonElement>('.scc-head__repo-switch')!.click();
+    const option = [...document.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]')]
+      .find(row => row.textContent?.includes(id));
+    assert.ok(option);
+    option.click();
+  }
+  try {
+    await mountSourceControlCenter();
+    await openSourceControlCenter({ section: 'pulls' });
+    assert.match(area.querySelector('.scc-prrow')?.textContent ?? '', /backend pull request/);
+    const panelBefore = getGitPanelCwd();
+    const oldView = area.querySelector('.scc-pulls');
+    area.querySelector<HTMLButtonElement>('button[title="New pull request"]')!.click();
+    await settle();
+    const draft = area.querySelector<HTMLTextAreaElement>('textarea[aria-label="Pull request description"]')!;
+    draft.value = 'Backend rollout';
+    draft.dispatchEvent(new win.Event('input', { bubbles: true }) as unknown as Event);
+    pickRepo('frontend');
+    assert.ok(!oldView?.isConnected);
+    await settle();
+    assert.match(area.querySelector('.scc-prrow')?.textContent ?? '', /frontend pull request/);
+    assert.equal(area.querySelector('textarea[aria-label="Pull request description"]'), null);
+    pickRepo('backend');
+    await settle();
+    assert.equal(area.querySelector<HTMLTextAreaElement>('textarea[aria-label="Pull request description"]')?.value, 'Backend rollout');
+    assert.deepEqual([...new Set(listCalls)], repos.map(repo => repo.absPath));
+
+    [...area.querySelectorAll('button')].find(button => button.textContent === 'Cancel')!.click();
+    await settle();
+    area.querySelector<HTMLButtonElement>('.scc-prrow')!.click();
+    await settle();
+    [...area.querySelectorAll('button')].find(button => button.textContent === 'Open worktree')!.click();
+    await settle();
+    assert.equal(area.querySelector('.scc-head__repo-switch .scc-btn__label')?.textContent, 'backend');
+    assert.equal((area.querySelector('.scc-head__worktree') as HTMLButtonElement).title, `Browsing ${worktree}`);
+    assert.equal(getGitPanelCwd(), panelBefore);
+  } finally {
+    resetSourceControlCenterForTests();
+    resetGitPanelForTests();
+    resetInstancesForTests();
+    resetWorkspaceStateForTests();
+    invalidateWorkspaceReposCache();
+  }
+});
+
+test('Source Control offers a repository discovery retry when the workspace scan fails', async () => {
+  setup();
+  const { mountSourceControlCenter, resetSourceControlCenterForTests } = await import('../../src/ui/source-control-center.ts');
+  const workspace = '/discovery-retry';
+  const requests: string[] = [];
+  globalThis.fetch = (async (url, init) => {
+    const path = String(url);
+    if (path.startsWith('/api/workspace/repos')) {
+      requests.push(path);
+      if (!path.includes('refresh=1')) return new Response(null, { status: 503 });
+      return Response.json({ repos: [{ id: 'api', relPath: 'api', absPath: `${workspace}/api`, isRoot: false, remote: null }] });
+    }
+    const args = JSON.parse(String(init?.body || '{}'));
+    return Response.json(args.op === 'status' && args.cwd !== `${workspace}/api`
+      ? { ok: false, error: 'not a git repository' }
+      : { ok: true, current: 'main', local: ['main'] });
+  }) as typeof fetch;
+  setWorkspaceFromServer({ path: workspace, label: 'Retry', isDefault: false });
+  const area = document.createElement('main');
+  area.id = 'sourceControlView';
+  document.body.append(area);
+  launchInstance('source-control');
+  try {
+    await mountSourceControlCenter();
+    const missing = area.querySelector('.scc-no-repo')!;
+    assert.match(missing.textContent ?? '', /Could not discover repositories/);
+    (missing.querySelector('button') as HTMLButtonElement).click();
+    await settle();
+    assert.ok(requests.some(path => path.includes('refresh=1')));
+    assert.equal((missing as HTMLElement).hidden, true);
+    assert.equal(area.querySelector('.scc-head__repo-label')?.textContent, 'api');
+  } finally {
+    resetSourceControlCenterForTests();
+    resetInstancesForTests();
+    resetWorkspaceStateForTests();
+    invalidateWorkspaceReposCache();
+  }
+});
+
+test('one sync menu runs bulk actions and remembers the main-button scope per workspace', async () => {
+  setup();
+  const { mountSourceControlCenter, openSourceControlCenter, resetSourceControlCenterForTests } = await import('../../src/ui/source-control-center.ts');
+  const { resetAppDialogForTests } = await import('../../src/ui/app-dialog.ts');
+  const workspace = '/sync-project';
+  const linked = '/trees/backend-review';
+  const backend = `${workspace}/backend`;
+  const frontend = `${workspace}/frontend`;
+  const solo = '/sync-solo';
+  const preference = `minnow.scc.sync-all:${workspace}`;
+  globalThis.localStorage?.removeItem(preference);
+  const repo = (id: string, absPath: string) => ({ id, relPath: id, absPath, isRoot: id === '.', remote: null });
+  const syncCalls: string[][] = [];
+  globalThis.fetch = (async (url, init) => {
+    const request = new URL(String(url), 'http://localhost');
+    if (request.pathname === '/api/workspace/repos') {
+      const checkout = request.searchParams.get('checkout');
+      const repos = checkout === linked ? [repo('.', linked)]
+        : checkout === solo ? [repo('.', solo)]
+        : [repo('backend', backend), repo('frontend', frontend)];
+      return Response.json({ repos });
+    }
+    const args = JSON.parse(String(init?.body || '{}'));
+    if (args.op === 'list') return Response.json({ ok: true, output: `worktree ${backend}\nHEAD 0000\nbranch refs/heads/main\n` });
+    if (['fetch', 'pull', 'push'].includes(args.op)) {
+      syncCalls.push([args.op, args.cwd]);
+      if (args.op === 'pull' && args.cwd === linked) return Response.json({ ok: false, error: 'Local edits need attention' });
+    }
+    if (args.op === 'branchTree') return Response.json({ ok: true, current: 'main', branches: [{ name: 'main', upstream: 'origin/main' }] });
+    if (args.op === 'status') return Response.json({ ok: true, branch: 'main', ahead: 3, behind: 2 });
+    return Response.json({ ok: true, branch: 'main', current: 'main', local: ['main'] });
+  }) as typeof fetch;
+  setWorkspaceFromServer({ path: workspace, label: 'Sync project', isDefault: false });
+  const area = document.createElement('main');
+  area.id = 'sourceControlView';
+  document.body.append(area);
+  launchInstance('source-control');
+  const openOptions = () => area.querySelector<HTMLButtonElement>('button[aria-label="Sync options"]')!.click();
+  const menuItem = (name: string, role = 'menuitem') => {
+    const item = [...document.querySelectorAll<HTMLButtonElement>(`[role="${role}"]`)]
+      .find(row => row.textContent === name);
+    assert.ok(item);
+    return item;
+  };
+  try {
+    await mountSourceControlCenter();
+    await openSourceControlCenter({ cwd: linked });
+    assert.ok(area.querySelector('.scc-head__sync[data-multi-repo]'));
+    assert.equal(area.querySelectorAll('.scc-head__sync-menu').length, 1);
+    area.querySelector<HTMLButtonElement>('.scc-head__fetch')!.click();
+    await settle();
+    assert.deepEqual(syncCalls.splice(0), [['fetch', linked]]);
+    for (const verb of ['Fetch', 'Push', 'Pull']) {
+      openOptions();
+      menuItem(`${verb} all`).click();
+      await settle();
+      assert.deepEqual(syncCalls.splice(0), [[verb.toLowerCase(), linked], [verb.toLowerCase(), frontend]]);
+    }
+    const summary = document.querySelector('#appDialogPanel');
+    assert.match(summary?.textContent ?? '', /Pulled 1 of 2 repositories/);
+    assert.match(summary?.textContent ?? '', /backend\s+Local edits need attention/);
+    resetAppDialogForTests();
+
+    const toggleLabel = 'Main buttons sync all repos';
+    openOptions();
+    const toggle = menuItem(toggleLabel, 'menuitemcheckbox');
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    toggle.click();
+    assert.equal(area.querySelector('.scc-head__fetch')?.getAttribute('aria-label'), 'Fetch all repositories');
+    assert.equal(area.querySelector('.scc-head__pull .scc-head__sync-count')?.hasAttribute('hidden'), true);
+    area.querySelector<HTMLButtonElement>('.scc-head__fetch')!.click();
+    await settle();
+    assert.deepEqual(syncCalls.splice(0), [['fetch', linked], ['fetch', frontend]]);
+
+    setWorkspaceFromServer({ path: solo, label: 'Solo', isDefault: false });
+    await mountSourceControlCenter();
+    assert.equal(area.querySelector('.scc-head__sync[data-multi-repo]'), null);
+    assert.equal(area.querySelector('.scc-head__fetch')?.getAttribute('aria-label'), 'Fetch');
+
+    setWorkspaceFromServer({ path: workspace, label: 'Sync project', isDefault: false });
+    await mountSourceControlCenter();
+    openOptions();
+    const remembered = menuItem(toggleLabel, 'menuitemcheckbox');
+    assert.equal(remembered.getAttribute('aria-checked'), 'true');
+    remembered.click();
+    assert.equal(area.querySelector('.scc-head__fetch')?.getAttribute('aria-label'), 'Fetch');
+  } finally {
+    globalThis.localStorage?.removeItem(preference);
+    resetAppDialogForTests();
+    resetSourceControlCenterForTests();
+    resetInstancesForTests();
+    resetWorkspaceStateForTests();
+    invalidateWorkspaceReposCache();
+  }
+});
+
+test('opening one mirror child keeps Source Control and bulk sync inside the chat worktree', async () => {
+  setup();
+  const { mountSourceControlCenter, openSourceControlCenter, resetSourceControlCenterForTests } = await import('../../src/ui/source-control-center.ts');
+  const { resetAppDialogForTests } = await import('../../src/ui/app-dialog.ts');
+  const workspace = '/mirror-project';
+  const mirror = '/trees/chat-mirror';
+  const chat = createEmptyChatObject('model', workspace);
+  chat.worktreeRoot = mirror;
+  const rows = ['backend', 'frontend'].map(id => ({ id, path: `${mirror}/${id}`, checkoutIdentity: id,
+    commonIdentity: id, gitIdentity: id, branch: 'minnow/fix', head: 'a'.repeat(40) }));
+  chat.workspacePreparation = {
+    status: 'ready', binding: { path: mirror, checkoutIdentity: 'mirror', repos: rows, branch: 'minnow/fix' },
+    intent: { version: 1, kind: 'automatic', id: 'fixture', chatId: chat.id, projectId: 'project', sourceWorkspaceId: 'source',
+      slotPath: mirror, title: 'Fix it', source: { path: workspace, checkoutIdentity: 'project', repos: rows } },
+  };
+  const calls: any[] = [];
+  globalThis.fetch = async (url, init) => {
+    const request = new URL(String(url), 'http://localhost');
+    if (request.pathname === '/api/workspace/repos') {
+      const checkout = request.searchParams.get('checkout');
+      return Response.json({ repos: rows.map(row => ({ id: row.id, relPath: row.id,
+        absPath: checkout === mirror ? row.path : `${workspace}/${row.id}`, isRoot: false, remote: null })) });
+    }
+    const input = JSON.parse(String(init?.body || '{}'));
+    calls.push(input);
+    if (input.op === 'issueWorkInspect') return Response.json({ ok: true, sourceBranch: 'minnow/fix', targetBranch: 'develop',
+      sourceHead: 'a'.repeat(40), targetHead: 'b'.repeat(40), fingerprint: 'review', ahead: 1 });
+    if (input.op === 'issueWorkMerge') return Response.json({ ok: true, targetBranch: 'develop' });
+    return Response.json({ ok: true, branch: 'minnow/fix', current: 'minnow/fix' });
+  };
+  setWorkspaceFromServer({ path: workspace, label: 'Mirror project', isDefault: false });
+  setSessionStateForTests({ chats: [chat], activeId: chat.id });
+  const area = document.createElement('main');
+  area.id = 'sourceControlView';
+  document.body.append(area);
+  launchInstance('source-control');
+  const byText = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === label);
+  try {
+    await mountSourceControlCenter();
+    await openSourceControlCenter({ cwd: `${mirror}/frontend`, section: 'changes' });
+    assert.equal(calls.filter(call => call.op === 'status').at(-1).cwd, `${mirror}/frontend`);
+    area.querySelector<HTMLButtonElement>('button[aria-label="Sync options"]')!.click();
+    byText('Fetch all')!.click();
+    await settle();
+    assert.deepEqual(calls.filter(call => call.op === 'fetch').map(call => call.cwd), [`${mirror}/backend`, `${mirror}/frontend`]);
+    byText('Merge worktree')!.click();
+    await settle();
+    assert.match(document.querySelector('#appDialogPanel')?.textContent ?? '', /into develop in frontend/);
+    byText('Merge')!.click();
+    await settle();
+    const merged = calls.find(call => call.op === 'issueWorkMerge');
+    assert.deepEqual(merged.mirror, { chatId: chat.id, repoId: 'frontend' });
+    assert.equal(merged.fingerprint, 'review');
+  } finally {
+    resetAppDialogForTests();
+    resetSourceControlCenterForTests();
+    resetInstancesForTests();
+    resetWorkspaceStateForTests();
+    setSessionStateForTests(null);
+    invalidateWorkspaceReposCache();
+  }
 });

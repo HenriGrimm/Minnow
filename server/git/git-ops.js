@@ -12,6 +12,7 @@ import { runProcess } from '../process-runner.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
 import { invalidateRegisteredWorktreeCache } from '../worktree/allowlist.js';
 import { prepareWorktreeEnvironment } from '../worktree/local-environment.js';
+import { mirrorBranchForCheckout } from '../worktree/multi-repo.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import {
   gitRefFolderName,
@@ -1317,6 +1318,7 @@ export async function worktreeRemove({ cwd, path: worktreePath, force, unlock } 
 
   const targetPath = worktreePath.trim();
   const absolutePath = path.resolve(repo.cwd, targetPath);
+  if (await mirrorBranchForCheckout(absolutePath)) return { ok: false, error: 'This checkout is part of a chat worktree. The chat uses all of its repositories together.' };
   assertActionWorktreeIdle(absolutePath);
   const mainWorktreePath = await resolveMainWorktreePath(repo.cwd);
   if (
@@ -1381,6 +1383,8 @@ export async function checkout({ cwd, branch, create, startPoint } = {}) {
   }
 
   const name = create ? slugifyGitRefName(branch, 'branch') : branch.trim();
+  const mirrorBranch = await mirrorBranchForCheckout(repo.cwd);
+  if (mirrorBranch && (create || name !== mirrorBranch)) return { ok: false, error: `This chat’s worktree uses ${mirrorBranch}. Open another checkout to switch branches.` };
   const args = create
     ? ['checkout', '-b', name]
     : ['checkout', name];
@@ -1399,6 +1403,7 @@ export async function checkoutDetach({ cwd, sha } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
   assertActionWorktreeIdle(repo.cwd);
+  if (await mirrorBranchForCheckout(repo.cwd)) return { ok: false, error: 'Open another checkout to detach HEAD. This chat uses its worktree branch.' };
 
   if (!sha || typeof sha !== 'string' || !sha.trim()) {
     return { ok: false, error: 'sha is required' };

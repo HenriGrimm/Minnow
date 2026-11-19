@@ -40,10 +40,21 @@ import {
 import { isClosedStatus } from '../issues/taxonomy';
 import { getIssuesTaxonomySync, setIssuesTaxonomy } from './issues-taxonomy-store';
 import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../issues/github-metadata';
+import { validateParentLink } from '../issues/hierarchy';
+import { issueGithubSlug } from '../issues/repo-scope';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspacePath } from './workspace';
 import { runGithubSyncQueue } from '../issues/github-sync-queue';
-import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { normalizeWorkspacePath, relativeWorkspacePath } from '../lib/normalize-workspace-path';
+import { fetchWorkspaceRepos } from './workspace-repos';
+import {
+  forgeScopeArgs,
+  forgeScopeKey,
+  importScopes,
+  issueInScope,
+  resolveIssueForgeScope,
+  type IssueForgeScope,
+} from '../issues/github-repo-scope';
 import { githubRetryAt } from '../lib/github-rate-limit.mjs';
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
@@ -191,6 +202,7 @@ interface ForgeResponse {
   error?: string;
   issue?: RemoteIssueSnapshot;
   issues?: RemoteIssueSnapshot[];
+  nextCursor?: string;
   number?: number;
   url?: string;
   droppedLabels?: boolean;
@@ -206,7 +218,7 @@ export async function deleteIssueFromGithub(issueId: string): Promise<{
       const issue = findIssueById(issueId);
       const number = issue?.github?.number;
       if (!issue || !number) return { ok: false, error: 'Issue is not linked to GitHub' };
-      const result = await forge('issueDelete', { number, cwd: issue.workspacePath });
+      const result = await forge('issueDelete', { number, ...forgeScopeArgs(await scopeForIssue(issue)) });
       return result.ok
         ? { ok: true }
         : {
@@ -223,6 +235,17 @@ export async function deleteIssueFromGithub(issueId: string): Promise<{
       error: userFacingGithubError(err instanceof Error ? err.message : String(err)),
     };
   }
+}
+
+/** The GitHub repo an issue syncs with (the workspace itself unless it holds several repos). */
+export async function scopeForIssue(
+  issue: Pick<NonNullable<ReturnType<typeof findIssueById>>, 'workspacePath' | 'repos' | 'github'>,
+): Promise<IssueForgeScope> {
+  const repos = issue.workspacePath ? await fetchWorkspaceRepos({ workspacePath: issue.workspacePath }) : [];
+  if (!repos.length && issue.repos?.some((id) => id !== '.')) {
+    throw new Error('Could not find the issue’s repository in its workspace.');
+  }
+  return resolveIssueForgeScope(issue, repos);
 }
 
 /**
@@ -342,8 +365,8 @@ async function withIssueGithubLock<T>(issueId: string, run: () => Promise<T>): P
 async function readRemote(issueId: string): Promise<RemoteIssueSnapshot | null> {
   const issue = findIssueById(issueId);
   const number = issue?.github?.number;
-  if (!number) return null;
-  const res = await forge('issueView', { number, cwd: issue?.workspacePath });
+  if (!number || !issue) return null;
+  const res = await forge('issueView', { number, ...forgeScopeArgs(await scopeForIssue(issue)) });
   if (!res.ok || !res.issue) throw new Error(res.error ?? 'Could not read the GitHub issue');
   return res.issue;
 }
@@ -357,8 +380,8 @@ export interface GithubBatchSnapshot {
 }
 
 /** One batch per 50 identities; callers retain the per-issue lock for applying results. */
-export async function readGithubIssueBatch(cwd: string, numbers: number[]): Promise<ForgeResponse> {
-  return forge('issueBatch', { cwd, numbers });
+export async function readGithubIssueBatch(cwd: string, numbers: number[], repo?: string): Promise<ForgeResponse> {
+  return forge('issueBatch', { cwd, numbers, ...(repo ? { repo } : {}) });
 }
 
 /** Sync one issue, resolving divergent edits by their most recent change. */
@@ -402,20 +425,30 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
   const remote = snapshot ?? await readRemote(issueId);
   let current = findIssueById(issueId);
   if (!current) return { ok: false, action: 'noop', error: 'Issue not found' };
+  // Which repo this issue syncs with; unclear targets fail here, before any write.
+  const scope = await scopeForIssue(current);
+  const remoteParentNumber = remote && decodeGithubIssueBody(remote.body).metadata?.parent;
+  let parentId: string | undefined;
   if (remote) {
     const workspacePath = current.workspacePath;
     const number = current.github?.number;
-    await ensureRemoteParent(remote, workspacePath);
+    const parent = await ensureRemoteParent(remote.number, remoteParentNumber, scope);
     // Parent discovery may take time; retain edits made while it was in flight.
     const latest = findIssueById(issueId);
     if (!latest || latest.workspacePath !== workspacePath || latest.github?.number !== number) {
       return { ok: true, action: 'noop' };
     }
     current = latest;
+    if (parent && validateParentLink(issueId, parent.id, listIssues()).ok) parentId = parent.id;
   }
   // Freeze the sent revision: edits during network calls must remain pending.
   const issue = { ...current, labels: [...current.labels] };
   const local = portableFields(issue);
+  // Keep the original GitHub relation in the payload when the local
+  // one-level hierarchy cannot represent it and the user hasn't reparented it.
+  if (local.metadata && remoteParentNumber && !parentId && !issue.parentId) {
+    local.metadata.parent = remoteParentNumber;
+  }
   const action = planIssueSync({
     mode,
     issue,
@@ -427,13 +460,13 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
   switch (action.kind) {
     case 'noop':
       if (remote && issue.github) {
-        writeLink(issueId, issue.github.number, remote.url, remote.updatedAt, issue.updatedAt);
+        writeLink(issueId, issue.github.number, remote.url, remote.updatedAt, issue.updatedAt, scope);
       }
       return { ok: true, action: 'noop', error: action.reason };
 
     case 'create': {
       const res = await forge('issueCreate', {
-        cwd: issue.workspacePath,
+        ...forgeScopeArgs(scope),
         title: issue.title,
         body: encodeGithubIssueBody(issue.description, local.metadata),
         labels: issue.labels,
@@ -445,9 +478,9 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
           error: userFacingGithubError(res.error ?? 'Could not create the issue'),
         };
       }
-      writeLink(issueId, res.number, res.url ?? '', undefined, issue.updatedAt);
+      writeLink(issueId, res.number, res.url ?? '', undefined, issue.updatedAt, scope);
       if (localIsClosed(issue.status)) {
-        const closed = await forge('issueState', { number: res.number, state: 'closed', cwd: issue.workspacePath });
+        const closed = await forge('issueState', { number: res.number, state: 'closed', ...forgeScopeArgs(scope) });
         if (!closed.ok) {
           // Keep the created identity, but leave the closed-state change pending.
           const linked = findIssueById(issueId)?.github;
@@ -462,10 +495,10 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
     case 'push': {
       const number = issue.github?.number;
       if (!number) return { ok: false, action: 'push', error: 'Not linked to a GitHub issue' };
-      const res = await pushSyncedFieldsToGithub(number, action.fields, remote, issue.workspacePath);
+      const res = await pushSyncedFieldsToGithub(number, action.fields, remote, forgeScopeArgs(scope));
       if (!res.ok) return { ok: false, action: 'push', error: res.error };
       const after = await readRemote(issueId);
-      writeLink(issueId, number, issue.github?.url ?? '', after?.updatedAt, issue.updatedAt);
+      writeLink(issueId, number, issue.github?.url ?? '', after?.updatedAt, issue.updatedAt, scope);
       return { ok: true, action: 'push', droppedLabels: res.droppedLabels };
     }
 
@@ -474,8 +507,8 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
       if (!number || !remote) {
         return { ok: false, action: 'pull', error: 'Not linked to a GitHub issue' };
       }
-      applyRemoteToIssue(issueId, action.fields);
-      writeLink(issueId, number, issue.github?.url ?? remote.url, remote.updatedAt);
+      applyRemoteToIssue(issueId, action.fields, parentId);
+      writeLink(issueId, number, issue.github?.url ?? remote.url, remote.updatedAt, undefined, scope);
       return { ok: true, action: 'pull' };
     }
 
@@ -504,21 +537,34 @@ export async function resolveSyncConflict(
 ): Promise<SyncOutcome> {
   const issue = findIssueById(conflict.issueId);
   if (!issue) return { ok: false, action: 'noop', error: 'Issue not found' };
+  let scope: IssueForgeScope;
+  try {
+    scope = await scopeForIssue(issue);
+  } catch (err) {
+    return { ok: false, action: 'noop', error: err instanceof Error ? err.message : String(err) };
+  }
 
   if (keep === 'remote') {
-    applyRemoteToIssue(conflict.issueId, conflict.remote);
+    let parent: ReturnType<typeof findIssueById>;
+    try {
+      parent = await ensureRemoteParent(conflict.number, conflict.remote.metadata?.parent, scope);
+    } catch (err) {
+      return { ok: false, action: 'noop', error: err instanceof Error ? err.message : String(err) };
+    }
+    const parentId = parent && validateParentLink(issue.id, parent.id, listIssues()).ok ? parent.id : undefined;
+    applyRemoteToIssue(conflict.issueId, conflict.remote, parentId);
     const after = await readRemote(conflict.issueId);
-    writeLink(conflict.issueId, conflict.number, conflict.url, after?.updatedAt);
+    writeLink(conflict.issueId, conflict.number, conflict.url, after?.updatedAt, undefined, scope);
     return { ok: true, action: 'pull' };
   }
 
   const res = await pushSyncedFieldsToGithub(conflict.number, conflict.local, {
     labels: conflict.remote.labels,
     state: conflict.remote.closed ? 'closed' : 'open',
-  }, issue.workspacePath);
+  }, forgeScopeArgs(scope));
   if (!res.ok) return { ok: false, action: 'push', error: res.error };
   const after = await readRemote(conflict.issueId);
-  writeLink(conflict.issueId, conflict.number, conflict.url, after?.updatedAt);
+  writeLink(conflict.issueId, conflict.number, conflict.url, after?.updatedAt, undefined, scope);
   return { ok: true, action: 'push', droppedLabels: res.droppedLabels };
 }
 
@@ -532,11 +578,11 @@ async function pushSyncedFieldsToGithub(
   number: number,
   fields: SyncFields,
   remote: Pick<RemoteIssueSnapshot, 'labels' | 'state'> | null,
-  cwd?: string,
+  target: { cwd?: string; repo?: string } = {},
 ): Promise<{ ok: boolean; error?: string; droppedLabels?: boolean }> {
   const { add, remove } = githubLabelDiff(fields.labels, remote?.labels ?? []);
   const res = await forge('issueEdit', {
-    cwd,
+    ...target,
     number,
     title: fields.title,
     body: encodeGithubIssueBody(fields.body, fields.metadata),
@@ -546,17 +592,14 @@ async function pushSyncedFieldsToGithub(
   if (!res.ok) return { ok: false, error: userFacingGithubError(res.error) };
 
   if (remote && fields.closed !== (remote.state === 'closed')) {
-    const stateResult = await forge('issueState', { number, state: fields.closed ? 'closed' : 'open', cwd });
+    const stateResult = await forge('issueState', { number, state: fields.closed ? 'closed' : 'open', ...target });
     if (!stateResult.ok) return { ok: false, error: userFacingGithubError(stateResult.error) };
   }
   return { ok: true, droppedLabels: res.droppedLabels };
 }
 
-function applyRemoteToIssue(issueId: string, fields: SyncFields): void {
+function applyRemoteToIssue(issueId: string, fields: SyncFields, parentId?: string): void {
   const metadata = fields.metadata;
-  const current = findIssueById(issueId);
-  const parent = metadata?.parent ? findLinkedGithubIssue(metadata.parent, current?.workspacePath ?? '') : undefined;
-  if (metadata?.parent && !parent) throw new Error(`Import parent GitHub issue #${metadata.parent} before syncing this sub-issue.`);
   if (metadata) restoreCategories(metadata);
   const currentStatus = findIssueById(issueId)?.status;
   const metadataStatus = metadata && localIsClosed(metadata.status.id) === fields.closed ? metadata.status.id : undefined;
@@ -574,7 +617,7 @@ function applyRemoteToIssue(issueId: string, fields: SyncFields): void {
       ...(metadata ? {
         type: metadata.type.id, priority: metadata.priority.id,
         projectId: metadata.project?.id ?? null, comments: metadata.comments,
-        ...(metadata.parent === null ? { parentId: null } : parent ? { parentId: parent.id } : {}),
+        parentId: parentId ?? null,
       } : {}),
     },
     { skipGithubAutoSync: true },
@@ -587,6 +630,7 @@ function writeLink(
   url: string,
   remoteUpdatedAt: number | undefined,
   syncedLocalUpdatedAt?: number,
+  scope?: IssueForgeScope,
 ): void {
   const issue = findIssueById(issueId);
   if (!issue) return;
@@ -595,73 +639,74 @@ function writeLink(
     previous: issue.github,
     number,
     url,
+    ...(scope?.slug ? { repo: scope.slug } : {}),
     localUpdatedAt: syncedLocalUpdatedAt ?? issue.updatedAt,
     remoteUpdatedAt,
     now: Date.now(),
   });
   issue.github.localChangedAt = localChangedAt;
   appendIssueLinks(issueId, {
-    gitLinks: [{ kind: 'github-issue', ref: `#${number}`, url }],
+    gitLinks: [{ kind: 'github-issue', ref: `#${number}`, url, ...(scope?.repo ? { repo: scope.repo } : {}) }],
   });
   scheduleSaveIssues();
 }
 
-function findLinkedGithubIssue(number: number, workspacePath: string) {
-  return listIssues().find((row) => normalizeWorkspacePath(row.workspacePath) === normalizeWorkspacePath(workspacePath) && row.github?.number === number);
+function findLinkedGithubIssue(number: number, workspacePath: string, scope?: IssueForgeScope) {
+  return listIssues().find((row) => normalizeWorkspacePath(row.workspacePath) === normalizeWorkspacePath(workspacePath) &&
+    row.github?.number === number && (!scope || issueInScope(row, scope)));
 }
 
 /** Restore an identity only after its parent is available; never watermark a partial import. */
-function importRemoteIssue(remote: RemoteIssueSnapshot, workspacePath: string) {
+function importRemoteIssue(remote: RemoteIssueSnapshot, scope: IssueForgeScope, parentId?: string) {
   const decoded = decodeGithubIssueBody(remote.body);
-  const parent = decoded.metadata?.parent ? findLinkedGithubIssue(decoded.metadata.parent, workspacePath) : undefined;
   if (decoded.metadata) restoreCategories(decoded.metadata);
   const card = addIssue({
     title: remote.title || `GitHub #${remote.number}`,
     description: decoded.body,
     labels: remote.labels,
-    workspacePath,
+    workspacePath: scope.cwd,
+    ...(scope?.repo ? { repos: [scope.repo] } : {}),
     source: 'github',
-    ...(parent ? { parentId: parent.id } : {}),
+    ...(parentId ? { parentId } : {}),
     ...(remote.state === 'closed' && statusForClosedRemote() ? { status: statusForClosedRemote() } : {}),
   });
   applyRemoteToIssue(card.id, {
     title: remote.title || `GitHub #${remote.number}`, body: decoded.body,
     labels: remote.labels, closed: remote.state === 'closed', metadata: decoded.metadata,
-  });
-  writeLink(card.id, remote.number, remote.url, remote.updatedAt);
+  }, parentId);
+  writeLink(card.id, remote.number, remote.url, remote.updatedAt, undefined, scope);
   return card;
 }
 
 /** Closed/older parents may be absent from discovery; read their exact identity. */
 async function ensureRemoteParent(
-  remote: RemoteIssueSnapshot,
-  workspacePath: string,
+  childNumber: number,
+  number: number | null | undefined,
+  scope: IssueForgeScope,
   available = new Map<number, RemoteIssueSnapshot>(),
   imported = new Set<string>(),
-): Promise<void> {
-  const number = decodeGithubIssueBody(remote.body).metadata?.parent;
+): Promise<ReturnType<typeof findIssueById>> {
   if (!number) return;
-  if (number === remote.number) throw new Error('An issue cannot be its own parent.');
-  const existing = findLinkedGithubIssue(number, workspacePath);
-  if (existing) {
-    if (existing.parentId) throw new Error('Sub-issues nest one level only.');
-    return;
-  }
+  if (number === childNumber) throw new Error('An issue cannot be its own parent.');
+  const existing = findLinkedGithubIssue(number, scope.cwd, scope);
+  if (existing) return existing.parentId ? undefined : existing;
   let parent = available.get(number);
   if (!parent) {
-    const result = await forge('issueView', { number, cwd: workspacePath });
+    const result = await forge('issueView', { number, ...forgeScopeArgs(scope) });
     if (!result.ok || !result.issue || result.issue.number !== number) {
       throw new Error(`Could not import parent GitHub issue #${number}: ${result.error ?? 'Could not read the GitHub issue'}`);
     }
     parent = result.issue;
   }
-  if (decodeGithubIssueBody(parent.body).metadata?.parent) {
-    throw new Error('Sub-issues nest one level only.');
-  }
+  const ancestor = decodeGithubIssueBody(parent.body).metadata?.parent;
+  if (ancestor === number || ancestor === childNumber) throw new Error('The GitHub issue hierarchy contains a cycle.');
+  if (ancestor) return;
   // Another worker may have imported this same parent while the read was pending.
-  const restored = findLinkedGithubIssue(number, workspacePath);
-  if (restored?.parentId) throw new Error('Sub-issues nest one level only.');
-  if (!restored) imported.add(importRemoteIssue(parent, workspacePath).id);
+  const restored = findLinkedGithubIssue(number, scope.cwd, scope);
+  if (restored) return restored.parentId ? undefined : restored;
+  const card = importRemoteIssue(parent, scope);
+  imported.add(card.id);
+  return card;
 }
 
 export interface ImportResult {
@@ -687,11 +732,13 @@ export async function importGithubIssues(options?: {
   state?: 'open' | 'closed' | 'all';
   limit?: number;
   workspacePath?: string;
+  allPages?: boolean;
+  userInitiated?: boolean;
 }): Promise<ImportResult> {
   // Keep the destination fixed if the user switches workspaces during the fetch.
   const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
   try {
-    if (getIssuesGithubMode() === 'off') {
+    if (!options?.userInitiated && getIssuesGithubMode() === 'off') {
       return { ok: false, error: 'GitHub sync is off', imported: 0, skipped: 0 };
     }
 
@@ -704,45 +751,73 @@ export async function importGithubIssues(options?: {
       };
     }
 
-    const res = await forge('issueList', {
-      state: options?.state ?? 'open',
-      limit: options?.limit ?? 100,
-      cwd: workspacePath,
-    });
-    if (!res.ok || !Array.isArray(res.issues)) {
-      return {
-        ok: false,
-        error: userFacingGithubError(res.error ?? 'Could not list issues'),
-        imported: 0,
-        skipped: 0,
-      };
-    }
-
-    const linked = new Set(
-      collectIssues({ scope: 'current_workspace', workspacePath, hideDone: false })
-        .map((issue) => issue.github?.number)
-        .filter((n): n is number => typeof n === 'number'),
-    );
-
+    // A folder of several repos imports from each repo's remote in turn.
+    const scopes = importScopes(workspacePath, workspacePath ? await fetchWorkspaceRepos({ workspacePath }) : []);
     const imported = new Set<string>();
-    let skipped = 0;
-    const available = new Map(res.issues.map((remote) => [remote.number, remote]));
-    try {
-      for (const remote of res.issues) {
-        if (linked.has(remote.number)) {
-          skipped += 1;
-          continue;
-        }
-        await ensureRemoteParent(remote, workspacePath, available, imported);
-        if (!findLinkedGithubIssue(remote.number, workspacePath)) {
-          imported.add(importRemoteIssue(remote, workspacePath).id);
-        }
-      }
-    } catch (err) {
-      return { ok: false, imported: imported.size, skipped,
-        error: userFacingGithubError(err instanceof Error ? err.message : String(err)) };
+    const childUrls = new Set<string>();
+    const childIdentities = new Set<string>();
+    for (const issue of collectIssues({ workspacePath, includeSubWorkspaces: true, hideDone: false })) {
+      if (!issue.github || relativeWorkspacePath(workspacePath, issue.workspacePath) === '.') continue;
+      if (issue.github.url) childUrls.add(issue.github.url.toLowerCase());
+      else if (issue.github.repo) childIdentities.add(`${issueGithubSlug(issue)}#${issue.github.number}`);
     }
-    return { ok: true, imported: imported.size, skipped };
+    const errors: string[] = [];
+    let skipped = 0;
+    for (const scope of scopes) {
+      const linked = new Set(
+        collectIssues({ scope: 'current_workspace', workspacePath, includeSubWorkspaces: true, hideDone: false })
+          .filter((issue) => (!workspacePath || relativeWorkspacePath(workspacePath, issue.workspacePath) === '.') &&
+            issueInScope(issue, scope))
+          .map((issue) => issue.github?.number)
+          .filter((n): n is number => typeof n === 'number'),
+      );
+
+      try {
+        let cursor: string | null | undefined = options?.allPages ? null : undefined;
+        const seenCursors = new Set<string>();
+        do {
+          const res = await forge('issueList', {
+            state: options?.allPages ? 'all' : options?.state ?? 'open',
+            limit: options?.limit ?? 100,
+            ...forgeScopeArgs(scope),
+            ...(cursor !== undefined ? { cursor } : {}),
+          });
+          if (!res.ok || !Array.isArray(res.issues)) throw new Error(res.error ?? 'Could not list issues');
+          const available = new Map(res.issues.map((remote) => [remote.number, remote]));
+          for (const remote of res.issues) {
+            const linkedInChild = childUrls.has(remote.url.toLowerCase()) ||
+              childIdentities.has(`${scope.slug?.toLowerCase()}#${remote.number}`);
+            if (linked.has(remote.number) || linkedInChild) {
+              skipped += 1;
+              continue;
+            }
+            try {
+              const parent = await ensureRemoteParent(
+                remote.number, decodeGithubIssueBody(remote.body).metadata?.parent, scope, available, imported,
+              );
+              if (!findLinkedGithubIssue(remote.number, workspacePath, scope)) {
+                imported.add(importRemoteIssue(remote, scope, parent?.id).id);
+                linked.add(remote.number);
+              }
+            } catch (err) {
+              const error = err instanceof Error ? err.message : String(err);
+              if (githubRetryAt(error) > Date.now()) throw err;
+              errors.push(`${scope.repo ? `${scope.repo} ` : ''}#${remote.number}: ${userFacingGithubError(error)}`);
+            }
+          }
+          cursor = options?.allPages ? res.nextCursor : undefined;
+          if (cursor) {
+            if (seenCursors.has(cursor)) throw new Error('GitHub returned the same issue page twice');
+            seenCursors.add(cursor);
+          }
+        } while (cursor);
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        errors.push(scope.repo ? `${scope.repo}: ${userFacingGithubError(error)}` : userFacingGithubError(error));
+        if (githubRetryAt(error) > Date.now()) break;
+      }
+    }
+    return { ok: !errors.length, imported: imported.size, skipped, ...(errors.length ? { error: errors.join('\n') } : {}) };
   } catch (err) {
     return {
       ok: false,
@@ -778,6 +853,7 @@ export async function syncAllIssuesWithGithub(options?: {
   const issues = collectIssues({
     scope: options?.scope ?? 'current_workspace',
     workspacePath,
+    includeSubWorkspaces: true,
     hideDone: false,
   });
 
@@ -789,7 +865,7 @@ export async function syncAllIssuesWithGithub(options?: {
     for (const path of workspaces) {
       // Scratch cards have no repository to discover issues from.
       if (!path) continue;
-      const result = await importGithubIssues({ workspacePath: path, state: 'all', limit: 500 });
+      const result = await importGithubIssues({ workspacePath: path, allPages: true, limit: 500 });
       imported += result.imported;
       if (!result.ok) errors.push(`${path}: ${result.error ?? 'Could not import GitHub issues'}`);
       if (githubRetryAt(result.error) > Date.now()) return { synced, imported, conflicts, errors };
@@ -800,13 +876,29 @@ export async function syncAllIssuesWithGithub(options?: {
   const eligible = issues.filter((issue) => !options?.linkedOnly || issue.github);
   const outcomes = new Map<string, SyncOutcome>();
   let retryAt = 0;
-  for (const cwd of new Set(eligible.map((issue) => issue.workspacePath ?? ''))) {
-    const ordered = eligible.filter((issue) => (issue.workspacePath ?? '') === cwd)
+  // One batch read per remote: a workspace, or one repo of a multi-repo workspace.
+  const groups = new Map<string, { scope: IssueForgeScope; issues: typeof eligible }>();
+  for (const issue of eligible) {
+    let scope: IssueForgeScope;
+    try {
+      scope = await scopeForIssue(issue);
+    } catch (err) {
+      outcomes.set(issue.id, { ok: false, action: 'noop', error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    const key = forgeScopeKey(scope);
+    const group = groups.get(key) ?? { scope, issues: [] };
+    group.issues.push(issue);
+    groups.set(key, group);
+  }
+  for (const { scope, issues: grouped } of groups.values()) {
+    const cwd = scope.cwd ?? '';
+    const ordered = [...grouped]
       .sort((a, b) => Number(Boolean(a.parentId)) - Number(Boolean(b.parentId)));
     for (let offset = 0; offset < ordered.length && Date.now() >= retryAt; offset += 50) {
       const batch = ordered.slice(offset, offset + 50).map((issue) => ({ ...issue, github: issue.github ? { ...issue.github } : undefined }));
       const numbers = batch.flatMap((issue) => issue.github ? [issue.github.number] : []);
-      const result = numbers.length ? await readGithubIssueBatch(cwd, numbers) : { ok: true, issues: [] };
+      const result = numbers.length ? await readGithubIssueBatch(cwd, numbers, scope.repo) : { ok: true, issues: [] };
       retryAt = Math.max(retryAt, githubRetryAt(result.error));
       const remotes = new Map(result.issues?.map((remote) => [remote.number, remote]));
       await runGithubSyncQueue(batch, async (issue) => {

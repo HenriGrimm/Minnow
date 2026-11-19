@@ -113,7 +113,6 @@ import {
   syncComposerUndoFromActiveChat,
 } from './composer-undo';
 import { clearPanelCwdUserOverride, syncPanelFromActiveChat } from './git-panel';
-import { seedNewChatComposerRunTarget } from './new-chat-run-target-seed';
 import { buildDefaultPinnedSkillForNewChat } from '../skills/config';
 import { dismissCodeOverviewForNavigation, isCodeOverviewOpen } from './code-overview';
 import {
@@ -2378,6 +2377,8 @@ export interface CreateChatWithModeOptions {
   workspacePath?: string;
   /** Pin a recovery handoff to the checkout where the action failed, before its first turn. */
   gitRecoveryTarget?: { cwd: string; branch?: string };
+  /** Checkout explicitly selected for a new thread in the current workspace. */
+  checkoutTarget?: { cwd: string; branch?: string };
   /** Start a draft branch from already-loaded history, without replaying a turn. */
   fork?: { sourceChatId: string; name: string; history: Message[]; checkout?: string; branch?: string };
 }
@@ -2452,11 +2453,17 @@ export async function createChatWithMode(
   const originChatId = sessionState?.activeId;
   try { await loadDefaultModelValue(); }
   catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Could not read the last selected model' }; }
-  if (options.gitRecoveryTarget && originWorkspace !== getWorkspacePath()) return { ok: false, error: 'The workspace changed. Reopen Source Control and try again.' };
+  const explicitCheckout = options.checkoutTarget ?? options.gitRecoveryTarget;
+  if (explicitCheckout && originWorkspace !== getWorkspacePath()) return { ok: false, error: 'The workspace changed. Reopen Source Control and try again.' };
   if (options.fork && (originWorkspace !== getWorkspacePath() || options.fork.sourceChatId !== sessionState?.activeId)) {
     return { ok: false, error: 'The source thread changed. Open Fork again.' };
   }
   if (!options.workspacePath && (originWorkspace !== getWorkspacePath() || originChatId !== sessionState?.activeId)) return { ok: false, error: 'The chat context changed. Try New chat again.' };
+  const requestedWorkspace = options.workspacePath?.trim();
+  const workspacePath = requestedWorkspace || getWorkspacePath();
+  if (options.checkoutTarget && normalizeWorkspacePath(workspacePath) !== normalizeWorkspacePath(originWorkspace)) {
+    return { ok: false, error: 'Open the workspace that owns this checkout before starting a thread there.' };
+  }
   if (document.getElementById('codeMapChatSidebar')) {
     teardownCodeBrainMapBeforeChatPaint();
   }
@@ -2468,8 +2475,6 @@ export async function createChatWithMode(
   }
   exitBoardViewForNavigation();
 
-  const requestedWorkspace = options.workspacePath?.trim();
-  const workspacePath = requestedWorkspace || getWorkspacePath();
   const active = getActiveChat();
   flushActiveComposerDraftBeforeNewChat();
   setSidebarChatView('working');
@@ -2481,7 +2486,7 @@ export async function createChatWithMode(
     !requestedWorkspace &&
     normalizeWorkspacePath(active.workspacePath ?? '') === normalizeWorkspacePath(workspacePath);
   const canReuseEphemeral =
-    !options.gitRecoveryTarget &&
+    !explicitCheckout &&
     !options.forceNewChat &&
     !requestedWorkspace &&
     !options.initialUserMessage?.trim() &&
@@ -2501,7 +2506,6 @@ export async function createChatWithMode(
       if (workflowSkill) active.pinnedSkill = { id: workflowSkill };
       else if (workflowSkillForMode(active.pinnedSkill?.id)) delete active.pinnedSkill;
       applyDefaultModelToChat(active);
-      seedNewChatComposerRunTarget(active);
       touchChat(active);
       resetComposerForEphemeralReuse();
       recordChatOpened(active.id);
@@ -2564,14 +2568,12 @@ export async function createChatWithMode(
     chat.worktreeRoot = options.fork.checkout;
     chat.gitBranch = options.fork.branch;
     chat.chatWorktreeManaged = false;
-  } else if (options.gitRecoveryTarget) {
-    chat.worktreeRoot = options.gitRecoveryTarget.cwd;
-    chat.gitBranch = options.gitRecoveryTarget.branch;
+  } else if (explicitCheckout) {
+    chat.worktreeRoot = explicitCheckout.cwd;
+    chat.gitBranch = explicitCheckout.branch;
     chat.chatWorktreeManaged = false;
     delete chat.worktreeSetupRequired;
     delete chat.worktreeEnabled;
-  } else {
-    seedNewChatComposerRunTarget(chat);
   }
 
   sessionState!.chats.unshift(chat);

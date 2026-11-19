@@ -8,7 +8,7 @@ import path from 'node:path';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
 import { listWorktrees } from './worktree-ops.js';
-import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { getEffectiveWorkspaceRoot, getRequestWorkspaceRoot } from '../runtime/path-access.js';
 
 const CACHE_TTL_MS = 30_000;
 
@@ -64,7 +64,7 @@ async function loadRegisteredWorktreePaths(workspaceRoot) {
   }
 
   const paths = new Set();
-  const list = await listWorktrees();
+  const list = await listWorktrees(workspaceRoot);
   if (list.ok && list.output) {
     for (const wt of parseWorktreePaths(list.output)) {
       paths.add(normalizeWorkspacePathKey(wt));
@@ -85,12 +85,14 @@ export async function isRegisteredGitWorktreePath(resolvedPath) {
   const resolved = path.resolve(resolvedPath.trim());
   const key = normalizeWorkspacePathKey(resolved);
 
-  const workspaceRoot = getEffectiveWorkspaceRoot();
+  const workspaceRoot = getRequestWorkspaceRoot();
   const registered = await loadRegisteredWorktreePaths(workspaceRoot);
-  if (registered.has(key)) return true;
+  if (registered.has(key) || isResolvedPathUnderRoot(resolved, getRepoLocalWorktreesDir(workspaceRoot))) return true;
 
-  const localWtDir = getRepoLocalWorktreesDir(workspaceRoot);
-  return isResolvedPathUnderRoot(resolved, localWtDir);
+  const { discoverWorkspaceRepos } = await import('../workspace/repos.js');
+  const repos = await discoverWorkspaceRepos(workspaceRoot);
+  const childWorktrees = await Promise.all(repos.filter(repo => !repo.isRoot).map(repo => loadRegisteredWorktreePaths(repo.absPath)));
+  return childWorktrees.some(paths => paths.has(key));
 }
 
 /**

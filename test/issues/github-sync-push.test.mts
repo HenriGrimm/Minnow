@@ -93,7 +93,9 @@ describe('GitHub label push', () => {
     setLocalServerAvailableForTests(true);
     setIssuesStateForTests({ version: 2, nextId: 2, issues: [card()], workspaces: {} });
 
-    globalThis.fetch = async (_input, init) => {
+    globalThis.fetch = async (input, init) => {
+      // Only forge ops are under test; the repo lookup sees a single-repo workspace.
+      if (!String(input).startsWith('/api/git')) return gitJsonResponse({ ok: true, repos: [] });
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
       forgeCalls.push(body);
       const op = typeof body.op === 'string' ? body.op : '';
@@ -168,7 +170,9 @@ describe('GitHub label push', () => {
       issues: [card({ labels: ['bug'] })],
       workspaces: {},
     });
-    globalThis.fetch = async (_input, init) => {
+    globalThis.fetch = async (input, init) => {
+      // Only forge ops are under test; the repo lookup sees a single-repo workspace.
+      if (!String(input).startsWith('/api/git')) return gitJsonResponse({ ok: true, repos: [] });
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
       forgeCalls.push(body);
       const op = typeof body.op === 'string' ? body.op : '';

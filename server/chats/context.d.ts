@@ -11,8 +11,11 @@ export interface ChatContext {
   setWorkspaceEdgesLoader(loader: (project: ChatProject) => Promise<import('./caller.js').DerivedChatWorkspaceEdge[]>): void;
   project(workspacePath?: string): Promise<ChatProject>;
   findMissingWorktree(chatId: string, workspacePath?: string): Promise<ChatShell | null>;
-  resolveTarget(chatId: string, options?: { project?: ChatProject; workspacePath?: string }): Promise<ChatTargetContext>;
-  humanCaller(chatId: string, options?: { workspacePath?: string; ingress?: 'renderer' | 'device' | 'cli' | 'scheduler' }): Promise<{ caller: ChatCaller; target: ChatTargetContext }>;
+  verifyMirroredSlot(intent: import('./workspace-preparation.js').ChatWorkspaceIntent,
+    expected?: import('./workspace-preparation.js').MirrorBinding | null, options?: { ready?: boolean }):
+    Promise<{ binding: import('./workspace-preparation.js').MirrorBinding; project: ChatProject; scope: ChatProjectScope }>;
+  resolveTarget(chatId: string, options?: { project?: ChatProject; workspacePath?: string; workspaceRecovery?: boolean }): Promise<ChatTargetContext>;
+  humanCaller(chatId: string, options?: { workspacePath?: string; ingress?: 'renderer' | 'device' | 'cli' | 'scheduler'; workspaceRecovery?: boolean }): Promise<{ caller: ChatCaller; target: ChatTargetContext }>;
   executionCaller(executionId: string): Promise<{ caller: ChatCaller; target: ChatTargetContext; execution: ExecutionRecord; fence: ExecutionFence }>;
 }
 export function loadChatProjectRegistry(workspacePath: string, options?: { validateRoot?: (value: string) => Promise<unknown>; runGit?: (args: string[], cwd: string) => Promise<any> }): Promise<ChatProject>;

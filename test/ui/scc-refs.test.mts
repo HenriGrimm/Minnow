@@ -324,7 +324,7 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     assert.equal(progress.hidden, true);
     assert.equal(view.root.getAttribute('aria-busy'), 'false');
     assert.deepEqual(calls.filter((call) => call.op === 'worktreeRemove').map((call) => call.path), ['/trees/a', '/trees/b']);
-    assert.equal(cwd, undefined);
+    assert.equal(cwd, '/repo');
     view.destroy();
   } finally {
     await win.happyDOM.close();
@@ -447,7 +447,7 @@ test('missing and locked worktrees explain themselves on the row and offer the f
     assert.equal(notice.hidden, false);
     assert.match(notice.textContent ?? '', /2 worktrees point to a deleted folder \(left by Codex\)/);
     assert.match(rowFor('d60f').textContent ?? '', /Codex.*folder missing.*locked/);
-    assert.equal(buttonIn(rowFor('d60f'), 'Work here'), undefined, 'nothing to work in');
+    assert.equal(buttonIn(rowFor('d60f'), 'Browse checkout'), undefined, 'nothing to work in');
     assert.equal(rowFor('1d36').querySelector('.scc-wtissue'), null, 'a live locked worktree is just labelled');
 
     // Bulk delete auto-unlocks the missing ones and explains the live locked one.

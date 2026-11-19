@@ -1,4 +1,4 @@
-import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { normalizeWorkspacePath, relativeWorkspacePath } from '../lib/normalize-workspace-path';
 import { isClosedStatus, type IssuesTaxonomy } from './taxonomy';
 import type { IssueCard } from '../types';
 
@@ -20,7 +20,8 @@ export function sidebarIssues(issues: readonly IssueCard[], workspacePath: strin
   const workspace = sidebarWorkspaceKey(workspacePath);
   const needle = query.trim().toLowerCase();
   return issues.filter((issue) => {
-    if (sidebarWorkspaceKey(issue.workspacePath) !== workspace) return false;
+    if (sidebarWorkspaceKey(issue.workspacePath) !== workspace &&
+        relativeWorkspacePath(workspacePath, issue.workspacePath) === null) return false;
     const closed = isClosedStatus(taxonomy, issue.status);
     if (filter === 'open' && closed || filter === 'closed' && !closed) return false;
     if (properties.type !== undefined && issue.type !== properties.type) return false;

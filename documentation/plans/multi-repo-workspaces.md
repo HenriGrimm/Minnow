@@ -4,37 +4,37 @@ overview: Let one Minnow workspace folder hold several git repositories (for exa
 todos:
   - id: W1-A
     content: "Wave 1: Repo discovery service and API"
-    status: pending
+    status: completed
   - id: W1-B
     content: "Wave 1: Issue schema gains repo identity"
-    status: pending
+    status: completed
   - id: W2-A
     content: "Wave 2: Repo resolution for git and forge routes"
-    status: pending
+    status: completed
   - id: W2-B
     content: "Wave 2: Agent git tools take a repo"
-    status: pending
+    status: completed
   - id: W2-C
     content: "Wave 2: Repo map in the agent system prompt"
-    status: pending
+    status: completed
   - id: W3-A
     content: "Wave 3: Source Control repo switcher"
-    status: pending
+    status: completed
   - id: W3-B
     content: "Wave 3: Per-repo GitHub issue sync"
-    status: pending
+    status: completed
   - id: W3-C
     content: "Wave 3: Issue repo targeting in tools and UI"
-    status: pending
+    status: completed
   - id: W4-A
     content: "Wave 4: Multi-repo chat worktrees"
-    status: pending
+    status: completed
   - id: W4-B
-    content: "Wave 4: Multi-repo board slots and integration"
+    content: "Wave 4: Multi-repo board slots and integration (only the guard shipped: boards refuse a folder of repos; per-repo integration is still open)"
     status: pending
   - id: W5-A
     content: "Wave 5: Docs and context update"
-    status: pending
+    status: completed
 isProject: true
 ---
 
@@ -157,6 +157,7 @@ Decisions settled before planning:
 - **Depends on:** W2-A
 
 #### Task W4-B: Multi-repo board slots and integration
+- **Status:** Only the guard shipped (`ensureBoardWorkspaceGit` in `server/orchestrator/worktree-lifecycle.js` stops a board in a folder of repos without running git in the parent). Per-repo slots, integration branches and PRs below are still open.
 - **Build:** In `server/worktree/worktree-ops.js`, thread a `repo` (resolved cwd) through `ensureIntegration`, `createWorktree`, `mergeIntoIntegration`, `mergeInProgress`, `readIntegrationRef` and `rebaseOntoIntegration` instead of the module-level `git()` default of `getEffectiveWorkspaceRoot()`; keep the integration lock (`peakBoardIntegrationLockDepth`) per board **and** repo. A board slot in a multi-repo workspace becomes a mirrored worktree from W4-A covering the repos its task touches: map the task's `Touches` globs to repo ids by their first path segment (a glob with no repo prefix in a multi-repo workspace means every repo). Each repo gets its own integration branch; landing the board opens one PR per repo with changes. Record per-repo results in the board journal under the existing slot record, adding fields only (no V1 resurrection; see `documentation/plans/orchestrator-v2.md`).
 - **Test:** Extend `test/orchestrator/worktree-lifecycle.test.mjs` with a two-repo fixture: a task touching `backend/**` gets a slot with only a backend worktree; a task touching both gets both; integration merges keep separate integration branches per repo; the single-repo lifecycle assertions are unchanged. Run `npm run test:orchestrator`.
 - **Accept:** A board run in a two-repo workspace finishes with an integration branch in each touched repo and no git command run in the non-repo parent folder.

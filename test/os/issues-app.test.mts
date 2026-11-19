@@ -79,7 +79,7 @@ describe('issues list CSS contract', () => {
     assert.match(css, /\.issues-empty--triage/);
   });
 
-  test('list columns put labels after title and status before created', () => {
+  test('list columns put labels after title and workspace between status and created', () => {
     const css = fs.readFileSync(new URL('../../src/styles/issues.css', import.meta.url), 'utf8');
     const chrome = fs.readFileSync(new URL('../../src/ui/issues-chrome.ts', import.meta.url), 'utf8');
     const page = fs.readFileSync(new URL('../../src/ui/issues-page.ts', import.meta.url), 'utf8');
@@ -92,10 +92,10 @@ describe('issues list CSS contract', () => {
     assert.match(css, /minmax\(0, 1fr\).*max-content.*minmax\(5rem, max-content\)/);
     assert.match(
       chrome,
-      /sortHead\('title'[\s\S]*?sortHead\('labels'[\s\S]*?sortHead\('status'[\s\S]*?sortHead\('created'/,
+      /sortHead\('title'[\s\S]*?sortHead\('labels'[\s\S]*?sortHead\('status'[\s\S]*?sortHead\('workspace'[\s\S]*?sortHead\('created'/,
     );
     assert.match(page, /row\.append\(\s*id,\s*priority,\s*type,\s*title,\s*labels/);
-    assert.match(page, /counts,\s*status,\s*created/);
+    assert.match(page, /counts,\s*status,\s*workspace,\s*created/);
     const compact = css.split('@container issues (max-width: 900px)')[1]?.split('@container')[0] ?? '';
     assert.match(compact, /issues-list-head__type/);
     assert.doesNotMatch(compact, /issues-row__priority/);

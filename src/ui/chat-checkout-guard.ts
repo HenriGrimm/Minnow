@@ -5,7 +5,7 @@
  */
 
 import { isChatArchived, isSidebarListedChat } from '../state/session-workspace-scope';
-import { applyChatRunTargetChoice, resolveChatWorktreeRoot } from '../state/chat-worktree';
+import { applyChatRunTargetChoice, getChatMirrorBinding, resolveChatWorktreeRoot } from '../state/chat-worktree';
 import { scheduleSaveSessions, sessionState, touchChat } from '../state/sessions';
 import type { GitCheckoutSwitchInput, GitOpResult } from '../state/git-api';
 import type { Chat } from '../types';
@@ -14,10 +14,15 @@ import { panelPathsEqual } from './panel-worktree-cwd';
 
 /** Other listed, unarchived chats sharing this checkout (for the advisory count). */
 export function otherChatsInCheckout(chat: Pick<Chat, 'id'>, cwd: string, workspace: string): Chat[] {
+  return otherChatsUsingCheckout(chat, [cwd], workspace);
+}
+
+/** A child checkout can also be shared by chats using its enclosing workspace or mirror. */
+export function otherChatsUsingCheckout(chat: Pick<Chat, 'id'>, folders: string[], workspace: string): Chat[] {
   return (sessionState?.chats ?? []).filter((other) => {
     if (other.id === chat.id || isChatArchived(other) || other.boardTaskId || other.background) return false;
     const folder = resolveChatWorktreeRoot(other) ?? other.workspacePath?.trim() ?? workspace;
-    return Boolean(folder) && panelPathsEqual(folder, cwd) && isSidebarListedChat(other);
+    return Boolean(folder) && folders.some(cwd => panelPathsEqual(folder, cwd)) && isSidebarListedChat(other);
   });
 }
 
@@ -73,7 +78,7 @@ export function chatsBoundToWorktree(path: string): Chat[] {
   return (sessionState?.chats ?? []).filter((chat) => {
     if (isChatArchived(chat)) return false;
     const root = resolveChatWorktreeRoot(chat);
-    return Boolean(root && panelPathsEqual(root, path));
+    return Boolean(root && panelPathsEqual(root, path) || getChatMirrorBinding(chat)?.repos.some(repo => panelPathsEqual(repo.path, path)));
   });
 }
 

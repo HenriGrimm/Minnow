@@ -41,11 +41,14 @@ export interface CheckoutPickerState {
   remoteBranches?: string[];
   worktrees: ParsedWorktree[];
   savedChanges: GitSavedCheckoutChanges[];
+  repositories?: { id: string; label: string }[];
+  repoId?: string;
 }
 
 interface PickerActions {
   onSwitch(input: GitCheckoutSwitchInput): Promise<GitOpResult>;
   onRestore(input: { cwd: string; sha: string; expectedBranch: string }): Promise<GitOpResult>;
+  onRepository?(id: string): void | Promise<void>;
 }
 
 type PickerOptions = PickerActions & (
@@ -483,11 +486,13 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     trigger.replaceChildren(createIcon('gitBranch', { size: 18 }));
     const identity = document.createElement('span');
     identity.className = 'git-checkout__identity';
-    identity.append(text(state.branch || 'Loading checkout…', 'git-checkout__branch'), text(busy ? 'Working…' : worktreeName(currentWt), 'git-checkout__detail'));
+    const repo = state.repositories?.find(row => row.id === state.repoId);
+    const location = repo?.label ?? worktreeName(currentWt);
+    identity.append(text(state.branch || 'Loading checkout…', 'git-checkout__branch'), text(busy ? 'Working…' : location, 'git-checkout__detail'));
     trigger.append(identity, createIcon('chevronDown', { size: 14 }));
-    trigger.setAttribute('aria-label', `Choose checkout, ${state.branch || 'loading'}, ${worktreeName(currentWt)}`);
+    trigger.setAttribute('aria-label', `Choose checkout, ${state.branch || 'loading'}, ${location}`);
     trigger.setAttribute('aria-expanded', String(open));
-    trigger.disabled = busy || !state.branch;
+    trigger.disabled = busy || (!state.branch && (state.repositories?.length ?? 0) < 2);
     root.setAttribute('aria-busy', String(busy));
     renderNotices();
     menu.hidden = !open;
@@ -517,6 +522,38 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       cancel.disabled = busy;
       menu.append(cancel);
       return;
+    }
+    if (options.onRepository && state.repositories && state.repositories.length > 1) {
+      const field = document.createElement('label');
+      field.className = 'git-checkout__repo';
+      const select = document.createElement('select');
+      field.append('Repository', select);
+      for (const repo of state.repositories) {
+        const item = document.createElement('option');
+        item.value = repo.id;
+        item.textContent = repo.label;
+        select.append(item);
+      }
+      select.value = state.repoId ?? '';
+      select.disabled = busy;
+      select.addEventListener('change', async () => {
+        busy = true;
+        render();
+        try {
+          await options.onRepository!(select.value);
+        } catch (error) {
+          message = error instanceof Error ? error.message : 'Could not load repository.';
+          messageDetails = '';
+        } finally {
+          busy = false;
+          if (!disposed) {
+            open = true;
+            render();
+            menu.querySelector('select')?.focus();
+          }
+        }
+      });
+      menu.append(field);
     }
     const tabs = document.createElement('div');
     tabs.className = 'git-checkout__tabs';
@@ -600,7 +637,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     update(next: CheckoutPickerState) {
       if (JSON.stringify(next) === JSON.stringify(state)) return;
       const cwdChanged = !panelPathsEqual(next.cwd, state.cwd);
-      const moved = cwdChanged || next.branch !== state.branch;
+      const moved = cwdChanged || next.branch !== state.branch || next.repoId !== state.repoId;
       const branchesChanged = JSON.stringify([next.branches, next.remoteBranches]) !== JSON.stringify([state.branches, state.remoteBranches]);
       state = next;
       if (cwdChanged) pulls = undefined;

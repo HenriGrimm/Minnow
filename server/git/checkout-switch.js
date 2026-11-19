@@ -7,6 +7,7 @@ import { actionWorktreeOwner, assertActionWorktreeIdle, withWorktreeMutation } f
 import { checkoutForgePullRequest, requireForge } from './forge-ops.js';
 import { readGitOperation } from './git-ops.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
+import { mirrorBranchForCheckout } from '../worktree/multi-repo.js';
 
 const PREFIX = '[minnow-checkout:';
 const git = (cwd, args) => runProcess('git', args, { cwd, timeout: 120_000 });
@@ -247,6 +248,10 @@ export async function checkoutSwitch({ cwd, branch, pullRequest, create, startPo
           error: `${label} is already checked out in another worktree at ${owner.worktreePath}.`,
         };
       }
+    }
+    const mirrorBranch = await mirrorBranchForCheckout(ctx.cwd);
+    if (mirrorBranch && (isPull || create || target !== mirrorBranch)) {
+      return { ok: false, error: `This chat’s worktree uses ${mirrorBranch}. Open another checkout in Source Control to switch branches.` };
     }
     const pending = await pendingOperation(ctx.cwd);
     if (pending) return pending;

@@ -8,6 +8,7 @@ import { createEmptyChatObject, flushScheduledSessionSaveForTests, setSessionSta
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
+import { invalidateWorkspaceReposCache } from '../../src/state/workspace-repos.ts';
 import { resetAppDialogForTests } from '../../src/ui/app-dialog.ts';
 import { mountThreadCheckout } from '../../src/ui/thread-checkout.ts';
 
@@ -74,6 +75,73 @@ test('thread checkout switches a canonical chat Local and back through the serve
     controller.abort();
     setSessionStateForTests(null);
     flushScheduledSessionSaveForTests();
+    setLocalServerAvailableForTests(false);
+    await teardownHappyDomAsync(dom);
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('thread checkout lists PRs and switches branches in the selected repository', async () => {
+  const dom = new Window();
+  const originalFetch = globalThis.fetch;
+  const workspace = '/coltiva';
+  const chat = createEmptyChatObject('model', workspace);
+  const repos = ['backend', 'frontend'].map(id => ({
+    id, relPath: id, absPath: `${workspace}/${id}`, isRoot: false, remote: null,
+  }));
+  const pulls: string[] = [];
+  const switches: object[] = [];
+  installHappyDomGlobals(dom, { fetch: (async (url, init) => {
+    if (String(url).startsWith('/api/workspace/repos')) return Response.json({ repos });
+    const body = JSON.parse(String(init?.body || '{}'));
+    const name = body.cwd?.split('/').at(-1);
+    if (body.op === 'branches') {
+      assert.ok(repos.some(repo => repo.absPath === body.cwd));
+      return Response.json({ ok: true, current: 'main', local: ['main'] });
+    }
+    if (body.op === 'prList') {
+      pulls.push(body.cwd);
+      return Response.json({ ok: true, prs: [{ number: 7, title: `${name} pull request`, headRef: 'feature', url: `https://github.com/test/${name}/pull/7` }] });
+    }
+    if (body.op === 'checkoutSwitch') {
+      switches.push(body);
+      return Response.json({ ok: true, branch: 'feature' });
+    }
+    return Response.json({ ok: true });
+  }) as typeof fetch });
+  setLocalServerAvailableForTests(true);
+  setWorkspaceFromServer({ path: workspace, label: 'Coltiva', isDefault: false });
+  invalidateWorkspaceReposCache();
+  const host = document.createElement('div');
+  document.body.append(host);
+  const controller = new AbortController();
+  const waitForButton = async (label: string) => {
+    for (let i = 0; i < 100; i++) {
+      const button = [...host.querySelectorAll('button')].find(node => node.textContent?.includes(label));
+      if (button && !button.disabled) return button;
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.fail(`Missing button ${label}`);
+  };
+  try {
+    await mountThreadCheckout({ host, chat, workspace, signal: controller.signal,
+      isCurrent: () => true, onChanged() {}, reposition() {} });
+    (await waitForButton('Pull requests')).click();
+    await waitForButton('backend pull request');
+    const select = host.querySelector('select')!;
+    assert.deepEqual([...select.options].map(row => row.value), ['backend', 'frontend']);
+    select.value = 'frontend';
+    select.dispatchEvent(new dom.Event('change') as unknown as Event);
+    (await waitForButton('frontend pull request')).click();
+    assert.deepEqual(pulls.slice(0, 2), ['/coltiva/backend', '/coltiva/frontend']);
+    assert.deepEqual(switches, [{ op: 'checkoutSwitch', branch: 'feature',
+      pullRequest: { number: 7, url: 'https://github.com/test/frontend/pull/7', headRef: 'feature' },
+      cwd: '/coltiva/frontend', expectedBranch: 'main' }]);
+    assert.equal(chat.workspacePath, workspace);
+    assert.ok(!chat.worktreeRoot);
+  } finally {
+    controller.abort();
+    invalidateWorkspaceReposCache();
     setLocalServerAvailableForTests(false);
     await teardownHappyDomAsync(dom);
     globalThis.fetch = originalFetch;

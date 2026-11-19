@@ -15,14 +15,21 @@ const ISSUE_FIELDS = [
 
 const MAX_ISSUE_BODY_CHARS = 65_536;
 export const ISSUE_BATCH_SIZE = 50;
+const ISSUE_GRAPHQL_FIELDS = 'number title body state url createdAt updatedAt labels(first:100){nodes{name} pageInfo{hasNextPage}} assignees(first:100){nodes{login} pageInfo{hasNextPage}}';
 
 export function buildIssueBatchQuery(numbers) {
   if (!Array.isArray(numbers) || !numbers.length || numbers.length > ISSUE_BATCH_SIZE ||
       numbers.some((number) => !Number.isSafeInteger(number) || number <= 0)) {
     throw new Error('Provide between 1 and 50 positive issue numbers');
   }
-  const fields = 'number title body state url createdAt updatedAt labels(first:100){nodes{name} pageInfo{hasNextPage}} assignees(first:100){nodes{login} pageInfo{hasNextPage}}';
-  return `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${[...new Set(numbers)].map((number) => `i${number}:issue(number:${number}){${fields}}`).join(' ')}}}`;
+  return `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${[...new Set(numbers)].map((number) => `i${number}:issue(number:${number}){${ISSUE_GRAPHQL_FIELDS}}`).join(' ')}}}`;
+}
+
+function normalizeGraphqlIssue(issue) {
+  if (issue.labels?.pageInfo?.hasNextPage || issue.assignees?.pageInfo?.hasNextPage) {
+    throw new Error(`Issue #${issue.number} has more labels or assignees than Minnow can sync at once`);
+  }
+  return normalizeForgeIssue({ ...issue, labels: issue.labels?.nodes, assignees: issue.assignees?.nodes });
 }
 
 export function parseIssueBatch(stdout, numbers) {
@@ -35,10 +42,7 @@ export function parseIssueBatch(stdout, numbers) {
     const issue = raw.data.repository[`i${number}`];
     // Missing/deleted issues are left out; callers report them without clearing local data.
     if (!issue) return null;
-    if (issue.labels?.pageInfo?.hasNextPage || issue.assignees?.pageInfo?.hasNextPage) {
-      throw new Error(`Issue #${number} has more labels or assignees than Minnow can sync at once`);
-    }
-    return normalizeForgeIssue({ ...issue, labels: issue.labels?.nodes, assignees: issue.assignees?.nodes });
+    return normalizeGraphqlIssue(issue);
   }).filter(Boolean);
 }
 
@@ -113,10 +117,50 @@ export function parseIssueCreateOutput(stdout) {
   return { url: url ?? '', number: match ? Number(match[1]) : undefined };
 }
 
-export async function issueList({ cwd, state = 'open', limit = 100, labels } = {}) {
+async function listIssuePage(gate, cursor) {
+  const [owner, name] = gate.status.repo.split('/');
+  const query = `query($owner:String!,$name:String!,$cursor:String){repository(owner:$owner,name:$name){
+    hasIssuesEnabled
+    issues(first:25,after:$cursor,orderBy:{field:CREATED_AT,direction:ASC}){
+      pageInfo{hasNextPage endCursor}
+      nodes{${ISSUE_GRAPHQL_FIELDS}}
+    }
+  }}`;
+  const args = ['api', '--hostname', gate.status.hostname, 'graphql',
+    '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`];
+  if (cursor) args.push('-f', `cursor=${cursor}`);
+  const result = await gh(args, gate.cwd);
+  if (result.code !== 0) return { ok: false, error: processError(result, 'Could not list issues') };
+  if (result.accumulationTruncated) return { ok: false, error: 'GitHub issue page exceeded the response size limit' };
+  return parseIssuePage(result.stdout, cursor);
+}
+
+export function parseIssuePage(stdout, cursor) {
+  const raw = parseJson(stdout, null);
+  const repo = raw?.data?.repository;
+  if (raw?.errors?.length || !repo) throw new Error('Could not read the GitHub issue page');
+  if (repo.hasIssuesEnabled === false) return { ok: true, issues: [] };
+  const page = repo.issues;
+  if (!Array.isArray(page?.nodes) || typeof page.pageInfo?.hasNextPage !== 'boolean') {
+    throw new Error('Could not read the GitHub issue page');
+  }
+  const nextCursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : undefined;
+  if (page.pageInfo.hasNextPage && (typeof nextCursor !== 'string' || !nextCursor || nextCursor === cursor)) {
+    throw new Error('GitHub did not return the next issue page');
+  }
+  return { ok: true, issues: page.nodes.filter(Boolean).map(normalizeGraphqlIssue).filter(Boolean), nextCursor };
+}
+
+export async function issueList({ cwd, state = 'open', limit = 100, labels, cursor } = {}) {
   try {
     const gate = await requireForge(cwd);
     if (!gate.ok) return gate;
+    if (cursor !== undefined) {
+      if (state !== 'all' || labels || (cursor !== null && typeof cursor !== 'string')) {
+        return { ok: false, error: 'Issue pagination requires all states and a valid cursor' };
+      }
+      return await listIssuePage(gate, cursor);
+    }
 
     const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
     const args = [

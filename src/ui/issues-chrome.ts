@@ -114,6 +114,13 @@ function buildHeader(): HTMLElement {
     type: 'button', class: 'issues-btn issues-graphite-only issues-filter-toggle',
     id: 'btnIssuesFilters', 'aria-expanded': 'false', 'aria-controls': 'issuesViewBar',
   }, [createIcon('filter', { size: 14 }), 'Filter']);
+  const subWorkspace = createButton({
+    variant: 'secondary', size: 'sm', icon: 'folder', label: 'Whole workspace',
+  });
+  subWorkspace.id = 'btnIssuesSubWorkspace';
+  subWorkspace.hidden = true;
+  subWorkspace.setAttribute('aria-haspopup', 'menu');
+  subWorkspace.setAttribute('aria-label', 'Filter by sub-workspace');
   const search = el('button', {
     type: 'button', class: 'issues-btn issues-graphite-only issues-filter-toggle',
     id: 'btnIssuesSearch', 'aria-label': 'Search issues', title: 'Search issues', 'aria-controls': 'issuesViewBar',
@@ -149,7 +156,7 @@ function buildHeader(): HTMLElement {
 
   const controls = el('div', { class: 'issues-header__controls issues-header__controls--issues' }, [
     toggle,
-    filters,
+    el('div', { class: 'issues-header__filters' }, [subWorkspace, filters]),
     el('div', { class: 'issues-header__actions' }, [newBtn, syncAllBtn]),
     search,
     el('div', { class: 'issues-extra-filters' }, [scopeLabel, scope, groupBy, filesBtn, capture]),
@@ -321,6 +328,7 @@ function buildBody(): HTMLElement {
     el('span', { class: 'issues-list-head__rollup', text: 'Sub' }),
     el('span', { class: 'issues-list-head__counts', text: 'Links' }),
     sortHead('status', 'Status', 'issues-list-head__status'),
+    sortHead('workspace', 'Workspace', 'issues-list-head__workspace'),
     sortHead('created', 'Created', 'issues-list-head__created', 'descending'),
   ]);
 

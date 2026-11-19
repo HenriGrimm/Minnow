@@ -13,6 +13,7 @@ import {
   buildIssueDeleteArgs,
   buildIssueBatchQuery,
   parseIssueBatch,
+  parseIssuePage,
   issueBatch,
   buildIssueEditArgs,
   cleanLabelNames,
@@ -150,6 +151,21 @@ describe('issueList fail-closed', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
+});
+
+test('issue pages preserve the next cursor and normalize GraphQL issue rows', () => {
+  const stdout = JSON.stringify({ data: { repository: {
+    hasIssuesEnabled: true,
+    issues: {
+      pageInfo: { hasNextPage: true, endCursor: 'next-page' },
+      nodes: [{ number: 12, state: 'CLOSED', labels: { nodes: [{ name: 'bug' }] } }],
+    },
+  } } });
+  const result = parseIssuePage(stdout, null);
+  assert.equal(result.nextCursor, 'next-page');
+  assert.equal(result.issues[0].state, 'closed');
+  assert.deepEqual(result.issues[0].labels, ['bug']);
+  assert.throws(() => parseIssuePage(stdout, 'next-page'), /next issue page/);
 });
 
 describe('issue batches', () => {

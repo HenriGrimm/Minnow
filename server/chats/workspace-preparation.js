@@ -2,11 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { runProcess } from '../process-runner.js';
 import { runWithToolContext } from '../runtime/path-access.js';
 import { enableChatWorktree } from '../worktree/worktree-ops.js';
 import { getChatWorktreePath } from '../worktree/paths.js';
-import { readChatCheckoutIdentity } from './context.js';
+import { readGitBinding, readWorktreeSource } from './worktree-binding.js';
 import { assertCaller, assertCallerCanTarget, resolveProjectScope } from './caller.js';
 import { ChatContractError } from './contracts.js';
 import { createChatPolicy } from './policy.js';
@@ -58,27 +57,8 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     // Use the repository's canonical revision/notification bookkeeping.
     repository.ensureManagedChat(chatId);
   }
-  async function git(args, cwd) {
-    const result = await runProcess('git', args, { cwd, timeout: 10_000 });
-    if (result.code !== 0 || result.accumulationTruncated) fail('workspace_denied', 'Cannot verify the worktree repository. Inspect it in Source Control before retrying.');
-    return result.stdout.trim();
-  }
-  async function binding(cwd) {
-    try {
-      const canonical = await fs.realpath(cwd);
-      const common = await fs.realpath(await git(['rev-parse', '--path-format=absolute', '--git-common-dir'], canonical));
-      const gitDir = await fs.realpath(await git(['rev-parse', '--path-format=absolute', '--git-dir'], canonical));
-      const branch = await git(['symbolic-ref', '--short', 'HEAD'], canonical);
-      return { path: canonical, checkoutIdentity: await readChatCheckoutIdentity(canonical),
-        commonIdentity: await readChatCheckoutIdentity(common), gitIdentity: await readChatCheckoutIdentity(gitDir), branch,
-        head: await git(['rev-parse', '--verify', 'HEAD'], canonical) };
-    } catch (error) {
-      if (error instanceof ChatContractError) throw error;
-      fail('workspace_denied', 'The selected checkout is unavailable or cannot be verified. Restore it before retrying, or explicitly choose Local.');
-    }
-  }
   async function assertBinding(expected) {
-    const current = await binding(expected.path);
+    const current = await readWorktreeSource(expected.path, { mirror: Boolean(expected.repos) });
     if (!same(current, expected)) fail('workspace_denied', 'The selected checkout or branch changed. Restore the original checkout before retrying, or explicitly choose Local.');
     return current;
   }
@@ -92,7 +72,7 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     if (chat.worktreeRoot && previous?.status === 'ready') return null;
     if (chat.worktreeRoot) fail('workspace_denied', 'Detach the existing checkout explicitly before requesting automatic setup');
     if (previous?.intent && previous.status !== 'local') return previous.intent;
-    const source = await binding(chat.workspacePath);
+    const source = await readWorktreeSource(chat.workspacePath);
     if (source.checkoutIdentity !== target.checkoutIdentity || key(source.path) !== target.scope.canonicalKey) {
       fail('workspace_denied', 'The source checkout changed before worktree admission');
     }
@@ -123,10 +103,11 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     return current;
   }
   async function verifiedSlot(intent, expected, { ready = false } = {}) {
+    if (intent.source.repos) return context.verifyMirroredSlot(intent, expected, { ready });
     if (key(getChatWorktreePath(intent.chatId, intent.source.path)) !== key(intent.slotPath)) {
       fail('workspace_denied', 'The managed worktree storage location changed');
     }
-    const current = await binding(intent.slotPath);
+    const current = await readGitBinding(intent.slotPath);
     // Once setup is ready, prior turns may legitimately commit on this branch.
     // HEAD is a setup fence, not an immutable execution-directory identity.
     const comparable = value => ready ? { ...value, head: null } : value;
@@ -381,7 +362,8 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
         (typeof input.expectedIntentId !== 'string' && !(input.action === 'local' && input.expectedIntentId === null))) {
       fail('invalid_request', 'Invalid worktree recovery choice');
     }
-    const target = await context.resolveTarget(input.chatId);
+    // The user must be able to return to Local if a prepared checkout went missing.
+    const target = await context.resolveTarget(input.chatId, { workspaceRecovery: true });
     assertCallerCanTarget(caller, target, { operation: 'send', currentPolicy: target.currentPolicy, registry: target.registry });
     if (target.chat.agentConversation || target.chat.chatCommandVersion !== 1) fail('policy_denied', 'This control requires an ordinary canonical conversation');
     return { chat: input.action === 'local' ? chooseLocal(input) : await retry(input) };

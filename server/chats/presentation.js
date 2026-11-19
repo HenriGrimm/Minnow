@@ -28,6 +28,8 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
     return { kind: 'chat-changed', chatId, sequence: ++sequence, at: now(),
       execution: execution ? { executionId: execution.executionId, status: execution.status } : null, requests,
       fields: { ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId),
+        ...(chat.workspacePreparation ? { workspacePreparation: chat.workspacePreparation, worktreeSetupRequired: chat.worktreeSetupRequired ?? null,
+          worktreeEnabled: chat.worktreeEnabled ?? null, gitBranch: chat.gitBranch ?? null, chatWorktreeManaged: chat.chatWorktreeManaged ?? null } : {}),
         ...(chat.historyRewrite ? { historyRewriteRevision: chat.historyRewrite.revision } : {}) },
     };
   }

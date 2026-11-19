@@ -763,6 +763,8 @@ export interface IssueGitLink {
   ref: string;
   url?: string;
   title?: string;
+  /** Workspace-relative repo id the ref lives in; absent means the only repo. */
+  repo?: string;
   addedAt: number;
 }
 
@@ -833,6 +835,8 @@ export interface IssueAgentRun {
   /** Set once the agent has opened its PR and stopped. */
   prNumber?: number;
   prUrl?: string;
+  /** Repo id the PR was opened in (multi-repo workspaces). */
+  prRepo?: string;
   /** Pending `ask_question` id, surfaced on the row as "needs you". */
   pendingQuestionId?: string;
   /** Plain-words failure reason; `envBlocked` separates broken env from broken code. */
@@ -957,6 +961,8 @@ export interface IssueCard {
   updatedAt: number;
   codeRefs?: IssueCodeRef[];
   gitLinks?: IssueGitLink[];
+  /** Repo ids (workspace-relative) this issue targets in a multi-repo workspace; absent = the only repo. */
+  repos?: string[];
   issueRefs?: IssueIssueRef[];
   chatIds?: string[];
   planPath?: string;

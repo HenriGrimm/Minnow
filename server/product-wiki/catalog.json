@@ -10,7 +10,7 @@
         "Find the steps for what you want to do"
       ],
       "section": "Overview",
-      "hash": "05ce25c875d01864f377311801dfa29b509942ecc895c12b068f1ca078281d8c"
+      "hash": "e10f9180a2e0f14b27ad773cceccef0b2fc1da060994e56c5ba3ab53bdd9e03a"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -136,7 +136,7 @@
     {
       "path": "documentation/manual/apps/code.md",
       "title": "Edit, run, and review in Code",
-      "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Workspace navigation for the launcher and thread card. Find and edit a file 1. Open Side panel → Files . Expand a ",
+      "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Workspace navigation for the launcher and thread card. Drop a file, editor selection, editor or preview tab, or an",
       "headings": [
         "Find and edit a file",
         "Local environments in worktrees",
@@ -149,7 +149,7 @@
         "Code map"
       ],
       "section": "Apps",
-      "hash": "168fc3c8de1780efccffc6e35586abfb12af294fbc2ef6e59ea60bf38cdb98be"
+      "hash": "91ab1d3d30d3e3be9e8a8f6cce0d8531c47b3157faffc924dbed5cb3b59514e8"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -220,7 +220,7 @@
         "Decide whether the result is ready"
       ],
       "section": "Orchestrate",
-      "hash": "ac6028bf35d7312495ddc92e44e10939093e1802e8b33325673857a87d0fe98c"
+      "hash": "c86b133b4d3e0391f3b8777fb6c8adb6d4cf9f72b9ea96d8ad3ab4e8cac4d5b4"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -404,6 +404,20 @@
       ],
       "section": "Overview",
       "hash": "0716fdeba0cfe6c954506f4719a217373677f3082833a5a4470627df0540723c"
+    },
+    {
+      "path": "documentation/manual/concepts/multi-repo-workspaces.md",
+      "title": "Workspaces with several repositories",
+      "summary": "Some projects live in more than one git repository — a frontend/ and a backend/ , say, each with its own GitHub remote. You can open the folder that holds them as one Minnow workspace. The editor, file tree, terminal and chat see the whole folder, so one agent can change both sid",
+      "headings": [
+        "Source Control",
+        "Agents",
+        "Issues",
+        "Isolated chats",
+        "Limits"
+      ],
+      "section": "Core concepts",
+      "hash": "9c79d040ab6ddbbe18b816c29aa6b8298dbbbd11a2f2ef9f315353f70659f991"
     }
   ]
 }

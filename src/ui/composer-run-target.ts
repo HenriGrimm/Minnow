@@ -9,6 +9,7 @@ import {
   chatTitleForGitRef,
   composerGitRepoRoot,
   enableChatWorktreeOnSend,
+  getChatMirrorBinding,
   isChatWorktreeSetupPending,
   subscribeChatWorktreeSetup,
   isChatWorktreeMode,
@@ -364,6 +365,7 @@ async function rebuildRunTargetMenu(): Promise<void> {
   if (!runTargetMenu || !runTargetBtn) return;
   const chat = getActiveChat();
   const generation = menuGeneration;
+  const mirror = getChatMirrorBinding(chat);
   await fillRunTargetMenu({
     menu: runTargetMenu,
     currentPath: isChatWorktreeMode(chat) ? chat.worktreeRoot : undefined,
@@ -372,7 +374,10 @@ async function rebuildRunTargetMenu(): Promise<void> {
     localLabel: chat.worktreeEnabled || chat.worktreeSetupRequired ? 'Back to Local' : undefined,
     automaticLabel: chat.worktreeSetupRequired ? 'Retry worktree setup' : chat.worktreeEnabled ? 'Worktree enabled · creates on send' : undefined,
     automaticDisabled: chat.worktreeEnabled && !chat.worktreeSetupRequired,
-    onSelectBranch: chat.worktreeEnabled && !isChatWorktreeMode(chat) ? undefined : () => {
+    onReviewRepositories: mirror ? () => {
+      void import('./source-control-center').then(({ openSourceControlCenter }) => openSourceControlCenter({ section: 'changes', cwd: mirror.path }));
+    } : undefined,
+    onSelectBranch: mirror || chat.worktreeEnabled && !isChatWorktreeMode(chat) ? undefined : () => {
       void rebuildBranchMenu().then(() => {
         if (runTargetOpen) reopenRunTargetMenu();
       });

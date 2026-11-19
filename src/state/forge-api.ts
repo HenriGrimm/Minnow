@@ -168,8 +168,8 @@ const UNAVAILABLE: ForgeStatus = {
 // ── Status ───────────────────────────────────────────────────────────────────
 
 /** Probe what the forge layer can do for this worktree. Never rejects. */
-export async function forgeStatus(cwd?: string): Promise<ForgeStatus> {
-  const result = await postForge('forgeStatus', cwd ? { cwd } : {});
+export async function forgeStatus(cwd?: string, repo?: string): Promise<ForgeStatus> {
+  const result = await postForge('forgeStatus', { cwd, repo });
   return normalizeStatus(result);
 }
 
@@ -207,13 +207,15 @@ export function prDiff(input: { cwd?: string; number: number }): Promise<ForgeRe
 
 export function prCreate(input: {
   cwd?: string;
+  repo?: string;
   title?: string;
   body?: string;
+  head?: string;
   base?: string;
   draft?: boolean;
   web?: boolean;
 }): Promise<ForgeResult> {
-  return postForge('prCreate', input);
+  return postForge('prCreate', { ...input, ...(input.repo ? { useWorkspaceRemote: true } : {}) });
 }
 
 export function prMerge(input: {

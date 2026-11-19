@@ -7,6 +7,7 @@
 
 import {
   getIssuesGithubMode,
+  importGithubIssues,
   resolveSyncConflict,
   syncAllIssuesWithGithub,
   syncIssueWithGithub,
@@ -84,18 +85,16 @@ export function resetGithubSyncConflictsForTests(): void {
   liveConflictTargets.clear();
 }
 
-/** Two-way mirror is the only mode that may contact GitHub. */
+/** Whether existing cards can sync with GitHub. */
 export function githubSyncEnabled(): boolean {
   return getIssuesGithubMode() === 'mirror';
 }
 
-const SYNC_ALL_IDLE_LABEL = 'Sync all';
-
-let syncAllInFlight = false;
+let syncAllInFlight: 'import' | 'sync' | null = null;
 
 /** True while a header Sync all pass is running. */
 export function isIssuesGithubSyncAllBusy(): boolean {
-  return syncAllInFlight;
+  return syncAllInFlight !== null;
 }
 
 /** Show one conflict in the open peek or toast; batch callers pick which to surface first. */
@@ -157,17 +156,25 @@ export type IssuesGithubSyncAllScope = {
 export async function runIssuesGithubSyncAll(
   syncScope: IssuesGithubSyncAllScope,
 ): Promise<void> {
-  if (!githubSyncEnabled()) {
-    showToast('Turn on Two-way mirror in Settings → Issues → GitHub', 'error');
-    return;
-  }
   if (syncAllInFlight) return;
 
-  syncAllInFlight = true;
+  const mirror = githubSyncEnabled();
+  syncAllInFlight = mirror ? 'sync' : 'import';
   syncIssuesGithubSyncAllButton();
 
-  const activity = beginGitActivity('Syncing with GitHub…');
+  const activity = beginGitActivity(mirror ? 'Syncing with GitHub…' : 'Importing from GitHub…');
   try {
+    if (!mirror) {
+      const result = await importGithubIssues({ workspacePath: syncScope.workspacePath, allPages: true, userInitiated: true });
+      if (result.ok) {
+        finishGitActivitySuccess(activity, result.imported
+          ? `Imported ${result.imported} ${result.imported === 1 ? 'issue' : 'issues'} from GitHub`
+          : 'No new GitHub issues to import');
+      } else {
+        finishGitActivityError(activity, { error: userFacingGithubError(result.error), chatKind: 'github' });
+      }
+      return;
+    }
     const { synced, imported, conflicts, errors } = await syncAllIssuesWithGithub({
       scope: syncScope.scope,
       workspacePath: syncScope.workspacePath,
@@ -195,24 +202,28 @@ export async function runIssuesGithubSyncAll(
     }
   } catch {
     finishGitActivityError(activity, {
-      error: 'Could not sync with GitHub',
+      error: mirror ? 'Could not sync with GitHub' : 'Could not import from GitHub',
       chatKind: 'github',
     });
   } finally {
-    syncAllInFlight = false;
+    syncAllInFlight = null;
     syncIssuesGithubSyncAllButton();
   }
 }
 
-/** Show or hide the header Sync all control based on GitHub mode. */
-export function syncIssuesGithubSyncAllButton(): void {
+/** Keep manual import available for GitHub projects even with mirroring off. */
+export function syncIssuesGithubSyncAllButton(hasGithubRepos?: boolean): void {
   const btn = document.querySelector<HTMLButtonElement>('#btnIssuesSyncAll');
   if (!btn) return;
 
-  const enabled = githubSyncEnabled();
-  btn.hidden = !enabled;
-  btn.toggleAttribute('disabled', !enabled || syncAllInFlight);
-  setSharedButtonLabel(btn, syncAllInFlight ? 'Syncing…' : SYNC_ALL_IDLE_LABEL);
+  if (hasGithubRepos !== undefined) btn.dataset.githubRepos = String(hasGithubRepos);
+  const mirror = githubSyncEnabled();
+  const enabled = mirror || btn.dataset.githubRepos === 'true';
+  btn.hidden = !enabled && !syncAllInFlight;
+  btn.toggleAttribute('disabled', !enabled || Boolean(syncAllInFlight));
+  btn.title = mirror ? 'Sync all issues with GitHub' : 'Import issues from this workspace’s GitHub repositories';
+  const busyLabel = syncAllInFlight === 'import' ? 'Importing…' : 'Syncing…';
+  setSharedButtonLabel(btn, syncAllInFlight ? busyLabel : mirror ? 'Sync all' : 'Import from GitHub');
 }
 
 function showConflict(

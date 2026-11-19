@@ -381,6 +381,17 @@ function providerRunsLocally(providerId, provider) {
 function enabled(tri, fallback) { return tri === 'on' || (tri !== 'off' && fallback); }
 function nonempty(value) { return typeof value === 'string' && value.trim() ? value : null; }
 
+/** Repo map for a multi-repo workspace folder; '' for a single repo or none. Never fails a turn. */
+async function workspaceReposPromptBlock(cwd) {
+  if (typeof cwd !== 'string' || !cwd.trim()) return '';
+  try {
+    const { discoverWorkspaceRepos, renderWorkspaceReposBlock } = await import('../workspace/repos.js');
+    return renderWorkspaceReposBlock(await discoverWorkspaceRepos(path.resolve(cwd)));
+  } catch {
+    return '';
+  }
+}
+
 async function executionProfile(command, execution, adapters) {
   const references = [execution.captured?.profileReference, command.profileReference].filter(value => value !== undefined);
   let reference;
@@ -537,12 +548,13 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const capturedPrompt = snapshot.prompt;
   const capturedPromptProfile = capturedPrompt?.meta?.activePromptProfile;
   const useCapturedSources = capturedPrompt?.sources && (!capturedPromptProfile || capturedPromptProfile === 'full');
-  const [memoryBlock, codeMapBlock, contextDocumentsBlock, role] = await Promise.all([
+  const [memoryBlock, codeMapBlock, contextDocumentsBlock, role, workspaceReposBlock] = await Promise.all([
     memoryEnabled ? firstTurn ? optional('memory', enrichmentSignal => live.adapters.retrieveMemory({ chat, cwd, query, signal: enrichmentSignal })) : replay.memoryBlock : null,
     codeMapEnabled ? firstTurn ? optional('code-map', enrichmentSignal => live.adapters.retrieveCodeMap({ cwd, query, composer: live.composer, signal: enrichmentSignal })) : replay.codeMapBlock : null,
     documentsEnabled ? firstTurn ? readDocuments() : replay.contextDocumentsBlock : null,
     useCapturedSources ? { sources: capturedPrompt.sources, workAgent: capturedPrompt.workAgent ?? null }
       : rolePromptSnapshot(live, effectiveChat),
+    workspaceReposPromptBlock(cwd),
   ]);
   enrichmentOmissions.sort((a, b) => a.kind.localeCompare(b.kind));
   signal?.throwIfAborted();
@@ -556,7 +568,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
       workAgentId: null, skillBody: turn?.skillBody ?? snapshot.prompt?.skillBody ?? null,
       memoryBlock: nonempty(memoryBlock), memoryEnabled, codeMapBlock: nonempty(codeMapBlock), codeMapInjectionEnabled: codeMapEnabled,
       contextDocumentsBlock: nonempty(contextDocumentsBlock), contextDocumentsInjectionEnabled: documentsEnabled,
-      chatLinksBlock: snapshot.prompt?.chatLinksBlock ?? null, enabledToolIds: tools.map(row => row.function.name),
+      chatLinksBlock: snapshot.prompt?.chatLinksBlock ?? null, workspaceReposBlock: nonempty(workspaceReposBlock), enabledToolIds: tools.map(row => row.function.name),
       infoPresetId: meta.activeInfoPresetId ?? 'general-assistant', planGranularity: meta.planning?.granularity ?? 'medium',
       flaticonIconGuidanceEnabled: meta.flaticonIconGuidanceEnabled !== false, userMessagePreview: query.slice(0, 200),
       localModelGuidance: ['on', 'off'].includes(meta.localModelGuidance) ? meta.localModelGuidance : 'auto',

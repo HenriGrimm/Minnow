@@ -383,6 +383,7 @@ const NORMALIZED_ISSUE_CARD_KEYS = new Set([
   'chatIds',
   'codeRefs',
   'gitLinks',
+  'repos',
   'assignee',
   'agent',
   'parentId',
@@ -443,6 +444,7 @@ const NORMALIZED_AGENT_KEYS = new Set([
   'branch',
   'prNumber',
   'prUrl',
+  'prRepo',
   'pendingQuestionId',
   'error',
   'envBlocked',
@@ -497,6 +499,7 @@ function parseIssueAgent(raw) {
     out.prNumber = Math.floor(row.prNumber);
   }
   if (typeof row.prUrl === 'string' && row.prUrl.trim()) out.prUrl = row.prUrl.trim();
+  if (typeof row.prRepo === 'string' && row.prRepo.trim()) out.prRepo = row.prRepo.trim();
   if (typeof row.pendingQuestionId === 'string' && row.pendingQuestionId.trim()) {
     out.pendingQuestionId = row.pendingQuestionId.trim();
   }
@@ -718,9 +721,36 @@ function ensureIssueCard(raw) {
     out.chatIds = r.chatIds.filter((c) => typeof c === 'string' && c.trim());
   }
   if (Array.isArray(r.codeRefs)) out.codeRefs = r.codeRefs;
-  if (Array.isArray(r.gitLinks)) out.gitLinks = r.gitLinks;
+  if (Array.isArray(r.gitLinks)) out.gitLinks = r.gitLinks.map(normalizeIssueGitLinkRepo);
+  const repos = normalizeIssueRepoIds(r.repos);
+  if (repos.length) out.repos = repos;
   applyIssueCardV3Fields(out, r);
   return preserveUnknownKeys(r, out, NORMALIZED_ISSUE_CARD_KEYS);
+}
+
+/**
+ * Repo ids an issue targets in a multi-repo workspace (workspace-relative,
+ * forward-slash paths). Absent means "the workspace's only repo".
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+export function normalizeIssueRepoIds(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const id = item.trim().replace(/\\/g, '/').replace(/(.)\/+$/, '$1');
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** Trim a link's `repo`, dropping it when empty; other keys pass through untouched. */
+function normalizeIssueGitLinkRepo(link) {
+  if (!link || typeof link !== 'object' || !('repo' in link)) return link;
+  const { repo, ...rest } = link;
+  const id = typeof repo === 'string' ? repo.trim() : '';
+  return id ? { ...rest, repo: id } : rest;
 }
 
 export function validateIssuesState(raw) {

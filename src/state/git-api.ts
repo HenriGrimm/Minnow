@@ -16,6 +16,7 @@ export interface GitFileEntry {
 export interface IssueWorkSnapshot {
   ok: boolean;
   error?: string;
+  repoId?: string;
   source?: string;
   isolated?: boolean;
   sourceBranch?: string;
@@ -41,6 +42,8 @@ export interface IssueWorkSnapshot {
 
 export interface IssueWorkRequest {
   cwd: string;
+  /** Resolve a child of the managed chat worktree and its original base branch. */
+  mirror?: { chatId: string; repoId: string };
   /** Inspect-only comparison against a local branch instead of the workspace HEAD. */
   comparisonBranch?: string;
   worktreePath?: string;
@@ -167,6 +170,7 @@ export interface GitSavedCheckoutChanges {
 
 export interface GitCheckoutSwitchInput {
   cwd?: string;
+  repo?: string;
   branch: string;
   pullRequest?: { number: number; url: string; headRef?: string; headRefOid?: string; crossRepository?: boolean };
   create?: boolean;
@@ -302,6 +306,7 @@ export function gitCommit(input: {
 
 export function gitPush(input?: {
   cwd?: string;
+  repo?: string;
   setUpstream?: boolean;
   branch?: string;
 }): Promise<GitOpResult> {
@@ -338,8 +343,8 @@ export function gitLog(input?: {
 
 // ── Branches ─────────────────────────────────────────────────────────────────
 
-export function gitBranches(cwd?: string, signal?: AbortSignal): Promise<GitOpResult> {
-  return postGit('branches', cwd ? { cwd } : {}, signal);
+export function gitBranches(cwd?: string, signal?: AbortSignal, repo?: string): Promise<GitOpResult> {
+  return postGit('branches', { cwd, repo }, signal);
 }
 
 export interface GitWorktreeStatusResult {

@@ -1,15 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { runProcess } from '../process-runner.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { getRequestWorkspaceRoot } from '../runtime/path-access.js';
 import { ChatContractError } from './contracts.js';
 import { createChatPolicy, intersectChatPolicies } from './policy.js';
 import { createChatCaller, createChatProjectRegistry, resolveProjectScope } from './caller.js';
+import { checkoutKey as key, directory, identity, readChatCheckoutIdentity } from './checkout-identity.js';
+import { readMirroredBinding } from './worktree-binding.js';
 
-const key = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
-const identity = (prefix, value) => `${prefix}-${createHash('sha256').update(value).digest('hex').slice(0, 32)}`;
+export { readChatCheckoutIdentity } from './checkout-identity.js';
 const activeStates = new Set(['running', 'waiting', 'waiting_for_model', 'loading_model', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_approval']);
 
 // Unavailable registrations require fresh verification on every send. Overlap
@@ -24,19 +24,6 @@ async function readCheckouts(values, read) {
     }
   }));
   return results;
-}
-
-async function directory(value) {
-  if (typeof value !== 'string' || !value.trim() || value.includes('\0')) {
-    throw new ChatContractError('workspace_denied', 'A registered project directory is required');
-  }
-  try {
-    const resolved = await fs.realpath(value);
-    if (!(await fs.stat(resolved)).isDirectory()) throw new Error('Not a directory');
-    return resolved;
-  } catch {
-    throw new ChatContractError('workspace_denied', 'The conversation checkout is unavailable');
-  }
 }
 
 async function git(args, cwd) {
@@ -59,18 +46,6 @@ async function filesystemIdentity(value) {
       target.isFile() ? await fs.readFile(full, 'utf8') : await fs.realpath(full)];
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   return [key(canonical), String(stat.dev), String(stat.ino), String(stat.birthtimeNs), marker];
-}
-
-/** Execution directory identity, stable across ordinary file writes and Git initialization. */
-export async function readChatCheckoutIdentity(value) {
-  try {
-    const canonical = await directory(value);
-    const stat = await fs.stat(canonical, { bigint: true });
-    if (stat.ino === 0n || stat.birthtimeNs === 0n) throw new Error('Unverifiable directory identity');
-    return identity('checkout', JSON.stringify([key(canonical), String(stat.dev), String(stat.ino), String(stat.birthtimeNs)]));
-  } catch {
-    throw new ChatContractError('workspace_denied', 'Cannot verify the conversation checkout identity');
-  }
 }
 
 async function discoverProject(workspacePath, runGit) {
@@ -195,12 +170,18 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
     if (root.projectId !== projectId) return null;
     const source = await directory(chat.workspacePath);
     const scope = resolveProjectScope(root.registry, { projectId, workspaceKey: key(source) });
+    const mirrored = Boolean(intent?.source?.repos);
     if (intent) {
       if (scope.workspaceId !== intent.sourceWorkspaceId ||
           await readChatCheckoutIdentity(source) !== intent.source?.checkoutIdentity) return null;
-      const common = await (runGit ?? git)(['rev-parse', '--path-format=absolute', '--git-common-dir'], source);
-      if (common.code !== 0 || !common.stdout?.trim() ||
-          await readChatCheckoutIdentity(common.stdout.trim()) !== intent.source.commonIdentity) return null;
+      if (mirrored) {
+        const binding = chat.workspacePreparation.binding;
+        if (!binding || key(binding.path) !== key(chat.worktreeRoot) || key(intent.slotPath) !== key(chat.worktreeRoot)) return null;
+      } else {
+        const common = await (runGit ?? git)(['rev-parse', '--path-format=absolute', '--git-common-dir'], source);
+        if (common.code !== 0 || !common.stdout?.trim() ||
+            await readChatCheckoutIdentity(common.stdout.trim()) !== intent.source.commonIdentity) return null;
+      }
     }
 
     let checkout;
@@ -209,6 +190,8 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
       if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
       return chat;
     }
+    // Git registers a mirror's individual repositories, not its parent folder.
+    if (mirrored) return null;
     // An existing directory is only orphaned after Git drops its registration.
     // A failed per-checkout verification is not itself evidence of removal.
     const paths = [key(checkout), key(chat.worktreeRoot)];
@@ -217,11 +200,25 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
   }
   async function resolveTarget(chatId, options = {}) {
     const chat = repository.getChat(chatId);
-    const checkout = chat.worktreeRoot || chat.workspacePath;
-    const root = options.project ?? await project(options.workspacePath ?? checkout);
+    const checkout = options.workspaceRecovery ? chat.workspacePath : chat.worktreeRoot || chat.workspacePath;
+    const prepared = chat.workspacePreparation;
+    const mirrored = Boolean(!options.workspaceRecovery && chat.worktreeRoot && prepared?.intent?.source?.repos);
     const canonical = await directory(checkout);
+    let root;
+    if (mirrored) {
+      if (prepared.status !== 'ready' || !prepared.binding || key(prepared.binding.path) !== key(canonical) ||
+          key(prepared.intent.source.path) !== key(await directory(chat.workspacePath))) {
+        throw new ChatContractError('workspace_denied', 'The chat no longer has a verified workspace worktree.');
+      }
+      const callerProject = options.project ?? (options.workspacePath ? await project(options.workspacePath) : null);
+      if (callerProject && callerProject.projectId !== prepared.intent.projectId && callerProject.scope.canonicalKey !== key(canonical)) {
+        throw new ChatContractError('workspace_denied', 'The worktree is outside the active project.');
+      }
+      const verified = await verifyMirroredSlot(prepared.intent, prepared.binding, { ready: true });
+      root = verified.project;
+    } else root = options.project ?? await project(options.workspacePath ?? checkout);
     const scope = resolveProjectScope(root.registry, { projectId: root.projectId, workspaceKey: key(canonical) });
-    if (options.project || key(canonical) !== root.scope.canonicalKey) {
+    if (!mirrored && (options.project || key(canonical) !== root.scope.canonicalKey)) {
       const current = await discoverProject(checkout, runGit ?? git);
       const projectRoot = current.common && path.basename(current.common).toLowerCase() === '.git'
         ? path.dirname(current.common) : current.common ?? current.canonical;
@@ -240,7 +237,6 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
         filesystemAccess: currentPolicy.filesystemAccess,
         fileWriteScope: ['workspace', 'full'].includes(captured.fileWriteScope) ? currentPolicy.fileWriteScope : captured.fileWriteScope };
     }
-    const prepared = chat.workspacePreparation;
     if (captured && prepared?.status === 'ready' && prepared.binding?.checkoutIdentity === checkoutIdentity &&
         prepared.intent?.projectId === scope.projectId && key(prepared.binding.path) === key(canonical) &&
         captured.workspaceIds?.includes(prepared.intent.sourceWorkspaceId)) {
@@ -251,9 +247,26 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
     const policy = captured ? intersectChatPolicies(createChatPolicy(captured), currentPolicy) : currentPolicy;
     return { chat, scope, policy, currentPolicy, profile, registry: root.registry, project: root, checkoutIdentity };
   }
-  async function humanCaller(chatId, { workspacePath = getRequestWorkspaceRoot(), ingress = 'renderer' } = {}) {
+  async function verifyMirroredSlot(intent, expected, options) {
+    const binding = await readMirroredBinding(intent, expected, options);
+    const source = await project(intent.source.path);
+    if (source.projectId !== intent.projectId || source.scope.workspaceId !== intent.sourceWorkspaceId) {
+      throw new ChatContractError('workspace_denied', 'The prepared checkout is no longer in the original project');
+    }
+    // Register this chat's verified mirror for this resolution only. The child
+    // repositories and other chats' mirrors are not separate chat grants.
+    const canonicalKey = key(binding.path);
+    const edges = source.registry.derivedEdges.map(edge => ({ ...edge, projectId: source.projectId,
+      sourceCanonicalPath: source.registry.entries.find(row => row.workspaceId === edge.sourceWorkspaceId).canonicalKey,
+      targetCanonicalPath: source.registry.entries.find(row => row.workspaceId === edge.targetWorkspaceId).canonicalKey }));
+    const registry = createChatProjectRegistry([...source.registry.entries, { projectId: source.projectId,
+      workspaceId: identity('workspace', canonicalKey), canonicalKey }], edges);
+    return { binding, project: { ...source, registry },
+      scope: resolveProjectScope(registry, { projectId: source.projectId, workspaceKey: canonicalKey }) };
+  }
+  async function humanCaller(chatId, { workspacePath = getRequestWorkspaceRoot(), ingress = 'renderer', workspaceRecovery = false } = {}) {
     if (!['renderer', 'device', 'cli', 'scheduler'].includes(ingress)) throw new TypeError('Invalid human ingress');
-    const target = await resolveTarget(chatId, { project: await project(workspacePath) });
+    const target = await resolveTarget(chatId, { project: await project(workspacePath), workspaceRecovery });
     const caller = createChatCaller({ actor: 'human', ingress, chatId: `human-${ingress}`, scope: target.scope, policy: target.currentPolicy });
     return { caller, target };
   }
@@ -270,7 +283,7 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
       executionId, ...(execution.attemptId ? { attemptId: execution.attemptId } : {}), executionActive: true, scope: target.scope, policy });
     return { caller, target, execution, fence: lease };
   }
-  return { project, findMissingWorktree, resolveTarget, humanCaller, executionCaller,
+  return { project, findMissingWorktree, resolveTarget, humanCaller, executionCaller, verifyMirroredSlot,
     setWorkspaceEdgesLoader(loader) {
       if (typeof loader !== 'function') throw new TypeError('A verified workspace edge loader is required');
       loadWorkspaceEdges = loader;

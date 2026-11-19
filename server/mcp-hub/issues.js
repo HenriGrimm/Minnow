@@ -1,13 +1,24 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readResource, updateIssuesResource } from '../config/store.js';
-import { validateIssuesState, normalizeWorkspacePath } from '../config/validators.js';
+import { validateIssuesState, normalizeWorkspacePath, normalizeIssueRepoIds } from '../config/validators.js';
+import { discoverWorkspaceRepos } from '../workspace/repos.js';
 
 const text = { type: 'string', minLength: 1 };
 const fields = {
   title: text, description: { type: 'string' }, type: text, status: text, priority: text,
   labels: { type: 'array', items: text }, project_id: { type: ['string', 'null'] },
+  repos: { type: 'array', items: text, description: 'Repo ids this issue targets when the workspace folder holds several repos; [] clears.' },
 };
+
+/** Reject repo ids the workspace does not have (any id passes when discovery finds none). */
+async function validateRepoIds(ids, workspace) {
+  if (!ids.length) return;
+  const known = (await discoverWorkspaceRepos(workspace)).map(repo => repo.id);
+  if (!known.length) return;
+  const unknown = ids.filter(id => !known.includes(id));
+  if (unknown.length) throw new Error(`Unknown repo ${unknown.join(', ')}; this workspace has: ${known.join(', ')}`);
+}
 function tool(name, description, properties = {}, required = [], readOnly = true) {
   return { name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false },
     annotations: { readOnlyHint: readOnly, destructiveHint: name === 'issue_edit', openWorldHint: false } };
@@ -15,6 +26,7 @@ function tool(name, description, properties = {}, required = [], readOnly = true
 export const issueHubTools = [
   tool('issue_list', 'List/search issues in the connected workspace. Includes closed issues when requested; returns compact rows and pagination.', {
     query: { type: 'string' }, status: text, project_id: text, include_closed: { type: 'boolean' },
+    repo: { type: 'string', description: 'Repo id filter; issues with no repo set match every repo.' },
     limit: { type: 'integer', minimum: 1, maximum: 100 }, offset: { type: 'integer', minimum: 0 },
   }),
   tool('issue_get', 'Read one workspace issue, including description, comments and links.', { issue_id: text }, ['issue_id']),
@@ -58,14 +70,17 @@ export async function callIssueHubTool(name, args, workspace) {
     const rows = state.issues.filter(row => belongs(row)
       && (!args.status || row.status === args.status)
       && (!args.project_id || row.projectId === args.project_id)
+      && (!args.repo || !row.repos?.length || row.repos.includes(args.repo))
       && (args.include_closed || args.status || !closed.has(row.status))
       && (!query || `${row.id} ${row.title} ${row.description}`.toLowerCase().includes(query)))
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
     const offset = args.offset ?? 0, limit = args.limit ?? 30;
     return { total: rows.length, offset, limit, issues: rows.slice(offset, offset + limit).map(
-      ({ id, title, status, type, priority, labels, projectId, updatedAt }) => ({ id, title, status, type, priority, labels, projectId, updatedAt }),
+      ({ id, title, status, type, priority, labels, projectId, repos, updatedAt }) => ({ id, title, status, type, priority, labels, projectId, ...(repos?.length ? { repos } : {}), updatedAt }),
     ) };
   }
+  const repoIds = args.repos === undefined ? undefined : normalizeIssueRepoIds(args.repos);
+  if (repoIds) await validateRepoIds(repoIds, workspace);
   let result;
   await updateIssuesResource(state => {
     const now = Date.now();
@@ -96,6 +111,7 @@ export async function callIssueHubTool(name, args, workspace) {
       if (args.project_id !== null && !(state.projects ?? []).some(row => row.id === args.project_id)) throw new Error('Project not found.');
       patch.projectId = args.project_id ?? undefined;
     }
+    if (repoIds) patch.repos = repoIds.length ? repoIds : undefined;
     if (name === 'issue_create') {
       const key = normalizeWorkspacePath(workspace);
       const existingKey = Object.keys(state.workspaces).find(value => normalize(value) === normalize(key)) ?? key;

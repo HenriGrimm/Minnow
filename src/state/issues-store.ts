@@ -6,7 +6,7 @@
 import { mergeIssuesState } from '../issues/state-merge.ts';
 import { parseHomeIssueRun } from '../home/flow-run.ts';
 import { maxIssueNumberForProjectKey, reconcileDuplicateIssueIds } from '../lib/issue-id-uniqueness.mjs';
-import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path.ts';
+import { normalizeWorkspacePath, relativeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path.ts';
 import {
   normalizeProjectKeyInput,
   parseKeyedIssueId,
@@ -54,6 +54,8 @@ import {
   LOCAL_ASSIGNEE_ID,
 } from '../issues/saved-views.ts';
 import { isUnreviewedTriageIssue } from '../issues/triage.ts';
+import { issueInSubWorkspace, normalizeIssueGitLinkRepo, normalizeIssueRepoIds, sameLinkRepo } from '../issues/repo-scope.ts';
+import type { WorkspaceRepo } from './workspace-repos.ts';
 import {
   ISSUE_ACTIVITY_CAP,
   ISSUES_COMPAT_VERSION,
@@ -377,6 +379,7 @@ const NORMALIZED_ISSUE_CARD_KEYS: ReadonlySet<string> = new Set([
   'updatedAt',
   'codeRefs',
   'gitLinks',
+  'repos',
   'issueRefs',
   'chatIds',
   'planPath',
@@ -458,6 +461,7 @@ const NORMALIZED_AGENT_KEYS = new Set([
   'branch',
   'prNumber',
   'prUrl',
+  'prRepo',
   'pendingQuestionId',
   'error',
   'envBlocked',
@@ -519,6 +523,7 @@ function parseIssueAgent(raw: unknown): IssueAgentRun | undefined {
     out.prNumber = Math.floor(row.prNumber);
   }
   if (typeof row.prUrl === 'string' && row.prUrl.trim()) out.prUrl = row.prUrl.trim();
+  if (typeof row.prRepo === 'string' && row.prRepo.trim()) out.prRepo = row.prRepo.trim();
   if (typeof row.pendingQuestionId === 'string' && row.pendingQuestionId.trim()) {
     out.pendingQuestionId = row.pendingQuestionId.trim();
   }
@@ -821,7 +826,9 @@ function ensureIssueCardShape(raw: unknown): IssueCard | null {
   };
 
   if (Array.isArray(r.codeRefs)) card.codeRefs = r.codeRefs as IssueCard['codeRefs'];
-  if (Array.isArray(r.gitLinks)) card.gitLinks = r.gitLinks as IssueCard['gitLinks'];
+  if (Array.isArray(r.gitLinks)) card.gitLinks = r.gitLinks.map(normalizeIssueGitLinkRepo) as IssueCard['gitLinks'];
+  const repos = normalizeIssueRepoIds(r.repos);
+  if (repos.length) card.repos = repos;
   if (Array.isArray(r.issueRefs)) {
     card.issueRefs = r.issueRefs
       .map((item) => normalizeIssueIssueRef(item as IssueIssueRef | string))
@@ -1355,6 +1362,8 @@ export type AddIssueInput = {
   source?: IssueSource;
   parentId?: string;
   projectId?: string;
+  /** Repo ids this issue targets in a multi-repo workspace. */
+  repos?: string[];
 };
 
 export type AddIssueOptions = {
@@ -1398,6 +1407,8 @@ export function addIssue(input: AddIssueInput, issueId?: string, options?: AddIs
   if (input.legacyBugId) card.legacyBugId = input.legacyBugId;
   if (input.parentId) card.parentId = input.parentId;
   if (input.projectId) card.projectId = input.projectId;
+  const repos = normalizeIssueRepoIds(input.repos);
+  if (repos.length) card.repos = repos;
   requireIssuesState().issues.push(card);
   touchIssuesStore();
   if (options?.deferGithubAutoSync && card.source !== 'github') deferGithubSyncedFieldWrites(card.id);
@@ -1439,6 +1450,8 @@ export type UpdateIssuePatch = {
   chatIds?: string[];
   codeRefs?: IssueCodeRef[];
   gitLinks?: IssueGitLink[];
+  /** Repo ids this issue targets; an empty array clears the targeting. */
+  repos?: string[];
   issueRefs?: IssueIssueRef[];
   /** Pass null to unassign. */
   assignee?: IssueAssignee | null;
@@ -1578,6 +1591,7 @@ export function normalizeIssueGitLink(
   };
   if (typeof link.url === 'string' && link.url.trim()) out.url = link.url.trim();
   if (typeof link.title === 'string' && link.title.trim()) out.title = link.title.trim();
+  if (typeof link.repo === 'string' && link.repo.trim()) out.repo = link.repo.trim();
   return out;
 }
 
@@ -1640,7 +1654,8 @@ export function appendIssueLinks(
     for (const raw of links.gitLinks) {
       const link = normalizeIssueGitLink(raw);
       if (!link) continue;
-      if (existing.some((e) => e.kind === link.kind && e.ref === link.ref)) continue;
+      // `#12` in frontend and `#12` in backend are different links.
+      if (existing.some((e) => e.kind === link.kind && e.ref === link.ref && sameLinkRepo(e, link))) continue;
       existing.push(link);
       changed = true;
     }
@@ -1733,6 +1748,11 @@ export function updateIssue(
     issue.issueRefs = patch.issueRefs
       .map((ref) => normalizeIssueIssueRef(ref))
       .filter((ref): ref is IssueIssueRef => ref != null);
+  }
+  if (patch.repos !== undefined) {
+    const repos = normalizeIssueRepoIds(patch.repos);
+    if (repos.length) issue.repos = repos;
+    else delete issue.repos;
   }
   if (patch.assignee !== undefined) {
     if (patch.assignee === null) delete issue.assignee;
@@ -2292,6 +2312,8 @@ export function assignIssueToMe(issueId: string): IssueCard | null {
 export type CollectIssuesOptions = {
   workspacePath?: string;
   scope?: 'all' | 'current_workspace';
+  includeSubWorkspaces?: boolean;
+  subWorkspace?: { path: string; exact?: boolean; repoWorkspacePath: string; repos: readonly WorkspaceRepo[] };
   status?: IssueStatus | 'all';
   type?: IssueType | 'all';
   priority?: IssuePriority | 'all';
@@ -2403,7 +2425,9 @@ export function collectIssues(options: CollectIssuesOptions = {}): IssueCard[] {
   const out: IssueCard[] = [];
   for (const issue of requireIssuesState().issues) {
     const issueWorkspace = normalizeWorkspacePath(issue.workspacePath ?? '');
-    if (workspaceKey !== null && issueWorkspace !== workspaceKey) continue;
+    if (workspaceKey !== null && issueWorkspace !== workspaceKey &&
+        (!options.includeSubWorkspaces || relativeWorkspacePath(workspaceKey, issueWorkspace) === null)) continue;
+    if (options.subWorkspace && !issueInSubWorkspace(issue, options.subWorkspace)) continue;
     if (hideDone && isClosedStatus(getIssuesTaxonomySync(), issue.status)) continue;
     if (statusFilter !== 'all' && issue.status !== statusFilter) continue;
     if (typeFilter !== 'all' && issue.type !== typeFilter) continue;

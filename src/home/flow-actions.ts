@@ -2,7 +2,7 @@ import { readDefaultModelBinding } from '../models/selection';
 import { getChatRunActivity, subscribeChatRunActivity } from '../state/chat-run-activity';
 import type { Chat, HomeIssueRun, IssueCard } from '../types';
 import { getChatAbort, streamingChatIds } from '../app-state';
-import { ensureSessionsReady, ensureChatHistoryLoaded, sessionState, scheduleSaveSessions, touchChat } from '../state/sessions';
+import { ensureSessionsReady, ensureChatHistoryLoaded, findChatById, sessionState, scheduleSaveSessions, touchChat } from '../state/sessions';
 import { ensureBackgroundChat } from '../state/background-chat';
 import { appendIssueLinks, collectIssues, findIssueById, isIssuesStoreLoaded, requireIssueStatusForRole, saveIssuesNow, updateIssue, updateIssueAgentRun } from '../state/issues-store';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
@@ -287,7 +287,13 @@ export async function drainHomeMerges(): Promise<void> {
       const issue = group[0], agent = issue.agent!, home = agent.home!;
       patchGroup(issue, 'merging');
       try {
-        const response = await fetch('/api/worktree', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Minnow-Workspace': issue.workspacePath }, body: JSON.stringify({ op: 'merge_chat', chatId: agent.chatId, branch: agent.branch, targetBranch: home.baseBranch }) });
+        const linked = agent.chatId ? findChatById(agent.chatId) : undefined;
+        const source = linked?.workspacePreparation?.intent.source;
+        const mirror = Boolean(source && 'repos' in source);
+        const response = await fetch('/api/worktree', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          op: 'merge_chat', cwd: linked?.workspacePath || issue.workspacePath, chatId: agent.chatId, branch: agent.branch,
+          ...(mirror ? { keepWorktree: true } : { targetBranch: home.baseBranch }),
+        }) });
         const result = await response.json() as { ok: boolean; conflict?: boolean; error?: string; removed?: boolean };
         if (!response.ok || !result.ok) throw new Error(result.error || 'Merge stopped. The worktree has been kept.');
         const chat = sessionState?.chats.find(c => c.id === agent.chatId);

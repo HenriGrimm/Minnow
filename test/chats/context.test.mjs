@@ -128,6 +128,23 @@ test('missing worktree reconciliation needs a verified source and never adopts a
   assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'a mismatched saved source cannot become Local');
 });
 
+test('a mirrored checkout can reconcile only when its entire saved directory is missing', async t => {
+  const { dirs, validateRoot } = await fixture(t);
+  const runGit = async () => ({ code: 128 });
+  const { projectId, scope } = await loadChatProjectRegistry(dirs.main, { validateRoot, runGit });
+  const source = { path: dirs.main, checkoutIdentity: await readChatCheckoutIdentity(dirs.main), repos: [] };
+  const intent = { chatId: 'chat', projectId, sourceWorkspaceId: scope.workspaceId, source, slotPath: dirs.child };
+  const chat = { id: 'chat', chatCommandVersion: 1, workspacePath: dirs.main, worktreeRoot: dirs.child,
+    workspacePreparation: { intent, binding: { path: dirs.child } } };
+  const context = createChatContext({ repository: { getChat: () => chat, getChatProjectId: () => projectId },
+    validateRoot, runGit, resolvePolicyInput: async () => { throw new Error('Recovery is not an execution authorization'); } });
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'the parent directory has no Git registration of its own');
+  await fs.rmdir(dirs.child);
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), chat);
+  chat.workspacePreparation.binding.path = dirs.other;
+  assert.equal(await context.findMissingWorktree(chat.id, dirs.main), null, 'a mismatched binding cannot become Local');
+});
+
 test('unchanged revisions reuse per-checkout verification, not live allowlists or policy', async t => {
   const { dirs, runGit, validateRoot } = await fixture(t);
   let scans = 0, allowed = true, permission = 'full';

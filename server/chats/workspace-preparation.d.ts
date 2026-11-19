@@ -5,13 +5,17 @@ import type { ChatCommand } from './contracts.js';
 export interface CheckoutBinding {
   path: string; checkoutIdentity: string; commonIdentity: string; gitIdentity: string; branch: string; head: string;
 }
+export interface MirrorSource {
+  path: string; checkoutIdentity: string; repos: Array<CheckoutBinding & { id: string }>;
+}
+export interface MirrorBinding extends MirrorSource { branch: string }
 export interface ChatWorkspaceIntent {
   version: 1; kind: 'automatic'; id: string; chatId: string; projectId: string;
-  source: CheckoutBinding; sourceWorkspaceId: string; slotPath: string; title: string;
+  source: CheckoutBinding | MirrorSource; sourceWorkspaceId: string; slotPath: string; title: string;
 }
 export interface ChatWorkspaceState {
   intent: ChatWorkspaceIntent; status: 'pending' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'local';
-  binding: CheckoutBinding | null; error?: string | null;
+  binding: CheckoutBinding | MirrorBinding | null; error?: string | null;
   /** Local retained a checkout whose dependency preparation completed. */
   retainedReady?: boolean;
 }
@@ -21,7 +25,7 @@ export interface WorkspacePreparationInput {
 export function rebindChatWorkspacePolicy(policy: import('./policy.js').ChatPolicyInput,
   binding: { sourceWorkspaceId: string; workspaceId: string }): import('./policy.js').ChatPolicySnapshot;
 export function createChatWorkspacePreparation(options: {
-  repository: ChatRepository; context: Pick<ChatContext, 'project' | 'resolveTarget'>;
+  repository: ChatRepository; context: Pick<ChatContext, 'project' | 'resolveTarget' | 'verifyMirroredSlot'>;
   enableWorktree?: (input: { chatId: string; title: string; signal?: AbortSignal;
     onCheckout: (result: { path: string; branch: string }) => Promise<void> }) => Promise<{ ok: boolean; path?: string; branch?: string; error?: string }>;
   onChange?: (chatId: string) => unknown; id?: () => string;

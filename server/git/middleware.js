@@ -75,6 +75,7 @@ import {
   issueView,
 } from './forge-issue-ops.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
+import { resolveRepoCwd } from './repo-resolve.js';
 
 /**
  * Git ran in whatever `cwd` the caller supplied, unlike `/api/tools` and
@@ -204,8 +205,20 @@ async function handleGitRequestWork(req, res, pathname) {
       return true;
     }
     await assertAllowedGitCwd(body?.cwd);
-    const result = await handler(body ?? {});
-    sendJson(res, 200, result);
+    // A multi-repo workspace names the repo by id; it resolves under the
+    // (already validated) workspace, so the repo path needs no allowlist entry.
+    const args = { ...(body ?? {}) };
+    let repoId;
+    if (typeof args.repo === 'string' && args.repo.trim()) {
+      const resolved = await resolveRepoCwd({ cwd: args.cwd, repo: args.repo });
+      args.cwd = resolved.cwd;
+      repoId = resolved.repo?.id;
+    }
+    delete args.repo;
+    const result = await handler(args);
+    sendJson(res, 200, repoId && result && typeof result === 'object' && !Array.isArray(result)
+      ? { ...result, repoId }
+      : result);
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

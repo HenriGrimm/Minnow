@@ -6,6 +6,9 @@ import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { invalidateRegisteredWorktreeCache } from '../worktree/allowlist.js';
 import { withWorktreeMutation } from './action-run-lock.js';
+import { getChatWorktreePath } from '../worktree/paths.js';
+import { readMirrorManifest, verifyMirrorRepo } from '../worktree/multi-repo.js';
+import { mergeWorktreeIntoTarget } from '../worktree/merge-chat.js';
 
 const PATCH_LIMIT = 512 * 1024;
 const git = (cwd, args) => runProcess('git', args, { cwd, timeout: 120_000 });
@@ -19,9 +22,22 @@ const same = (a, b) => normalizeWorkspacePathKey(a) === normalizeWorkspacePathKe
 
 async function context(input) {
   if (typeof input.cwd !== 'string' || !input.cwd.trim()) throw new Error('Issue workspace is required');
-  const cwd = await fs.realpath(input.cwd);
-  const source = await fs.realpath(input.worktreePath || cwd);
-  await validateAllowedWorkspaceRoot(cwd);
+  const workspace = await fs.realpath(input.cwd);
+  await validateAllowedWorkspaceRoot(workspace);
+  let mirror;
+  if (input.mirror) {
+    const { chatId, repoId } = input.mirror;
+    if (typeof chatId !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(chatId) || typeof repoId !== 'string') throw new Error('Choose a worktree repository');
+    const slot = getChatWorktreePath(chatId, workspace);
+    const actualSlot = await fs.realpath(slot);
+    if (process.platform === 'win32' ? slot.toLowerCase() !== actualSlot.toLowerCase() : slot !== actualSlot) throw new Error('The chat worktree moved');
+    const manifest = await readMirrorManifest(slot);
+    if (!manifest || typeof manifest.workspaceRoot !== 'string' || !same(manifest.workspaceRoot, workspace)) throw new Error('The chat worktree is no longer available');
+    const repo = await verifyMirrorRepo(slot, workspace, manifest.repos.find(row => row?.id === repoId));
+    mirror = { ...repo, branch: manifest.branch };
+  }
+  const cwd = mirror?.source ?? workspace;
+  const source = await fs.realpath(mirror?.worktreePath ?? (input.worktreePath || cwd));
   await validateAllowedWorkspaceRoot(source);
   for (const root of [cwd, source]) {
     const top = (await read(root, ['rev-parse', '--show-toplevel'])).trim();
@@ -35,10 +51,13 @@ async function context(input) {
   const sourceRef = await git(source, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
   const targetRef = await git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
   const sourceBranch = sourceRef.stdout.trim() || 'HEAD';
-  const targetBranch = targetRef.stdout.trim() || 'HEAD';
+  const targetBranch = mirror ? mirror.baseBranch || 'HEAD' : targetRef.stdout.trim() || 'HEAD';
   const sourceHead = (await read(source, ['rev-parse', 'HEAD'])).trim();
-  const targetHead = (await read(cwd, ['rev-parse', 'HEAD'])).trim();
-  return { cwd, source, sourceBranch, targetBranch, sourceHead, targetHead, isolated: !same(cwd, source) };
+  if (mirror && sourceBranch !== mirror.branch) throw new Error(`Restore ${mirror.branch} in ${mirror.id} before continuing`);
+  const targetRefName = mirror && targetBranch !== 'HEAD' ? `refs/heads/${targetBranch}` : 'HEAD';
+  if (mirror) await read(cwd, ['check-ref-format', targetRefName]);
+  const targetHead = (await read(cwd, ['rev-parse', '--verify', targetRefName])).trim();
+  return { cwd, source, sourceBranch, targetBranch, sourceHead, targetHead, isolated: !same(cwd, source), ...(mirror ? { repoId: mirror.id } : {}) };
 }
 
 async function idle(cwd) {
@@ -73,7 +92,7 @@ async function preflight(ctx) {
 export async function issueWorkInspect(input) {
   try {
     const ctx = await context(input);
-    if (ctx.isolated && input.comparisonBranch) {
+    if (ctx.isolated && !input.mirror && input.comparisonBranch) {
       if (typeof input.comparisonBranch !== 'string' || input.comparisonBranch.length > 512) throw new Error('Invalid comparison branch');
       await read(ctx.cwd, ['check-ref-format', `refs/heads/${input.comparisonBranch}`]);
       ctx.targetHead = (await read(ctx.cwd, ['rev-parse', '--verify', `refs/heads/${input.comparisonBranch}^{commit}`])).trim();
@@ -155,12 +174,20 @@ export async function issueWorkMerge(input) {
     if (!initial.isolated) throw new Error('Local workspace changes can be committed here; merging requires an isolated worktree');
     return await withWorktreeMutation(initial.cwd, () => withWorktreeMutation(initial.source, async () => {
       const ctx = await context(input);
-      await idle(ctx.cwd);
       await idle(ctx.source);
-      if ((await snapshot(ctx.cwd)).dirty) throw new Error('Commit or stash destination workspace changes before merging');
+      if (!input.mirror) {
+        await idle(ctx.cwd);
+        if ((await snapshot(ctx.cwd)).dirty) throw new Error('Commit or stash destination workspace changes before merging');
+      }
       const state = await assertReviewed(input, ctx);
       ctx.sourceHead = committedSha = await commitSource(input, ctx, state);
       if ((await snapshot(ctx.source)).dirty) throw new Error('The worktree changed during commit. Review the new changes before merging');
+      if (input.mirror) {
+        const result = await mergeWorktreeIntoTarget(ctx.cwd, ctx.source, { branch: ctx.sourceBranch, targetBranch: ctx.targetBranch,
+          expectedTargetHead: ctx.targetHead, expectedSourceHead: ctx.sourceHead, targetLocked: true, removeWorktree: false });
+        return { ...result, sha: committedSha, mergeSha: result.sha, merged: result.ok, sourceBranch: ctx.sourceBranch,
+          targetBranch: ctx.targetBranch, worktreePath: ctx.source, repoId: ctx.repoId };
+      }
       const check = await preflight(ctx);
       if (check.conflict) return { ok: false, ...check, sha: committedSha, error: 'Merge conflict. The committed work and worktree are preserved. Resolve with the agent and retry' };
       const destinationHead = (await read(ctx.cwd, ['rev-parse', 'HEAD'])).trim();
@@ -180,6 +207,7 @@ export async function issueWorkMerge(input) {
 /** Cleanup retries verify reachability and refuse to remove dirty or changed work. */
 export async function issueWorkCleanup(input) {
   try {
+    if (input.mirror) throw new Error('The chat uses all of its worktree repositories. Keep the individual checkouts together.');
     if (!/^[a-f0-9]{40,64}$/i.test(input.sha || '')) throw new Error('A successfully merged commit is required');
     let exists = true;
     try { await fs.access(input.worktreePath || input.cwd); } catch { exists = false; }

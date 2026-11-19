@@ -35,6 +35,7 @@ export interface FillRunTargetMenuOptions {
   automaticDisabled?: boolean;
   currentBranch?: string;
   onSelectBranch?: () => void;
+  onReviewRepositories?: () => void;
   isCurrent?: () => boolean;
   /** Repo root used for principal / extra-worktree filtering. */
   repoRoot?: string;
@@ -123,7 +124,7 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
     list.ok && list.output ? parseWorktreeListPorcelain(list.output) : [];
   const principal = getPrincipalWorktree(parsed);
 
-  if (options.onSelectBranch) {
+  if (options.onSelectBranch || options.onReviewRepositories) {
     const current = menuSection(options.currentPath ? 'Current worktree' : 'Local workspace');
     const name = document.createElement('p');
     name.className = 'composer-run-target-menu__current';
@@ -131,8 +132,11 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
       ? options.currentName || displayWorktreeTitle({ path: options.currentPath, branch: options.currentBranch })
       : getWorkspaceLabel();
     name.title = options.currentPath || repoRoot;
-    current.append(name, menuItem(options.currentBranch ? `Switch branch · ${options.currentBranch}` : 'Select branch…', options.onSelectBranch,
+    current.append(name);
+    if (options.onSelectBranch) current.append(menuItem(options.currentBranch ? `Switch branch · ${options.currentBranch}` : 'Select branch…', options.onSelectBranch,
       { icon: 'branch', keepOpen: true }, options.closeMenu));
+    if (options.onReviewRepositories) current.append(menuItem('Review worktree changes', options.onReviewRepositories,
+      { icon: 'worktree' }, options.closeMenu));
     menu.append(current);
   }
   const runOn = menuSection(options.onSelectBranch ? 'Workspace' : 'Run on');
@@ -146,6 +150,11 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
       options.closeMenu,
     ),
   );
+
+  if (options.onReviewRepositories) {
+    menu.appendChild(runOn);
+    return;
+  }
 
   if (
     principal?.path &&

@@ -11,7 +11,20 @@ test('Graphite issue details stay full height while the bulk toolbar is visible'
   if (!browser.available) return t.skip(browser.detail);
   const styles = await Promise.all(['tokens', 'issues', 'graphite-apps'].map(name =>
     readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
-  const rows = Array.from({ length: 36 }, (_, index) => `<div class="issues-row">Issue ${index + 1}</div>`).join('');
+  const rows = Array.from({ length: 36 }, (_, index) => `<div class="issues-row">
+    <span class="issues-row__id">COL-${index + 1}</span>
+    <span class="issues-row__priority">–</span>
+    <span class="issues-row__type">Task</span>
+    <span class="issues-row__title">Issue ${index + 1}</span>
+    <span class="issues-row__labels"></span>
+    <span class="issues-row__agent"></span>
+    <span class="issues-row__status">Backlog</span>
+    <span class="issues-row__workspace issues-workspace-label">
+      <button class="issues-workspace-label__filter">coltiva-backend</button>,
+      <button class="issues-workspace-label__filter">coltiva-frontend</button>
+    </span>
+    <time class="issues-row__created">1d</time>
+  </div>`).join('');
   const actions = ['Status', 'Priority', 'Assignee', 'Labels', 'Project', 'Delete', 'Clear']
     .map(action => `<button class="issues-btn">${action}</button>`).join('');
   const server = http.createServer((_req, res) => {
@@ -81,6 +94,8 @@ test('Graphite issue details stay full height while the bulk toolbar is visible'
       body: bounds('.issues-body'), bar: bounds('.issues-selection-bar'),
       list: bounds('.issues-list-pane'), detail: bounds('.issues-detail-host'),
       workflow: bounds('.issues-detail__workflow'),
+      title: bounds('.issues-list-pane .issues-row__title'),
+      workspace: bounds('.issues-list-pane .issues-row__workspace'),
       listOverflows: list.scrollHeight > list.clientHeight,
       detailOverflows: detailScroll.scrollHeight > detailScroll.clientHeight,
     };
@@ -92,7 +107,7 @@ test('Graphite issue details stay full height while the bulk toolbar is visible'
   let wideBarHeight;
   for (const width of [1440, 800]) {
     await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
-    const { body, bar, list, detail, workflow, listOverflows, detailOverflows } = await measure(true);
+    const { body, bar, list, detail, workflow, title, workspace, listOverflows, detailOverflows } = await measure(true);
     assert.ok(bar.height > 0 && bar.height < 120, `Toolbar height at ${width}px: ${bar.height} (body: ${body.height}px)`);
     assert.equal(bar.top, body.top);
     assert.equal(bar.bottom, list.top, JSON.stringify({ body, bar, list, detail }));
@@ -104,12 +119,21 @@ test('Graphite issue details stay full height while the bulk toolbar is visible'
     assert.equal(workflow.bottom, detail.bottom);
     assert.ok(listOverflows);
     assert.ok(detailOverflows);
+    assert.ok(workspace.width > 0 && workspace.right <= list.right, 'The workspace label stays within the list');
+    if (width === 1440) assert.ok(workspace.left >= title.right, 'Wide rows put workspace beside the title');
+    else assert.ok(workspace.top >= title.bottom, 'Narrow rows put workspace below the title');
     if (width === 1440) wideBarHeight = bar.height;
     else assert.ok(bar.height > wideBarHeight, 'The toolbar wraps when the list column is narrow');
   }
   const cleared = await measure(false);
   assert.equal(cleared.list.top, cleared.body.top);
   assert.equal(cleared.detail.bottom, cleared.body.bottom);
+  await session.client.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, mobile: false, deviceScaleFactor: 1 });
+  const withWorkspace = await measure(false);
+  await session.evaluate("document.querySelector('.issues-shell').classList.add('is-workspace-column-hidden')");
+  const withoutWorkspace = await measure(false);
+  assert.equal(withoutWorkspace.workspace.width, 0);
+  assert.ok(withoutWorkspace.title.width > withWorkspace.title.width, 'Single-repo layout reclaims the Workspace track');
 
   for (const width of [320, 380, 520, 800]) {
     const layout = await session.evaluate(`(() => {

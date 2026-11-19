@@ -17,13 +17,13 @@ import { forgeRefresh, forgeStatus, prList, type ForgeStatus } from '../state/fo
 import { matchPrForBranch } from '../chat/review/pr-review-target';
 import { startPrReview } from '../chat/review/run-pr-review';
 import { getWorkspacePath } from '../state/workspace';
-import { worktreePathsEqual } from '../lib/worktree-list-parse';
-import { filterUserFacingBranches } from '../lib/worktree-list-parse';
+import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { filterUserFacingBranches, getPrincipalWorktree, parseWorktreeListPorcelain, worktreePathsEqual } from '../lib/worktree-list-parse';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
-import { appPrompt, isAppDialogOpen } from './app-dialog';
+import { appAlert, appPrompt, isAppDialogOpen } from './app-dialog';
 import { createGitHubMark, createIcon, type IconName } from './icon';
-import { launchApp, returnToChat } from '../os/router';
+import { launchApp, navigateToCodeChat, returnToChat } from '../os/router';
 import { createBackToChatButton } from './back-to-chat';
 import { getForegroundAppId } from '../os/instances';
 import { showToast } from './toast';
@@ -45,6 +45,22 @@ import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-n
 import { resolvePanelBrowseCwd, resolvePanelWorktreeCwd } from './panel-worktree-cwd';
 import { displayWorktreeTitle } from './worktree-display';
 import { getActiveChat, sessionState } from '../state/sessions';
+import { getChatMirrorBinding } from '../state/chat-worktree';
+import { isChatTurnInProgress } from '../chat/chat-turn-guard';
+import { lookupWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
+import { listWorktrees } from '../state/worktree-service';
+import { otherChatsUsingCheckout } from './chat-checkout-guard';
+import {
+  buildRepoMenuItems,
+  pickDefaultRepo,
+  readRememberedRepo,
+  rememberRepo,
+  repoForPanelCwd,
+  repoLabel,
+  repoPanelCwd,
+} from './scc-repo-switcher';
+import { openContextMenu } from './context-menu';
+import { getActiveViewerTabPath } from './file-viewer-tab-store';
 import { createChangesView, focusCommitMessage } from './scc-changes';
 import { pushWithPublishPrompt } from './git-publish-push';
 import { createActionsView } from './scc-actions';
@@ -59,6 +75,7 @@ import { loadUtilityModelConfig } from '../config/utility-model-meta';
 import {
   button,
   el,
+  emptyState,
   stateDot,
   type SccBadge,
   type SccContext,
@@ -71,6 +88,13 @@ let pendingOpenOptions: { section?: SccSectionId; cwd?: string } | undefined;
 
 const GIT_POLL_MS = 5_000;
 const FORGE_POLL_MS = 60_000;
+const syncActions = {
+  Fetch: { run: gitFetch, progress: 'Fetching', completed: 'Fetched', success: 'Fetched remotes' },
+  Pull: { run: gitPull, progress: 'Pulling', completed: 'Pulled', success: 'Pulled changes' },
+  Push: { run: (cwd?: string, repo?: string) => pushWithPublishPrompt(cwd, undefined, repo), progress: 'Pushing', completed: 'Pushed', success: 'Pushed changes' },
+};
+type SyncAction = keyof typeof syncActions;
+const syncAllByWorkspace = new Map<string, boolean>();
 
 interface SectionDef {
   id: SccSectionId;
@@ -96,16 +120,20 @@ let activeView: SccView | null = null;
 const viewCache = new Map<SccSectionId, SccView>();
 
 /** Drop every kept page except the one on screen (a different checkout, or teardown). */
-function dropCachedViews(keepActive = true): void {
-  for (const [id, view] of viewCache) {
-    if (keepActive && view === activeView) continue;
-    view.destroy();
-    viewCache.delete(id);
-  }
+function dropCachedViews(): void {
+  for (const view of viewCache.values()) view.destroy();
+  viewCache.clear();
 }
 const badges = new Map<SccSectionId, SccBadge>();
 
 let panelCwd: string | undefined;
+let workspaceRepos: WorkspaceRepo[] = [];
+let repoScopePath = '';
+let selectedRepoId: string | undefined;
+let discoveryFailed = false;
+let checkoutWorkspace = '';
+let checkoutVersion = 0;
+let scopeRequest = 0;
 let currentBranch = '';
 let localBranches: string[] = [];
 let remoteBranches: string[] = [];
@@ -134,12 +162,16 @@ function refreshActiveView(): Promise<void> {
 
 // Header elements, rebuilt only on open.
 let repoNameEl: HTMLElement | null = null;
+let repoLabelEl: HTMLElement | null = null;
+let repoBtn: HTMLButtonElement | null = null;
 let branchBtn: HTMLButtonElement | null = null;
 let worktreeBtn: HTMLButtonElement | null = null;
 let followChatBtn: HTMLButtonElement | null = null;
 let forgeChipEl: HTMLElement | null = null;
+let fetchBtn: HTMLButtonElement | null = null;
 let pullBtn: HTMLButtonElement | null = null;
 let pushBtn: HTMLButtonElement | null = null;
+let syncEl: HTMLElement | null = null;
 
 // ── Open state ───────────────────────────────────────────────────────────────
 
@@ -151,7 +183,16 @@ export function isSourceControlCenterOpen(): boolean {
 /** Re-read git state after a workspace switch so worktree rows match the new repo. */
 export function refreshSourceControlCenter(): void {
   if (!isSourceControlCenterOpen()) return;
-  void refreshAll();
+  void mountSourceControlCenter();
+}
+
+/** Carry a view following the chat to its newly prepared checkout. */
+export function syncSourceControlChatCheckout(previous: string): void {
+  if (!isSourceControlCenterOpen()) return;
+  const next = activeChatCheckout();
+  if (next !== null && worktreePathsEqual(viewingCheckout() ?? getWorkspacePath(), previous)) {
+    void showCheckoutScope(next, false, selectedRepoId);
+  } else paintHeader();
 }
 
 // ── Shell ────────────────────────────────────────────────────────────────────
@@ -197,7 +238,7 @@ function sections(): SectionDef[] {
       group: 'Repository',
       create: (ctx) =>
         createWorktreesView(ctx, {
-          onSelectWorktree: (path) => void setCwd(path),
+          onSelectWorktree: (path) => void ctx.openWorktree?.(path),
         }),
     },
     {
@@ -218,17 +259,44 @@ function sections(): SectionDef[] {
   ];
 }
 
-const context: SccContext = {
-  getCwd: () => effectiveCwd(),
-  getBranch: () => currentBranch,
-  refreshAll: () => refreshAll(),
-  refreshSection: async () => {
-    await activeView?.refresh();
-  },
-  goTo: (section) => void showSection(section),
-  setBadge: (section, badge) => applyRailBadge(section, badge),
-  openWorktree: (path) => setCwd(worktreePathsEqual(path, getWorkspacePath()) ? undefined : path),
-};
+function sectionContext(): SccContext {
+  const workspace = getWorkspacePath().trim();
+  const cwd = effectiveCwd() ?? (workspace || undefined);
+  const repo = currentRepository();
+  const version = checkoutVersion;
+  const current = () => version === checkoutVersion;
+  return {
+    getCwd: () => cwd,
+    getBranch: () => current() ? currentBranch : '',
+    repoKey: repo ? `${workspace}\0${repo.id}` : cwd,
+    sharedCheckout: () => current() && cwd ? sharedCheckout(cwd, workspace) : undefined,
+    chatWorktreeMerge: () => {
+      if (!current() || !cwd || !repo || !sessionState) return undefined;
+      const owner = chatMirrorAt(cwd);
+      const chat = owner?.chat;
+      if (!owner || !chat?.workspacePath || owner.repo.id !== repo.id) return undefined;
+      return { request: { cwd: chat.workspacePath, mirror: { chatId: chat.id, repoId: repo.id } }, repoLabel: repoLabel(repo).label,
+        busy: isChatTurnInProgress(chat.id) };
+    },
+    newThreadInCheckout: async (path, branch) => {
+      if (!current()) return;
+      const checkout = repo && worktreePathsEqual(path, repo.absPath) ? repoScopePath : path;
+      const { createChatWithMode } = await import('./sidebar');
+      if (!current() || getWorkspacePath() !== workspace) return;
+      const result = await createChatWithMode({
+        modeId: 'general', workspacePath: workspace, forceNewChat: true,
+        ...(!worktreePathsEqual(checkout, workspace) ? { checkoutTarget: { cwd: checkout, branch } } : {}),
+      });
+      if (!result.ok) showToast(result.error ?? 'Could not start a thread in this checkout', 'error');
+      else navigateToCodeChat();
+    },
+    refreshAll: async () => { if (current()) await refreshAll(); },
+    refreshSection: async () => { if (current()) await activeView?.refresh(); },
+    goTo: (section) => { if (current()) void showSection(section); },
+    setBadge: (section, badge) => { if (current()) applyRailBadge(section, badge); },
+    openWorktree: async (path) => { if (current()) await showCheckoutScope(path, false, repo?.id); },
+  };
+}
 
 function buildShell(): HTMLElement {
   const shell = el('div', 'scc-root');
@@ -249,13 +317,27 @@ function buildHeader(): HTMLElement {
 
   const identity = el('div', 'scc-head__identity');
   const repoContext = el('div', 'scc-head__context');
+  const dragGap = el('div', 'scc-head__drag-gap');
+  dragGap.setAttribute('aria-hidden', 'true');
 
   repoNameEl = el('span', 'scc-head__repo');
+  repoLabelEl = el('span', 'scc-head__repo-label');
   identity.append(
     createBackToChatButton(closeSourceControlCenter),
     el('h1', 'scc-head__title', 'Source Control'),
     repoContext,
+    dragGap,
   );
+
+  repoBtn = button({
+    icon: 'folder',
+    label: '—',
+    title: 'Switch repository',
+    className: 'scc-head__context-btn scc-head__repo-switch',
+    onClick: () => openRepoSwitcher(),
+  });
+  repoBtn.appendChild(createIcon('chevronDown', { className: 'scc-btn__icon', size: 12 }));
+  repoBtn.hidden = true;
 
   branchBtn = button({
     icon: 'gitBranch',
@@ -268,9 +350,9 @@ function buildHeader(): HTMLElement {
 
   worktreeBtn = button({
     icon: 'gitWorktree',
-    label: 'Main worktree',
-    title: 'Switch worktree',
-    className: 'scc-head__context-btn',
+    label: 'Local',
+    title: 'Browse worktrees',
+    className: 'scc-head__context-btn scc-head__worktree',
     onClick: () => showSection('worktrees'),
   });
 
@@ -278,28 +360,29 @@ function buildHeader(): HTMLElement {
   forgeChipEl.hidden = true;
   followChatBtn = button({
     icon: 'appChat',
-    label: 'Follow chat',
+    label: 'Show chat’s checkout',
     variant: 'ghost',
     title: 'Show the checkout the active chat uses',
     className: 'scc-head__follow',
     onClick: () => {
       const chatCwd = activeChatCheckout();
-      if (chatCwd !== null) void setCwd(chatCwd);
+      if (chatCwd !== null) void showCheckoutScope(chatCwd, false, selectedRepoId);
     },
   });
   followChatBtn.hidden = true;
-  repoContext.append(repoNameEl, branchBtn, worktreeBtn, followChatBtn, forgeChipEl);
+  repoContext.append(repoNameEl, repoBtn, repoLabelEl, worktreeBtn, branchBtn, followChatBtn, forgeChipEl);
 
   const sync = el('div', 'scc-head__sync');
+  syncEl = sync;
   sync.setAttribute('role', 'group');
   sync.setAttribute('aria-label', 'Remote sync');
 
-  const fetchBtn = button({
+  fetchBtn = button({
     icon: 'gitFetch',
     label: 'Fetch',
     title: 'Fetch from every remote',
     className: 'scc-head__fetch',
-    onClick: () => void runOp(() => gitFetch(effectiveCwd()), 'Fetched remotes'),
+    onClick: () => void runPrimarySync('Fetch'),
   });
 
   pullBtn = button({
@@ -307,7 +390,7 @@ function buildHeader(): HTMLElement {
     label: 'Pull',
     title: 'Pull from upstream',
     className: 'scc-head__pull',
-    onClick: () => void runOp(() => gitPull(effectiveCwd()), 'Pulled changes'),
+    onClick: () => void runPrimarySync('Pull'),
   });
 
   pushBtn = button({
@@ -315,7 +398,7 @@ function buildHeader(): HTMLElement {
     label: 'Push',
     title: 'Push to upstream',
     className: 'scc-head__push',
-    onClick: () => void runOp(() => pushWithPublishPrompt(effectiveCwd()), 'Pushed changes'),
+    onClick: () => void runPrimarySync('Push'),
   });
 
   for (const action of [pullBtn, pushBtn]) {
@@ -324,7 +407,12 @@ function buildHeader(): HTMLElement {
     count.setAttribute('aria-hidden', 'true');
     action.appendChild(count);
   }
-  sync.append(fetchBtn, pullBtn, pushBtn);
+  const syncMenu = button({
+    icon: 'chevronDown', title: 'Sync options', className: 'scc-head__sync-menu',
+    onClick: () => openSyncMenu(syncMenu),
+  });
+  syncMenu.setAttribute('aria-haspopup', 'menu');
+  sync.append(fetchBtn, pullBtn, pushBtn, syncMenu);
 
   const actions = el('div', 'scc-head__actions');
 
@@ -343,6 +431,65 @@ function buildHeader(): HTMLElement {
 
   header.append(identity, sync, actions);
   return header;
+}
+
+function syncPreferenceKey(): string {
+  const path = normalizeWorkspacePath(getWorkspacePath());
+  return `minnow.scc.sync-all:${/^[A-Z]:\//i.test(path) ? path.toLowerCase() : path}`;
+}
+
+function mainButtonsSyncAll(): boolean {
+  if (workspaceRepos.length < 2) return false;
+  const key = syncPreferenceKey();
+  const remembered = syncAllByWorkspace.get(key);
+  if (remembered !== undefined) return remembered;
+  let enabled = false;
+  try { enabled = globalThis.localStorage?.getItem(key) === 'true'; } catch { /* Storage may be blocked. */ }
+  syncAllByWorkspace.set(key, enabled);
+  return enabled;
+}
+
+function setMainButtonsSyncAll(enabled: boolean): void {
+  const key = syncPreferenceKey();
+  syncAllByWorkspace.set(key, enabled);
+  try { globalThis.localStorage?.setItem(key, String(enabled)); } catch { /* Keep the preference for this view. */ }
+  paintSyncMode();
+}
+
+function syncTargets(): { label: string; cwd: string }[] {
+  const selected = currentRepository();
+  const checkout = effectiveCwd() ?? getWorkspacePath();
+  return workspaceRepos.map(repo => ({
+    label: repoLabel(repo).label,
+    cwd: repo.id === selected?.id ? checkout : repo.absPath,
+  }));
+}
+
+function openSyncMenu(dropdown: HTMLButtonElement): void {
+  if (busy || workspaceRepos.length < 2) return;
+  const version = checkoutVersion;
+  const workspace = getWorkspacePath();
+  const current = () => version === checkoutVersion && workspace === getWorkspacePath() && isSourceControlCenterOpen();
+  const targets = syncTargets();
+  const enabled = mainButtonsSyncAll();
+  const menu = openContextMenu({
+    anchor: dropdown,
+    restoreFocus: dropdown,
+    label: 'Sync options',
+    items: [
+      ...(Object.keys(syncActions) as SyncAction[]).map(action => ({
+        id: `sync-all:${action}`,
+        label: `${action} all`,
+        onSelect: () => { if (current()) return runSyncAll(action, targets); },
+      })),
+      { kind: 'separator' },
+      {
+        id: 'sync-all:main-buttons', label: 'Main buttons sync all repos', checked: enabled,
+        onSelect: () => { if (current()) setMainButtonsSyncAll(!enabled); },
+      },
+    ],
+  });
+  menu.root.classList.add('scc-sync-options');
 }
 
 function buildBody(): HTMLElement {
@@ -411,7 +558,7 @@ async function showSection(id: SccSectionId): Promise<void> {
 
   activeSection = id;
   const cached = viewCache.get(id);
-  activeView = cached ?? def.create(context);
+  activeView = cached ?? def.create(sectionContext());
   if (!cached) viewCache.set(id, activeView);
 
   paneEl.replaceChildren(activeView.root);
@@ -461,13 +608,14 @@ function paintRailBadge(section: SccSectionId): void {
 // ── Refresh ──────────────────────────────────────────────────────────────────
 
 const gitStatePoll = createPollingTask(async signal => {
+  const version = checkoutVersion;
   const cwd = effectiveCwd();
-  const current = () => !signal.aborted && isSourceControlCenterOpen() && cwd === effectiveCwd();
+  const current = () => !signal.aborted && isSourceControlCenterOpen() && version === checkoutVersion;
   const status = await gitStatus(cwd, signal);
   if (!current()) return;
 
   if (!status.ok) {
-    if (isMissingGitRepositoryError(status.error)) {
+    if (discoveryFailed || isMissingGitRepositoryError(status.error)) {
       setNoRepo(true);
       return;
     }
@@ -489,7 +637,7 @@ const gitStatePoll = createPollingTask(async signal => {
   paintSyncCount(pullBtn, 'Pull', status.behind ?? 0);
   paintSyncCount(pushBtn, 'Push', status.ahead ?? 0);
 
-  await refreshGitRailBadges(applyRailBadge, {
+  await refreshGitRailBadges((section, badge) => { if (current()) applyRailBadge(section, badge); }, {
     cwd,
     status,
     branchCount: localBranches.length + new Set(remoteBranches.filter((ref) => !isSkippedRemoteRef(ref)).map(displayRemoteRef)).size,
@@ -498,21 +646,26 @@ const gitStatePoll = createPollingTask(async signal => {
 
 function refreshGitState(): Promise<void> { return gitStatePoll.run(); }
 
-let forgeStatePending: Promise<void> | undefined;
+let forgeStatePending: { version: number; promise: Promise<void> } | undefined;
 function refreshForgeState(): Promise<void> {
-  if (forgeStatePending) return forgeStatePending;
-  const pending = refreshForgeStateInner().finally(() => { if (forgeStatePending === pending) forgeStatePending = undefined; });
-  forgeStatePending = pending;
-  return pending;
+  const version = checkoutVersion;
+  if (forgeStatePending?.version === version) return forgeStatePending.promise;
+  const promise = refreshForgeStateInner().finally(() => {
+    if (forgeStatePending?.promise === promise) forgeStatePending = undefined;
+  });
+  forgeStatePending = { version, promise };
+  return promise;
 }
 
 async function refreshForgeStateInner(): Promise<void> {
+  const version = checkoutVersion;
   const cwd = effectiveCwd();
   const result = await forgeStatus(cwd);
-  if (!isSourceControlCenterOpen() || cwd !== effectiveCwd()) return;
+  const current = () => isSourceControlCenterOpen() && checkoutVersion === version;
+  if (!current()) return;
   forge = result;
   paintForgeChip();
-  await refreshForgeRailBadges(applyRailBadge, {
+  await refreshForgeRailBadges((section, badge) => { if (current()) applyRailBadge(section, badge); }, {
     cwd,
     branch: currentBranch,
     forge,
@@ -521,8 +674,37 @@ async function refreshForgeStateInner(): Promise<void> {
 
 // ── Header ───────────────────────────────────────────────────────────────────
 
+function currentRepository(): WorkspaceRepo | null {
+  return workspaceRepos.find(repo => repo.id === selectedRepoId) ?? null;
+}
+
+function chatMirrorAt(cwd: string) {
+  for (const chat of sessionState?.chats ?? []) {
+    const mirror = getChatMirrorBinding(chat);
+    const repo = mirror?.repos.find(row => worktreePathsEqual(row.path, cwd));
+    if (mirror && repo) return { chat, mirror, repo };
+  }
+  return undefined;
+}
+
+/** The full checkout folder a chat would use for the current Git target. */
+function viewingCheckout(): string | undefined {
+  return repoForPanelCwd(panelCwd, workspaceRepos, repoScopePath)
+    ? resolvePanelWorktreeCwd(repoScopePath) : panelCwd;
+}
+
+function sharedCheckout(cwd: string, workspace: string) {
+  const repo = repoForPanelCwd(cwd, workspaceRepos, repoScopePath);
+  const folders = repo ? [cwd, repoScopePath] : [cwd];
+  const active = sessionState ? getActiveChat() : null;
+  const otherChats = otherChatsUsingCheckout({ id: active?.id ?? '' }, folders, workspace).length;
+  return otherChats ? { otherChats } : undefined;
+}
+
 function paintHeader(): void {
   const workspace = getWorkspacePath().trim();
+  syncEl?.toggleAttribute('data-multi-repo', workspaceRepos.length > 1);
+  paintSyncMode();
 
   if (repoNameEl) {
     const name = workspace.split(/[\\/]/).filter(Boolean).pop() ?? 'Repository';
@@ -536,28 +718,40 @@ function paintHeader(): void {
     branchBtn.title = currentBranch ? `On ${currentBranch} — click to switch` : 'Detached HEAD';
   }
 
+  const currentRepo = currentRepository();
+  const repositoryLabel = currentRepo ? repoLabel(currentRepo).label : 'Choose repository';
+  if (repoBtn) {
+    repoBtn.hidden = workspaceRepos.length < 2;
+    const label = repoBtn.querySelector('.scc-btn__label');
+    if (label) label.textContent = repositoryLabel;
+    repoBtn.title = currentRepo ? `Switch repository · ${repositoryLabel}` : 'Switch repository';
+    repoBtn.setAttribute('aria-haspopup', 'menu');
+  }
+  if (repoLabelEl) {
+    repoLabelEl.hidden = !currentRepo || currentRepo.isRoot || workspaceRepos.length > 1;
+    repoLabelEl.textContent = repositoryLabel;
+  }
+
+  const viewing = viewingCheckout();
   if (worktreeBtn) {
     const label = worktreeBtn.querySelector('.scc-btn__label');
-    const cwd = panelCwd;
-    const name = cwd && !worktreePathsEqual(cwd, workspace)
-      ? displayWorktreeTitle({ path: cwd, branch: currentBranch || undefined })
-      : 'Main worktree';
+    const name = viewing ? displayWorktreeTitle({ path: viewing, branch: currentBranch || undefined }) : 'Local';
     if (label) label.textContent = name;
-    worktreeBtn.classList.toggle('is-secondary-worktree', Boolean(cwd && !worktreePathsEqual(cwd, getWorkspacePath())));
-    worktreeBtn.title = cwd ? `Working in ${cwd}` : 'Working in the main worktree';
+    worktreeBtn.classList.toggle('is-secondary-worktree', Boolean(viewing));
+    worktreeBtn.title = viewing ? `Browsing ${viewing}` : 'Browsing the Local checkout';
   }
 
   if (followChatBtn && worktreeBtn) {
     // Say when Source Control is not looking at the active chat's checkout.
     const chatCwd = activeChatCheckout();
-    const viewing = panelCwd;
+    // A repo root inside the workspace counts as the main checkout here too.
     const differs = chatCwd !== null && !(chatCwd === undefined
       ? viewing === undefined || worktreePathsEqual(viewing, workspace)
       : viewing !== undefined && worktreePathsEqual(viewing, chatCwd));
     followChatBtn.hidden = !differs;
     if (differs) {
       const chatName = sessionState ? getActiveChat().name || 'The active chat' : 'The active chat';
-      const where = chatCwd ? displayWorktreeTitle({ path: chatCwd }) : 'the main worktree';
+      const where = chatCwd ? displayWorktreeTitle({ path: chatCwd }) : 'the Local checkout';
       followChatBtn.title = `${chatName} uses ${where}. Show that checkout.`;
       worktreeBtn.title = `${worktreeBtn.title}\n${chatName} uses ${where}, not this checkout.`;
     }
@@ -572,18 +766,91 @@ function activeChatCheckout(): string | undefined | null {
   return cwd && !worktreePathsEqual(cwd, getWorkspacePath()) ? cwd : undefined;
 }
 
+function openRepoSwitcher(): void {
+  if (!repoBtn || workspaceRepos.length < 2) return;
+  openContextMenu({
+    anchor: repoBtn,
+    restoreFocus: repoBtn,
+    label: 'Switch repository',
+    items: buildRepoMenuItems(workspaceRepos, selectedRepoId ?? null, (repo) => void selectRepo(repo)),
+  });
+}
+
+async function selectRepo(repo: WorkspaceRepo): Promise<void> {
+  if (repo.id === selectedRepoId) return;
+  rememberRepo(getWorkspacePath(), repo.id);
+  await setCwd(repoPanelCwd(repo) ?? repoScopePath, repo.id);
+}
+
+/**
+ * Load the workspace's repos. When the center opens on the workspace itself
+ * and the folder holds repos below it, point it at the right one first.
+ */
+async function loadWorkspaceRepos(cwd: string | undefined, refresh = false, preferredRepoId?: string): Promise<{ cwd?: string; repoId?: string } | null> {
+  const request = ++scopeRequest;
+  const workspace = getWorkspacePath();
+  const discovered = await lookupWorkspaceRepos({ workspacePath: workspace, refresh });
+  let repos = discovered ?? (checkoutWorkspace === workspace && repoScopePath === workspace ? workspaceRepos : []);
+  const owner = cwd ? chatMirrorAt(cwd) : undefined;
+  const checkout = resolvePanelWorktreeCwd(owner?.mirror.path ?? cwd);
+  const knownMirror = checkout && (owner?.mirror ?? sessionState?.chats.map(getChatMirrorBinding)
+    .find(binding => binding && worktreePathsEqual(binding.path, checkout)));
+  let scope = workspace;
+  let checkoutDiscoveryFailed = false;
+  let repo = repoForPanelCwd(checkout, repos, workspace);
+  if (checkout && !repo) {
+    const checkoutRepos = await lookupWorkspaceRepos({ checkoutPath: checkout, refresh });
+    if (knownMirror || checkoutRepos?.some(repo => !repo.isRoot)) {
+      // A failed mirror scan must never send a bulk operation to the originals.
+      repos = checkoutRepos?.filter(repo => !repo.isRoot) ?? [];
+      scope = checkout;
+      checkoutDiscoveryFailed = knownMirror ? repos.length !== knownMirror.repos.length : false;
+      if (checkoutDiscoveryFailed) repos = [];
+    } else if (checkoutRepos?.length) {
+      const listed = await listWorktrees(checkout);
+      const principal = getPrincipalWorktree(listed.worktrees ?? parseWorktreeListPorcelain(listed.output ?? ''));
+      if (principal) repo = repoForPanelCwd(principal.path, repos, workspace);
+    }
+  }
+  if (request !== scopeRequest || workspace !== getWorkspacePath()) return null;
+  workspaceRepos = repos;
+  repoScopePath = scope;
+  discoveryFailed = checkoutDiscoveryFailed || discovered === null;
+  if (checkout && scope === workspace) return { cwd: checkout, repoId: repo?.id };
+  const pick = pickDefaultRepo(repos, {
+    workspacePath: scope,
+    activeFilePath: getActiveViewerTabPath(),
+    remembered: owner?.repo.id ?? preferredRepoId ?? readRememberedRepo(workspace),
+  });
+  return { cwd: pick?.isRoot ? resolvePanelWorktreeCwd(scope) : pick?.absPath ?? checkout, repoId: pick?.id };
+}
+
 function paintSyncCount(action: HTMLButtonElement | null, label: 'Pull' | 'Push', count: number): void {
   if (!action) return;
   const badge = action.querySelector<HTMLElement>('.scc-head__sync-count')!;
   const text = count > 0 ? String(count) : '';
-  if (badge.textContent === text) return;
-
+  const all = mainButtonsSyncAll();
   const commits = `${count} commit${count === 1 ? '' : 's'}`;
-  badge.textContent = text;
-  badge.hidden = !text;
-  action.setAttribute('aria-label', text ? `${label}, ${commits}` : label);
+  if (badge.textContent !== text) badge.textContent = text;
+  badge.hidden = all || !text;
+  action.setAttribute('aria-label', all ? `${label} all repositories` : text ? `${label}, ${commits}` : label);
   const direction = label === 'Pull' ? 'from' : 'to';
-  action.title = text ? `${commits} to ${label.toLowerCase()}` : `${label} ${direction} upstream`;
+  action.title = all ? `${label} all repositories` : text ? `${commits} to ${label.toLowerCase()}` : `${label} ${direction} upstream`;
+}
+
+function paintSyncMode(): void {
+  const all = mainButtonsSyncAll();
+  for (const [button, label] of [[fetchBtn, 'Fetch'], [pullBtn, 'Pull'], [pushBtn, 'Push']] as const) {
+    const text = button?.querySelector('.scc-btn__label');
+    const next = all ? `${label} all` : label;
+    if (text && text.textContent !== next) text.textContent = next;
+  }
+  if (fetchBtn) {
+    fetchBtn.title = all ? 'Fetch all repositories' : 'Fetch from every remote';
+    fetchBtn.setAttribute('aria-label', all ? 'Fetch all repositories' : 'Fetch');
+  }
+  paintSyncCount(pullBtn, 'Pull', Number(pullBtn?.querySelector('.scc-head__sync-count')?.textContent ?? 0));
+  paintSyncCount(pushBtn, 'Push', Number(pushBtn?.querySelector('.scc-head__sync-count')?.textContent ?? 0));
 }
 
 function paintForgeChip(): void {
@@ -611,14 +878,28 @@ function setNoRepo(active: boolean): void {
   if (!noRepoEl) return;
 
   noRepoEl.hidden = !active;
-  if (active && !noRepoEl.firstChild) renderGitNoRepositoryState(noRepoEl);
+  const state = discoveryFailed ? 'failed' : 'empty';
+  if (active && (!noRepoEl.firstChild || noRepoEl.dataset.state !== state)) {
+    noRepoEl.dataset.state = state;
+    if (discoveryFailed) {
+      noRepoEl.replaceChildren(emptyState({
+        icon: 'folder', title: 'Could not discover repositories',
+        body: 'Minnow could not read the repositories in this workspace.',
+        action: button({ label: 'Retry repository discovery', onClick: () => void showCheckoutScope(viewingCheckout(), true) }),
+      }));
+    } else renderGitNoRepositoryState(noRepoEl);
+  }
   if (!active) noRepoEl.replaceChildren();
 }
 
 async function refreshAll(): Promise<void> {
+  const version = checkoutVersion;
   await refreshGitState();
+  if (version !== checkoutVersion) return;
   if (activeSection === 'pulls' || activeSection === 'checks') {
-    forge = await forgeRefresh(effectiveCwd());
+    const status = await forgeRefresh(effectiveCwd());
+    if (version !== checkoutVersion) return;
+    forge = status;
     paintForgeChip();
   }
   await refreshActiveView();
@@ -630,8 +911,7 @@ async function runOp(
   recoveryActions?: RunGitUiOpOptions['recoveryActions'],
 ): Promise<boolean> {
   if (busy) return false;
-  busy = true;
-  root?.classList.add('is-busy');
+  setSyncBusy(true);
   try {
     const result = await runGitUiOp(fn, {
       label: inferGitUiLabel(successMessage),
@@ -643,25 +923,93 @@ async function runOp(
     await refreshAll();
     return true;
   } finally {
-    busy = false;
-    root?.classList.remove('is-busy');
+    setSyncBusy(false);
   }
 }
 
-/** Point the center at a different worktree, and keep the sidebar in step. */
-async function setCwd(path: string | undefined): Promise<void> {
-  panelCwd = path;
+function setSyncBusy(value: boolean): void {
+  busy = value;
+  root?.classList.toggle('is-busy', value);
+  for (const button of syncEl?.querySelectorAll<HTMLButtonElement>('button') ?? []) button.disabled = value;
+}
+
+async function runPrimarySync(action: SyncAction): Promise<void> {
+  if (mainButtonsSyncAll()) return runSyncAll(action, syncTargets());
+  const { run, success } = syncActions[action];
+  await runOp(() => run(effectiveCwd(), undefined), success);
+}
+
+async function runSyncAll(action: SyncAction, targets: { label: string; cwd: string }[]): Promise<void> {
+  if (busy) return;
+  const { run, progress, completed } = syncActions[action];
+  const issues: string[] = [];
+  let succeeded = 0;
+  setSyncBusy(true);
+  try {
+    await runGitUiOp(async () => {
+      for (const { label, cwd } of targets) {
+        try {
+          const result = await run(cwd, label);
+          if (result.ok) succeeded += 1;
+          else issues.push(`${label}\n${result.error === 'cancelled' ? 'Skipped' : result.error || 'Git operation failed'}`);
+        } catch (error) {
+          issues.push(`${label}\n${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      return { ok: true };
+    }, { label: `${progress} ${targets.length} repositories…`, skipSuccessToast: true });
+    const summary = `${completed} ${succeeded} of ${targets.length} repositories`;
+    if (issues.length) void appAlert(issues.join('\n\n'), summary);
+    else showToast(summary, 'success');
+    await refreshAll();
+  } finally {
+    setSyncBusy(false);
+  }
+}
+
+/** Point the center and its section views at a different checkout. */
+function changeCwd(next: string | undefined, repoId?: string): void {
+  const workspace = getWorkspacePath();
+  if (workspace === checkoutWorkspace && selectedRepoId === repoId &&
+    (next === panelCwd || (next && panelCwd && worktreePathsEqual(next, panelCwd)))) return;
+  checkoutWorkspace = workspace;
+  panelCwd = next;
+  selectedRepoId = repoId;
+  checkoutVersion += 1;
+  gitStatePoll.cancel();
   forge = null;
-  // Kept pages belong to the previous checkout.
+  currentBranch = '';
+  localBranches = [];
+  remoteBranches = [];
+  lockedLocalBranches = [];
+  for (const section of badges.keys()) applyRailBadge(section, null);
   dropCachedViews();
-  const { setGitPanelCwd } = await import('./git-panel');
-  setGitPanelCwd(path);
+  activeView = null;
+  setNoRepo(false);
+  paintHeader();
+  paintForgeChip();
+  paintSyncCount(pullBtn, 'Pull', 0);
+  paintSyncCount(pushBtn, 'Push', 0);
+}
+
+async function setCwd(path: string | undefined, repoId?: string): Promise<void> {
+  scopeRequest += 1;
+  changeCwd(resolvePanelWorktreeCwd(path), repoId);
+  const version = checkoutVersion;
+  paintHeader();
+  await showSection(activeSection);
   await refreshAll();
-  await refreshForgeState();
+  if (version === checkoutVersion) await refreshForgeState();
+}
+
+async function showCheckoutScope(cwd: string | undefined, refresh = false, preferredRepoId?: string): Promise<void> {
+  const next = await loadWorkspaceRepos(cwd, refresh, preferredRepoId);
+  if (next) await setCwd(next.cwd, next.repoId);
 }
 
 function openBranchSwitcher(): void {
   if (!branchBtn) return;
+  const { openWorktree, sharedCheckout: getGuard } = sectionContext();
   const cwd = effectiveCwd() ?? getWorkspacePath();
   const expectedBranch = currentBranch || undefined;
   openGitBranchSwitchPopover({
@@ -684,10 +1032,10 @@ function openBranchSwitcher(): void {
         () => checkoutBranchWithChoice(
           { branch: name, create: kind !== 'local', startPoint, cwd, expectedBranch },
           () => worktreePathsEqual(cwd, effectiveCwd() ?? getWorkspacePath()),
-          { openWorktree: context.openWorktree },
+          { openWorktree, shared: getGuard?.() },
         ),
         kind === 'local' ? `Switched to ${name}` : `Created and checked out ${name}`,
-        (failed) => checkoutRecoveryActions(failed, { cwd, openWorktree: context.openWorktree }),
+        (failed) => checkoutRecoveryActions(failed, { cwd, openWorktree }),
       );
     },
   });
@@ -709,26 +1057,30 @@ async function reviewCurrentBranchPr(): Promise<void> {
     showToast('Repository is unknown', 'error');
     return;
   }
-  const listed = await runGitUiOp(() => prList({ cwd: effectiveCwd(), state: 'open' }), {
+  const version = checkoutVersion;
+  const cwd = effectiveCwd();
+  const branch = currentBranch;
+  const listed = await runGitUiOp(() => prList({ cwd, state: 'open' }), {
     label: 'Listing pull requests…',
     chatKind: 'pr',
-    ctx: gitUiCtx(effectiveCwd(), currentBranch),
+    ctx: gitUiCtx(cwd, branch),
     skipSuccessToast: true,
   });
-  if (!listed.ok) {
+  if (!listed.ok || version !== checkoutVersion) {
     return;
   }
-  const match = matchPrForBranch(listed.prs ?? [], currentBranch);
+  const match = matchPrForBranch(listed.prs ?? [], branch);
   if (!match) {
     showToast('No open pull request for this branch', 'error');
     return;
   }
-  requestPullsSelection(match.number);
+  requestPullsSelection(match.number, sectionContext().repoKey);
   await showSection('pulls');
+  void refreshActiveView();
   const result = await runGitUiOp(
     () =>
       startPrReview({
-        cwd: effectiveCwd(),
+        cwd,
         repo,
         number: match.number,
       }),
@@ -736,7 +1088,7 @@ async function reviewCurrentBranchPr(): Promise<void> {
       label: 'Starting review…',
       successMessage: `Reviewing #${match.number}`,
       chatKind: 'pr',
-      ctx: gitUiCtx(effectiveCwd(), currentBranch),
+      ctx: gitUiCtx(cwd, branch),
     },
   );
   if (!result.ok) return;
@@ -767,6 +1119,25 @@ function buildCommands(): Command[] {
     jump('pulls', 'Pull requests', modKeyLabel('6')),
     jump('checks', 'Actions', modKeyLabel('7')),
     jump('releases', 'Releases', modKeyLabel('8')),
+
+    {
+      id: 'checkout.new-thread',
+      title: 'New thread in this checkout',
+      group: 'Worktrees',
+      available: () => Boolean(viewingCheckout()),
+      run: () => {
+        const cwd = effectiveCwd();
+        if (cwd) void sectionContext().newThreadInCheckout?.(cwd, currentBranch);
+      },
+    },
+
+    ...(workspaceRepos.length > 1 ? workspaceRepos.map((repo): Command => ({
+      id: `repo.${repo.id}`,
+      title: `Switch to repository ${repoLabel(repo).label}`,
+      group: 'Repository',
+      keywords: `repo repository ${repo.id} ${repoLabel(repo).hint ?? ''}`,
+      run: () => void selectRepo(repo),
+    })) : []),
 
     {
       id: 'sync.fetch',
@@ -924,7 +1295,7 @@ function buildCommands(): Command[] {
       group: 'Worktree',
       keywords: 'switch root workspace',
       available: () => Boolean(panelCwd),
-      run: () => void setCwd(undefined),
+      run: () => void showCheckoutScope(undefined, false, selectedRepoId),
     },
 
     {
@@ -1089,10 +1460,14 @@ export async function openSourceControlCenter(options?: {
 export async function mountSourceControlCenter(): Promise<void> {
   const options = pendingOpenOptions;
   pendingOpenOptions = undefined;
-  const { getGitPanelCwd } = await import('./git-panel');
-  panelCwd = options?.cwd ?? getGitPanelCwd();
+  const workspaceChanged = checkoutWorkspace && checkoutWorkspace !== getWorkspacePath();
+  const currentCheckout = root && !workspaceChanged ? viewingCheckout() : activeChatCheckout() ?? undefined;
+  const next = await loadWorkspaceRepos(options?.cwd ?? currentCheckout);
+  if (!next) return;
+  changeCwd(next.cwd, next.repoId);
   if (root) {
-    if (options?.section) await showSection(options.section);
+    paintHeader();
+    await showSection(options?.section ?? activeSection);
     await refreshAll();
     return;
   }
@@ -1104,6 +1479,7 @@ export async function mountSourceControlCenter(): Promise<void> {
 
   root = buildShell();
   area.replaceChildren(root);
+  paintHeader();
 
   unregisterGlobalCommands = registerCommandSource(
     'source-control',
@@ -1148,7 +1524,7 @@ export function resetSourceControlCenterForTests(): void {
   }
   unregisterGlobalCommands?.();
   unregisterGlobalCommands = null;
-  dropCachedViews(false);
+  dropCachedViews();
   activeView = null;
   document.getElementById(ROOT_ID)?.remove();
   root = null;
@@ -1157,6 +1533,17 @@ export function resetSourceControlCenterForTests(): void {
   noRepoEl = null;
   pendingOpenOptions = undefined;
   panelCwd = undefined;
+  workspaceRepos = [];
+  repoScopePath = '';
+  selectedRepoId = undefined;
+  discoveryFailed = false;
+  checkoutWorkspace = '';
+  scopeRequest += 1;
+  checkoutVersion += 1;
+  repoBtn = null;
+  syncEl = null;
+  fetchBtn = pullBtn = pushBtn = null;
+  syncAllByWorkspace.clear();
   currentBranch = '';
   localBranches = [];
   remoteBranches = [];

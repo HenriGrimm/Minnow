@@ -3,6 +3,7 @@ import type { IssueCard } from '../types';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { subscribeIssueChatQuestions } from '../chat/issue-chat-host';
 import { linkedIssueChats, issueWorkChat, issueAgentCaption, issueDelivery } from '../issues/work-state';
+import { issueAssignedRepoIds } from '../issues/repo-scope';
 import { statusIdForRole } from '../issues/taxonomy';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { appendIssueActivity, appendIssueLinks, findIssueById, updateIssue } from '../state/issues-store';
@@ -10,6 +11,8 @@ import { findChatById, scheduleSaveSessions, sessionState, touchChat } from '../
 import { worktreePathsEqual } from '../lib/worktree-list-parse';
 import { resetRegisteredWorktreePathCache } from '../lib/worktree-allowlist-client';
 import { issueWorkOperation, type IssueWorkRequest, type IssueWorkSnapshot } from '../state/git-api';
+import { getChatMirrorBinding } from '../state/chat-worktree';
+import { lookupWorkspaceRepos } from '../state/workspace-repos';
 import { getChatRunActivity, subscribeChatRunActivity } from '../state/chat-run-activity';
 import { isChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { getForegroundAppId, subscribeInstances } from '../os/instances';
@@ -52,6 +55,8 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   let selectedChat = issueWorkChat(options.issue)?.id;
   let reviewed: IssueWorkSnapshot | undefined;
   let inspectedPath = '';
+  let selectedRepoId = '';
+  let repoChoices: Array<{ id: string; label: string; request: IssueWorkRequest }> = [];
   let loading = false;
   let generation = 0;
   let error = '';
@@ -93,7 +98,28 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   function request(): IssueWorkRequest {
     const issue = current();
     const linked = chat();
-    return { cwd: issue.workspacePath, worktreePath: linked?.worktreeRoot || issue.workspacePath, sourceHead: reviewed?.sourceHead, targetHead: reviewed?.targetHead, sourceBranch: reviewed?.sourceBranch, targetBranch: reviewed?.targetBranch, fingerprint: reviewed?.fingerprint };
+    const repo = repoChoices.find(row => row.id === selectedRepoId);
+    return { ...(repo?.request ?? { cwd: issue.workspacePath, worktreePath: linked?.worktreeRoot || issue.workspacePath }),
+      sourceHead: reviewed?.sourceHead, targetHead: reviewed?.targetHead, sourceBranch: reviewed?.sourceBranch,
+      targetBranch: reviewed?.targetBranch, fingerprint: reviewed?.fingerprint };
+  }
+  async function loadRepoChoices() {
+    const issue = current();
+    const linked = chat();
+    const mirror = getChatMirrorBinding(linked);
+    if (!mirror && linked?.worktreeRoot) return [];
+    const workspace = mirror && linked?.workspacePath ? linked.workspacePath : issue.workspacePath;
+    const repos = await lookupWorkspaceRepos({ checkoutPath: workspace });
+    if (mirror && linked) {
+      const child = mirror.repos.find(row => repos?.some(repo => repo.id === row.id && worktreePathsEqual(repo.absPath, issue.workspacePath)));
+      const ids = child ? [child.id] : issueAssignedRepoIds(issue, workspace, repos ?? []);
+      return mirror.repos.filter(row => !ids.length || ids.includes(row.id)).map(row => ({ id: row.id, label: row.id,
+        request: { cwd: workspace, worktreePath: mirror.path, mirror: { chatId: linked.id, repoId: row.id } } }));
+    }
+    if (!repos?.some(repo => !repo.isRoot)) return [];
+    const ids = issueAssignedRepoIds(issue, workspace, repos);
+    return repos.filter(repo => !ids.length || ids.includes(repo.id)).map(repo => ({ id: repo.id, label: repo.id,
+      request: { cwd: repo.absPath, worktreePath: repo.absPath } }));
   }
   function paintSummary(): void {
     const issue = current();
@@ -123,24 +149,35 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     loading = true;
     error = '';
     paintWork();
-    const result = await issueWorkOperation('Inspect', request());
+    paintFooter();
+    const choices = await loadRepoChoices();
+    if (disposed || token !== generation) return;
+    repoChoices = choices;
+    if (!choices.some(row => row.id === selectedRepoId)) selectedRepoId = choices[0]?.id ?? '';
+    const input = request();
+    const result = await issueWorkOperation('Inspect', input);
     if (disposed || token !== generation) return;
     loading = false;
     reviewed = result.ok ? result : undefined;
-    inspectedPath = request().worktreePath ?? '';
+    inspectedPath = chat()?.worktreeRoot || current().workspacePath;
     if (!result.ok) error = result.error || 'Could not load the issue worktree';
     paintWork();
     paintFooter();
   }
-  function recordDelivery(result: IssueWorkSnapshot, operationInput: IssueWorkRequest, chatId: string): void {
+  async function recordDelivery(result: IssueWorkSnapshot, operationInput: IssueWorkRequest, chatId: string,
+    siblings: readonly IssueWorkRequest[]): Promise<void> {
     const issue = current();
     if (!result.merged) return;
     if (result.worktreeRemoved) detachLinkedChats(operationInput.worktreePath || '');
-    appendIssueLinks(id, { gitLinks: [{ kind: 'commit', ref: result.sha!, title: `[${id}] ${issue.title}` }] });
+    appendIssueLinks(id, { gitLinks: [{ kind: 'commit', ref: result.sha!, title: `[${id}] ${issue.title}`, repo: result.repoId }] });
+    const remaining = await Promise.all(siblings.map(request => issueWorkOperation('Inspect', request)));
+    const complete = !operationInput.mirror || remaining.every(repo => repo.ok && !repo.dirty && !repo.ahead);
     appendIssueActivity(id, { kind: 'work-merged', actorKind: 'user', data: {
       chatId, sha: result.sha || '', mergeSha: result.mergeSha || '', sourceBranch: result.sourceBranch || '', targetBranch: result.targetBranch || '', worktreePath: operationInput.worktreePath || '',
-      worktreeRemoved: Boolean(result.worktreeRemoved), branchRemoved: Boolean(result.branchRemoved), cleanupRequested: cleanup, cleanupError: result.cleanupError || '',
+      repoId: result.repoId || '', worktreeRemoved: Boolean(result.worktreeRemoved), branchRemoved: Boolean(result.branchRemoved),
+      cleanupRequested: cleanup && !operationInput.mirror, cleanupError: result.cleanupError || '', complete,
     } });
+    if (!complete) return;
     const done = statusIdForRole(getIssuesTaxonomySync(), 'done');
     if (done) updateIssue(id, { status: done });
   }
@@ -156,18 +193,20 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     scheduleSaveSessions();
   }
   async function perform(kind: 'Commit' | 'Merge'): Promise<void> {
-    if (busy() || !reviewed?.ok || sourceRunning()) return;
+    if (busy() || loading || !reviewed?.ok || sourceRunning()) return;
     const operationChatId = chat()?.id || '';
-    const input = { ...request(), message: commitDrafts.get(id) ?? `[${id}] ${current().title}`, cleanup };
+    const target = request();
+    const siblings = target.mirror ? repoChoices.filter(row => row.id !== selectedRepoId).map(row => row.request) : [];
+    const input = { ...target, message: commitDrafts.get(id) ?? `[${id}] ${current().title}`, cleanup: cleanup && !target.mirror };
     if (reviewed.dirty && !input.message.trim()) { error = 'Enter a commit message'; paintFooter(); return; }
     operations.add(id);
     error = '';
     paintFooter();
     const result = await issueWorkOperation(kind, input);
+    if (result.ok && kind === 'Merge') await recordDelivery(result, input, operationChatId, siblings);
     operations.delete(id);
-    if (result.ok && kind === 'Merge') recordDelivery(result, input, operationChatId);
     if (result.ok && kind === 'Commit' && result.sha) {
-      appendIssueLinks(id, { gitLinks: [{ kind: 'commit', ref: result.sha, title: input.message }] });
+      appendIssueLinks(id, { gitLinks: [{ kind: 'commit', ref: result.sha, title: input.message, repo: input.mirror?.repoId }] });
       appendIssueActivity(id, { kind: 'work-committed', actorKind: 'user', data: { sha: result.sha, chatId: operationChatId } });
     }
     confirming = false;
@@ -176,7 +215,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     else if (result.cleanupError) error = `Merged successfully. Cleanup needs attention: ${result.cleanupError}`;
     reviewed = undefined;
     paintSummary();
-    if (result.merged) { paintWork(); paintFooter(); }
+    if (result.merged && !input.mirror) { paintWork(); paintFooter(); }
     else {
       const message = error;
       await inspect();
@@ -246,6 +285,29 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     heading.className = 'issues-work-actions';
     heading.append(text('h3', 'Changes'), action(loading ? 'Refreshing…' : 'Refresh', 'refresh', () => void inspect(), false, loading || busy()));
     content.append(heading);
+    if (repoChoices.length) {
+      const label = document.createElement('label');
+      label.className = 'issues-work-field';
+      label.append(text('span', 'Repository'));
+      const picker = document.createElement('select');
+      picker.className = 'issues-filter';
+      picker.disabled = loading || busy();
+      for (const repo of repoChoices) {
+        const option = document.createElement('option');
+        option.value = repo.id;
+        option.textContent = repo.label;
+        option.selected = repo.id === selectedRepoId;
+        picker.append(option);
+      }
+      picker.addEventListener('change', () => {
+        selectedRepoId = picker.value;
+        reviewed = undefined;
+        confirming = false;
+        void inspect();
+      });
+      label.append(picker);
+      content.append(label);
+    }
     if (loading) { content.append(text('p', 'Reading the worktree and destination branch…', 'issues-work-note')); return; }
     paintError(content);
     if (!reviewed) {
@@ -321,7 +383,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     row.className = 'issues-work-actions';
     footer.append(row);
     paintError(footer);
-    if (delivery && delivery.data?.chatId === linked?.id) {
+    if (delivery && delivery.data?.chatId === linked?.id && (!delivery.data?.repoId || delivery.data.repoId === selectedRepoId)) {
       row.append(text('strong', `Merged to ${String(delivery.data?.targetBranch || 'workspace')}`));
       if (delivery.data?.cleanupRequested && (!delivery.data?.worktreeRemoved || !delivery.data?.branchRemoved)) row.append(action('Retry cleanup', 'gitWorktree', () => void retryCleanup(), false, busy()));
       if (delivery.data?.cleanupError) footer.append(text('p', String(delivery.data.cleanupError), 'issues-work-error'));
@@ -334,6 +396,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
       return;
     }
     if (busy()) { row.append(text('span', 'Applying reviewed work…', 'issues-work-note')); return; }
+    if (loading) return;
     if (!reviewed?.ok) { row.append(action('Review work', 'gitWorktree', () => select('Work'))); return; }
     row.append(text('span', `${reviewed.sourceBranch} → ${reviewed.targetBranch}`, 'issues-work-path'));
     if (!confirming) {
@@ -353,7 +416,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     if (reviewed.dirty) footer.append(label, text('p', 'Commits all changes listed in this checkout, including staged and untracked files.', 'issues-work-note'));
     const choices = document.createElement('div');
     choices.className = 'issues-work-actions';
-    if (reviewed.isolated) {
+    if (reviewed.isolated && !request().mirror) {
       const cleanupLabel = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -382,7 +445,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     }
     issueBody.setAttribute('aria-labelledby', `${key}-Issue`);
     content.setAttribute('aria-labelledby', `${key}-${next}`);
-    if (next === 'Work') { paintWork(); if (!loading && (!reviewed || inspectedPath !== request().worktreePath)) void inspect(); }
+    if (next === 'Work') { paintWork(); if (!loading && (!reviewed || inspectedPath !== (chat()?.worktreeRoot || current().workspacePath))) void inspect(); }
     else if (next === 'Chat') void paintChat();
     else if (next === 'Activity') paintActivity();
     paintFooter();

@@ -41,6 +41,17 @@
   --issues-row-base: 36px;
   --issues-row-h: calc(var(--issues-row-base) + 2 * var(--mn-density-step));
   --issues-list-head-h: 32px;
+  --issues-workspace-column: clamp(6rem, 18cqw, 17rem);
+}
+
+.issues-shell.is-workspace-column-hidden {
+  /* Omit the track entirely so the title reclaims the column and its gap. */
+  --issues-workspace-column: ;
+}
+
+.issues-list-head__workspace[hidden],
+.is-workspace-column-hidden .issues-row__workspace {
+  display: none;
 }
 
 .issues-header,
@@ -283,6 +294,23 @@
 .issues-filter-chip.is-on {
   border-color: color-mix(in oklch, var(--mn-accent) 40%, var(--mn-border));
   color: var(--mn-fg);
+}
+
+.issues-header__filters {
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  min-width: 0;
+}
+
+#btnIssuesSubWorkspace {
+  max-inline-size: min(28vw, 14rem);
+}
+
+#btnIssuesSubWorkspace > .mn-btn__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .issues-filter-chip--add {
@@ -1099,10 +1127,10 @@
   /*
    * Identity (id, priority, type) stays tight on the left. Labels shrink-wrap
    * to their chips (max three, then a caret) so the + sits next to the last chip.
-   * id priority type title labels project agent rollup counts status updated
+   * id priority type title labels project agent rollup counts status workspace created
    * (assignee column hidden for now — see .issues-list-head__assignee below)
    */
-  --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content 4rem 6.25rem 2.5rem 2.5rem minmax(5rem, max-content) 4rem;
+  --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content 4rem 6.25rem 2.5rem 2.5rem minmax(5rem, max-content) var(--issues-workspace-column) 4rem;
   display: grid;
   grid-template-columns: var(--issues-list-cols);
   gap: 8px 10px;
@@ -1217,11 +1245,11 @@
   opacity: 0.85;
 }
 
-.issues-list-head__sort[aria-sort='ascending'] .issues-list-head__sort-indicator::before {
+.issues-list-head__sort[data-sort-direction='ascending'] .issues-list-head__sort-indicator::before {
   content: '▲';
 }
 
-.issues-list-head__sort[aria-sort='descending'] .issues-list-head__sort-indicator::before {
+.issues-list-head__sort[data-sort-direction='descending'] .issues-list-head__sort-indicator::before {
   content: '▼';
 }
 
@@ -1359,6 +1387,47 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+}
+
+.issues-workspace-label {
+  display: flex;
+  align-items: baseline;
+  column-gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issues-workspace-label__filter {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  padding: 1px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.issues-workspace-label__filter:is(:hover, [aria-pressed='true']) {
+  color: var(--mn-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.issues-workspace-label__filter:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: -1px;
+}
+
+.issues-card__workspace {
+  max-width: 100%;
 }
 
 .issues-row__comments {
@@ -4138,8 +4207,8 @@ button.issues-detail__row-trigger:focus-visible {
 @container issues-list (max-width: 1100px) {
   .issues-list-head,
   .issues-row {
-    /* id, priority, type, title, labels, agent, status, created */
-    --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content 6.25rem minmax(5rem, max-content) 4rem;
+    /* id, priority, type, title, labels, agent, status, workspace, created */
+    --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content 6.25rem minmax(5rem, max-content) var(--issues-workspace-column) 4rem;
   }
 
   .issues-list-head__project,
@@ -4161,7 +4230,7 @@ button.issues-detail__row-trigger:focus-visible {
   .issues-list-head,
   .issues-row {
     /* Compact identity keeps the agent outcome beside the issue. */
-    --issues-list-cols: 3.5rem minmax(4rem, max-content) minmax(0, 1fr) 6.25rem minmax(4.5rem, max-content);
+    --issues-list-cols: 3.5rem minmax(4rem, max-content) minmax(0, 1fr) 6.25rem minmax(4.5rem, max-content) var(--issues-workspace-column);
   }
 
   .issues-list-head__type,
@@ -4572,8 +4641,17 @@ button.issues-detail__row-trigger:focus-visible {
   .issues-list-head, .issues-row {
     --issues-list-cols: 3.5rem 4rem minmax(0, 1fr) 6.25rem 4.5rem;
   }
+  .issues-row {
+    row-gap: var(--mn-space-0-5, 2px);
+    padding-block: var(--mn-space-1);
+  }
+  .issues-row__workspace {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
   .issues-list-head__type, .issues-row__type,
   .issues-list-head__labels, .issues-row__labels,
+  .issues-list-head__workspace,
   .issues-list-head__created, .issues-row__created { display: none; }
 }
 @container issues-list (max-width: 480px) {

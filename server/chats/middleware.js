@@ -60,9 +60,9 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
       const { context, service, repository, presentation } = runtime;
       const ingress = req.minnowAuth?.kind === 'device' ? 'device'
         : ['cli', 'scheduler'].includes(req.headers['x-minnow-chat-client']) ? req.headers['x-minnow-chat-client'] : 'renderer';
-      const human = async (chatId, reconcileCheckout = false) => {
+      const human = async (chatId, { reconcileCheckout = false, workspaceRecovery = false } = {}) => {
         const workspacePath = getRequestWorkspaceRoot();
-        const resolve = () => context.humanCaller(chatId, { workspacePath, ingress });
+        const resolve = () => context.humanCaller(chatId, { workspacePath, ingress, workspaceRecovery });
         try { return await resolve(); }
         catch (error) {
           if (!reconcileCheckout || req.minnowAuth?.kind !== 'host' || ingress !== 'renderer' ||
@@ -114,7 +114,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         const project = await context.project();
         const chatId = url.searchParams.get('chatId') || undefined;
         if (chatId) {
-          const { caller, target } = await human(chatId, true);
+          const { caller, target } = await human(chatId, { reconcileCheckout: true });
           assertCallerCanTarget(caller, target, { operation: 'read', currentPolicy: target.currentPolicy, registry: target.registry });
         }
         openEvents(req, res, write => {
@@ -180,7 +180,10 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         });
         await finish(receipt); return;
       }
-      const { caller, target } = await human(chatId, req.method === 'GET' && (!operation || operation === 'requests'));
+      const { caller, target } = await human(chatId, {
+        reconcileCheckout: req.method === 'GET' && (!operation || operation === 'requests'),
+        workspaceRecovery: req.method === 'POST' && operation === 'workspace',
+      });
       assertCallerCanTarget(caller, target, { operation: 'read', currentPolicy: target.currentPolicy, registry: target.registry });
       if (operation === 'recovery' && !requestId) {
         if (req.minnowAuth?.kind !== 'host' || caller.actor !== 'human') throw new ChatContractError('caller_denied', 'Recovery requires the authenticated local user.');

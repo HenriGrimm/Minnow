@@ -49,6 +49,7 @@ export const SELECTABLE_ISSUE_FIELDS = [
   'workspacePath',
   'codeRefs',
   'gitLinks',
+  'repos',
   'issueRefs',
   'attachments',
   'comments',

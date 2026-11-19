@@ -43,6 +43,20 @@ const FULL_RESULT_PROPERTY = {
     'If true, skip automatic result-size caps for this call. Pagination (head_limit, offset, line ranges, read_command_log max_bytes) still applies.',
 };
 
+/** Repos an issue targets when the workspace folder holds several. */
+const ISSUE_REPOS_PARAM = {
+  type: 'array',
+  items: { type: 'string' },
+  description: 'Repo ids this issue targets in a multi-repo workspace (e.g. ["frontend", "backend"]); [] clears.',
+};
+
+/** Which repo a git tool runs in when the workspace folder holds several. */
+const GIT_REPO_PARAM = {
+  type: 'string',
+  description:
+    'Repo id from the workspace repo list (e.g. "backend"). Needed only when the workspace has several repos and no path identifies one.',
+};
+
 /** @param {Record<string, unknown>} properties */
 function withFullResult(properties) {
   return { ...properties, full_result: FULL_RESULT_PROPERTY };
@@ -775,7 +789,7 @@ export const BUILT_IN_TOOLS = [
     definition: toolSchema(
       'git_status',
       'Show git working tree status (porcelain format).',
-      {},
+      { repo: GIT_REPO_PARAM, },
     ),
   },
   {
@@ -789,6 +803,7 @@ export const BUILT_IN_TOOLS = [
       'Show git diff for changes. Large patches are truncated with a --numstat summary, complete per-file hunks that fit, and a footer listing omitted files — use path= to fetch one file at a time, or pass full_result: true to skip the automatic size cap. Prefer path= or staged=true for overview-sized calls instead of a repo-wide diff.',
       withFullResult({
         path: { type: 'string', description: 'Optional file path to limit diff (recommended for large changes)' },
+        repo: GIT_REPO_PARAM,
         staged: {
           type: 'boolean',
           description: 'If true, diff staged (--cached) changes',
@@ -810,6 +825,7 @@ export const BUILT_IN_TOOLS = [
           type: 'integer',
           description: 'Number of commits to show (default 10)',
         },
+        repo: GIT_REPO_PARAM,
       },
     ),
   },
@@ -828,6 +844,7 @@ export const BUILT_IN_TOOLS = [
           items: { type: 'string' },
           description: 'File paths to stage, or ["." ] for all',
         },
+        repo: GIT_REPO_PARAM,
       },
       ['paths'],
     ),
@@ -843,6 +860,7 @@ export const BUILT_IN_TOOLS = [
       'Create a git commit with a message.',
       {
         message: { type: 'string', description: 'Commit message' },
+        repo: GIT_REPO_PARAM,
       },
       ['message'],
     ),
@@ -862,6 +880,7 @@ export const BUILT_IN_TOOLS = [
           type: 'boolean',
           description: 'If true, create branch with -b before checkout',
         },
+        repo: GIT_REPO_PARAM,
       },
       ['branch'],
     ),
@@ -880,6 +899,7 @@ export const BUILT_IN_TOOLS = [
           type: 'boolean',
           description: 'If true, include remote-tracking branches (git branch --all)',
         },
+        repo: GIT_REPO_PARAM,
       },
     ),
   },
@@ -1197,6 +1217,7 @@ export const BUILT_IN_TOOLS = [
         issue_id: { type: 'string', description: 'Optional unused KEY-number id (MIN-12). Omit to allocate automatically; not an upsert key.' },
         parent_id: { type: 'string', description: 'Parent issue id for a sub-issue' },
         project_id: { type: 'string', description: 'Project id' },
+        repos: ISSUE_REPOS_PARAM,
       },
       ['title'],
     ),
@@ -1217,6 +1238,7 @@ export const BUILT_IN_TOOLS = [
         label: { type: 'string', description: 'Label filter' },
         parent_id: { type: 'string', description: 'Parent issue id filter' },
         project_id: { type: 'string', description: 'Project id filter' },
+        repo: { type: 'string', description: 'Repo id filter in a multi-repo workspace (also matches issues with no repo set)' },
         scope: { type: 'string', description: 'current_workspace (default) or all' },
         include_done: {
           type: 'boolean',
@@ -1336,6 +1358,7 @@ export const BUILT_IN_TOOLS = [
         labels: { type: 'array', items: { type: 'string' } },
         notes: { type: 'string' },
         plan_path: { type: 'string', description: 'Workspace-relative plan path' },
+        repos: ISSUE_REPOS_PARAM,
       },
       ['issue_id'],
     ),
@@ -1409,6 +1432,7 @@ export const BUILT_IN_TOOLS = [
               ref: { type: 'string' },
               url: { type: 'string' },
               title: { type: 'string' },
+              repo: { type: 'string', description: 'Repo id the ref lives in (multi-repo workspaces)' },
             },
           },
         },

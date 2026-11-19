@@ -5,6 +5,8 @@ import { createIssueExpansionActivity } from './issues-background-activity';
 import '../styles/issues.css';
 import '../styles/issues-sidebar.css';
 import { sidebarIssues, sidebarWorkspaceKey, splitQuickIssue, type SidebarIssueFilter, type SidebarIssueProperties } from '../issues/sidebar-model';
+import { issueInSubWorkspace } from '../issues/repo-scope';
+import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { createIssueTypeChip, createIssueStatusChip, createIssuePriorityChip } from '../issues/type-icons';
 import { sortedStatuses, sortedTypes, sortedPriorities } from '../issues/taxonomy';
 import { createIssuesLabelsField, isIssuesLabelsFieldFocused } from './issues-labels-field';
@@ -16,12 +18,18 @@ import { releaseGithubSyncedFieldWrites } from '../state/issues-github-notify';
 import { getIssuesTaxonomySync, loadIssuesTaxonomyFromStorage } from '../state/issues-taxonomy-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
-import { getWorkspacePath } from '../state/workspace';
+import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
+import { fetchWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
 import { patchFilePanelState } from '../state/file-panel';
 import { applyFileSidebarVisuals, isMobileLayout, openMobileFileSidebar } from './file-layout';
 import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
 import { closeGitSidePanel } from './git-panel';
-import { openIssuesContextMenu } from './issues-context-menu';
+import { openIssuesContextMenu, type IssuesContextMenuItem } from './issues-context-menu';
+import { sortIssuesForList, type IssuesSortDirection } from './issues-list-sort';
+import {
+  createIssueWorkspaceLabel, issueWorkspaceTargets, issueWorkspaceSortLabel,
+  type IssueWorkspaceContext, type IssueWorkspaceFilter,
+} from './issues-workspace-label';
 import { rememberIssueMenuAnchor } from './issues-chat-run-target';
 import { deferUntilContextMenuClosed } from './context-menu';
 import { showToast } from './toast';
@@ -32,6 +40,8 @@ interface SidebarState {
   files: File[];
   filter: SidebarIssueFilter;
   properties: SidebarIssueProperties;
+  workspaceFilter?: IssueWorkspaceFilter;
+  workspaceSort?: IssuesSortDirection;
   query: string;
   selectedId?: string;
   scrollTop: number;
@@ -41,6 +51,7 @@ interface SidebarState {
 const states = new Map<string, SidebarState>();
 const STORAGE_KEY = 'minnow.issues.sidebarDrafts';
 let currentWorkspace = '';
+let repoSnapshot = { workspace: '', repos: [] as WorkspaceRepo[] };
 let root: HTMLElement | null = null;
 let input: HTMLTextAreaElement;
 let createButton: HTMLButtonElement;
@@ -242,21 +253,50 @@ function filterOptions() {
   ] as const;
 }
 
+function workspaceContext(): IssueWorkspaceContext {
+  return {
+    workspacePath: getWorkspacePath(),
+    workspaceLabel: getWorkspaceLabel(),
+    repos: repoSnapshot.workspace === currentWorkspace ? repoSnapshot.repos : [],
+  };
+}
+
+function setWorkspaceFilter(value: SidebarState, filter?: IssueWorkspaceFilter): void {
+  value.workspaceFilter = filter;
+  list.scrollTop = 0;
+  render();
+}
+
 function openFilterMenu(anchor: HTMLElement): void {
   const value = state();
-  openIssuesContextMenu({
-    anchor, restoreFocus: anchor, label: 'Filters',
-    items: filterOptions().map(({ key, label, items }) => ({
-      id: key, label,
-      submenu: () => items.map((item) => ({
-        id: item.id ?? 'no-project', label: item.label,
-        onSelect: () => {
-          value.properties = { ...value.properties, [key]: item.id };
-          render();
-        },
-      })),
+  const { repos, workspaceLabel } = workspaceContext();
+  const items: IssuesContextMenuItem[] = filterOptions().map(({ key, label, items }) => ({
+    id: key, label,
+    submenu: () => items.map((item) => ({
+      id: item.id ?? 'no-project', label: item.label,
+      onSelect: () => {
+        value.properties = { ...value.properties, [key]: item.id };
+        render();
+      },
     })),
-  });
+  }));
+  if (repos.length > 1) {
+    items.unshift({
+      id: 'workspace', label: 'Workspace',
+      submenu: [
+        { id: 'whole-workspace', label: 'Whole workspace', checked: !value.workspaceFilter, onSelect: () => setWorkspaceFilter(value) },
+        ...repos.map((repo) => {
+          const filter = { path: repo.absPath, label: repo.isRoot ? workspaceLabel || 'Workspace root' : repo.id, exact: true };
+          return {
+            id: `repo:${repo.id}`, label: filter.label,
+            checked: Boolean(value.workspaceFilter && workspacePathsEqual(value.workspaceFilter.path, filter.path)),
+            onSelect: () => setWorkspaceFilter(value, filter),
+          };
+        }),
+      ],
+    });
+  }
+  openIssuesContextMenu({ anchor, restoreFocus: anchor, label: 'Filters', items });
 }
 
 function renderFilterChips(): void {
@@ -276,6 +316,12 @@ function renderFilterChips(): void {
     }, 'issues-filter-chip');
     chip.dataset.chipId = key;
     chip.setAttribute('aria-label', `Remove ${label.toLowerCase()} filter: ${name}`);
+    chips.push(chip);
+  }
+  if (value.workspaceFilter) {
+    const chip = button(`${value.workspaceFilter.label} ×`, () => setWorkspaceFilter(value), 'issues-filter-chip');
+    chip.dataset.chipId = 'workspace';
+    chip.setAttribute('aria-label', `Remove workspace filter: ${value.workspaceFilter.label}`);
     chips.push(chip);
   }
   host.replaceChildren(...chips);
@@ -305,8 +351,21 @@ function render(): void {
   }
   if (isIssuesLabelsFieldFocused()) return;
   const taxonomy = getIssuesTaxonomySync();
+  const context = workspaceContext();
+  const showRepoControls = context.repos.length > 1;
+  const sortControl = root.querySelector<HTMLSelectElement>('[data-workspace-sort]')!;
+  sortControl.hidden = !showRepoControls;
+  sortControl.value = value.workspaceSort ?? 'newest';
   renderFilterChips();
-  const issues = sidebarIssues(listIssues(), getWorkspacePath(), taxonomy, value.filter, value.query, value.properties);
+  let issues = sidebarIssues(listIssues(), context.workspacePath, taxonomy, value.filter, value.query, value.properties);
+  if (value.workspaceFilter) {
+    const filter = { ...value.workspaceFilter, repoWorkspacePath: context.workspacePath, repos: context.repos };
+    issues = issues.filter((issue) => issueInSubWorkspace(issue, filter));
+  }
+  if (showRepoControls && value.workspaceSort) {
+    issues = sortIssuesForList(issues, { key: 'workspace', direction: value.workspaceSort }, taxonomy,
+      (issue) => issueWorkspaceSortLabel(issue, context));
+  }
   count.textContent = `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`;
   const scroll = list.scrollTop;
   const active = document.activeElement as HTMLElement | null;
@@ -342,14 +401,21 @@ function render(): void {
       onChange: (labels) => { updateIssue(issue.id, { labels }); },
       onBlur: render,
     });
-    row.append(view, more, labels);
+    row.append(view, more);
+    if (showRepoControls) {
+      row.append(createIssueWorkspaceLabel(issueWorkspaceTargets(issue, context), 'issues-sidebar__workspace', value.workspaceFilter, (filter) => {
+        setWorkspaceFilter(value, filter);
+        root?.querySelector<HTMLButtonElement>('[data-add-filter]')?.focus();
+      }));
+    }
+    row.append(labels);
     row.dataset.status = issue.status;
     return row;
   });
   if (!rows.length) {
     const empty = document.createElement('p');
     empty.className = 'issues-sidebar__empty';
-    empty.textContent = value.query.trim() || Object.keys(value.properties).length ? 'No matching issues. Remove a filter or change your search.' : value.filter === 'closed' ? 'No closed issues in this workspace.' : value.filter === 'all' ? 'No issues yet. Capture one above.' : 'No open issues. Capture one above.';
+    empty.textContent = value.query.trim() || value.workspaceFilter || Object.keys(value.properties).length ? 'No matching issues. Remove a filter or change your search.' : value.filter === 'closed' ? 'No closed issues in this workspace.' : value.filter === 'all' ? 'No issues yet. Capture one above.' : 'No open issues. Capture one above.';
     list.replaceChildren(empty);
   } else {
     const groups: HTMLElement[] = [];
@@ -443,7 +509,8 @@ function mount(host: HTMLElement): void {
       <div class="issues-sidebar__actions"><button type="button" data-expand>Expand</button><button type="submit" data-create>Create</button></div>
       <p id="issuesSidebarFeedback" class="issues-sidebar__feedback" role="status" aria-live="polite"></p>
     </form>
-    <div class="issues-sidebar__filters"><select aria-label="Filter issues"><option value="open">Open</option><option value="all">All</option><option value="closed">Closed</option></select><button type="button" data-add-filter class="issues-filter-chip issues-filter-chip--add" aria-haspopup="menu">Filter</button><span data-count class="issues-sidebar__meta" role="status"></span>
+    <div class="issues-sidebar__filters"><select aria-label="Filter issues"><option value="open">Open</option><option value="all">All</option><option value="closed">Closed</option></select><button type="button" data-add-filter class="issues-filter-chip issues-filter-chip--add" aria-haspopup="menu">Filter</button>
+      <select aria-label="Sort issues" data-workspace-sort hidden><option value="newest">Newest first</option><option value="asc">Workspace A–Z</option><option value="desc">Workspace Z–A</option></select><span data-count class="issues-sidebar__meta" role="status"></span>
       <div data-filter-chips class="issues-sidebar__filter-chips" aria-label="Active issue filters" hidden></div>
       <input type="search" placeholder="Search issues…" aria-label="Search issues by title or ID">
     </div>
@@ -506,6 +573,12 @@ function mount(host: HTMLElement): void {
     state().filter = (event.target as HTMLSelectElement).value as SidebarIssueFilter;
     render();
   });
+  root.querySelector('[data-workspace-sort]')!.addEventListener('change', (event) => {
+    const direction = (event.target as HTMLSelectElement).value;
+    state().workspaceSort = direction === 'asc' || direction === 'desc' ? direction : undefined;
+    list.scrollTop = 0;
+    render();
+  });
   root.querySelector('input')!.addEventListener('input', (event) => {
     state().query = (event.target as HTMLInputElement).value;
     render();
@@ -537,7 +610,8 @@ export function showWorkspaceIssues(host: HTMLElement, resetList = false): Promi
 }
 
 async function showIssues(host: HTMLElement, showAll = false): Promise<void> {
-  const workspace = sidebarWorkspaceKey(getWorkspacePath());
+  const workspacePath = getWorkspacePath();
+  const workspace = sidebarWorkspaceKey(workspacePath);
   const switchedWorkspace = workspace !== currentWorkspace;
   if (switchedWorkspace) {
     detailController?.closeIssueDetail();
@@ -549,6 +623,7 @@ async function showIssues(host: HTMLElement, showAll = false): Promise<void> {
   if (showAll) {
     value.filter = 'all';
     value.properties = {};
+    value.workspaceFilter = undefined;
     value.query = '';
     value.selectedId = undefined;
     value.scrollTop = list.scrollTop = 0;
@@ -595,5 +670,10 @@ async function showIssues(host: HTMLElement, showAll = false): Promise<void> {
     feedback.textContent = '';
     syncCapture();
   }
+  render();
+  if (!workspacePath) return;
+  const repos = await fetchWorkspaceRepos({ workspacePath });
+  if (!isCurrent() || (repoSnapshot.workspace === workspace && repoSnapshot.repos === repos)) return;
+  repoSnapshot = { workspace, repos };
   render();
 }

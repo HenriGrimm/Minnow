@@ -29,17 +29,16 @@ import {
   restoreIntegration,
   verifyIntegrationMerge,
   workspaceLandingStats,
+  refreshChatWorktreeDependencies,
+  prepareChatWorktreeEnvironment,
 } from './worktree-ops.js';
+import { MIRROR_MANIFEST } from './multi-repo.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { runWithToolContext } from '../runtime/path-access.js';
 import { mergeChatWorktree } from './merge-chat.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getChatWorktreePath } from './paths.js';
-import { refreshDependencies } from './dep-install.js';
-import { ECOSYSTEM_ENTRIES } from './dep-symlinks.js';
-import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
-import { requireWorktreeEnvironment } from './local-environment.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -68,9 +67,11 @@ const OPS = {
   prepare_chat: async (a) => {
     if (typeof a.chatId !== 'string' || !a.chatId.trim()) throw new Error('chatId is required');
     const root = getChatWorktreePath(a.chatId);
-    await fs.access(path.join(root, '.git'));
-    await requireWorktreeEnvironment(getEffectiveWorkspaceRoot(), root);
-    const result = await refreshDependencies(root, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]));
+    // A mirrored multi-repo worktree has a manifest instead of a `.git`.
+    await fs.access(path.join(root, '.git')).catch(() => fs.access(path.join(root, MIRROR_MANIFEST)));
+    const environment = await prepareChatWorktreeEnvironment(root);
+    if (!environment.ok) throw new Error(`Worktree kept. ${environment.failed.map(item => item.reason).join(' ')} Retry setup after repairing the local environment.`);
+    const result = await refreshChatWorktreeDependencies(root);
     return { ok: result.failed.length === 0, ...result, error: result.failed.length ? `Dependency install failed: ${result.failed.join(', ')}. The worktree has been kept.` : undefined };
   },
   merge_chat: (a) => mergeChatWorktree(a),

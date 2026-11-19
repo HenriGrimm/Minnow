@@ -3,7 +3,7 @@
  *
  * Mirror sync uses content and per-side watermarks. When both sides changed,
  * the most recent edit wins; equal timestamps prefer GitHub deterministically.
- * Off never contacts GitHub.
+ * Off disables mirroring. A user can still explicitly import issues.
  *
  * Stored `'link'` (retired Link + push) normalizes to `'off'` so those
  * workspaces stop syncing until the user opts into Two-way mirror.

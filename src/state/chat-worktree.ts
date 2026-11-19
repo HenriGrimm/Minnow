@@ -77,6 +77,13 @@ export function resolveChatWorktreeRoot(
   return direct;
 }
 
+export function getChatMirrorBinding(chat?: Pick<Chat, 'workspacePreparation' | 'worktreeRoot'> | null) {
+  const state = chat?.workspacePreparation;
+  const binding = state?.binding;
+  return state?.status === 'ready' && binding && 'repos' in binding && chat?.worktreeRoot &&
+    worktreePathsEqual(binding.path, chat.worktreeRoot) ? binding : undefined;
+}
+
 /** True when the chat runs tools inside an isolated git worktree. */
 export function isChatWorktreeMode(chat: Pick<Chat, 'worktreeRoot'> & Partial<Pick<Chat, 'workspacePath'>>): boolean {
   return Boolean(resolveChatWorktreeRoot(chat));

@@ -107,8 +107,11 @@
 .git-checkout__tab { flex: 1; justify-content: center; text-align: center; }
 .git-checkout__tab[aria-selected='true'] { background: var(--mn-accent-soft); color: var(--mn-accent-ink); }
 .git-checkout__search { display: flex; flex-direction: column; flex-shrink: 0; gap: 4px; margin: 10px 2px 6px; }
+.git-checkout__repo { display: flex; align-items: center; gap: var(--mn-space-2); margin-bottom: var(--mn-space-2); }
+.git-checkout__repo select { min-width: 0; flex: 1; }
 .git-checkout__list { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.git-checkout__search input {
+.git-checkout__search input,
+.git-checkout__repo select {
   min-width: 0;
   width: 100%;
   padding: 7px 9px;

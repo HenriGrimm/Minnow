@@ -73,8 +73,17 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
               <div class="mn-os-app-layer" id="sourceControl">
                 <div class="scc-root">
                   <header class="scc-head" data-app-titlebar>
-                    <div class="scc-head__identity">Repository</div>
-                    <div class="scc-head__actions"><button>Search</button></div>
+                    <div class="scc-head__identity"><button>Back</button><h1 class="scc-head__title">Source Control</h1>
+                      <div class="scc-head__context">
+                        <button class="scc-btn scc-head__repo-switch">Frontend</button>
+                        <button class="scc-btn scc-head__worktree">Local</button>
+                        <button class="scc-btn scc-head__branch">main</button>
+                        <span class="scc-head__forge">org/frontend</span>
+                      </div>
+                      <div class="scc-head__drag-gap" aria-hidden="true"></div>
+                    </div>
+                    <div class="scc-head__sync"><button class="scc-btn">Fetch</button></div>
+                    <div class="scc-head__actions"><button class="scc-btn scc-head__palette-btn" aria-label="Commands">⌕</button></div>
                   </header>
                 </div>
               </div>
@@ -88,7 +97,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
                   <div class="scheduler-header__brand">Scheduler</div><button>New job</button>
                 </header>
               </div>
-              <div class="mn-os-app-layer issues-page" id="issues">
+              <div class="mn-os-app-layer issues-page is-open" id="issuesView">
                 <div class="issues-shell"><header class="issues-header" data-app-titlebar>
                   <div class="issues-header__brand">Issues</div><button>New issue</button>
                 </header></div>
@@ -225,7 +234,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   assert.ok(grip.gripDraggable);
   assert.ok(grip.toggleClickable);
 
-  const { start, during, end, withoutThread, devServerLayouts, appHeaders } = await session.evaluate(`(() => {
+  const { start, during, end, movingToggle, withoutThread, devServerLayouts, appHeaders } = await session.evaluate(`(() => {
     const stage = document.getElementById('osStage');
     const rail = document.getElementById('osAppRail');
     const bounds = selector => document.querySelector(selector).getBoundingClientRect();
@@ -253,6 +262,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
         sidebarToggleRegion: getComputedStyle(document.getElementById('sidebarToggle')).getPropertyValue('app-region'),
         gapDraggable: titlebarHit === menubar && getComputedStyle(menubar).getPropertyValue('app-region') === 'drag',
         threadActionRight: bounds('#threadAction').right, settingsRight: bounds('#settings').right,
+        menubarRegion: getComputedStyle(menubar).getPropertyValue('app-region'),
         dragStripRegion: dragStrip.getPropertyValue('app-region'),
         dragStripLeft: bounds('#graphiteThreadHeader').left + parseFloat(dragStrip.left),
         dragStripRight: bounds('#graphiteThreadHeader').right - parseFloat(dragStrip.right),
@@ -278,6 +288,10 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     for (const transition of transitions) transition.finish();
     document.documentElement.classList.remove('mn-graphite-sidebar-motion');
     const end = measure();
+    const menubar = document.getElementById('osMenubar');
+    menubar.classList.add('mn-graphite-menubar--moving');
+    const movingToggle = measure();
+    menubar.classList.remove('mn-graphite-menubar--moving');
     document.getElementById('graphiteThreadHeader').hidden = true;
     document.documentElement.classList.add('mn-graphite-sidebar-open');
     const withoutThread = measure();
@@ -302,7 +316,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     }));
     workbench.hidden = true;
     document.getElementById('code').classList.remove('is-active');
-    const appHeaders = ['settingsApp', 'sourceControl', 'models', 'scheduler', 'issues', 'brain', 'devServers', 'boards', 'wiki'].flatMap(id => [true, false].map(sidebarOpen => {
+    const appHeaders = ['settingsApp', 'issuesView', 'sourceControl', 'models', 'scheduler', 'brain', 'devServers', 'boards', 'wiki'].flatMap(id => [true, false].map(sidebarOpen => {
       const app = document.getElementById(id);
       document.documentElement.classList.toggle('mn-graphite-sidebar-open', sidebarOpen);
       app.classList.toggle(id === 'wiki' ? 'hidden' : 'is-active', id !== 'wiki');
@@ -312,17 +326,30 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
       const actionRect = action.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
       const hit = document.elementFromPoint(actionRect.x + actionRect.width / 2, actionRect.y + actionRect.height / 2);
+      const headerStrip = getComputedStyle(header, '::before');
+      const gap = header.querySelector('.scc-head__drag-gap');
+      const gapRect = gap?.getBoundingClientRect();
+      const dragLeft = gapRect?.left ?? headerRect.left + parseFloat(headerStrip.left);
+      const sourceControlDrag = gapRect && {
+        cachedIssuesHasLayout: document.getElementById('issuesView').getClientRects().length > 0,
+        coveredControls: [...header.querySelectorAll('button')].filter(button => {
+          const rect = button.getBoundingClientRect();
+          return rect.left < gapRect.right && rect.right > gapRect.left;
+        }).length,
+        headerRegion: headerStrip.getPropertyValue('app-region'),
+        width: gapRect.width,
+      };
       const snapshot = { ...frame, id, sidebarOpen, header: headerRect.toJSON(), action: actionRect.toJSON(), actionClickable: hit === action,
         headerColor: getComputedStyle(header).backgroundColor, stageColor: getComputedStyle(stage).backgroundColor,
         firstShellAction: bounds('.mn-os-mb-right button').left,
         topStrip: getComputedStyle(document.getElementById('osWorkspace'), '::before').content,
-        dragRegion: getComputedStyle(header, '::before').getPropertyValue('app-region'),
-        dragLeft: headerRect.left + parseFloat(getComputedStyle(header, '::before').left),
+        dragRegion: (gap ? getComputedStyle(gap) : headerStrip).getPropertyValue('app-region'),
+        dragLeft, sourceControlDrag,
         actionRegion: getComputedStyle(action).getPropertyValue('app-region') };
       app.classList.toggle(id === 'wiki' ? 'hidden' : 'is-active', id === 'wiki');
       return snapshot;
     }));
-    return { start, during, end, withoutThread, devServerLayouts, appHeaders };
+    return { start, during, end, movingToggle, withoutThread, devServerLayouts, appHeaders };
   })()`);
 
   assert.equal(start.left, start.railRight);
@@ -335,6 +362,11 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     assert.ok(frame.bottomToggleClickable);
   }
   assert.equal(end.dragStripRegion, 'drag');
+  for (const frame of [...during, movingToggle]) {
+    assert.equal(frame.dragStripRegion, 'none');
+    assert.equal(frame.menubarRegion, 'none');
+    assert.ok(frame.bottomToggleClickable);
+  }
   assert.ok(end.dragStripLeft >= end.sidebarToggle.right, 'collapsed navigation must stay outside the native drag region');
   assert.ok(end.threadTitleLeft - end.sidebarToggle.right <= 28, 'collapsed thread title should follow the visible navigation without a reserved label-width gap');
   assert.equal(end.railRight, 0);
@@ -366,6 +398,12 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     assert.ok(frame.actionClickable, frame.id);
     assert.equal(frame.dragRegion, 'drag');
     assert.equal(frame.actionRegion, 'no-drag');
+    if (frame.id === 'sourceControl') {
+      assert.equal(frame.sourceControlDrag.cachedIssuesHasLayout, false, 'inactive Issues must release its native drag region');
+      assert.equal(frame.sourceControlDrag.headerRegion, 'none');
+      assert.ok(frame.sourceControlDrag.width > 0);
+      assert.equal(frame.sourceControlDrag.coveredControls, 0);
+    }
     assert.equal(frame.topStrip, 'none');
     assert.equal(frame.headerColor, frame.stageColor);
     if (frame.sidebarOpen) assert.deepEqual(frame.sidebarToggle, start.sidebarToggle);
@@ -385,6 +423,34 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     previous = frame;
   }
 
+  const titlebarEntry = await session.evaluate(`(() => {
+    const app = document.getElementById('sourceControl');
+    app.classList.add('is-active');
+    const header = app.querySelector('header');
+    const bounds = () => [header, ...header.querySelectorAll('button')].map(element => element.getBoundingClientRect().toJSON());
+    const settled = bounds();
+    app.classList.add('mn-os-app-enter');
+    const animation = app.getAnimations().find(candidate => candidate.animationName === 'mn-os-app-in');
+    animation.pause();
+    animation.currentTime = animation.effect.getTiming().duration / 2;
+    const entering = bounds();
+    const clickable = [...header.querySelectorAll('button')].every(button => {
+      const { left, top, width, height } = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(left + width / 2, top + height / 2));
+    });
+    app.classList.remove('mn-os-app-enter');
+    const html = document.documentElement;
+    header.getBoundingClientRect();
+    html.classList.add('mn-graphite-sidebar-open', 'mn-graphite-sidebar-motion');
+    const paddingMovesWithSidebar = header.getAnimations().some(candidate => candidate.transitionProperty === 'padding-left');
+    html.classList.remove('mn-graphite-sidebar-motion');
+    app.classList.remove('is-active');
+    return { settled, entering, clickable, paddingMovesWithSidebar };
+  })()`);
+  assert.deepEqual(titlebarEntry.entering, titlebarEntry.settled, 'the native titlebar stays in place during app entry');
+  assert.ok(titlebarEntry.clickable, 'Source Control actions are reachable during app entry');
+  assert.ok(titlebarEntry.paddingMovesWithSidebar, 'Source Control adjusts its inset alongside the sidebar toggle');
+
   const detached = await session.evaluate(`(() => {
     const html = document.documentElement;
     html.dataset.appWindow = 'models';
@@ -396,7 +462,8 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
     const caption = document.getElementById('close').getBoundingClientRect();
     const action = models.querySelector('button').getBoundingClientRect();
     return { top: header.top, captionWithinHeader: caption.top >= header.top && caption.bottom <= header.bottom,
-      actionClear: action.right < caption.left };
+      actionClear: action.right < caption.left,
+      menubarRegion: getComputedStyle(document.getElementById('osMenubar')).getPropertyValue('app-region') };
   })()`);
-  assert.deepEqual(detached, { top: start.top, captionWithinHeader: true, actionClear: true });
+  assert.deepEqual(detached, { top: start.top, captionWithinHeader: true, actionClear: true, menubarRegion: 'none' });
 });

@@ -5,11 +5,12 @@
     "entryJsMaxKb": 1500,
     "entryCssMaxKb": 950,
     "largestLazyJsMaxKb": 3900,
-    "eagerJsMaxKb": 4830,
-    "totalAssetsMaxKb": 12510
+    "eagerJsMaxKb": 4845,
+    "totalAssetsMaxKb": 12525
   },
   "inputBindingsRationale": "MIN-7 adds validated persistent input translation and a lazy Settings recorder/catalog, plus its searchable manual page. Initially measured 4808 KB eager and 12459 KB total assets. Integration with current main, MIN-14 worktree titles and MIN-1047 reasoning favorites measures 4826.8 KB eager and 12479.9 KB assets; allow an additional 10 KB each for this combined graph (4830 KB eager, 12485 KB assets). Entry, CSS, lazy chunk and startup ceilings are unchanged.",
   "release023Rationale": "Release 0.2.3 includes the Source Control layout, workflow navigation and form refinements from cf556951a. The production build measures 12497.9 KB total assets, about 18 KB above the committed baseline. Allow 25 KB additional total assets (12510 KB ceiling); entry JS/CSS, eager JS, largest lazy chunk and startup ceilings remain unchanged.",
+  "multiRepoWorkspacesRationale": "The multi-repo branch measured 4834.6 KB eager JS and 12511.8 KB total assets before wiring repository selection into Code and Source Control. The complete flow measures about 4837 KB eager JS and 12515 KB of assets. Allow 15 KB more in each ceiling for the combined branch.",
   "startup": {
     "appReadyHarnessMaxMs": 2500
   }
