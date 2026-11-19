@@ -168,8 +168,9 @@ export function extractFirstHttpUrl(text: string): string | null {
 }
 
 /** Prefer an existing branch git link; else derive from title. */
-export function resolveIssueBranchName(issue: IssueCard): string {
-  const linked = (issue.gitLinks ?? []).find((l) => l.kind === 'branch');
+export function resolveIssueBranchName(issue: IssueCard, target?: Pick<IssueGitLink, 'repo'>): string {
+  const linked = (issue.gitLinks ?? []).find((link) => link.kind === 'branch' &&
+    (!target || (link.repo ?? '.') === (target.repo ?? '.')));
   if (linked?.ref?.trim()) return linked.ref.trim();
   return issueBranchName(issue.id, issue.title || 'issue');
 }

@@ -13,6 +13,7 @@ const defaults: PushDeps = { branchTree: gitBranchTree, push: gitPush, confirm: 
 export async function pushWithPublishPrompt(
   cwd?: string,
   deps: PushDeps = defaults,
+  repository?: string,
 ): Promise<GitOpResult> {
   const tree = await deps.branchTree(cwd);
   if (!tree.ok) return { ok: false, error: tree.error ?? 'Could not inspect the current branch' };
@@ -22,7 +23,7 @@ export async function pushWithPublishPrompt(
     return deps.push({ cwd });
   }
   const confirmed = await deps.confirm(`${branch} has no remote branch to push to. Create origin/${branch} and set it as the upstream?`, {
-    title: 'Publish branch',
+    title: repository ? `Publish branch in ${repository}` : 'Publish branch',
     confirmLabel: 'Create remote branch',
   });
   if (!confirmed) return { ok: false, error: 'cancelled' };

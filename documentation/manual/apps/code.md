@@ -47,7 +47,7 @@ Open **Diff → History** to follow commits through forks and merges. Use **Hist
 
 ## Source Control Center
 
-Open **Source control** from the workspace sidebar. In a Git workspace, **Changes** shows the current checkout's staged and unstaged files. Open a diff, stage the intended files, enter a message, and confirm the staged list before selecting **Commit**. With an empty staged list, the commit control can include all working tree changes. Check the branch before pushing.
+Open **Source Control** from the workspace sidebar. The header shows the workspace, the selected repository in a multi-repo workspace, the checkout, and its current branch. **Changes** shows staged and unstaged files in that checkout. Open a diff, stage the intended files, enter a message, and select **Commit**. With an empty staged list, **Commit all files** stages and commits the changes in the selected repository. Check the branch before pushing.
 
 Use **History** to find the commit that introduced a change. Use **Branches** or **Worktrees** to inspect or switch checkouts. A worktree has its own files and branch, so look for uncommitted changes there before removing it.
 
@@ -57,14 +57,14 @@ Every switch control (the thread's **Checkout** row, the composer's worktree men
 
 - With uncommitted files, Minnow asks whether to **Bring my changes** or **Leave changes** on the current branch. Changes that stay behind are saved and offered for restore when you return to that branch.
 - Git keeps a branch in one worktree at a time. When the branch or pull request is already checked out in another worktree, Minnow offers **Open worktree** (side panel and Source Control) or **Use that checkout** (a thread) instead of failing. Fork pull requests are matched by their tracking branch or head commit.
-- Threads on **Local** share the workspace folder and its branch. If other threads use that folder, switching asks first; **Switch in a new worktree** keeps the change to the current thread, and **Switch workspace anyway** moves every Local thread.
+- Threads on **Local** share the workspace folder and its branches. If other threads use that checkout, switching asks first. In a thread, **Switch in a new worktree** can keep the change to that thread. **Switch workspace anyway** changes the branch for everyone using the selected checkout.
 - When a switch fails, the message names the cause, such as local changes that would be overwritten, a branch that is not fetched yet, or a running local action, and offers the matching action. The original Git output stays under **Technical details**.
 - When a local action is using the checkout, the picker shows **Waiting for** the action's name, with **Stop and switch** and **Try again**.
 - The branch list starts with **Recent**: branches you last switched to or from in that checkout. Use the arrow keys to move, **Enter** to switch and the left and right arrows to change tabs.
 
 **Pull requests** marks each open pull request that is **Checked out here** or **In** another worktree, and labels pull requests from forks. **Worktrees** shows each worktree's uncommitted file count, commits to push and pull, and the threads that use it, with **Open chat**.
 
-The thread's **Checkout** row and the composer show the branch actually checked out, and whether the workspace folder is shared with other threads. After you pick another worktree in the side panel or Source Control, a notice says which checkout the current thread uses; select **Follow chat** to return to it.
+The thread's **Checkout** row and composer show the current checkout. In Source Control, **Browse checkout** changes which files and branch Source Control displays. **Show chat’s checkout** returns to the current thread’s checkout when it differs. **New Thread** starts on **Local** in the open workspace. In **Worktrees**, select **New thread here** to start a thread in a specific checkout.
 
 Removing a worktree returns the threads that used it to **Local**. **Force remove** is offered only when the worktree has uncommitted or untracked files, and it deletes them.
 

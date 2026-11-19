@@ -19,8 +19,6 @@ import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { normalizePathForComparison } from './safe-path.js';
 import { parseRemoteHost } from '../git/remote-url.js';
 
-/** How deep below the workspace root to look for child repos. */
-export const REPO_SCAN_DEPTH = 2;
 const CACHE_TTL_MS = 30_000;
 const SKIP_DIRS = new Set(['node_modules', 'bower_components', 'vendor', 'dist', 'build', 'target', 'out']);
 
@@ -82,13 +80,13 @@ function skipDir(name) {
   return name.startsWith('.') || SKIP_DIRS.has(name.toLowerCase());
 }
 
-/** Child directories (≤ REPO_SCAN_DEPTH) that are repo roots; does not descend into a found repo. */
+/** Follow folders down to repo roots, leaving their contents and submodules alone. */
 async function scanChildRepos(root) {
   /** @type {string[]} */
   const found = [];
-  /** @param {string} dir @param {number} depth */
-  async function walk(dir, depth) {
-    if (depth > REPO_SCAN_DEPTH) return;
+  /** @type {string[]} */
+  const pending = [root];
+  async function walk(dir) {
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -102,10 +100,10 @@ async function scanChildRepos(root) {
         found.push(child);
         return;
       }
-      await walk(child, depth + 1);
+      pending.push(child);
     }));
   }
-  await walk(root, 1);
+  while (pending.length) await Promise.all(pending.splice(-16).map(walk));
   return found;
 }
 

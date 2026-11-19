@@ -1,7 +1,9 @@
 import { appendIssueLinks } from '../../state/issues-store.ts';
-import { gitPush, gitRemoteUrl } from '../../state/git-api.ts';
-import { forgeStatus } from '../../state/forge-api.ts';
-import { openWorkspacePr } from '../../state/worktree-service.ts';
+import { gitBranches, gitPush, gitRemoteUrl } from '../../state/git-api.ts';
+import { forgeStatus, prCreate } from '../../state/forge-api.ts';
+import { getWorkspacePath } from '../../state/workspace.ts';
+import { lookupWorkspaceRepos, repoRemoteSlug } from '../../state/workspace-repos.ts';
+import { issueGithubSlug } from '../../issues/repo-scope.ts';
 import { expandGitmojiShortcodes } from '../../lib/gitmoji-shortcodes.mjs';
 import { commitUrl, githubIssueWebUrl, pullRequestUrl } from '../../lib/git-remote-url.ts';
 import { executeTool } from '../../tools/client.ts';
@@ -47,31 +49,71 @@ export async function detectGhAvailable(force = false): Promise<boolean> {
   return ghAvailableCache;
 }
 
-// ── Branch ───────────────────────────────────────────────────────────────────
+/** Assigned repos are the only options. For an unassigned card, allow an explicit choice. */
+export async function issueGitRepositories(issue: IssueCard) {
+  const cwd = issue.workspacePath || getWorkspacePath();
+  const repos = await lookupWorkspaceRepos({ workspacePath: cwd });
+  if (!repos) throw new Error('Could not load the issue’s repositories. Try again.');
+  if (!repos.length) throw new Error('This issue’s workspace has no Git repositories.');
+  if (issue.repos?.length) {
+    const assigned = repos.filter((repo) => issue.repos?.includes(repo.id));
+    if (!assigned.length) throw new Error('The assigned repositories could not be found. Update the issue’s repositories.');
+    return assigned;
+  }
+  const linkedSlug = issueGithubSlug(issue);
+  const linked = linkedSlug ? repos.filter((repo) => repoRemoteSlug(repo).toLowerCase() === linkedSlug) : [];
+  return linked.length ? linked : repos;
+}
+
+async function issueGitScope(issue: IssueCard, repoId?: string) {
+  const repos = await issueGitRepositories(issue);
+  const repo = repoId === undefined && repos.length === 1 ? repos[0] : repos.find((entry) => entry.id === repoId);
+  if (!repo) throw new Error(repoId === undefined ? 'Choose a repository for this Git action.' : 'That repository is no longer available for this issue.');
+  return { cwd: issue.workspacePath || getWorkspacePath(), repo: repo.id };
+}
 
 /** Create/checkout `issue/iss-n-<slug>` and append a branch git link. */
-export async function createBranchFromIssue(issue: IssueCard): Promise<IssueGitActionResult> {
-  const branch = resolveIssueBranchName(issue);
-  const existing = (issue.gitLinks ?? []).some((l) => l.kind === 'branch' && l.ref === branch);
+export async function createBranchFromIssue(issue: IssueCard, repoId?: string): Promise<IssueGitActionResult> {
+  return withIssueGitScope(issue, repoId, (scope) => checkoutIssueBranch(issue, scope));
+}
+
+type IssueGitScope = Awaited<ReturnType<typeof issueGitScope>>;
+
+async function withIssueGitScope(
+  issue: IssueCard,
+  repoId: string | undefined,
+  run: (scope: IssueGitScope) => Promise<IssueGitActionResult>,
+): Promise<IssueGitActionResult> {
+  try {
+    return await run(await issueGitScope(issue, repoId));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function checkoutIssueBranch(issue: IssueCard, scope: IssueGitScope): Promise<IssueGitActionResult> {
+  const branch = resolveIssueBranchName(issue, scope);
+  const branches = await gitBranches(scope.cwd, undefined, scope.repo);
+  if (!branches.ok) return { ok: false, error: branches.error ?? 'Could not list branches' };
+  const existing = branches.current === branch || branches.local?.includes(branch) || branches.lockedLocal?.includes(branch);
   // The shared flow asks about uncommitted files instead of carrying them silently.
   const { runCheckoutFlow } = await import('../../ui/git-checkout-confirm');
-  const result = await runCheckoutFlow({ branch, create: !existing });
-  if (!result.ok) {
-    if (result.error === 'cancelled') return { ok: false, error: 'cancelled' };
-    if (!existing) {
-      const retry = await runCheckoutFlow({ branch });
-      if (!retry.ok) {
-        return { ok: false, error: retry.error ?? result.error ?? 'Could not create or checkout branch' };
-      }
-    } else {
-      return { ok: false, error: result.error ?? 'Could not checkout branch' };
-    }
+  const input = { ...scope, branch };
+  let result = await runCheckoutFlow({ ...input, create: !existing });
+  if (!existing && !result.ok && /branch .+ already exists/i.test(result.error ?? '')) {
+    result = await runCheckoutFlow(input);
   }
+  if (!result.ok) return { ok: false, error: result.error ?? 'Could not create or check out the branch' };
 
-  appendIssueLinks(issue.id, {
-    gitLinks: [draftIssueGitLink('branch', branch, { title: branch })],
-  });
-  return { ok: true, message: `On ${branch}`, branch };
+  const checkedOut = result.branch || branch;
+  const linked = issue.gitLinks?.some((link) => link.kind === 'branch' && link.ref === checkedOut &&
+    (link.repo ?? '.') === scope.repo);
+  if (!linked) {
+    appendIssueLinks(issue.id, {
+      gitLinks: [draftIssueGitLink('branch', checkedOut, { repo: scope.repo })],
+    });
+  }
+  return { ok: true, message: scope.repo === '.' ? `On ${checkedOut}` : `On ${checkedOut} in ${scope.repo}`, branch: checkedOut };
 }
 
 /** Link a commit sha to the issue (manual). */
@@ -155,35 +197,32 @@ export async function listIssueCommits(issue: IssueCard): Promise<{
 
 // ── PR ───────────────────────────────────────────────────────────────────────
 
-/**
- * Checkout the issue branch (create if needed), push, then `gh pr create` via openWorkspacePr.
- */
-export async function createPrFromIssue(issue: IssueCard): Promise<IssueGitActionResult> {
-  const hasGh = await detectGhAvailable();
-  if (!hasGh) {
-    return { ok: false, error: 'GitHub CLI (gh) is not available' };
+/** Check out the issue branch, push it, and open its PR in the same repository. */
+export async function createPrFromIssue(issue: IssueCard, repoId?: string): Promise<IssueGitActionResult> {
+  return withIssueGitScope(issue, repoId, (scope) => openIssuePr(issue, scope));
+}
+
+async function openIssuePr(issue: IssueCard, scope: IssueGitScope): Promise<IssueGitActionResult> {
+  const status = await forgeStatus(scope.cwd, scope.repo);
+  if (!status.ok || !status.supported || !status.authenticated) {
+    return { ok: false, error: status.reason || 'GitHub pull requests are unavailable in this repository' };
   }
 
-  const branchResult = await createBranchFromIssue(issue);
+  const branchResult = await checkoutIssueBranch(issue, scope);
   if (!branchResult.ok) return branchResult;
 
-  const push = await gitPush({ setUpstream: true });
-  if (!push.ok) {
-    const still = push.error ?? 'Push failed';
-    if (/server_off|no.?remote|does not appear to be a git|not a git repository/i.test(still)) {
-      return { ok: false, error: still };
-    }
-  }
+  const push = await gitPush({ ...scope, setUpstream: true, branch: branchResult.branch });
+  if (!push.ok) return { ok: false, error: push.error ?? 'Push failed' };
 
   const title = buildIssuePrTitle(issue);
   const body = buildIssuePrBody(issue);
-  const prRes = await openWorkspacePr({ title, body });
+  const prRes = await prCreate({ ...scope, title, body, head: branchResult.branch });
   if (!prRes.ok) {
-    const detail = prRes.output?.trim() || prRes.error || 'gh pr create failed';
+    const detail = prRes.error || 'Could not create the pull request';
     return { ok: false, error: detail };
   }
 
-  const url = prRes.url || extractFirstHttpUrl(prRes.output ?? '') || undefined;
+  const url = prRes.url || extractFirstHttpUrl(prRes.stdout ?? '') || undefined;
   let ref = url ? (url.match(/\/pull\/(\d+)/)?.[1] ?? branchResult.branch ?? issue.id) : branchResult.branch ?? issue.id;
   if (url) {
     const parsed = parseGitHubIssueOrPrUrl(url);
@@ -191,7 +230,7 @@ export async function createPrFromIssue(issue: IssueCard): Promise<IssueGitActio
   }
 
   appendIssueLinks(issue.id, {
-    gitLinks: [draftIssueGitLink('pr', ref, { url, title: title.slice(0, 80) })],
+    gitLinks: [draftIssueGitLink('pr', ref, { url, repo: scope.repo })],
   });
 
   return { ok: true, message: url ? `Opened PR ${url}` : 'Pull request created', url, branch: branchResult.branch };

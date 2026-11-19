@@ -143,7 +143,9 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
     }
 
     if (pathname === '/api/workspace/repos' && req.method === 'GET') {
-      const repos = await discoverWorkspaceRepos(getEffectiveWorkspaceRoot(), {
+      const checkout = searchParams.get('checkout')?.trim();
+      const root = checkout ? await validateAllowedWorkspaceRoot(checkout) : getEffectiveWorkspaceRoot();
+      const repos = await discoverWorkspaceRepos(root, {
         refresh: searchParams.get('refresh') === '1',
       });
       sendJson(res, 200, { ok: true, repos });

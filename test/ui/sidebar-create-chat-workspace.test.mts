@@ -86,6 +86,8 @@ describe('createChatWithMode workspace option', () => {
     setup();
     setWorkspaceFromServer(workspaceInfo(WS_A));
     const active = seedActiveChat(WS_A);
+    const { setGitPanelCwd } = await import('../../src/ui/git-panel.ts');
+    setGitPanelCwd(`${WS_A}/.worktrees/review`);
 
     const result = await createChatWithMode({ modeId: 'build', workspacePath: WS_B });
 
@@ -94,6 +96,43 @@ describe('createChatWithMode workspace option', () => {
     const created = result.chatId ? findChatById(result.chatId) : null;
     assert.ok(created);
     assert.equal(created.workspacePath, WS_B);
+    assert.equal(created.worktreeRoot, undefined);
+  });
+
+  test('New Thread starts Local and retains a previously configured empty checkout', async () => {
+    setup();
+    setWorkspaceFromServer(workspaceInfo(WS_A));
+    const active = seedActiveChat(WS_A);
+    active.history = [];
+    active.worktreeRoot = `${WS_A}/.worktrees/existing`;
+    const { setGitPanelCwd } = await import('../../src/ui/git-panel.ts');
+    setGitPanelCwd(`${WS_A}/.worktrees/review`);
+
+    const result = await createChatWithMode({ modeId: 'build' });
+
+    assert.equal(result.ok, true);
+    assert.notEqual(result.chatId, active.id);
+    const created = findChatById(result.chatId!)!;
+    assert.equal(created.workspacePath, WS_A);
+    assert.equal(created.worktreeRoot, undefined);
+    assert.equal(findChatById(active.id)?.worktreeRoot, active.worktreeRoot);
+  });
+
+  test('an explicit checkout action starts a thread in that checkout', async () => {
+    setup();
+    setWorkspaceFromServer(workspaceInfo(WS_A));
+    seedActiveChat(WS_A);
+    const cwd = `${WS_A}/.worktrees/review`;
+    const target = { cwd, branch: 'review/file-browser' };
+    const foreign = await createChatWithMode({ modeId: 'build', workspacePath: WS_B, checkoutTarget: target });
+    assert.equal(foreign.ok, false);
+
+    const result = await createChatWithMode({ modeId: 'build', workspacePath: WS_A, checkoutTarget: target });
+    assert.equal(result.ok, true);
+    const created = findChatById(result.chatId!)!;
+    assert.equal(created.workspacePath, WS_A);
+    assert.equal(created.worktreeRoot, cwd);
+    assert.equal(created.gitBranch, target.branch);
   });
 
   test('keeps the current workspace when no option is passed', async () => {

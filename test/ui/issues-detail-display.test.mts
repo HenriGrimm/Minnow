@@ -112,6 +112,70 @@ afterEach(() => {
 });
 
 describe('issues detail display', () => {
+  test('Git actions let a multi-repo issue choose the checkout, push, and PR destination', async (t) => {
+    setupDom();
+    setLocalServerAvailableForTests(true);
+    const workspacePath = '/multi';
+    const repos = ['apps/api/backend', 'frontend'].map((id) => ({
+      id, relPath: id, absPath: `${workspacePath}/${id}`, isRoot: false, remote: null,
+    }));
+    const calls: Record<string, unknown>[] = [];
+    t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/workspace/repos') return Response.json({ ok: true, repos });
+      if (url === '/api/tools') return Response.json({ result: 'gh version 2.80.0' });
+      if (url !== '/api/git') return Response.json({});
+      const body = JSON.parse(String(init?.body));
+      calls.push(body);
+      if (body.op === 'forgeStatus') return Response.json({ ok: true, supported: true, authenticated: true });
+      if (body.op === 'branches') return Response.json({ ok: true, local: [] });
+      if (body.op === 'checkoutSwitch') return Response.json({ ok: true, branch: body.branch });
+      if (body.op === 'push') return Response.json({ ok: true });
+      if (body.op === 'prCreate') return Response.json({ ok: true, url: 'https://github.com/acme/web/pull/7' });
+      return Response.json({ ok: false });
+    });
+    seedIssues([{
+      id: 'GET-3', title: 'Fix checkout', description: '', type: 'task', status: 'backlog',
+      priority: 'none', labels: [], source: 'user', workspacePath, repos: repos.map((repo) => repo.id),
+      createdAt: FIXED_NOW, updatedAt: FIXED_NOW,
+    }]);
+    openIssueDetail('GET-3');
+    const select = (id: string) => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')]
+        .find((row) => row.dataset.id === id);
+      assert.ok(button, `Missing Git menu action ${id}`);
+      button.click();
+    };
+    const choose = async (action: string, repo: string) => {
+      buttonByLabel(document.body, 'Git actions')!.click();
+      select(action);
+      for (let i = 0; i < 20 && !document.querySelector('[role="menu"]'); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      select(repo);
+    };
+    await choose('git-branch', 'apps/api/backend');
+    for (let i = 0; i < 20 && !findIssueById('GET-3')?.gitLinks?.length; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await choose('git-pr', 'frontend');
+    for (let i = 0; i < 20 && !findIssueById('GET-3')?.gitLinks?.some((link) => link.kind === 'pr'); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const mutations = calls.filter((call) => ['checkoutSwitch', 'push', 'prCreate'].includes(String(call.op)));
+    assert.deepEqual(mutations.map((call) => [call.op, call.cwd, call.repo]), [
+      ['checkoutSwitch', workspacePath, 'apps/api/backend'],
+      ['checkoutSwitch', workspacePath, 'frontend'],
+      ['push', workspacePath, 'frontend'],
+      ['prCreate', workspacePath, 'frontend'],
+    ]);
+    assert.equal(mutations[2].branch, mutations[1].branch);
+    assert.equal(mutations[3].head, mutations[2].branch);
+    assert.deepEqual(findIssueById('GET-3')?.gitLinks?.map((link) => [link.kind, link.repo]), [
+      ['branch', 'apps/api/backend'], ['branch', 'frontend'], ['pr', 'frontend'],
+    ]);
+  });
+
   test('launch card shows model and worktree beside Start chat with an empty prompt', () => {
     setupDom();
     seedIssues([{

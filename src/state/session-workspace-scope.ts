@@ -48,6 +48,7 @@ export function chatHasListableContent(chat: Chat): boolean {
   // A history rewrite can temporarily or permanently empty a saved chat.
   if (chat.chatCommandVersion === 1 && (chat.historyRewriteRevision ?? 0) > 0) return true;
   if (isChatArchived(chat)) return true;
+  if (chat.worktreeRoot || chat.worktreeSetupRequired) return true;
   if (hasComposerDraft(chat)) return true;
   // Admission clears the draft before the first transcript reaches background viewers.
   if (getFirstMessageSubmission(chat) || hasUnsettledAgentWork(chat)) return true;

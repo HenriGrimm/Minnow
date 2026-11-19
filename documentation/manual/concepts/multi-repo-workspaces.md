@@ -2,15 +2,17 @@
 
 Some projects live in more than one git repository — a `frontend/` and a `backend/`, say, each with its own GitHub remote. You can open the folder that holds them as one Minnow workspace. The editor, file tree, terminal and chat see the whole folder, so one agent can change both sides of a feature, while git work stays per repository.
 
-Minnow finds repositories directly in the workspace folder and one level below it (`apps/web` counts). Folders such as `node_modules`, `dist` and hidden folders are skipped. A workspace with a single repository behaves exactly as it always has.
+Minnow searches the workspace folder and its subfolders for repositories. Folders such as `node_modules`, `dist` and hidden folders are skipped.
 
 ## Source Control
 
-When the workspace holds two or more repositories, the Source Control header shows a **repository switcher** next to the project name. Pick a repository and every section — Changes, History, Branches, Stashes, Worktrees, Pull requests, Actions, Releases — follows it, and so does the git panel in Code. The command palette (**Ctrl+K** / **Cmd+K**) lists a *Switch to repository* command for each one.
+When the workspace holds two or more repositories, the Source Control header shows a **repository switcher** next to the project name, followed by the checkout and branch. Pick a repository and every section follows it. The Git panel in Code uses the same repository preference. The command palette (**Ctrl+K** / **Cmd+K**) lists a *Switch to repository* command for each repository.
 
-Minnow remembers the last repository you picked for each workspace. The first time, it picks the repository of the file open in the editor.
+**Fetch**, **Pull**, and **Push** act on the selected checkout by default. The **Sync options** menu at the right of the group offers **Fetch all**, **Pull all**, and **Push all**. Turn on **Main buttons sync all repos** to use those actions directly from the buttons. Minnow remembers the setting for this workspace. When you’re browsing a linked worktree, bulk sync uses that worktree for its repository and the existing checkouts for the others. Minnow reports any repositories that were skipped or could not sync.
 
-Commits, pushes and pull requests always belong to one repository. To land a change that spans two, commit and open a pull request in each.
+In Code, the Changes panel and the thread's **Checkout** picker also let you choose a repository for changes, branches, and pull requests. You can switch repositories while the editor and chat continue to use the full workspace. Minnow remembers the last repository you picked for each workspace. The first time, it picks the repository of the file open in the editor, when available.
+
+Commits, pushes and pull requests belong to one repository. To land a change that spans two, commit and open a pull request in each. Unsubmitted pull request drafts stay with their repository and branch while you switch between them in the current window. If repository discovery fails, use **Retry repository discovery**.
 
 ## Agents
 
@@ -18,15 +20,15 @@ The agent's instructions list the workspace's repositories and their remotes. Gi
 
 ## Issues
 
-Issues stay in one list for the workspace, so a single issue can describe work across repositories. In the issue detail, the **Repositories** row records which repositories the issue targets. Agents can set it too, and `issue_search` can filter by repository — issues with no repository set match every filter.
+**Current workspace** shows issues filed in the open folder and its child workspaces. Use **Filter → Sub-workspace** to narrow the list or board to a repository or a folder of repositories. Issues assigned to several repositories appear under each one.
 
-Links say which repository they point at: a pull request shows as `backend#12`, so `#12` in one repository is never confused with `#12` in another.
+In an issue, use **Repositories** to assign work to one or more repositories. **Git → Create branch** and **Create pull request** use the assigned repository. If the issue targets several, choose one when you run the action. A Git action always runs in one repository, and the branch or pull request link records which one.
 
 With GitHub sync on, each issue syncs with its own repository:
 
 - A linked issue keeps syncing with the repository it was linked to.
 - A new issue is published to the one repository it targets. An issue that targets no repository, or several, is held back with **Choose a repo for this issue before publishing it to GitHub.** Set its Repositories row and sync again.
-- Importing reads the issues of every repository that has a remote, and tags each imported issue with its repository.
+- With **Two-way mirror** enabled, use **Sync all** to bring in open and closed issues from the workspace’s GitHub repositories. New imports are tagged with their repository and appear in **Triage**.
 
 ## Isolated chats
 

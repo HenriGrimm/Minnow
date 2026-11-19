@@ -12,6 +12,10 @@ import { after, before, describe, test } from 'node:test';
 import { resolveRepoCwd } from '../../server/git/repo-resolve.js';
 import { handleGitRequest } from '../../server/git/middleware.js';
 import { setWorkspaceRoot } from '../../server/workspace/root.js';
+import { handleWorkspaceRequest } from '../../server/workspace/middleware.js';
+import { getWorktreesRoot } from '../../server/worktree/paths.js';
+import { invalidateRegisteredWorktreeCache } from '../../server/worktree/allowlist.js';
+import { runWithViewWorkspace } from '../../server/runtime/path-access.js';
 import { invalidateWorkspaceRepos } from '../../server/workspace/repos.js';
 import { httpRequest } from '../config/test-helpers.js';
 
@@ -45,7 +49,9 @@ describe('repo resolution', () => {
     invalidateWorkspaceRepos();
     server = http.createServer((req, res) => {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-      void handleGitRequest(req, res, url.pathname);
+      void runWithViewWorkspace(root, () => url.pathname.startsWith('/api/workspace/')
+        ? handleWorkspaceRequest(req, res, url.pathname, url.searchParams)
+        : handleGitRequest(req, res, url.pathname));
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -99,5 +105,27 @@ describe('repo resolution', () => {
     assert.match(rejected.json.error, /allowlist/);
     const nested = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: path.join(root, 'frontend', '..', 'backend') });
     assert.equal(nested.json.branch, 'api-main');
+  });
+
+  test('the workspace API discovers repos in a mirrored checkout and Git accepts its child worktrees', async () => {
+    const repos = await httpRequest(baseUrl, 'GET', '/api/workspace/repos');
+    assert.deepEqual(repos.json.repos.map(repo => repo.id), ['backend', 'frontend']);
+    const mirror = path.join(getWorktreesRoot(), 'multi-repo-discovery-test');
+    const standalone = path.join(path.dirname(root), `${path.basename(root)}-frontend`);
+    await fs.mkdir(mirror, { recursive: true });
+    git(path.join(root, 'backend'), 'worktree', 'add', '-q', '-b', 'chat-backend', path.join(mirror, 'backend'));
+    git(path.join(root, 'frontend'), 'worktree', 'add', '-q', '-b', 'chat-frontend', path.join(mirror, 'frontend'));
+    git(path.join(root, 'frontend'), 'worktree', 'add', '-q', '-b', 'external-frontend', standalone);
+    invalidateRegisteredWorktreeCache();
+
+    const discovered = await httpRequest(baseUrl, 'GET', `/api/workspace/repos?${new URLSearchParams({ checkout: mirror })}`);
+    assert.deepEqual(discovered.json.repos.map(repo => repo.id), ['backend', 'frontend']);
+    const isolated = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: discovered.json.repos[0].absPath });
+    assert.equal(isolated.json.branch, 'chat-backend');
+    const linked = await httpRequest(baseUrl, 'POST', '/api/git', { op: 'status', cwd: standalone });
+    assert.equal(linked.json.branch, 'external-frontend');
+    const unauthorized = await httpRequest(baseUrl, 'GET', `/api/workspace/repos?${new URLSearchParams({ checkout: single })}`);
+    assert.equal(unauthorized.status, 400);
+    assert.match(unauthorized.json.error, /allowlist/);
   });
 });

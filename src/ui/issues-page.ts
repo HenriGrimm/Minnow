@@ -62,7 +62,9 @@ import {
   type CollectIssuesOptions,
 } from '../state/issues-store';
 import { sessionState } from '../state/sessions';
-import { getWorkspacePath } from '../state/workspace';
+import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
+import { fetchWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
+import { relativeWorkspacePath } from '../lib/normalize-workspace-path';
 import type {
   IssueCard,
   IssuePriority,
@@ -243,6 +245,8 @@ let initialized = false;
 let currentScreen: IssuesScreen = 'issues';
 let viewMode: IssuesViewMode = 'list';
 let filters: IssuesUiFilters = { ...DEFAULT_FILTERS };
+const subWorkspaceByRoot = new Map<string, string>();
+let repoFilters = { workspacePath: '', repos: [] as WorkspaceRepo[] };
 /** Active list-column sort (session-only). Rank wins inside a group when set. */
 let listSort: IssuesListSort = { ...DEFAULT_ISSUES_LIST_SORT };
 let groupBy: IssuesGroupBy = 'status';
@@ -251,6 +255,7 @@ let activeViewId = SESSION_VIEW_ALL;
 /** Restored from storage on the first open of the session. */
 let uiStateRestored = false;
 let issuesUnsub: (() => void) | null = null;
+let workspaceUnsub: (() => void) | null = null;
 let taxonomyUnsub: (() => void) | null = null;
 let githubModeUnsub: (() => void) | null = null;
 let githubConflictUnsub: (() => void) | null = null;
@@ -490,8 +495,7 @@ function collectOptions(): CollectIssuesOptions {
   const viewFilters = parseViewFilters(view?.filters);
   const { type, status, priority } = filters;
   const options: CollectIssuesOptions = {
-    scope: filters.scope,
-    workspacePath: getWorkspacePath(),
+    ...issueWorkspaceOptions(),
     type: type === 'all' ? 'all' : (type as IssueType),
     status: status === 'all' ? 'all' : (status as IssueStatus),
     priority: priority === 'all' ? 'all' : (priority as IssuePriority),
@@ -506,6 +510,53 @@ function collectOptions(): CollectIssuesOptions {
   else if (projectId === null) options.projectId = null;
   if (viewFilters.assigneeId !== undefined) options.assigneeId = viewFilters.assigneeId;
   return options;
+}
+
+function issueWorkspaceOptions(): CollectIssuesOptions {
+  const workspacePath = getWorkspacePath();
+  const path = filters.scope === 'current_workspace' ? subWorkspaceByRoot.get(workspacePath) : undefined;
+  return {
+    scope: filters.scope,
+    workspacePath,
+    includeSubWorkspaces: true,
+    ...(path ? { subWorkspace: { path, repos: repoFilters.workspacePath === workspacePath ? repoFilters.repos : [] } } : {}),
+  };
+}
+
+function setSubWorkspaceFilter(path?: string): void {
+  const root = getWorkspacePath();
+  if (path) subWorkspaceByRoot.set(root, path);
+  else subWorkspaceByRoot.delete(root);
+  renderIssuesPanel();
+}
+
+function subWorkspaceFilterPaths(): string[] {
+  const root = getWorkspacePath();
+  if (!root || filters.scope !== 'current_workspace') return [];
+  const paths = new Set<string>();
+  const add = (relative: string) => {
+    if (relative === '.') return;
+    const parts = relative.split('/');
+    for (let count = 1; count <= parts.length; count += 1) paths.add(parts.slice(0, count).join('/'));
+  };
+  if (repoFilters.workspacePath === root) {
+    for (const repo of repoFilters.repos) add(repo.id);
+  }
+  for (const issue of collectIssues({ workspacePath: root, includeSubWorkspaces: true, hideDone: false })) {
+    const relative = relativeWorkspacePath(root, issue.workspacePath);
+    if (relative && relative !== '.') add(relative);
+  }
+  return [...paths].sort((a, b) => a.localeCompare(b));
+}
+
+async function refreshSubWorkspaceRepos(): Promise<void> {
+  const workspacePath = getWorkspacePath();
+  if (!workspacePath) return;
+  const repos = await fetchWorkspaceRepos({ workspacePath });
+  if (getWorkspacePath() !== workspacePath) return;
+  if (repoFilters.workspacePath === workspacePath && repoFilters.repos === repos) return;
+  repoFilters = { workspacePath, repos };
+  if (isIssuesPageOpen()) renderIssuesPanel();
 }
 
 function asElement(value: EventTarget | null): Element | null {
@@ -576,6 +627,7 @@ function currentGroupedRows() {
     allIssues: collectIssues({
       scope: filters.scope,
       workspacePath: getWorkspacePath(),
+      includeSubWorkspaces: true,
       hideDone: false,
     }),
   });
@@ -1633,8 +1685,7 @@ export function renderIssuesPanel(): void {
  */
 function countUnreviewedTriageIssues(): number {
   return collectIssues({
-    scope: filters.scope,
-    workspacePath: getWorkspacePath(),
+    ...issueWorkspaceOptions(),
     unreviewed: true,
   }).length;
 }
@@ -1644,6 +1695,9 @@ function orderedFirstId(issues: IssueCard[]): string | undefined {
 }
 
 function emptyStateCopy(matchCount: number): string {
+  if (!matchCount && issueWorkspaceOptions().subWorkspace) {
+    return 'No issues match your filters in this sub-workspace.';
+  }
   if (activeViewId === BUILTIN_VIEW_TRIAGE && matchCount === 0) {
     return countUnreviewedTriageIssues() === 0
       ? 'Nothing needs review. New issues from agents, crashes, and GitHub appear here.'
@@ -1733,6 +1787,8 @@ function renderFilterChips(): void {
       renderIssuesPanel();
     });
   }
+  const subWorkspace = issueWorkspaceOptions().subWorkspace;
+  if (subWorkspace) addChip('sub-workspace', subWorkspace.path, () => setSubWorkspaceFilter());
 
   const hideChip = document.createElement('button');
   hideChip.type = 'button';
@@ -1755,7 +1811,22 @@ function renderFilterChips(): void {
 
 function buildFilterMenuItems(): IssuesContextMenuItem[] {
   const taxonomy = getIssuesTaxonomySync();
+  const subWorkspaces = subWorkspaceFilterPaths();
+  const selectedSubWorkspace = issueWorkspaceOptions().subWorkspace?.path;
   return [
+    ...(subWorkspaces.length ? [{
+      id: 'sub-workspace',
+      label: 'Sub-workspace',
+      submenu: [
+        { id: 'all-sub-workspaces', label: 'Whole workspace', checked: !selectedSubWorkspace, onSelect: () => setSubWorkspaceFilter() },
+        ...subWorkspaces.map((path) => ({
+          id: `sub-workspace:${path}`,
+          label: path,
+          checked: path === selectedSubWorkspace,
+          onSelect: () => setSubWorkspaceFilter(path),
+        })),
+      ],
+    }] : []),
     {
       id: 'type',
       label: 'Type',
@@ -2060,6 +2131,13 @@ function onFiltersChanged(): void {
 }
 
 function ensureSubscriptions(): void {
+  if (!workspaceUnsub) {
+    workspaceUnsub = subscribeWorkspace(() => {
+      if (!isIssuesPageOpen()) return;
+      renderIssuesPanel();
+      void refreshSubWorkspaceRepos();
+    });
+  }
   if (!issuesUnsub) {
     issuesUnsub = subscribeIssuesChanges(() => {
       if (isIssuesPageOpen()) renderIssuesPanel();
@@ -3124,6 +3202,7 @@ export async function openIssues(options?: {
   restoreIssuesUiState();
   syncIssuesFilterSelects();
   syncControlsFromState();
+  void refreshSubWorkspaceRepos();
   try {
     renderIssuesPanel();
   } catch {

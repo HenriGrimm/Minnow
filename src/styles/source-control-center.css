@@ -88,6 +88,12 @@
   flex: 1;
 }
 
+.scc-head__drag-gap {
+  display: none;
+  flex: 1 0 0;
+  align-self: stretch;
+}
+
 .scc-head__title {
   flex-shrink: 0;
   margin: 0;
@@ -101,6 +107,7 @@
 /* Repository / branch reads as one breadcrumb after the app title. */
 .scc-head__context {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--mn-space-1);
   min-width: 0;
@@ -109,7 +116,8 @@
   border-inline-start: 1px solid var(--scc-line);
 }
 
-.scc-head__repo {
+.scc-head__repo,
+.scc-head__repo-label {
   color: var(--scc-muted);
   font-size: var(--mn-type-md);
   white-space: nowrap;
@@ -138,7 +146,8 @@
 }
 
 .scc-head .scc-head__branch,
-.scc-head .scc-head__repo-switch {
+.scc-head .scc-head__repo-switch,
+.scc-head .scc-head__worktree {
   border-color: transparent;
   background: transparent;
   padding-inline: var(--mn-space-1-5);
@@ -147,7 +156,11 @@
 }
 
 /* `.scc-btn` sets display, which beats the UA [hidden] rule. */
-.scc-head__repo-switch[hidden] {
+.scc-head :is(.scc-head__repo-switch, .scc-head__repo-label, .scc-head__follow, .scc-head__forge)[hidden] {
+  display: none;
+}
+
+.scc-root--no-repo .scc-head :is(.scc-head__branch, .scc-head__worktree, .scc-head__sync) {
   display: none;
 }
 
@@ -211,6 +224,58 @@
 
 .scc-head__sync .scc-btn + .scc-btn {
   border-inline-start: 1px solid var(--scc-line);
+}
+
+.scc-head__sync .scc-head__sync-menu {
+  display: none;
+  width: var(--scc-btn-h);
+  padding-inline: 0;
+  justify-content: center;
+}
+
+.scc-head__sync[data-multi-repo] .scc-head__sync-menu {
+  display: inline-flex;
+}
+
+.scc-head__sync-menu .scc-btn__icon {
+  width: 12px;
+  height: 12px;
+}
+
+.scc-sync-options .mn-menu__check {
+  order: 1;
+  width: 30px;
+  height: 16px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-surface-2);
+}
+
+.scc-sync-options .mn-menu__item[aria-checked='true'] .mn-menu__check {
+  border-color: var(--mn-accent-border);
+  background: var(--mn-accent-soft);
+}
+
+.scc-sync-options .mn-menu__item[aria-checked] .mn-menu__check::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--mn-fg-muted);
+  transform: none;
+}
+
+.scc-sync-options .mn-menu__item[aria-checked='true'] .mn-menu__check::after {
+  inset-inline-start: 16px;
+  background: var(--mn-accent);
+}
+
+.scc-head__sync .scc-btn:focus-visible {
+  outline-offset: -2px;
 }
 
 .scc-head__sync-count {
@@ -3727,6 +3792,10 @@ button.scc-prdetail__signal {
     flex-basis: 100%;
   }
 
+  .scc-head__context {
+    row-gap: var(--mn-space-1);
+  }
+
   .scc-head__sync {
     order: 2;
   }
@@ -3743,6 +3812,17 @@ button.scc-prdetail__signal {
 }
 
 @container scc-root (max-width: 600px) {
+  .scc-head__identity {
+    flex-wrap: wrap;
+  }
+
+  .scc-head__context {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+
   /* Touch targets stay large where fingers do the work. */
   .scc-btn {
     height: 34px;

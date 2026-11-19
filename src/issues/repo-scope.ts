@@ -9,6 +9,8 @@
  */
 
 import type { IssueCard, IssueGitLink } from '../types';
+import { relativeWorkspacePath } from '../lib/normalize-workspace-path';
+import type { WorkspaceRepo } from '../state/workspace-repos';
 
 /** Trimmed, forward-slash, de-duplicated repo ids. */
 export function normalizeIssueRepoIds(raw: unknown): string[] {
@@ -37,6 +39,28 @@ export function normalizeIssueGitLinkRepo<T>(link: T): T {
 export function issueRepoIds(issue: Pick<IssueCard, 'repos'>, repos: ReadonlyArray<{ id: string }>): string[] {
   if (issue.repos?.length) return [...issue.repos];
   return repos.length === 1 ? [repos[0].id] : [];
+}
+
+/** Older GitHub links may only have a URL. */
+export function issueGithubSlug(issue: Pick<IssueCard, 'github'>): string {
+  return (issue.github?.repo || issue.github?.url?.match(/^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/issues\/\d+/i)?.[1] || '').toLowerCase();
+}
+
+/** A parent view includes cards filed in child workspaces and cards tagged for child repos. */
+export function issueInSubWorkspace(
+  issue: Pick<IssueCard, 'workspacePath' | 'repos' | 'github'>,
+  root: string,
+  subWorkspace: string,
+  repos: readonly WorkspaceRepo[],
+): boolean {
+  const relative = relativeWorkspacePath(root, issue.workspacePath);
+  if (relative === null) return false;
+  const contains = (path: string) => relativeWorkspacePath(`${root}/${subWorkspace}`, `${root}/${path}`) !== null;
+  if (relative !== '.') return contains(relative);
+  if (issue.repos?.length) return issue.repos.some((id) => id !== '.' && contains(id));
+  const slug = issueGithubSlug(issue);
+  return Boolean(slug && repos.some((repo) => !repo.isRoot &&
+    repo.remote?.slug.toLowerCase() === slug && contains(repo.id)));
 }
 
 /** Add or remove one repo id, keeping the workspace's repo order. */

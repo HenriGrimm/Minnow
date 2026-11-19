@@ -556,12 +556,11 @@ export function createChangesView(ctx: SccContext): SccView {
     commitBtn.disabled = !!generateAbort || !hasMessage || !hasAny;
     commitPushBtn.disabled = !!generateAbort || !hasMessage || !hasAny;
     generateBtn.disabled = !!generateAbort || !hasAny;
+    const stageAll = hasAny && !hasStaged;
+    commitBtn.querySelector('.scc-btn__label')!.textContent = stageAll ? 'Commit all files' : 'Commit';
+    commitPushBtn.querySelector('.scc-btn__label')!.textContent = stageAll ? 'Commit all and push' : 'Commit & Push';
 
-    commitHint.textContent = !hasAny
-      ? ''
-      : hasStaged
-        ? `${lastCounts.staged} staged`
-        : 'Commits everything';
+    commitHint.textContent = hasStaged ? `${lastCounts.staged} staged` : '';
   }
 
   async function runCommit(andPush: boolean): Promise<void> {

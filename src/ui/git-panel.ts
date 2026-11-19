@@ -1,5 +1,8 @@
 import { createGitChangeSelection } from './git-change-selection';
 import { createGitCheckoutPicker } from './git-checkout-picker';
+import { fetchWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
+import { pickDefaultRepo, readRememberedRepo, rememberRepo, repoLabel } from './scc-repo-switcher';
+import { getActiveViewerTabPath } from './file-viewer-tab-store';
 import { createCommitGenerationStatus } from './commit-generation-status';
 import { gitStatusRenderKey } from './git-status-render-key';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
@@ -89,10 +92,8 @@ import {
   panelPathsEqual,
   resolvePanelBrowseCwd,
   resolvePanelWorktreeCwd,
-  resolvePanelBrowseRunTargetSeed,
   normalizePanelCwdAfterWorktreeListChange,
   resolveWorktreeListForRender,
-  type PanelBrowseRunTargetSeed,
 } from './panel-worktree-cwd';
 
 import { getFileTreeSidebarTitleSuffix } from './file-tree-listing-root';
@@ -198,8 +199,10 @@ let changesSelection: ReturnType<typeof createGitChangeSelection> | null = null;
 
 let refreshBtn: HTMLButtonElement | null = null;
 
-/** Effective cwd for git ops; undefined means server workspace root. */
+/** Folder the panel browses, with a separate Git target for a folder of repos. */
 let panelCwd: string | undefined;
+let panelRepos: WorkspaceRepo[] = [];
+let panelRepo: WorkspaceRepo | null = null;
 
 /**
  * Bumped whenever the panel cwd moves (chat switch, dropdown, Git Center).
@@ -218,6 +221,12 @@ function setPanelCwd(next: string | undefined): void {
       : panelCwd !== undefined && next !== undefined && panelPathsEqual(panelCwd, next);
   panelCwd = next;
   if (unchanged) return;
+  panelRepo = null;
+  panelRepos = [];
+  resetPanelCheckout();
+}
+
+function resetPanelCheckout(): void {
   closeGraphiteGitReview();
   if (graphiteGitActive()) {
     renderedSectionsKey = null;
@@ -232,7 +241,8 @@ function setPanelCwd(next: string | undefined): void {
   latestGitStatus = null;
   syncCommitConflictState();
   cwdGeneration += 1;
-  currentBranchName = knownWorktrees.find((wt) => pathsEqual(wt.path, next ?? getWorkspacePath()))?.branch ?? '';
+  currentBranchName = knownWorktrees.find((wt) => pathsEqual(wt.path, getEffectiveCwdArg() ?? getWorkspacePath()))?.branch ?? '';
+  cachedMergeBranchLists = { local: [], remote: [], lockedLocal: [] };
   savedCheckoutChanges = [];
   syncCheckoutPicker();
 }
@@ -277,16 +287,16 @@ export function clearPanelCwdUserOverride(): void {
   paintFollowBar();
 }
 
-/** Composer run-target seed for new chats when the user manually picked a worktree in Source Control (browse override). */
-export function getGitPanelNewChatRunTargetSeed(): PanelBrowseRunTargetSeed | null {
-  return resolvePanelBrowseRunTargetSeed(panelCwd, panelCwdUserOverride, knownWorktrees);
-}
-
-/** Current cwd passed to git API calls (undefined → server default). */
+/** Checkout the panel is browsing (undefined means the workspace's Local checkout). */
 export function getGitPanelCwd(): string | undefined {
 
   return panelCwd;
 
+}
+
+/** Git target used by the Code panel, including a selected child repository. */
+export function getGitPanelGitCwd(): string {
+  return getEffectiveCwdArg() ?? getWorkspacePath();
 }
 
 /** Workspace Diff can browse the main checkout while Files and Terminal follow the thread. */
@@ -337,7 +347,7 @@ async function handleManualRefresh(): Promise<void> {
 }
 
 function isMainWorktreePath(worktreePath: string): boolean {
-  const ws = getWorkspacePath().trim();
+  const ws = panelRepo?.absPath ?? getWorkspacePath().trim();
   return Boolean(ws && pathsEqual(worktreePath, ws));
 }
 
@@ -370,7 +380,7 @@ function syncMergeToMainButton(
   const visible = mergeToMainButtonVisible({
     sourceBranch,
     mainWorkspaceCwd: ws,
-    onMainWorktree: Boolean(ws && pathsEqual(panelPath, ws)),
+    onMainWorktree: isMainWorktreePath(getEffectiveCwdArg() ?? panelPath),
     localBranches: lists.local,
     remoteBranches: lists.remote,
     lockedLocalBranches: lists.lockedLocal,
@@ -552,7 +562,7 @@ async function handleMergeToMain(): Promise<void> {
 }
 
 async function handleDeleteWorktree(): Promise<void> {
-  const targetPath = panelCwd ?? getWorkspacePath();
+  const targetPath = getEffectiveCwdArg() ?? getWorkspacePath();
   if (!targetPath || isMainWorktreePath(targetPath)) return;
   const bound = chatsBoundToWorktree(targetPath);
   const chatsLine = bound.length
@@ -728,7 +738,7 @@ function clearCommitActionsBusy(): void {
 }
 
 function getEffectiveCwdArg(): string | undefined {
-  return resolvePanelWorktreeCwd(panelCwd);
+  return resolvePanelWorktreeCwd(panelRepo?.absPath ?? panelCwd);
 }
 
 function syncSidebarChrome(): void {
@@ -835,6 +845,13 @@ function ensurePanelDom(): HTMLElement {
 
   checkoutPicker?.dispose();
   checkoutPicker = createGitCheckoutPicker({
+    onRepository: async id => {
+      const repo = panelRepos.find(row => row.id === id);
+      if (!repo || repo.id === panelRepo?.id) return;
+      rememberRepo(getWorkspacePath(), id);
+      selectPanelRepo(repo);
+      await refreshGitPanel();
+    },
     onSwitch: switchPanelBranch,
     onWorktree: (path) => setGitPanelCwd(pathsEqual(path, getWorkspacePath()) ? undefined : path),
     onRestore: async (input) => {
@@ -1280,10 +1297,12 @@ async function switchPanelBranch(input: GitCheckoutSwitchInput): Promise<GitOpRe
 function syncCheckoutPicker(): void {
   const ws = getWorkspacePath().trim();
   checkoutPicker?.update({
-    cwd: panelCwd ?? ws, workspace: ws, branch: currentBranchName,
+    cwd: getEffectiveCwdArg() ?? ws, workspace: panelRepo?.absPath ?? ws, branch: currentBranchName,
     branches: [...new Set([...cachedMergeBranchLists.local, ...cachedMergeBranchLists.lockedLocal, currentBranchName].filter(Boolean))],
     remoteBranches: cachedMergeBranchLists.remote,
     worktrees: knownWorktrees, savedChanges: savedCheckoutChanges,
+    repositories: panelRepos.map(repo => ({ id: repo.id, label: repoLabel(repo).label })),
+    repoId: panelRepo?.id,
   });
   paintFollowBar();
 }
@@ -1328,7 +1347,7 @@ function paintFollowBar(): void {
   const follow = document.createElement('button');
   follow.type = 'button';
   follow.className = 'git-panel-follow-bar__action';
-  follow.textContent = 'Follow chat';
+  follow.textContent = 'Show chat’s checkout';
   follow.addEventListener('click', () => {
     clearPanelCwdUserOverride();
     syncPanelFromActiveChat({ forceFileTree: true });
@@ -1853,7 +1872,7 @@ async function refreshGraphiteHistory(generation: number): Promise<void> {
         } },
         { id: 'history', label: 'Open Source Control history', onSelect: async () => {
           const { openSourceControlCenterLazy } = await import('./source-control-center-entry');
-          await openSourceControlCenterLazy({ section: 'history' });
+          await openSourceControlCenterLazy({ section: 'history', cwd: getGitPanelGitCwd() });
         } },
       ] });
     },
@@ -2108,9 +2127,9 @@ async function refreshBranchSelect(): Promise<void> {
 }
 
 async function refreshWorktreeDropdown(): Promise<void> {
-  const ws = getWorkspacePath().trim();
+  const ws = panelRepo?.absPath ?? getWorkspacePath().trim();
   const generation = cwdGeneration;
-  const listResult = await listWorktrees();
+  const listResult = await listWorktrees(getEffectiveCwdArg());
   if (generation !== cwdGeneration) return;
   const parsed = listResult.ok && listResult.output ? parseWorktreeListPorcelain(listResult.output) : [];
   const userFacing = parsed.length ? filterUserFacingWorktrees(parsed, ws) : [];
@@ -2118,7 +2137,28 @@ async function refreshWorktreeDropdown(): Promise<void> {
     parsed: userFacing, previous: knownWorktrees,
     fallback: ws ? { path: ws, head: '', branch: currentBranchName || undefined, detached: false } : null,
   });
-  if (userFacing.length) setPanelCwd(normalizePanelCwdAfterWorktreeListChange(panelCwd, knownWorktrees, ws));
+  if (userFacing.length && !panelRepo) setPanelCwd(normalizePanelCwdAfterWorktreeListChange(panelCwd, knownWorktrees, ws));
+}
+
+function selectPanelRepo(repo: WorkspaceRepo | null): void {
+  if (panelRepo?.absPath === repo?.absPath) return;
+  panelRepo = repo;
+  knownWorktrees = [];
+  resetPanelCheckout();
+}
+
+async function loadPanelRepos(): Promise<void> {
+  const generation = cwdGeneration;
+  const workspace = getWorkspacePath();
+  const base = resolvePanelWorktreeCwd(panelCwd);
+  const repos = await fetchWorkspaceRepos(base ? { checkoutPath: base } : { workspacePath: workspace });
+  if (generation !== cwdGeneration || workspace !== getWorkspacePath()) return;
+  panelRepos = repos;
+  selectPanelRepo(repos.some(repo => !repo.isRoot) ? pickDefaultRepo(repos, {
+    workspacePath: base ?? workspace,
+    activeFilePath: getActiveViewerTabPath(),
+    remembered: readRememberedRepo(workspace),
+  }) : null);
 }
 
 function setGitPanelNoRepoState(active: boolean): void {
@@ -2149,7 +2189,7 @@ export async function refreshGitPanel(): Promise<void> {
 
   refreshing = true;
 
-  const generation = cwdGeneration;
+  let generation = cwdGeneration;
   /** True once the panel cwd moved under us; the pending re-run owns the render. */
   const superseded = (): boolean => {
     if (cwdGeneration === generation) return false;
@@ -2158,6 +2198,9 @@ export async function refreshGitPanel(): Promise<void> {
   };
 
   try {
+    await loadPanelRepos();
+    if (!panelOpen || refreshPending) return;
+    generation = cwdGeneration;
     await refreshWorktreeDropdown();
     if (superseded()) return;
 
@@ -2517,6 +2560,9 @@ export function resetGitPanelForTests(): void {
 
   panelCwd = undefined;
   panelCwdUserOverride = false;
+  panelRepos = [];
+  panelRepo = null;
+  cwdGeneration += 1;
 
   knownWorktrees = [];
   currentBranchName = '';

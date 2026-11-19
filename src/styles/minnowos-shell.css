@@ -374,9 +374,12 @@ html.minnow-os-enabled {
 /* ---------- frameless Electron shell menubar ---------- */
 
 html.is-electron-shell .mn-os-menubar--shell-frameless {
-  -webkit-app-region: drag;
   user-select: none;
   padding-top: env(safe-area-inset-top, 0px);
+}
+
+html.is-electron-shell:not(.mn-graphite-sidebar-motion) .mn-os-menubar--shell-frameless:not(.mn-graphite-menubar--moving) {
+  -webkit-app-region: drag;
 }
 
 html.is-electron-shell .mn-os-menubar--shell-frameless button,
@@ -827,7 +830,7 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebarBackdrop.o
 @keyframes mn-os-app-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.985);
+    transform: var(--mn-app-enter-transform, translateY(14px) scale(0.985));
   }
 
   to {

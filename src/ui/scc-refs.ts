@@ -753,7 +753,7 @@ export function createBranchesView(ctx: SccContext): SccView {
       () => checkoutBranchWithChoice(
         { ...input, cwd, expectedBranch, branch: name },
         () => !destroyed && worktreePathsEqual(cwd, ctx.getCwd() ?? getWorkspacePath()),
-        { openWorktree: ctx.openWorktree },
+        { openWorktree: ctx.openWorktree, shared: ctx.sharedCheckout?.() },
       ),
       ctx,
       message,
@@ -993,7 +993,7 @@ export function createStashesView(ctx: SccContext): SccView {
 
 export function createWorktreesView(
   ctx: SccContext,
-  options: { onSelectWorktree: (path: string | undefined) => void },
+  options: { onSelectWorktree: (path: string) => void },
 ): SccView {
   const root = el('div', 'scc-list-view');
   const bar = listBar('Worktrees');
@@ -1059,14 +1059,19 @@ export function createWorktreesView(
   async function refresh(): Promise<void> {
     if (destroyed) return;
 
-    const workspace = getWorkspacePath().trim();
+    const project = getWorkspacePath().trim();
+    const cwd = ctx.getCwd();
     const version = ++refreshVersion;
-    const result = await listWorktrees();
+    const result = await listWorktrees(cwd);
     if (destroyed || version !== refreshVersion) return;
 
     // Same worktrees, same chats, same failures: keep the rows (and the selection).
     // Their file and sync counts are re-read every sixth poll (about 30s).
     const listed = result.ok && result.output ? parseWorktreeListPorcelain(result.output) : [];
+    const principal = getPrincipalWorktree(listed);
+    // A project with a Git checkout inside it has a principal checkout for each repo.
+    const projectIsCheckout = listed.some(wt => panelPathsEqual(wt.path, project));
+    const workspace = projectIsCheckout ? project : principal?.path ?? cwd ?? project;
     const source = JSON.stringify([
       result.ok, result.output, result.missing, ctx.getCwd() ?? workspace, [...failures.keys()],
       listed.map((wt) => chatsBoundToWorktree(wt.path).map((chat) => chat.id)),
@@ -1084,12 +1089,9 @@ export function createWorktreesView(
       return;
     }
 
-    const parsed =
-      result.ok && result.output ? parseWorktreeListPorcelain(result.output) : [];
-    const principal = getPrincipalWorktree(parsed);
     const worktrees: ParsedWorktree[] =
-      parsed.length > 0
-        ? filterUserFacingWorktrees(parsed, workspace)
+      listed.length > 0
+        ? filterUserFacingWorktrees(listed, workspace)
         : workspace
           ? [{ path: workspace, head: '', branch: undefined, detached: false }]
           : [];
@@ -1182,15 +1184,20 @@ export function createWorktreesView(
       if (!isActive && !missing) {
         actions.push(
           button({
-            label: 'Work here',
+            label: 'Browse checkout',
             onClick: () => {
-              options.onSelectWorktree(isWorkspace ? undefined : worktree.path);
-              void ctx.refreshAll();
+              options.onSelectWorktree(worktree.path);
             },
           }),
         );
       }
       if (removable) {
+        if (!missing && ctx.newThreadInCheckout) actions.push(button({
+          label: 'New thread here',
+          title: 'New thread in this checkout',
+          variant: 'ghost',
+          onClick: () => void ctx.newThreadInCheckout?.(worktree.path, worktree.branch),
+        }));
         actions.push(
           button({
             icon: 'trash',
@@ -1209,10 +1216,7 @@ export function createWorktreesView(
           actions,
           onActivate: isActive || missing
             ? undefined
-            : () => {
-                options.onSelectWorktree(isWorkspace ? undefined : worktree.path);
-                void ctx.refreshAll();
-              },
+            : () => options.onSelectWorktree(worktree.path),
         });
       if (issue) {
         row.classList.add('has-issue');
@@ -1229,7 +1233,7 @@ export function createWorktreesView(
           });
           if (result.ok) {
             failures.delete(key);
-            if (panelPathsEqual(worktree.path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(undefined);
+            if (panelPathsEqual(worktree.path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(workspace);
             await detachChatsFromRemovedWorktree(using);
           }
           return result;
@@ -1351,7 +1355,7 @@ export function createWorktreesView(
     }
     failures.delete(key);
     // Move off the removed checkout only once it is actually gone.
-    if (panelPathsEqual(path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(undefined);
+    if (panelPathsEqual(path, ctx.getCwd() ?? workspace)) options.onSelectWorktree(workspace);
     const failed = await detachChatsFromRemovedWorktree(bound);
     if (failed.length) showToast(`Could not return ${failed.join(', ')} to Local. Choose a checkout in the chat.`, 'error');
     await ctx.refreshAll();
@@ -1409,7 +1413,7 @@ export function createWorktreesView(
       }
       return { ok: true };
     }, { label: `Cleaning up ${stale.length === 1 ? 'worktree' : `${stale.length} worktrees`}…`, skipSuccessToast: true });
-    if (changed.some((p) => panelPathsEqual(p, ctx.getCwd() ?? workspace))) options.onSelectWorktree(undefined);
+    if (changed.some((p) => panelPathsEqual(p, ctx.getCwd() ?? workspace))) options.onSelectWorktree(workspace);
     showToast(
       stale.length === 1 && removed === 1 ? 'Worktree cleaned up' : `Cleaned up ${removed} of ${stale.length} worktrees`,
       removed === stale.length ? 'success' : 'error',

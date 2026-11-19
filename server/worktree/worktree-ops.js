@@ -1299,8 +1299,8 @@ export async function openPr({ boardId, branch, title, body }) {
  * as `prunable` only when unlocked; a locked one (Codex leaves `initializing`)
  * otherwise looks like a live checkout forever.
  */
-export async function listWorktrees() {
-  const r = await git(['worktree', 'list', '--porcelain']);
+export async function listWorktrees(cwd) {
+  const r = await git(['worktree', 'list', '--porcelain'], cwd);
   if (!ok(r)) return { ok: false, output: out(r) };
   const paths = String(r.stdout ?? '').split('\n')
     .filter((line) => line.startsWith('worktree '))

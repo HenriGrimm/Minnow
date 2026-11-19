@@ -53,12 +53,12 @@ import {
 
 // ── Selection ────────────────────────────────────────────────────────────────
 
-/** Palette / command-palette can ask the next refresh to select this PR. */
-let pendingSelectNumber: number | null = null;
+const pendingSelections = new Map<string, number>();
+const prDrafts = new Map<string, { title: string; body: string; base: string; draft: boolean }>();
 
-/** Select this PR number the next time the pulls list loads. */
-export function requestPullsSelection(number: number): void {
-  pendingSelectNumber = number;
+/** Select this PR the next time its repository's list loads. */
+export function requestPullsSelection(number: number, repoKey?: string): void {
+  if (repoKey) pendingSelections.set(repoKey, number);
 }
 
 // ── Pulls view ───────────────────────────────────────────────────────────────
@@ -111,6 +111,10 @@ export function createPullsView(
   let detailData: PullRequestDetail | null = null;
   let activeTab: PrDetailTab = 'overview';
   let creating = false;
+  let formHead: string | undefined;
+  let restoreDraft = true;
+  const repoKey = ctx.repoKey ?? ctx.getCwd() ?? getWorkspacePath();
+  const draftKey = (branch: string) => `${repoKey}\0${branch}`;
   let listRequest = 0;
   let detailRequest = 0;
 
@@ -201,13 +205,22 @@ export function createPullsView(
       ctx.setBadge('pulls', openCount > 0 ? { kind: 'count', value: openCount } : null);
     }
 
+    const branch = ctx.getBranch();
+    if (creating && branch && formHead !== undefined && formHead !== branch) {
+      creating = false;
+      formHead = undefined;
+      restoreDraft = true;
+      renderDetailPlaceholder();
+    }
+    const pending = pendingSelections.get(repoKey);
     if (!creating) {
       const previous = selectedNumber;
-      if (pendingSelectNumber && cache.some((pr) => pr.number === pendingSelectNumber)) {
-        selectedNumber = pendingSelectNumber;
-        pendingSelectNumber = null;
+      if (pending && cache.some((pr) => pr.number === pending)) {
+        selectedNumber = pending;
+        pendingSelections.delete(repoKey);
+        restoreDraft = false;
       } else if (!cache.some((pr) => pr.number === selectedNumber)) {
-        selectedNumber = matchPrForBranch(cache, ctx.getBranch())?.number ?? cache[0]?.number ?? null;
+        selectedNumber = matchPrForBranch(cache, branch)?.number ?? cache[0]?.number ?? null;
       }
       if (previous !== selectedNumber) {
         clearDetail();
@@ -218,6 +231,10 @@ export function createPullsView(
     renderList();
 
     if (creating) return;
+    if (restoreDraft && branch && prDrafts.has(draftKey(branch))) {
+      await openCreateForm();
+      return;
+    }
     if (selectedNumber && cache.some((pr) => pr.number === selectedNumber)) {
       await renderDetail(selectedNumber);
     } else if (!selectedNumber) {
@@ -228,6 +245,8 @@ export function createPullsView(
   function renderUnavailable(status: ForgeStatus): void {
     clearDetail();
     creating = false;
+    formHead = undefined;
+    restoreDraft = true;
     toolbar.hidden = true;
     bar.actions.hidden = true;
     listCount.textContent = '';
@@ -665,6 +684,7 @@ export function createPullsView(
     const result = await runGitUiOp(() => runCheckoutFlow(input, {
       isCurrent: () => !destroyed,
       openWorktree: ctx.openWorktree,
+      shared: ctx.sharedCheckout?.(),
     }), {
       label: 'Checking out pull request…',
       successMessage: `Checked out #${pr.number}`,
@@ -686,7 +706,7 @@ export function createPullsView(
       confirmLabel: 'Close',
       danger: true,
     });
-    if (!confirmed) return;
+    if (!confirmed || destroyed) return;
 
     const result = await runGitUiOp(() => prClose({ cwd: ctx.getCwd(), number: pr.number }), {
       label: 'Closing pull request…',
@@ -710,6 +730,8 @@ export function createPullsView(
     }
 
     creating = true;
+    formHead = undefined;
+    restoreDraft = false;
     clearDetail();
     const request = detailRequest;
     detailCol.replaceChildren(skeletonRows(5));
@@ -726,7 +748,10 @@ export function createPullsView(
           branchResult.lockedLocal ?? [],
         )
       : 'main';
-    const head = ctx.getBranch();
+    const head = branchResult.ok ? branchResult.current ?? ctx.getBranch() : ctx.getBranch();
+    formHead = head;
+    const key = draftKey(head);
+    const savedDraft = prDrafts.get(key);
     const headEntry = tree?.ok ? tree.branches?.find((entry) => entry.name === head) : undefined;
 
     selectedNumber = null;
@@ -736,7 +761,12 @@ export function createPullsView(
     }
 
     drill.open();
-    const cancel = () => { renderDetailPlaceholder(); drill.close(); };
+    const cancel = () => {
+      prDrafts.delete(key);
+      formHead = undefined;
+      renderDetailPlaceholder();
+      drill.close();
+    };
     const form = el('form', 'scc-detail scc-prform');
     form.setAttribute('aria-label', 'New pull request');
     form.noValidate = true;
@@ -755,6 +785,7 @@ export function createPullsView(
       baseField.appendChild(option);
     }
     baseField.value = bases.includes(trunk) ? trunk : bases[0] ?? trunk;
+    if (savedDraft && bases.includes(savedDraft.base)) baseField.value = savedDraft.base;
     baseField.disabled = onTrunk || !head;
 
     const compare = el('div', 'scc-prform__compare');
@@ -787,7 +818,7 @@ export function createPullsView(
     titleField.placeholder = 'Summarize the change';
     titleField.required = true;
     titleField.setAttribute('aria-label', 'Pull request title');
-    if (head && !onTrunk) titleField.value = suggestPrTitle(head, headEntry);
+    if (head && !onTrunk) titleField.value = savedDraft?.title ?? suggestPrTitle(head, headEntry);
 
     const titleBlock = el('div', 'scc-prform__field');
     const titleLabel = el('label', 'scc-prform__label', 'Title');
@@ -799,6 +830,7 @@ export function createPullsView(
     bodyField.rows = 10;
     bodyField.placeholder = 'What changed, and why. How to test it.';
     bodyField.setAttribute('aria-label', 'Pull request description');
+    bodyField.value = savedDraft?.body ?? '';
     const preview = el('div', 'scc-prdetail__body scc-prform__preview');
     preview.hidden = true;
     const modes = segmented<'write' | 'preview'>({
@@ -826,6 +858,7 @@ export function createPullsView(
     const draftLabel = el('label', 'scc-prform__draft');
     const draftInput = el('input');
     draftInput.type = 'checkbox';
+    draftInput.checked = savedDraft?.draft ?? false;
     const draftText = el('span', 'scc-prform__draft-text');
     draftText.append(el('span', undefined, 'Open as draft'), el('span', 'scc-prform__hint', 'Reviewers are not asked until you mark it ready.'));
     draftLabel.append(draftInput, draftText);
@@ -873,6 +906,7 @@ export function createPullsView(
     }
 
     async function publish(setUpstream: boolean): Promise<void> {
+      if (destroyed) return;
       const result = await runGitUiOp(
         () => gitPush(setUpstream ? { cwd: ctx.getCwd(), setUpstream: true, branch: head } : { cwd: ctx.getCwd() }),
         {
@@ -894,10 +928,15 @@ export function createPullsView(
     submit.disabled = blocked || onTrunk;
 
     form.append(header.root, notice, titleBlock, bodyBlock, footer);
+    const saveDraft = () => prDrafts.set(key, {
+      title: titleField.value, body: bodyField.value, base: baseField.value, draft: draftInput.checked,
+    });
+    form.addEventListener('input', saveDraft);
+    form.addEventListener('change', saveDraft);
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (submit.disabled) return;
+      if (submit.disabled || destroyed) return;
       const title = titleField.value.trim();
       if (!title) {
         titleField.setAttribute('aria-invalid', 'true');
@@ -908,6 +947,7 @@ export function createPullsView(
 
       submit.disabled = true;
       submit.querySelector('.scc-btn__label')!.textContent = 'Creating…';
+      const submittedDraft = prDrafts.get(key);
 
       const result = await runGitUiOp(
         () =>
@@ -915,6 +955,7 @@ export function createPullsView(
             cwd: ctx.getCwd(),
             title,
             body: bodyField.value,
+            head,
             base: baseField.value || undefined,
             draft: draftInput.checked,
           }),
@@ -930,12 +971,15 @@ export function createPullsView(
       submit.querySelector('.scc-btn__label')!.textContent = 'Create pull request';
 
       if (!result.ok) return;
+      if (prDrafts.get(key) === submittedDraft) prDrafts.delete(key);
+      if (destroyed) return;
       creating = false;
+      formHead = undefined;
       filter = 'open';
       search.value = '';
       filters.setValue('open');
       const number = Number(result.url?.match(/\/pull\/(\d+)/)?.[1]);
-      if (number) pendingSelectNumber = number;
+      if (number) requestPullsSelection(number, repoKey);
       await refresh();
     });
     titleField.addEventListener('input', () => titleField.removeAttribute('aria-invalid'));

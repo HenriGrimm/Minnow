@@ -109,6 +109,7 @@ let win: Window;
 const originals = { window: globalThis.window, document: globalThis.document, HTMLElement: globalThis.HTMLElement };
 const panel = await import('../../src/ui/git-panel.ts');
 const workspace = await import('../../src/state/workspace.ts');
+const workspaceRepos = await import('../../src/state/workspace-repos.ts');
 const sessions = await import('../../src/state/sessions.ts');
 beforeEach(() => {
   win = new Window({ url: 'http://localhost/' });
@@ -134,6 +135,37 @@ afterEach(async () => {
   workspace.resetWorkspaceStateForTests();
   await win.close();
   Object.assign(globalThis, originals);
+});
+
+test('Changes targets the chosen repository while the file explorer stays at the workspace', async () => {
+  const originalFetch = globalThis.fetch;
+  const repos = ['backend', 'frontend'].map(id => ({
+    id, relPath: id, absPath: `/workspace/${id}`, isRoot: false, remote: null,
+  }));
+  globalThis.fetch = (async (url, init) => String(url).startsWith('/api/workspace/repos')
+    ? Response.json({ repos }) : originalFetch(url, init)) as typeof fetch;
+  workspaceRepos.invalidateWorkspaceReposCache();
+  try {
+    panel.setGitPanelCwd(undefined);
+    statusResult = { ok: true, unstaged: [{ path: 'edited.ts', status: 'M' }] };
+    panel.setGitSurfaceVisible(true);
+    const trigger = document.getElementById('gitCheckoutTrigger') as HTMLButtonElement;
+    await waitForPanel(() => (trigger.textContent?.includes('backend') ?? false) && !trigger.disabled);
+    trigger.click();
+    const select = document.querySelector<HTMLSelectElement>('.git-checkout__repo select')!;
+    select.value = 'frontend';
+    select.dispatchEvent(new win.Event('change') as unknown as Event);
+    await waitForPanel(() => (trigger.textContent?.includes('frontend') ?? false) && !trigger.disabled && Boolean(document.querySelector('.git-panel-file-path')));
+    document.querySelector<HTMLButtonElement>('.git-panel-file-path')!.click();
+    await waitForPanel(() => calls.some(call => Array.isArray(call) && call[0] === 'patch'));
+    assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'patch'), [
+      'patch', { path: 'edited.ts', cached: false, cwd: '/workspace/frontend' },
+    ]);
+    assert.equal(panel.getGitPanelFileBrowseCwd(), undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    workspaceRepos.invalidateWorkspaceReposCache();
+  }
 });
 
 test('Graphite opens workspace changes from a worktree thread and loads history on demand', async () => {

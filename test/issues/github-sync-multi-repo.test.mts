@@ -47,6 +47,13 @@ describe('issue forge scope', () => {
     assert.deepEqual(resolveIssueForgeScope(card({}), []), { cwd: WS });
   });
 
+  test('a folder with a single child repo still scopes calls to the child', () => {
+    const child = [repo('apps/api/backend', 'acme/api')];
+    const expected = { cwd: WS, repo: 'apps/api/backend', slug: 'acme/api' };
+    assert.deepEqual(resolveIssueForgeScope(card({}), child), expected);
+    assert.deepEqual(importScopes(WS, child), [expected]);
+  });
+
   test('linked issues follow their stored repo; unlinked ones their single target', () => {
     const linked = card({ github: { number: 4, url: '', repo: 'acme/web', syncedAt: 1 } });
     assert.deepEqual(resolveIssueForgeScope(linked, REPOS), { cwd: WS, repo: 'frontend', slug: 'acme/web' });
@@ -134,5 +141,33 @@ describe('multi-repo GitHub sync', () => {
     assert.equal(result.imported, 2);
     const rows = listIssues().map((i) => [i.title, i.repos?.[0], i.github?.repo]).sort();
     assert.deepEqual(rows, [['From backend', 'backend', 'acme/api'], ['From frontend', 'frontend', 'acme/web']]);
+  });
+
+  test('import continues after a repo fails and checks every page without duplicating child workspace cards', async () => {
+    setIssuesStateForTests({ version: 2, nextId: 2, workspaces: {}, issues: [
+      card({ workspacePath: `${WS}/frontend`, github: {
+        number: 4, url: 'https://github.com/acme/web/issues/4', syncedAt: 1,
+      } }),
+    ] });
+    const fetchDefault = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      if (body.op !== 'issueList') return fetchDefault(input, init);
+      calls.push(body);
+      if (body.repo === 'backend') return json({ ok: false, error: 'Could not read backend' });
+      const issue = (number: number) => ({
+        number, title: `Remote ${number}`, url: `https://github.com/acme/web/issues/${number}`,
+        body: '', labels: [], state: 'closed',
+      });
+      return body.cursor === null
+        ? json({ ok: true, issues: [issue(4)], nextCursor: 'page-two' })
+        : json({ ok: true, issues: [issue(5)] });
+    };
+    const result = await importGithubIssues({ workspacePath: WS, allPages: true });
+    assert.deepEqual(result, { ok: false, imported: 1, skipped: 1, error: 'backend: Could not read backend' });
+    assert.deepEqual(calls.map((call) => [call.repo, call.cursor]), [
+      ['backend', null], ['frontend', null], ['frontend', 'page-two'],
+    ]);
+    assert.deepEqual(listIssues().map((issue) => issue.github?.number).sort(), [4, 5]);
   });
 });

@@ -150,3 +150,41 @@ test('blank empty-state menu works without intercepting editing or project contr
   assert.equal(rightClick(mount()), false);
   assert.equal(document.querySelector('.mn-menu'), null);
 });
+
+test('the parent workspace lists child cards and filters list and board by folder', async (t) => {
+  const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+  const workspacePath = 'C:/Coltiva';
+  const repoId = 'apps/services/backend';
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    ok: true,
+    repos: [{ id: repoId, relPath: repoId, absPath: `${workspacePath}/${repoId}`, isRoot: false, remote: null }],
+  }));
+  store.setIssuesStateForTests({ version: 2, nextId: 5, issues: [
+    { ...issue('MIN-1', 'todo'), workspacePath, repos: [repoId] },
+    { ...issue('MIN-2', 'todo'), workspacePath: 'c:/coltiva/apps/services/backend' },
+    { ...issue('MIN-3', 'todo'), workspacePath },
+    { ...issue('MIN-4', 'todo'), workspacePath: 'C:/Coltiva-other' },
+  ] });
+  setWorkspaceFromServer({ path: workspacePath, label: 'Coltiva', isDefault: false });
+  document.getElementById('btnIssuesScreenIssues')?.click();
+  const search = document.getElementById('issuesSearch') as HTMLInputElement;
+  search.value = '';
+  search.dispatchEvent(new dom.Event('input', { bubbles: true }));
+  await openIssues({ screen: 'issues' });
+  assert.match(mount().textContent!, /MIN-1/);
+  assert.match(mount().textContent!, /MIN-2/);
+  assert.match(mount().textContent!, /MIN-3/);
+  assert.doesNotMatch(mount().textContent!, /MIN-4/);
+  rightClick(mount());
+  item('filters').click();
+  item('sub-workspace').click();
+  item('sub-workspace:apps/services').click();
+  for (const view of ['issuesViewList', 'issuesViewBoard']) {
+    document.getElementById(view)!.click();
+    assert.match(mount().textContent!, /MIN-1/);
+    assert.match(mount().textContent!, /MIN-2/);
+    assert.doesNotMatch(mount().textContent!, /MIN-3|MIN-4/);
+  }
+  document.querySelector<HTMLButtonElement>('[data-chip-id="sub-workspace"]')!.click();
+  assert.match(mount().textContent!, /MIN-3/);
+});

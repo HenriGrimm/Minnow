@@ -33,7 +33,7 @@ export async function refreshGitRailBadges(
   );
 
   const cwd = options.cwd;
-  const [stashResult, worktreeResult] = await Promise.all([gitStashList(cwd), listWorktrees()]);
+  const [stashResult, worktreeResult] = await Promise.all([gitStashList(cwd), listWorktrees(cwd)]);
 
   if (stashResult.ok) {
     const count = stashResult.stashes?.length ?? 0;

@@ -14,10 +14,15 @@ import { panelPathsEqual } from './panel-worktree-cwd';
 
 /** Other live chats whose tools run in `cwd` (Local chats on the same folder). */
 export function otherChatsInCheckout(chat: Pick<Chat, 'id'>, cwd: string, workspace: string): Chat[] {
+  return otherChatsUsingCheckout(chat, [cwd], workspace);
+}
+
+/** A child checkout can also be shared by chats using its enclosing workspace or mirror. */
+export function otherChatsUsingCheckout(chat: Pick<Chat, 'id'>, folders: string[], workspace: string): Chat[] {
   return (sessionState?.chats ?? []).filter((other) => {
     if (other.id === chat.id || isChatArchived(other) || other.boardTaskId || other.background) return false;
     const folder = resolveChatWorktreeRoot(other) ?? other.workspacePath?.trim() ?? workspace;
-    return Boolean(folder) && panelPathsEqual(folder, cwd);
+    return Boolean(folder) && folders.some(cwd => panelPathsEqual(folder, cwd));
   });
 }
 

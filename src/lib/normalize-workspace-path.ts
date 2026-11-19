@@ -20,3 +20,15 @@ export function workspacePathsEqual(a: string, b: string): boolean {
     ? left.toLowerCase() === right.toLowerCase()
     : left === right;
 }
+
+/** Relative path of a child workspace, "." for the root, or null outside it. */
+export function relativeWorkspacePath(root: string, child: string): string | null {
+  const base = normalizeWorkspacePath(root);
+  const target = normalizeWorkspacePath(child);
+  if (!base || !target) return null;
+  const prefix = base.endsWith('/') ? base : `${base}/`;
+  const windows = /^[A-Z]:(?:\/|$)/.test(base);
+  const key = (path: string) => windows ? path.toLowerCase() : path;
+  if (key(base) === key(target)) return '.';
+  return key(target).startsWith(key(prefix)) ? target.slice(prefix.length) : null;
+}

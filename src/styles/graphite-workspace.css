@@ -138,18 +138,33 @@ html.is-electron-shell:is(.mn-graphite-workspace:not(.os-workspace-gate-open), .
   padding-right: calc(var(--mn-titlebar-end-inset, var(--mn-workbench-gutter)) + var(--mn-titlebar-actions-width, 0px) + var(--mn-space-2));
 }
 
-html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window])
-  #osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar)::before {
-  content: '';
-  position: absolute;
-  inset: 0 calc(var(--mn-titlebar-end-inset, 0px) + var(--mn-titlebar-actions-width, 0px)) 0 var(--mn-titlebar-start-inset, 0px);
-  pointer-events: none;
-  -webkit-app-region: drag;
+/* Native drag regions can lag behind the header during sidebar motion. */
+html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]):not(.mn-graphite-sidebar-motion)
+  .mn-os:not(:has(> #osMenubar.mn-graphite-menubar--moving))
+  #osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar) {
+  &:not(.scc-head)::before {
+    content: '';
+    position: absolute;
+    inset: 0 calc(var(--mn-titlebar-end-inset, 0px) + var(--mn-titlebar-actions-width, 0px)) 0 var(--mn-titlebar-start-inset, 0px);
+    pointer-events: none;
+    -webkit-app-region: drag;
+  }
+
+  /* Source Control's drag region uses free space after the repository controls. */
+  .scc-head__drag-gap {
+    display: block;
+    -webkit-app-region: drag;
+  }
 }
 
 html.is-electron-shell :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active)
   [data-app-titlebar] :is(button, a, label, input, select, textarea, summary, [contenteditable='true'], [role='button']) {
   -webkit-app-region: no-drag;
+}
+
+/* Drop the inactive Issues layout so Electron discards its native drag region. */
+html.is-electron-shell #osAppsLayer > #issuesView:not(.is-active) {
+  display: none;
 }
 
 /* Keep the sheet and its chrome on one row, even when the workspace rail is collapsed. */
@@ -163,7 +178,19 @@ html.is-electron-shell :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app
   > #osMenubar[data-view='app'] {
     border: 0;
     background: transparent;
+    /* The shell and app share this row. Only shell controls receive clicks. */
+    pointer-events: none;
+
+    :is(button, a, input, select, textarea, [contenteditable='true']) {
+      pointer-events: auto;
+    }
   }
+}
+
+/* Fade in titlebar apps without moving their native hit regions. */
+html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window])
+  #osAppsLayer > .mn-os-app-enter:has([data-app-titlebar]:not([hidden], .is-graph-canvas-bg .brain-page-header, .brain-page .code-map-bar)) {
+  --mn-app-enter-transform: none;
 }
 
 .mn-graphite-apps[data-app-window] .mn-os:has(#osStage [data-app-titlebar]) {
@@ -176,7 +203,7 @@ html.is-electron-shell :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app
     inset: var(--mn-graphite-window-inset) var(--mn-graphite-window-inset) auto;
     height: var(--mn-workbench-band-h);
     pointer-events: none;
-    -webkit-app-region: no-drag;
+    -webkit-app-region: initial;
     > .mn-os-mb-left { display: none; }
     > .mn-os-mb-right, > .mn-os-mb-window-controls { pointer-events: auto; }
     > .mn-os-mb-right {
@@ -316,6 +343,11 @@ html.is-electron-shell:not([data-platform='darwin']).mn-graphite-sidebar-open:no
       margin-block-start var(--duration-normal) var(--ease-out),
       border-radius var(--duration-normal) var(--ease-out),
       box-shadow var(--duration-normal) var(--ease-out);
+  }
+
+  /* Keep Source Control's Back button clear of the sliding sidebar toggle. */
+  html.is-electron-shell:not([data-reduce-motion]).mn-graphite-sidebar-motion #osStage .scc-head[data-app-titlebar] {
+    transition: padding-left var(--duration-normal) var(--ease-out);
   }
 
   :root:not([data-reduce-motion]).mn-graphite-sidebar-motion #osWorkspace::before {

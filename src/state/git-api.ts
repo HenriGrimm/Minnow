@@ -167,6 +167,7 @@ export interface GitSavedCheckoutChanges {
 
 export interface GitCheckoutSwitchInput {
   cwd?: string;
+  repo?: string;
   branch: string;
   pullRequest?: { number: number; url: string; headRef?: string; headRefOid?: string; crossRepository?: boolean };
   create?: boolean;
@@ -302,6 +303,7 @@ export function gitCommit(input: {
 
 export function gitPush(input?: {
   cwd?: string;
+  repo?: string;
   setUpstream?: boolean;
   branch?: string;
 }): Promise<GitOpResult> {
@@ -338,8 +340,8 @@ export function gitLog(input?: {
 
 // ── Branches ─────────────────────────────────────────────────────────────────
 
-export function gitBranches(cwd?: string, signal?: AbortSignal): Promise<GitOpResult> {
-  return postGit('branches', cwd ? { cwd } : {}, signal);
+export function gitBranches(cwd?: string, signal?: AbortSignal, repo?: string): Promise<GitOpResult> {
+  return postGit('branches', { cwd, repo }, signal);
 }
 
 export interface GitWorktreeStatusResult {

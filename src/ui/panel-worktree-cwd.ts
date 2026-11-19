@@ -29,28 +29,6 @@ export interface PanelWorktreeBranchEntry {
   branch?: string;
 }
 
-/** Composer run-target seed when the user manually picked a browse root in Source Control. */
-export type PanelBrowseRunTargetSeed =
-  | { kind: 'local' }
-  | { kind: 'worktree'; worktreeRoot: string; gitBranch?: string };
-
-/** Map a manual git-panel worktree pick to a composer run-target for new chats. */
-export function resolvePanelBrowseRunTargetSeed(
-  panelCwd: string | undefined,
-  panelCwdUserOverride: boolean,
-  knownWorktrees: PanelWorktreeBranchEntry[],
-): PanelBrowseRunTargetSeed | null {
-  if (!panelCwdUserOverride) return null;
-  const root = resolvePanelWorktreeCwd(panelCwd);
-  if (!root) return { kind: 'local' };
-  const match = knownWorktrees.find((wt) => panelPathsEqual(wt.path, root));
-  return {
-    kind: 'worktree',
-    worktreeRoot: root,
-    gitBranch: match?.branch,
-  };
-}
-
 export function resolvePanelBrowseCwd(input: {
   chat: Chat;
   groups?: ChatGroup[];

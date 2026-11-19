@@ -886,8 +886,7 @@
   padding: 0;
 }
 
-.mn-graphite-apps .scc-head__palette-btn :is(.scc-btn__label, kbd),
-.mn-graphite-apps .scc-root:not(.scc-root--no-repo) .scc-head__context-btn:not(.scc-head__branch, .is-secondary-worktree) {
+.mn-graphite-apps .scc-head__palette-btn :is(.scc-btn__label, kbd) {
   display: none;
 }
 

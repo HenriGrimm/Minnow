@@ -55,14 +55,14 @@ test('a single repo workspace is one repo with id "."', async () => {
   assert.equal(repoRemoteSlug(repos[0]), 'acme/solo');
 });
 
-test('nested repo wins over the root repo for its paths, and repos are found at depth 2', async () => {
+test('nested repo wins over the root repo for its paths, even below several folders', async () => {
   const root = await tempDir();
   await makeRepo(root, null);
-  await makeRepo(path.join(root, 'apps', 'web'), null);
+  await makeRepo(path.join(root, 'apps', 'clients', 'external', 'web'), null);
   const repos = await discoverWorkspaceRepos(root, { refresh: true });
-  assert.deepEqual(repos.map((r) => r.id), ['.', 'apps/web']);
+  assert.deepEqual(repos.map((r) => r.id), ['.', 'apps/clients/external/web']);
   assert.equal(repos[1].remote, null);
-  assert.equal(findRepoForPath(path.join(root, 'apps', 'web', 'index.ts'), repos)?.id, 'apps/web');
+  assert.equal(findRepoForPath(path.join(root, 'apps', 'clients', 'external', 'web', 'index.ts'), repos)?.id, 'apps/clients/external/web');
   assert.equal(findRepoForPath(path.join(root, 'README.md'), repos)?.id, '.');
 });
 

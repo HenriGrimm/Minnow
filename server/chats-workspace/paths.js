@@ -112,9 +112,9 @@ async function isRecentWorkspaceRoot(resolved) {
 export async function isAllowedWorkspaceRootAsync(rootPath) {
   if (isAllowedWorkspaceRoot(rootPath)) return true;
   const resolved = path.resolve(String(rootPath).trim());
+  if (await isViewWorkspaceChildRepo(resolved)) return true;
   if (await isRegisteredGitWorktreePath(resolved)) return true;
-  if (await isRecentWorkspaceRoot(resolved)) return true;
-  return isViewWorkspaceChildRepo(resolved);
+  return isRecentWorkspaceRoot(resolved);
 }
 
 /**

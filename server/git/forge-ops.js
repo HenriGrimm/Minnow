@@ -355,7 +355,7 @@ export async function prDiff({ cwd, number } = {}) {
   return { ok: true, patch: result.stdout };
 }
 
-export async function prCreate({ cwd, title, body, base, draft, web } = {}) {
+export async function prCreate({ cwd, title, body, base, head, draft, web, useWorkspaceRemote } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
@@ -363,10 +363,12 @@ export async function prCreate({ cwd, title, body, base, draft, web } = {}) {
   if (!trimmedTitle && !web) return { ok: false, error: 'A title is required' };
 
   const args = ['pr', 'create'];
+  if (useWorkspaceRemote === true) args.push('--repo', `${gate.status.hostname}/${gate.status.repo}`);
   if (web) {
     args.push('--web');
   } else {
     args.push('--title', trimmedTitle, '--body', String(body ?? ''));
+    if (typeof head === 'string' && head.trim()) args.push('--head', head.trim());
     if (base && String(base).trim()) args.push('--base', String(base).trim());
     if (draft) args.push('--draft');
   }

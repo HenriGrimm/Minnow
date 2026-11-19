@@ -45,6 +45,7 @@ import {
   createBranchFromIssue,
   createPrFromIssue,
   detectGhAvailable,
+  issueGitRepositories,
   linkCommitToIssue,
   linkGitHubUrlToIssue,
   listIssueCommits,
@@ -136,7 +137,7 @@ import {
   setIssueDetailSheetExpanded,
 } from './issues-detail-layout';
 import { openIssuesContextMenu, type IssuesContextMenuItem } from './issues-context-menu';
-import { fetchWorkspaceRepos } from '../state/workspace-repos';
+import { fetchWorkspaceRepos, repoRemoteSlug } from '../state/workspace-repos';
 import { repoQualifiedRef, toggleIssueRepo } from '../issues/repo-scope';
 import type {
   IssueCard,
@@ -1327,7 +1328,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     const placeholder = document.createElement('div');
     placeholder.hidden = true;
     void fetchWorkspaceRepos({ workspacePath: issue.workspacePath }).then((repos) => {
-      if (repos.length < 2 || !placeholder.isConnected) return;
+      if (!repos.some((repo) => !repo.isRoot) || !placeholder.isConnected) return;
       const selected = issue.repos ?? [];
       const order = repos.map((repo) => repo.id);
       const row = createDetailRow({
@@ -1417,6 +1418,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
             canSync,
             conflictHost,
             onGithubChanged,
+            anchor,
             onLink: () => {
               sec.expand();
               linkFields.hidden = false;
@@ -1564,6 +1566,34 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     conflictHost: HTMLElement;
     onGithubChanged: () => void;
     onLink: () => void;
+    anchor: HTMLElement;
+  }
+
+  async function pickGitRepository(issueId: string, action: 'branch' | 'pr', anchor: HTMLElement): Promise<void> {
+    const issue = findIssueById(issueId);
+    if (!issue || gitBusyIds.has(issueId)) return;
+    try {
+      const repos = await issueGitRepositories(issue);
+      if (!anchor.isConnected) return;
+      if (repos.length === 1) {
+        await runGitAction(issueId, action, repos[0].id);
+        return;
+      }
+      openIssuesContextMenu({
+        anchor,
+        restoreFocus: anchor,
+        label: action === 'branch' ? 'Choose repository for branch' : 'Choose repository for pull request',
+        items: repos.map((repo) => ({
+          id: repo.id,
+          label: repo.isRoot ? 'Workspace root' : repo.id,
+          hint: repoRemoteSlug(repo) || undefined,
+          onSelect: () => runGitAction(issueId, action, repo.id),
+        })),
+      });
+    } catch (error) {
+      gitErrorByIssueId.set(issueId, error instanceof Error ? error.message : String(error));
+      refreshIssueDetailIfOpen();
+    }
   }
 
   /** Everything git can do to this issue, in one menu. */
@@ -1572,22 +1602,18 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       {
         id: 'git-branch',
         label: 'Create branch',
-        hint: 'issue/<id>-<slug>, checked out',
+        hint: 'Creates and checks out the issue branch',
         disabled: ctx.busy,
         iconClass: 'fi-sr-code-branch',
-        onSelect: () => {
-          void runGitAction(issue.id, 'branch');
-        },
+        onSelect: () => pickGitRepository(issue.id, 'branch', ctx.anchor),
       },
       {
         id: 'git-pr',
         label: 'Create pull request',
-        hint: ghAvailableSync() ? 'Opens a PR with gh from the issue branch' : 'Needs the gh CLI',
-        disabled: ctx.busy || !ghAvailableSync(),
+        hint: 'Opens a GitHub PR from the issue branch',
+        disabled: ctx.busy,
         iconClass: 'fi-rr-code-pull-request',
-        onSelect: () => {
-          void runGitAction(issue.id, 'pr');
-        },
+        onSelect: () => pickGitRepository(issue.id, 'pr', ctx.anchor),
       },
       {
         id: 'git-review',
@@ -1870,7 +1896,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     label.className = 'issues-detail__git-chip-label';
     const kindLabel =
       link.kind === 'github-issue' ? 'GH issue' : link.kind === 'pr' ? 'PR' : link.kind;
-    label.textContent = link.title?.trim() || `${kindLabel}: ${repoQualifiedRef(link.ref, link.repo)}`;
+    const ref = link.kind === 'pr' && /^\d+$/.test(link.ref) ? `#${link.ref}` : link.ref;
+    label.textContent = link.title?.trim() || `${kindLabel}: ${repoQualifiedRef(ref, link.repo)}`;
     if (link.repo && link.repo !== '.') label.title = `In repository ${link.repo}`;
     li.appendChild(label);
 
@@ -1929,12 +1956,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     refreshIssueDetailIfOpen();
     try {
       if (action === 'branch') {
-        const result = await createBranchFromIssue(issue);
+        const result = await createBranchFromIssue(issue, input);
         applyGitActionResult(issueId, result, 'Branch ready');
         return;
       }
       if (action === 'pr') {
-        const result = await createPrFromIssue(issue);
+        const result = await createPrFromIssue(issue, input);
         applyGitActionResult(issueId, result, 'PR created');
         return;
       }

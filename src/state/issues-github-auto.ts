@@ -8,7 +8,8 @@
 
 import { userFacingGithubError, isLocalServerOfflineError } from '../issues/github-error';
 import { isLocalServerAvailable } from '../tools/config';
-import { workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { relativeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { forgeScopeKey, type IssueForgeScope } from '../issues/github-repo-scope';
 import { getWorkspacePath } from './workspace';
 import { findIssueById, listIssues } from './issues-store';
 import { subscribeGithubSyncedFieldWrite } from './issues-github-notify';
@@ -21,6 +22,7 @@ import {
   subscribeIssuesGithubMode,
   syncIssueWithGithub,
   readGithubIssueBatch,
+  scopeForIssue,
   localIsClosed,
   type GithubBatchSnapshot,
   type SyncOutcome,
@@ -213,30 +215,45 @@ export async function runGithubAutoSyncLinkedPass(): Promise<void> {
   try {
     const cwd = getWorkspacePath();
     const issues = listIssues().filter((issue) => issue.github &&
-      workspacePathsEqual(issue.workspacePath ?? '', cwd) && !isGithubAutoSyncBusy(issue.id) &&
+      relativeWorkspacePath(cwd, issue.workspacePath) !== null && !isGithubAutoSyncBusy(issue.id) &&
       (!localIsClosed(issue.status) || issueNeedsGithubPush(issue) ||
         nowMs() - issue.github.syncedAt >= GITHUB_CLOSED_POLL_MS))
       .map((issue) => ({ ...issue, github: { ...issue.github! } }))
       .sort((a, b) => Number(Boolean(a.parentId)) - Number(Boolean(b.parentId)));
     const shouldContinue = () => nowMs() >= pollerCooldownUntil && githubAutoSyncActive() &&
       workspacePathsEqual(cwd, getWorkspacePath());
-    for (let offset = 0; offset < issues.length && shouldContinue(); offset += 50) {
-      const batch = issues.slice(offset, offset + 50);
-      const result = await readGithubIssueBatch(cwd, batch.map((issue) => issue.github.number));
-      if (!result.ok) {
-        await handleAutoOutcome({ ok: false, action: 'noop', error: result.error });
-        break;
+    const groups = new Map<string, { scope: IssueForgeScope; issues: typeof issues }>();
+    for (const issue of issues) {
+      if (!shouldContinue()) break;
+      try {
+        const scope = await scopeForIssue(issue);
+        const key = forgeScopeKey(scope);
+        const existing = groups.get(key);
+        if (existing) existing.issues.push(issue);
+        else groups.set(key, { scope, issues: [issue] });
+      } catch (error) {
+        await handleAutoOutcome({ ok: false, action: 'noop', error: error instanceof Error ? error.message : String(error) });
       }
-      const remotes = new Map(result.issues?.map((remote) => [remote.number, remote]));
-      await runGithubSyncQueue(batch, async (issue) => {
-        if (isGithubAutoSyncBusy(issue.id)) return;
-        const remote = remotes.get(issue.github.number);
-        if (!remote) {
-          await handleAutoOutcome({ ok: false, action: 'noop', error: `Could not read GitHub issue #${issue.github.number}` });
-          return;
+    }
+    for (const { scope, issues: scoped } of groups.values()) {
+      for (let offset = 0; offset < scoped.length && shouldContinue(); offset += 50) {
+        const batch = scoped.slice(offset, offset + 50);
+        const result = await readGithubIssueBatch(scope.cwd, batch.map((issue) => issue.github.number), scope.repo);
+        if (!result.ok) {
+          await handleAutoOutcome({ ok: false, action: 'noop', error: result.error });
+          break;
         }
-        await runAutoSync(issue.id, { remote, workspacePath: issue.workspacePath ?? '', syncedAt: issue.github.syncedAt });
-      }, shouldContinue);
+        const remotes = new Map(result.issues?.map((remote) => [remote.number, remote]));
+        await runGithubSyncQueue(batch, async (issue) => {
+          if (isGithubAutoSyncBusy(issue.id)) return;
+          const remote = remotes.get(issue.github.number);
+          if (!remote) {
+            await handleAutoOutcome({ ok: false, action: 'noop', error: `Could not read GitHub issue #${issue.github.number}` });
+            return;
+          }
+          await runAutoSync(issue.id, { remote, workspacePath: issue.workspacePath, syncedAt: issue.github.syncedAt });
+        }, shouldContinue);
+      }
     }
 
   } finally {

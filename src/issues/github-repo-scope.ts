@@ -9,7 +9,7 @@
 
 import type { IssueCard } from '../types';
 import type { WorkspaceRepo } from '../state/workspace-repos';
-import { issueRepoIds } from './repo-scope';
+import { issueGithubSlug, issueRepoIds } from './repo-scope';
 
 export interface IssueForgeScope {
   /** Workspace the forge call is authorised against. */
@@ -37,8 +37,10 @@ export function resolveIssueForgeScope(
   repos: readonly WorkspaceRepo[],
 ): IssueForgeScope {
   const cwd = issue.workspacePath;
-  if (repos.length < 2) return { cwd };
-  const linkedSlug = issue.github?.repo?.toLowerCase();
+  if (!repos.length || (repos.length === 1 && repos[0].isRoot && !issue.repos?.some((id) => id !== '.'))) {
+    return { cwd };
+  }
+  const linkedSlug = issueGithubSlug(issue);
   if (linkedSlug) {
     const hit = repos.find((repo) => repoSlug(repo).toLowerCase() === linkedSlug);
     if (!hit) throw new Error(`GitHub repo ${issue.github?.repo} is not in this workspace any more.`);
@@ -61,12 +63,13 @@ export function forgeScopeKey(scope: IssueForgeScope): string {
 
 /** Every remote an import should list issues from. */
 export function importScopes(cwd: string, repos: readonly WorkspaceRepo[]): IssueForgeScope[] {
-  if (repos.length < 2) return [{ cwd }];
-  return repos.filter((repo) => repo.remote && repoSlug(repo)).map((repo) => scopeOf(cwd, repo));
+  if (!repos.length || (repos.length === 1 && repos[0].isRoot)) return [{ cwd }];
+  return repos.filter((repo) => (repo.remote?.host === 'github' || repo.remote?.host === 'github-enterprise') && repoSlug(repo))
+    .map((repo) => scopeOf(cwd, repo));
 }
 
 /** True when a linked issue belongs to the scope's remote (legacy links without a repo match any). */
 export function issueInScope(issue: Pick<IssueCard, 'github'>, scope: IssueForgeScope): boolean {
-  if (!scope.slug || !issue.github?.repo) return true;
-  return issue.github.repo.toLowerCase() === scope.slug.toLowerCase();
+  const slug = issueGithubSlug(issue);
+  return !scope.slug || !slug || slug === scope.slug.toLowerCase();
 }

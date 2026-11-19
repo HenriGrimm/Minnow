@@ -40,10 +40,11 @@ import {
 import { isClosedStatus } from '../issues/taxonomy';
 import { getIssuesTaxonomySync, setIssuesTaxonomy } from './issues-taxonomy-store';
 import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../issues/github-metadata';
+import { issueGithubSlug } from '../issues/repo-scope';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspacePath } from './workspace';
 import { runGithubSyncQueue } from '../issues/github-sync-queue';
-import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { normalizeWorkspacePath, relativeWorkspacePath } from '../lib/normalize-workspace-path';
 import { fetchWorkspaceRepos } from './workspace-repos';
 import {
   forgeScopeArgs,
@@ -200,6 +201,7 @@ interface ForgeResponse {
   error?: string;
   issue?: RemoteIssueSnapshot;
   issues?: RemoteIssueSnapshot[];
+  nextCursor?: string;
   number?: number;
   url?: string;
   droppedLabels?: boolean;
@@ -235,10 +237,13 @@ export async function deleteIssueFromGithub(issueId: string): Promise<{
 }
 
 /** The GitHub repo an issue syncs with (the workspace itself unless it holds several repos). */
-async function scopeForIssue(
+export async function scopeForIssue(
   issue: Pick<NonNullable<ReturnType<typeof findIssueById>>, 'workspacePath' | 'repos' | 'github'>,
 ): Promise<IssueForgeScope> {
   const repos = issue.workspacePath ? await fetchWorkspaceRepos({ workspacePath: issue.workspacePath }) : [];
+  if (!repos.length && issue.repos?.some((id) => id !== '.')) {
+    throw new Error('Could not find the issue’s repository in its workspace.');
+  }
   return resolveIssueForgeScope(issue, repos);
 }
 
@@ -718,6 +723,7 @@ export async function importGithubIssues(options?: {
   state?: 'open' | 'closed' | 'all';
   limit?: number;
   workspacePath?: string;
+  allPages?: boolean;
 }): Promise<ImportResult> {
   // Keep the destination fixed if the user switches workspaces during the fetch.
   const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
@@ -738,47 +744,62 @@ export async function importGithubIssues(options?: {
     // A folder of several repos imports from each repo's remote in turn.
     const scopes = importScopes(workspacePath, workspacePath ? await fetchWorkspaceRepos({ workspacePath }) : []);
     const imported = new Set<string>();
+    const childUrls = new Set<string>();
+    const childIdentities = new Set<string>();
+    for (const issue of collectIssues({ workspacePath, includeSubWorkspaces: true, hideDone: false })) {
+      if (!issue.github || relativeWorkspacePath(workspacePath, issue.workspacePath) === '.') continue;
+      if (issue.github.url) childUrls.add(issue.github.url.toLowerCase());
+      else if (issue.github.repo) childIdentities.add(`${issueGithubSlug(issue)}#${issue.github.number}`);
+    }
+    const errors: string[] = [];
     let skipped = 0;
     for (const scope of scopes) {
-      const res = await forge('issueList', {
-        state: options?.state ?? 'open',
-        limit: options?.limit ?? 100,
-        ...forgeScopeArgs(scope),
-      });
-      if (!res.ok || !Array.isArray(res.issues)) {
-        return {
-          ok: false,
-          error: userFacingGithubError(res.error ?? 'Could not list issues'),
-          imported: imported.size,
-          skipped,
-        };
-      }
-
       const linked = new Set(
-        collectIssues({ scope: 'current_workspace', workspacePath, hideDone: false })
-          .filter((issue) => issueInScope(issue, scope))
+        collectIssues({ scope: 'current_workspace', workspacePath, includeSubWorkspaces: true, hideDone: false })
+          .filter((issue) => (!workspacePath || relativeWorkspacePath(workspacePath, issue.workspacePath) === '.') &&
+            issueInScope(issue, scope))
           .map((issue) => issue.github?.number)
           .filter((n): n is number => typeof n === 'number'),
       );
 
-      const available = new Map(res.issues.map((remote) => [remote.number, remote]));
       try {
-        for (const remote of res.issues) {
-          if (linked.has(remote.number)) {
-            skipped += 1;
-            continue;
+        let cursor: string | null | undefined = options?.allPages ? null : undefined;
+        const seenCursors = new Set<string>();
+        do {
+          const res = await forge('issueList', {
+            state: options?.allPages ? 'all' : options?.state ?? 'open',
+            limit: options?.limit ?? 100,
+            ...forgeScopeArgs(scope),
+            ...(cursor !== undefined ? { cursor } : {}),
+          });
+          if (!res.ok || !Array.isArray(res.issues)) throw new Error(res.error ?? 'Could not list issues');
+          const available = new Map(res.issues.map((remote) => [remote.number, remote]));
+          for (const remote of res.issues) {
+            const linkedInChild = childUrls.has(remote.url.toLowerCase()) ||
+              childIdentities.has(`${scope.slug?.toLowerCase()}#${remote.number}`);
+            if (linked.has(remote.number) || linkedInChild) {
+              skipped += 1;
+              continue;
+            }
+            await ensureRemoteParent(remote, workspacePath, available, imported, scope);
+            if (!findLinkedGithubIssue(remote.number, workspacePath, scope)) {
+              imported.add(importRemoteIssue(remote, workspacePath, scope).id);
+              linked.add(remote.number);
+            }
           }
-          await ensureRemoteParent(remote, workspacePath, available, imported, scope);
-          if (!findLinkedGithubIssue(remote.number, workspacePath, scope)) {
-            imported.add(importRemoteIssue(remote, workspacePath, scope).id);
+          cursor = options?.allPages ? res.nextCursor : undefined;
+          if (cursor) {
+            if (seenCursors.has(cursor)) throw new Error('GitHub returned the same issue page twice');
+            seenCursors.add(cursor);
           }
-        }
+        } while (cursor);
       } catch (err) {
-        return { ok: false, imported: imported.size, skipped,
-          error: userFacingGithubError(err instanceof Error ? err.message : String(err)) };
+        const error = err instanceof Error ? err.message : String(err);
+        errors.push(scope.repo ? `${scope.repo}: ${userFacingGithubError(error)}` : userFacingGithubError(error));
+        if (githubRetryAt(error) > Date.now()) break;
       }
     }
-    return { ok: true, imported: imported.size, skipped };
+    return { ok: !errors.length, imported: imported.size, skipped, ...(errors.length ? { error: errors.join('\n') } : {}) };
   } catch (err) {
     return {
       ok: false,
@@ -814,6 +835,7 @@ export async function syncAllIssuesWithGithub(options?: {
   const issues = collectIssues({
     scope: options?.scope ?? 'current_workspace',
     workspacePath,
+    includeSubWorkspaces: true,
     hideDone: false,
   });
 
@@ -825,7 +847,7 @@ export async function syncAllIssuesWithGithub(options?: {
     for (const path of workspaces) {
       // Scratch cards have no repository to discover issues from.
       if (!path) continue;
-      const result = await importGithubIssues({ workspacePath: path, state: 'all', limit: 500 });
+      const result = await importGithubIssues({ workspacePath: path, allPages: true, limit: 500 });
       imported += result.imported;
       if (!result.ok) errors.push(`${path}: ${result.error ?? 'Could not import GitHub issues'}`);
       if (githubRetryAt(result.error) > Date.now()) return { synced, imported, conflicts, errors };

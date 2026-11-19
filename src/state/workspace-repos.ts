@@ -26,33 +26,41 @@ export interface WorkspaceRepo {
 }
 
 const CACHE_TTL_MS = 30_000;
-const cache = new Map<string, { at: number; promise: Promise<WorkspaceRepo[]> }>();
+const cache = new Map<string, { at: number; promise: Promise<WorkspaceRepo[] | null> }>();
+type RepositoryLookupOptions = { refresh?: boolean; workspacePath?: string; checkoutPath?: string };
 
 function workspaceKey(workspacePath?: string): string {
   return (workspacePath ?? getWorkspacePath()).trim().replace(/\\/g, '/').toLowerCase();
 }
 
-/** Repos in the active (or given) workspace. Empty when the server is unreachable. */
-export function fetchWorkspaceRepos(options: { refresh?: boolean; workspacePath?: string } = {}): Promise<WorkspaceRepo[]> {
-  const key = workspaceKey(options.workspacePath);
+/** Null means discovery failed. An empty array means discovery found no repos. */
+export function lookupWorkspaceRepos(options: RepositoryLookupOptions = {}): Promise<WorkspaceRepo[] | null> {
+  const key = workspaceKey(options.checkoutPath ?? options.workspacePath);
   const hit = cache.get(key);
   if (!options.refresh && hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.promise;
   const promise = (async () => {
     try {
-      const qs = options.refresh ? '?refresh=1' : '';
+      const params = new URLSearchParams();
+      if (options.refresh) params.set('refresh', '1');
+      if (options.checkoutPath) params.set('checkout', options.checkoutPath);
+      const qs = params.size ? `?${params}` : '';
       const headers: Record<string, string> = {};
       if (options.workspacePath) headers['X-Minnow-Workspace'] = options.workspacePath;
       const response = await fetch(`/api/workspace/repos${qs}`, { headers });
-      if (!response.ok) return [];
+      if (!response.ok) return null;
       const payload = (await response.json()) as { ok?: boolean; repos?: WorkspaceRepo[] };
-      return Array.isArray(payload.repos) ? payload.repos : [];
+      return payload.ok !== false && Array.isArray(payload.repos) ? payload.repos : null;
     } catch {
-      return [];
+      return null;
     }
   })();
   cache.set(key, { at: Date.now(), promise });
-  void promise.then((repos) => { if (!repos.length) cache.delete(key); });
+  void promise.then((repos) => { if (!repos?.length && cache.get(key)?.promise === promise) cache.delete(key); });
   return promise;
+}
+
+export async function fetchWorkspaceRepos(options?: RepositoryLookupOptions): Promise<WorkspaceRepo[]> {
+  return await lookupWorkspaceRepos(options) ?? [];
 }
 
 /** Forget cached repos (all workspaces when omitted). */

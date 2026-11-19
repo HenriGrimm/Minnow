@@ -11,6 +11,7 @@ import { resolveRepoForPath, type WorkspaceRepo } from '../state/workspace-repos
 import { worktreePathsEqual } from '../lib/worktree-list-parse';
 
 const STORAGE_PREFIX = 'minnow.scc.repo:';
+const repoPicks = new Map<string, string>();
 
 function storageKey(workspacePath: string): string {
   return `${STORAGE_PREFIX}${workspacePath.replace(/\\/g, '/').toLowerCase()}`;
@@ -18,18 +19,23 @@ function storageKey(workspacePath: string): string {
 
 /** Last repo the viewer picked for this workspace (per-viewer convenience). */
 export function readRememberedRepo(workspacePath: string): string | null {
+  const key = storageKey(workspacePath);
+  const picked = repoPicks.get(key);
+  if (picked) return picked;
   try {
-    return globalThis.localStorage?.getItem(storageKey(workspacePath)) ?? null;
+    return globalThis.localStorage?.getItem(key) ?? null;
   } catch {
     return null;
   }
 }
 
 export function rememberRepo(workspacePath: string, repoId: string): void {
+  const key = storageKey(workspacePath);
+  repoPicks.set(key, repoId);
   try {
-    globalThis.localStorage?.setItem(storageKey(workspacePath), repoId);
+    globalThis.localStorage?.setItem(key, repoId);
   } catch {
-    /* storage blocked — the default pick still works */
+    /* Storage may be blocked. Keep the pick for this view. */
   }
 }
 

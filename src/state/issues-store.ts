@@ -6,7 +6,7 @@
 import { mergeIssuesState } from '../issues/state-merge.ts';
 import { parseHomeIssueRun } from '../home/flow-run.ts';
 import { maxIssueNumberForProjectKey, reconcileDuplicateIssueIds } from '../lib/issue-id-uniqueness.mjs';
-import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path.ts';
+import { normalizeWorkspacePath, relativeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path.ts';
 import {
   normalizeProjectKeyInput,
   parseKeyedIssueId,
@@ -54,7 +54,8 @@ import {
   LOCAL_ASSIGNEE_ID,
 } from '../issues/saved-views.ts';
 import { isUnreviewedTriageIssue } from '../issues/triage.ts';
-import { normalizeIssueGitLinkRepo, normalizeIssueRepoIds, sameLinkRepo } from '../issues/repo-scope.ts';
+import { issueInSubWorkspace, normalizeIssueGitLinkRepo, normalizeIssueRepoIds, sameLinkRepo } from '../issues/repo-scope.ts';
+import type { WorkspaceRepo } from './workspace-repos.ts';
 import {
   ISSUE_ACTIVITY_CAP,
   ISSUES_COMPAT_VERSION,
@@ -2311,6 +2312,8 @@ export function assignIssueToMe(issueId: string): IssueCard | null {
 export type CollectIssuesOptions = {
   workspacePath?: string;
   scope?: 'all' | 'current_workspace';
+  includeSubWorkspaces?: boolean;
+  subWorkspace?: { path: string; repos: readonly WorkspaceRepo[] };
   status?: IssueStatus | 'all';
   type?: IssueType | 'all';
   priority?: IssuePriority | 'all';
@@ -2422,7 +2425,10 @@ export function collectIssues(options: CollectIssuesOptions = {}): IssueCard[] {
   const out: IssueCard[] = [];
   for (const issue of requireIssuesState().issues) {
     const issueWorkspace = normalizeWorkspacePath(issue.workspacePath ?? '');
-    if (workspaceKey !== null && issueWorkspace !== workspaceKey) continue;
+    if (workspaceKey !== null && issueWorkspace !== workspaceKey &&
+        (!options.includeSubWorkspaces || relativeWorkspacePath(workspaceKey, issueWorkspace) === null)) continue;
+    if (workspaceKey && options.subWorkspace &&
+        !issueInSubWorkspace(issue, workspaceKey, options.subWorkspace.path, options.subWorkspace.repos)) continue;
     if (hideDone && isClosedStatus(getIssuesTaxonomySync(), issue.status)) continue;
     if (statusFilter !== 'all' && issue.status !== statusFilter) continue;
     if (typeFilter !== 'all' && issue.type !== typeFilter) continue;
