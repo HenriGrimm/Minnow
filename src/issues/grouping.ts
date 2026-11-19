@@ -15,8 +15,7 @@ import {
 import { compareIssueRank } from './rank';
 import { nestSubIssues, type NestedIssueRow } from './hierarchy';
 import {
-  compareIssuesBySortKey,
-  buildIssuesSortRanks,
+  buildIssueColumnComparator,
   type IssuesListSort,
 } from '../ui/issues-list-sort';
 
@@ -68,13 +67,13 @@ export function sortIssuesInGroup(
   issues: readonly IssueCard[],
   sessionSort: IssuesListSort,
   taxonomy: IssuesTaxonomy,
+  workspaceLabel?: (issue: IssueCard) => string,
 ): IssueCard[] {
-  const ranks = buildIssuesSortRanks(taxonomy);
-  const directionFactor = sessionSort.direction === 'asc' ? 1 : -1;
+  const compareColumn = buildIssueColumnComparator(sessionSort, taxonomy, workspaceLabel);
   return [...issues].sort((a, b) => {
     const byRank = compareIssueRank(a.rank, b.rank);
     if (byRank !== 0) return byRank;
-    const primary = compareIssuesBySortKey(a, b, sessionSort.key, ranks) * directionFactor;
+    const primary = compareColumn(a, b);
     if (primary !== 0) return primary;
     return a.id.localeCompare(b.id);
   });
@@ -221,6 +220,7 @@ export function buildGroupedIssueRows(
     taxonomy: IssuesTaxonomy;
     projects: readonly IssueProject[];
     allIssues: readonly IssueCard[];
+    workspaceLabel?: (issue: IssueCard) => string;
   },
 ): Array<IssueListGroup & { rows: NestedIssueRow[] }> {
   const nested = nestSubIssues(issues, options.allIssues, options.taxonomy);
@@ -231,13 +231,13 @@ export function buildGroupedIssueRows(
     options,
   );
   return groups.map((group) => {
-    const sorted = sortIssuesInGroup(group.issues, sessionSort, options.taxonomy);
+    const sorted = sortIssuesInGroup(group.issues, sessionSort, options.taxonomy, options.workspaceLabel);
     return {
       ...group,
       issues: sorted,
       rows: sorted.map((issue) => {
         const row = nestedById.get(issue.id);
-        const children = sortIssuesInGroup(row?.children ?? [], sessionSort, options.taxonomy);
+        const children = sortIssuesInGroup(row?.children ?? [], sessionSort, options.taxonomy, options.workspaceLabel);
         return {
           issue,
           depth: 0 as const,

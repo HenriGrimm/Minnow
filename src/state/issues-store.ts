@@ -2313,7 +2313,7 @@ export type CollectIssuesOptions = {
   workspacePath?: string;
   scope?: 'all' | 'current_workspace';
   includeSubWorkspaces?: boolean;
-  subWorkspace?: { path: string; repos: readonly WorkspaceRepo[] };
+  subWorkspace?: { path: string; exact?: boolean; repoWorkspacePath: string; repos: readonly WorkspaceRepo[] };
   status?: IssueStatus | 'all';
   type?: IssueType | 'all';
   priority?: IssuePriority | 'all';
@@ -2427,8 +2427,7 @@ export function collectIssues(options: CollectIssuesOptions = {}): IssueCard[] {
     const issueWorkspace = normalizeWorkspacePath(issue.workspacePath ?? '');
     if (workspaceKey !== null && issueWorkspace !== workspaceKey &&
         (!options.includeSubWorkspaces || relativeWorkspacePath(workspaceKey, issueWorkspace) === null)) continue;
-    if (workspaceKey && options.subWorkspace &&
-        !issueInSubWorkspace(issue, workspaceKey, options.subWorkspace.path, options.subWorkspace.repos)) continue;
+    if (options.subWorkspace && !issueInSubWorkspace(issue, options.subWorkspace)) continue;
     if (hideDone && isClosedStatus(getIssuesTaxonomySync(), issue.status)) continue;
     if (statusFilter !== 'all' && issue.status !== statusFilter) continue;
     if (typeFilter !== 'all' && issue.type !== typeFilter) continue;

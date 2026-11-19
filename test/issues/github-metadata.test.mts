@@ -254,6 +254,37 @@ test('import fetches parents outside discovery and retries without partial child
   assert.equal((await importGithubIssues()).skipped, 1);
 });
 
+test('nested GitHub sub-issues import without blocking the rest of the repository', async () => {
+  setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
+  const remote = (number: number, parent: number | null) => ({
+    number, title: `Issue ${number}`, body: encodeGithubIssueBody('Body', { ...metadata(), parent }),
+    state: 'open', labels: [], url: `https://github.com/o/r/issues/${number}`, updatedAt: 2000,
+  });
+  const remotes = [remote(10, null), remote(11, 10), remote(12, 11), remote(13, null)];
+  let editedBody: string | undefined;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('/api/workspace/repos')) return Response.json({ ok: true, repos: [] });
+    const request = JSON.parse(String(init?.body));
+    if (request.op === 'issueList') return Response.json({ ok: true, issues: remotes });
+    if (request.op === 'issueView') return Response.json({ ok: true, issue: remotes.find((row) => row.number === request.number) });
+    if (request.op === 'issueEdit') {
+      editedBody = request.body;
+      return Response.json({ ok: true });
+    }
+    return Response.json({ ok: false, error: 'Unexpected request' });
+  };
+  assert.deepEqual(await importGithubIssues(), { ok: true, imported: 4, skipped: 0 });
+  const imported = new Map(listIssues().map((issue) => [issue.github?.number, issue]));
+  assert.equal(imported.get(11)?.parentId, imported.get(10)?.id);
+  const deepest = imported.get(12)!;
+  assert.equal(deepest.parentId, undefined);
+  assert.equal((await syncIssueWithGithub(deepest.id)).action, 'noop');
+  updateIssue(deepest.id, { title: 'Renamed' });
+  assert.equal((await syncIssueWithGithub(deepest.id)).action, 'push');
+  assert.ok(editedBody);
+  assert.equal(decodeGithubIssueBody(editedBody).metadata?.parent, 11);
+});
+
 test('batch sync restores a shared missing parent without duplicate local cards', async () => {
   const first = card();
   const second = { ...card(), id: 'MIN-2', github: { ...card().github!, number: 2 } };

@@ -9,7 +9,7 @@
  */
 
 import type { IssueCard, IssueGitLink } from '../types';
-import { relativeWorkspacePath } from '../lib/normalize-workspace-path';
+import { relativeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import type { WorkspaceRepo } from '../state/workspace-repos';
 
 /** Trimmed, forward-slash, de-duplicated repo ids. */
@@ -46,21 +46,31 @@ export function issueGithubSlug(issue: Pick<IssueCard, 'github'>): string {
   return (issue.github?.repo || issue.github?.url?.match(/^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/issues\/\d+/i)?.[1] || '').toLowerCase();
 }
 
-/** A parent view includes cards filed in child workspaces and cards tagged for child repos. */
-export function issueInSubWorkspace(
+/** Assignments are workspace-relative. Legacy linked cards can be matched against repo discovery. */
+export function issueAssignedRepoIds(
   issue: Pick<IssueCard, 'workspacePath' | 'repos' | 'github'>,
   root: string,
-  subWorkspace: string,
   repos: readonly WorkspaceRepo[],
-): boolean {
-  const relative = relativeWorkspacePath(root, issue.workspacePath);
-  if (relative === null) return false;
-  const contains = (path: string) => relativeWorkspacePath(`${root}/${subWorkspace}`, `${root}/${path}`) !== null;
-  if (relative !== '.') return contains(relative);
-  if (issue.repos?.length) return issue.repos.some((id) => id !== '.' && contains(id));
+): readonly string[] {
+  if (issue.repos?.length) return issue.repos;
+  if (!repos.length || !workspacePathsEqual(root, issue.workspacePath)) return [];
   const slug = issueGithubSlug(issue);
-  return Boolean(slug && repos.some((repo) => !repo.isRoot &&
-    repo.remote?.slug.toLowerCase() === slug && contains(repo.id)));
+  return slug ? repos.filter((repo) => repo.remote?.slug.toLowerCase() === slug).map((repo) => repo.id) : [];
+}
+
+export function issueRepoPath(workspace: string, repo: string): string {
+  return repo === '.' ? workspace : `${workspace.replace(/[\\/]$/, '')}/${repo}`;
+}
+
+export function issueInSubWorkspace(
+  issue: Pick<IssueCard, 'workspacePath' | 'repos' | 'github'>,
+  filter: { path: string; exact?: boolean; repoWorkspacePath: string; repos: readonly WorkspaceRepo[] },
+): boolean {
+  const matches = (path: string) => filter.exact
+    ? workspacePathsEqual(filter.path, path)
+    : relativeWorkspacePath(filter.path, path) !== null;
+  const repos = issueAssignedRepoIds(issue, filter.repoWorkspacePath, filter.repos);
+  return repos.length ? repos.some((repo) => matches(issueRepoPath(issue.workspacePath, repo))) : matches(issue.workspacePath);
 }
 
 /** Add or remove one repo id, keeping the workspace's repo order. */

@@ -102,6 +102,7 @@
 .issues-sidebar__meta { display: block; color: var(--mn-fg-muted); font-size: 11px; line-height: 1.5; margin-top: 4px; overflow-wrap: anywhere; }
 .issues-sidebar__content .issues-sidebar__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; margin-top: 7px; }
 .issues-sidebar__id { font-family: var(--font-mono); font-size: 10px; }
+.issues-sidebar__workspace { grid-column: 1 / -1; margin: 0 0 4px 36px; justify-self: start; }
 .issues-sidebar__row > .issues-labels-field { grid-column: 1 / -1; min-width: 0; margin-left: 36px; flex-wrap: wrap; }
 .issues-sidebar__row .issues-labels-field__chips { flex-wrap: wrap; min-width: 0; }
 .issues-sidebar__row .issues-label-chip { max-width: 100%; }

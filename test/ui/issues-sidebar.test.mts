@@ -431,3 +431,51 @@ test('workspace Issues surface opens the full workspace list and retains filters
   assert.equal(host.querySelector<HTMLElement>('.issues-sidebar__detail')!.hidden, true);
   assert.deepEqual(new Set(rows()), new Set([openIssue.id, closedIssue.id]));
 });
+
+test('workspace Issues side panel shows child issues and filters and sorts by repo', async (t) => {
+  const workspacePath = 'C:/Projects/Coltiva';
+  const frontendPath = `${workspacePath}/coltiva-frontend`;
+  const baselineFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', async (url: RequestInfo | URL, init?: RequestInit) => {
+    if (!String(url).startsWith('/api/workspace/repos')) return baselineFetch(url, init);
+    const target = new URL(String(url), 'http://localhost').searchParams.get('checkout');
+    const repo = (id: string, absPath: string) => ({ id, relPath: id, absPath, isRoot: id === '.', remote: null });
+    return Response.json({ repos: target === frontendPath ? [repo('.', frontendPath)] : [
+      repo('coltiva-backend', `${workspacePath}/coltiva-backend`),
+      repo('coltiva-frontend', frontendPath),
+    ] });
+  });
+  setWorkspaceFromServer({ path: workspacePath, label: 'Coltiva', isDefault: false });
+  const frontend = store.addIssue({ title: 'Frontend card', workspacePath: frontendPath });
+  const backend = store.addIssue({ title: 'Backend card', workspacePath, repos: ['coltiva-backend'] });
+  const both = store.addIssue({ title: 'Both repos', workspacePath, repos: ['coltiva-backend', 'coltiva-frontend'] });
+  const host = document.createElement('div');
+  host.className = 'issues-sidebar graphite-issues-panel';
+  document.body.append(host);
+  await showWorkspaceIssues(host);
+  const rows = () => [...host.querySelectorAll<HTMLElement>('[data-issue-id]')].map((row) => row.dataset.issueId);
+  assert.deepEqual(new Set(rows()), new Set([frontend.id, backend.id, both.id]));
+  const sort = host.querySelector<HTMLSelectElement>('[data-workspace-sort]')!;
+  assert.equal(sort.hidden, false);
+  sort.value = 'asc';
+  sort.dispatchEvent(new dom.Event('change'));
+  assert.deepEqual(rows(), [backend.id, both.id, frontend.id]);
+  sort.value = 'desc';
+  sort.dispatchEvent(new dom.Event('change'));
+  assert.deepEqual(rows(), [frontend.id, both.id, backend.id]);
+  const frontendLabel = host.querySelector<HTMLButtonElement>('[aria-label="Filter by coltiva-frontend"]')!;
+  frontendLabel.click();
+  assert.deepEqual(rows(), [frontend.id, both.id]);
+  assert.equal(host.querySelector<HTMLElement>('.issues-sidebar__detail')!.hidden, true);
+  host.querySelector<HTMLButtonElement>('[data-chip-id="workspace"]')!.click();
+  host.querySelector<HTMLButtonElement>('[data-add-filter]')!.click();
+  document.querySelector<HTMLButtonElement>('.mn-menu__item[data-id="workspace"]')!.click();
+  document.querySelector<HTMLButtonElement>('.mn-menu__item[data-id="repo:coltiva-backend"]')!.click();
+  assert.deepEqual(rows(), [both.id, backend.id]);
+
+  setWorkspaceFromServer({ path: frontendPath, label: 'Coltiva frontend', isDefault: false });
+  await showWorkspaceIssues(host);
+  assert.deepEqual(rows(), [frontend.id]);
+  assert.equal(sort.hidden, true);
+  assert.equal(host.querySelector('.issues-sidebar__workspace'), null);
+});

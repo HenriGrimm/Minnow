@@ -122,7 +122,10 @@ describe('issues detail display', () => {
     const calls: Record<string, unknown>[] = [];
     t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/workspace/repos') return Response.json({ ok: true, repos });
+      if (url.startsWith('/api/workspace/repos')) {
+        assert.equal(new URL(url, 'http://localhost').searchParams.get('checkout'), workspacePath);
+        return Response.json({ ok: true, repos });
+      }
       if (url === '/api/tools') return Response.json({ result: 'gh version 2.80.0' });
       if (url !== '/api/git') return Response.json({});
       const body = JSON.parse(String(init?.body));

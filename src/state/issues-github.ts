@@ -40,6 +40,7 @@ import {
 import { isClosedStatus } from '../issues/taxonomy';
 import { getIssuesTaxonomySync, setIssuesTaxonomy } from './issues-taxonomy-store';
 import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../issues/github-metadata';
+import { validateParentLink } from '../issues/hierarchy';
 import { issueGithubSlug } from '../issues/repo-scope';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspacePath } from './workspace';
@@ -426,20 +427,28 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
   if (!current) return { ok: false, action: 'noop', error: 'Issue not found' };
   // Which repo this issue syncs with; unclear targets fail here, before any write.
   const scope = await scopeForIssue(current);
+  const remoteParentNumber = remote && decodeGithubIssueBody(remote.body).metadata?.parent;
+  let parentId: string | undefined;
   if (remote) {
     const workspacePath = current.workspacePath;
     const number = current.github?.number;
-    await ensureRemoteParent(remote, workspacePath, undefined, undefined, scope);
+    const parent = await ensureRemoteParent(remote.number, remoteParentNumber, scope);
     // Parent discovery may take time; retain edits made while it was in flight.
     const latest = findIssueById(issueId);
     if (!latest || latest.workspacePath !== workspacePath || latest.github?.number !== number) {
       return { ok: true, action: 'noop' };
     }
     current = latest;
+    if (parent && validateParentLink(issueId, parent.id, listIssues()).ok) parentId = parent.id;
   }
   // Freeze the sent revision: edits during network calls must remain pending.
   const issue = { ...current, labels: [...current.labels] };
   const local = portableFields(issue);
+  // Keep the original GitHub relation in the payload when the local
+  // one-level hierarchy cannot represent it and the user hasn't reparented it.
+  if (local.metadata && remoteParentNumber && !parentId && !issue.parentId) {
+    local.metadata.parent = remoteParentNumber;
+  }
   const action = planIssueSync({
     mode,
     issue,
@@ -498,7 +507,7 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
       if (!number || !remote) {
         return { ok: false, action: 'pull', error: 'Not linked to a GitHub issue' };
       }
-      applyRemoteToIssue(issueId, action.fields);
+      applyRemoteToIssue(issueId, action.fields, parentId);
       writeLink(issueId, number, issue.github?.url ?? remote.url, remote.updatedAt, undefined, scope);
       return { ok: true, action: 'pull' };
     }
@@ -536,7 +545,14 @@ export async function resolveSyncConflict(
   }
 
   if (keep === 'remote') {
-    applyRemoteToIssue(conflict.issueId, conflict.remote);
+    let parent: ReturnType<typeof findIssueById>;
+    try {
+      parent = await ensureRemoteParent(conflict.number, conflict.remote.metadata?.parent, scope);
+    } catch (err) {
+      return { ok: false, action: 'noop', error: err instanceof Error ? err.message : String(err) };
+    }
+    const parentId = parent && validateParentLink(issue.id, parent.id, listIssues()).ok ? parent.id : undefined;
+    applyRemoteToIssue(conflict.issueId, conflict.remote, parentId);
     const after = await readRemote(conflict.issueId);
     writeLink(conflict.issueId, conflict.number, conflict.url, after?.updatedAt, undefined, scope);
     return { ok: true, action: 'pull' };
@@ -582,12 +598,8 @@ async function pushSyncedFieldsToGithub(
   return { ok: true, droppedLabels: res.droppedLabels };
 }
 
-function applyRemoteToIssue(issueId: string, fields: SyncFields): void {
+function applyRemoteToIssue(issueId: string, fields: SyncFields, parentId?: string): void {
   const metadata = fields.metadata;
-  const current = findIssueById(issueId);
-  const parentScope: IssueForgeScope = { cwd: current?.workspacePath ?? '', ...(current?.github?.repo ? { slug: current.github.repo } : {}) };
-  const parent = metadata?.parent ? findLinkedGithubIssue(metadata.parent, current?.workspacePath ?? '', parentScope) : undefined;
-  if (metadata?.parent && !parent) throw new Error(`Import parent GitHub issue #${metadata.parent} before syncing this sub-issue.`);
   if (metadata) restoreCategories(metadata);
   const currentStatus = findIssueById(issueId)?.status;
   const metadataStatus = metadata && localIsClosed(metadata.status.id) === fields.closed ? metadata.status.id : undefined;
@@ -605,7 +617,7 @@ function applyRemoteToIssue(issueId: string, fields: SyncFields): void {
       ...(metadata ? {
         type: metadata.type.id, priority: metadata.priority.id,
         projectId: metadata.project?.id ?? null, comments: metadata.comments,
-        ...(metadata.parent === null ? { parentId: null } : parent ? { parentId: parent.id } : {}),
+        parentId: parentId ?? null,
       } : {}),
     },
     { skipGithubAutoSync: true },
@@ -645,59 +657,56 @@ function findLinkedGithubIssue(number: number, workspacePath: string, scope?: Is
 }
 
 /** Restore an identity only after its parent is available; never watermark a partial import. */
-function importRemoteIssue(remote: RemoteIssueSnapshot, workspacePath: string, scope?: IssueForgeScope) {
+function importRemoteIssue(remote: RemoteIssueSnapshot, scope: IssueForgeScope, parentId?: string) {
   const decoded = decodeGithubIssueBody(remote.body);
-  const parent = decoded.metadata?.parent ? findLinkedGithubIssue(decoded.metadata.parent, workspacePath, scope) : undefined;
   if (decoded.metadata) restoreCategories(decoded.metadata);
   const card = addIssue({
     title: remote.title || `GitHub #${remote.number}`,
     description: decoded.body,
     labels: remote.labels,
-    workspacePath,
+    workspacePath: scope.cwd,
     ...(scope?.repo ? { repos: [scope.repo] } : {}),
     source: 'github',
-    ...(parent ? { parentId: parent.id } : {}),
+    ...(parentId ? { parentId } : {}),
     ...(remote.state === 'closed' && statusForClosedRemote() ? { status: statusForClosedRemote() } : {}),
   });
   applyRemoteToIssue(card.id, {
     title: remote.title || `GitHub #${remote.number}`, body: decoded.body,
     labels: remote.labels, closed: remote.state === 'closed', metadata: decoded.metadata,
-  });
+  }, parentId);
   writeLink(card.id, remote.number, remote.url, remote.updatedAt, undefined, scope);
   return card;
 }
 
 /** Closed/older parents may be absent from discovery; read their exact identity. */
 async function ensureRemoteParent(
-  remote: RemoteIssueSnapshot,
-  workspacePath: string,
+  childNumber: number,
+  number: number | null | undefined,
+  scope: IssueForgeScope,
   available = new Map<number, RemoteIssueSnapshot>(),
   imported = new Set<string>(),
-  scope: IssueForgeScope = { cwd: workspacePath },
-): Promise<void> {
-  const number = decodeGithubIssueBody(remote.body).metadata?.parent;
+): Promise<ReturnType<typeof findIssueById>> {
   if (!number) return;
-  if (number === remote.number) throw new Error('An issue cannot be its own parent.');
-  const existing = findLinkedGithubIssue(number, workspacePath, scope);
-  if (existing) {
-    if (existing.parentId) throw new Error('Sub-issues nest one level only.');
-    return;
-  }
+  if (number === childNumber) throw new Error('An issue cannot be its own parent.');
+  const existing = findLinkedGithubIssue(number, scope.cwd, scope);
+  if (existing) return existing.parentId ? undefined : existing;
   let parent = available.get(number);
   if (!parent) {
-    const result = await forge('issueView', { number, ...forgeScopeArgs({ ...scope, cwd: workspacePath }) });
+    const result = await forge('issueView', { number, ...forgeScopeArgs(scope) });
     if (!result.ok || !result.issue || result.issue.number !== number) {
       throw new Error(`Could not import parent GitHub issue #${number}: ${result.error ?? 'Could not read the GitHub issue'}`);
     }
     parent = result.issue;
   }
-  if (decodeGithubIssueBody(parent.body).metadata?.parent) {
-    throw new Error('Sub-issues nest one level only.');
-  }
+  const ancestor = decodeGithubIssueBody(parent.body).metadata?.parent;
+  if (ancestor === number || ancestor === childNumber) throw new Error('The GitHub issue hierarchy contains a cycle.');
+  if (ancestor) return;
   // Another worker may have imported this same parent while the read was pending.
-  const restored = findLinkedGithubIssue(number, workspacePath, scope);
-  if (restored?.parentId) throw new Error('Sub-issues nest one level only.');
-  if (!restored) imported.add(importRemoteIssue(parent, workspacePath, scope).id);
+  const restored = findLinkedGithubIssue(number, scope.cwd, scope);
+  if (restored) return restored.parentId ? undefined : restored;
+  const card = importRemoteIssue(parent, scope);
+  imported.add(card.id);
+  return card;
 }
 
 export interface ImportResult {
@@ -724,11 +733,12 @@ export async function importGithubIssues(options?: {
   limit?: number;
   workspacePath?: string;
   allPages?: boolean;
+  userInitiated?: boolean;
 }): Promise<ImportResult> {
   // Keep the destination fixed if the user switches workspaces during the fetch.
   const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
   try {
-    if (getIssuesGithubMode() === 'off') {
+    if (!options?.userInitiated && getIssuesGithubMode() === 'off') {
       return { ok: false, error: 'GitHub sync is off', imported: 0, skipped: 0 };
     }
 
@@ -781,10 +791,18 @@ export async function importGithubIssues(options?: {
               skipped += 1;
               continue;
             }
-            await ensureRemoteParent(remote, workspacePath, available, imported, scope);
-            if (!findLinkedGithubIssue(remote.number, workspacePath, scope)) {
-              imported.add(importRemoteIssue(remote, workspacePath, scope).id);
-              linked.add(remote.number);
+            try {
+              const parent = await ensureRemoteParent(
+                remote.number, decodeGithubIssueBody(remote.body).metadata?.parent, scope, available, imported,
+              );
+              if (!findLinkedGithubIssue(remote.number, workspacePath, scope)) {
+                imported.add(importRemoteIssue(remote, scope, parent?.id).id);
+                linked.add(remote.number);
+              }
+            } catch (err) {
+              const error = err instanceof Error ? err.message : String(err);
+              if (githubRetryAt(error) > Date.now()) throw err;
+              errors.push(`${scope.repo ? `${scope.repo} ` : ''}#${remote.number}: ${userFacingGithubError(error)}`);
             }
           }
           cursor = options?.allPages ? res.nextCursor : undefined;

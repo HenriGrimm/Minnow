@@ -379,8 +379,9 @@ test('one sync menu runs bulk actions and remembers the main-button scope per wo
   globalThis.fetch = (async (url, init) => {
     const request = new URL(String(url), 'http://localhost');
     if (request.pathname === '/api/workspace/repos') {
-      const repos = request.searchParams.has('checkout') ? [repo('.', linked)]
-        : new Headers(init?.headers).get('x-minnow-workspace') === solo ? [repo('.', solo)]
+      const checkout = request.searchParams.get('checkout');
+      const repos = checkout === linked ? [repo('.', linked)]
+        : checkout === solo ? [repo('.', solo)]
         : [repo('backend', backend), repo('frontend', frontend)];
       return Response.json({ repos });
     }

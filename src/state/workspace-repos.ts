@@ -35,18 +35,19 @@ function workspaceKey(workspacePath?: string): string {
 
 /** Null means discovery failed. An empty array means discovery found no repos. */
 export function lookupWorkspaceRepos(options: RepositoryLookupOptions = {}): Promise<WorkspaceRepo[] | null> {
-  const key = workspaceKey(options.checkoutPath ?? options.workspacePath);
+  const target = options.checkoutPath ?? options.workspacePath;
+  const key = workspaceKey(target);
   const hit = cache.get(key);
   if (!options.refresh && hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.promise;
   const promise = (async () => {
     try {
       const params = new URLSearchParams();
       if (options.refresh) params.set('refresh', '1');
-      if (options.checkoutPath) params.set('checkout', options.checkoutPath);
+      // The auth layer sets the view's workspace header. An explicit target
+      // goes through the checkout query so the server can validate it separately.
+      if (target) params.set('checkout', target);
       const qs = params.size ? `?${params}` : '';
-      const headers: Record<string, string> = {};
-      if (options.workspacePath) headers['X-Minnow-Workspace'] = options.workspacePath;
-      const response = await fetch(`/api/workspace/repos${qs}`, { headers });
+      const response = await fetch(`/api/workspace/repos${qs}`);
       if (!response.ok) return null;
       const payload = (await response.json()) as { ok?: boolean; repos?: WorkspaceRepo[] };
       return payload.ok !== false && Array.isArray(payload.repos) ? payload.repos : null;

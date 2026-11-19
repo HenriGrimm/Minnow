@@ -1177,7 +1177,7 @@
 }
 
 .mn-graphite-apps .issues-page:not(.issues-page--embedded) .issues-shell:not(.is-filter-open) .issues-row {
-  grid-template-columns: 19px 65px 19px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content) 55px;
+  grid-template-columns: 19px 65px 19px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content) var(--issues-workspace-column) 55px;
   gap: 0 6px;
   padding: calc(4px + var(--mn-density-step)) 20px;
 }
@@ -1244,10 +1244,26 @@
   grid-row: 1;
 }
 
-.mn-graphite-apps .issues-page:not(.issues-page--embedded) .issues-shell:not(.is-filter-open) .issues-row__created {
+.mn-graphite-apps .issues-page:not(.issues-page--embedded) .issues-shell:not(.is-filter-open) .issues-row__workspace {
   grid-column: 7;
   grid-row: 1;
+}
+
+.mn-graphite-apps .issues-page:not(.issues-page--embedded) .issues-shell:not(.is-filter-open) .issues-row__created {
+  grid-column: -2;
+  grid-row: 1;
   justify-content: end;
+}
+
+@container issues-list (max-width: 650px) {
+  .mn-graphite-apps .issues-page:not(.issues-page--embedded) .issues-shell:not(.is-filter-open) .issues-row {
+    grid-template-columns: 19px 65px 19px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content) 55px;
+  }
+
+  .mn-graphite-apps .issues-page:not(.issues-page--embedded) .issues-shell:not(.is-filter-open) .issues-row__workspace {
+    grid-column: 4 / -1;
+    grid-row: 2;
+  }
 }
 
 .mn-graphite-apps .issues-page:not(.issues-page--embedded) .issues-shell:not(.is-filter-open) .issues-group__head {

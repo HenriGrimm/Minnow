@@ -64,7 +64,7 @@ describe('issues ui state', () => {
       viewMode: 'board',
       groupBy: 'priority',
       activeViewId: 'builtin:triage',
-      listSort: { key: 'title', direction: 'asc' },
+      listSort: { key: 'workspace', direction: 'desc' },
       filters: { ...defaults().filters, scope: 'all', type: 'bug', hideDone: false },
     };
     saveIssuesUiState(state);

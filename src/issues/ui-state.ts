@@ -12,9 +12,9 @@
 
 import {
   DEFAULT_ISSUES_LIST_SORT,
+  isIssuesSortKey,
   type IssuesListSort,
   type IssuesSortDirection,
-  type IssuesSortKey,
 } from '../ui/issues-list-sort';
 import { isIssuesGroupBy } from './saved-views';
 import type { IssuesGroupBy } from './grouping';
@@ -44,16 +44,6 @@ export interface IssuesPersistedUiState {
   filters: IssuesPersistedFilters;
 }
 
-const SORT_KEYS: readonly IssuesSortKey[] = [
-  'id',
-  'type',
-  'title',
-  'status',
-  'priority',
-  'labels',
-  'created',
-];
-
 function str(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value : fallback;
 }
@@ -64,9 +54,7 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function parseListSort(raw: unknown): IssuesListSort {
   const row = readRecord(raw);
-  const key = SORT_KEYS.includes(row.key as IssuesSortKey)
-    ? (row.key as IssuesSortKey)
-    : DEFAULT_ISSUES_LIST_SORT.key;
+  const key = isIssuesSortKey(row.key) ? row.key : DEFAULT_ISSUES_LIST_SORT.key;
   const direction: IssuesSortDirection =
     row.direction === 'asc' || row.direction === 'desc'
       ? row.direction

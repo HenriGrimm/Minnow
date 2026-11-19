@@ -1,5 +1,6 @@
 import type { IssueCard } from '../types';
 import { issueIdKeyPrefix, issueIdNumericSuffix } from '../issues/project-key';
+import { issueRepoPath } from '../issues/repo-scope';
 import {
   createDefaultIssuesTaxonomy,
   sortedPriorities,
@@ -9,14 +10,12 @@ import {
 } from '../issues/taxonomy';
 
 /** Columns that can be sorted from the list header. */
-export type IssuesSortKey =
-  | 'id'
-  | 'type'
-  | 'title'
-  | 'status'
-  | 'priority'
-  | 'labels'
-  | 'created';
+const ISSUES_SORT_KEYS = ['id', 'type', 'title', 'status', 'priority', 'labels', 'workspace', 'created'] as const;
+export type IssuesSortKey = (typeof ISSUES_SORT_KEYS)[number];
+
+export function isIssuesSortKey(value: unknown): value is IssuesSortKey {
+  return typeof value === 'string' && ISSUES_SORT_KEYS.includes(value as IssuesSortKey);
+}
 
 export type IssuesSortDirection = 'asc' | 'desc';
 
@@ -95,6 +94,10 @@ function labelsSortValue(issue: IssueCard): string {
   return issue.labels.join(', ').toLowerCase();
 }
 
+function workspaceSortValue(issue: IssueCard): string {
+  return issue.repos?.map((repo) => issueRepoPath(issue.workspacePath, repo)).join(', ') || issue.workspacePath;
+}
+
 function compareStrings(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
 }
@@ -132,6 +135,8 @@ export function compareIssuesBySortKey(
       );
     case 'labels':
       return compareStrings(labelsSortValue(a), labelsSortValue(b));
+    case 'workspace':
+      return compareStrings(workspaceSortValue(a), workspaceSortValue(b));
     case 'created':
       return a.createdAt - b.createdAt;
     default:
@@ -139,16 +144,38 @@ export function compareIssuesBySortKey(
   }
 }
 
+/** Compare the visible column values, leaving rank and tie-breaking to the caller. */
+export function buildIssueColumnComparator(
+  sort: IssuesListSort,
+  taxonomy?: IssuesTaxonomy,
+  workspaceLabel?: (issue: IssueCard) => string,
+): (a: IssueCard, b: IssueCard) => number {
+  const factor = sort.direction === 'asc' ? 1 : -1;
+  if (sort.key === 'workspace' && workspaceLabel) {
+    const values = new Map<IssueCard, string>();
+    const value = (issue: IssueCard) => {
+      const cached = values.get(issue);
+      if (cached !== undefined) return cached;
+      const label = workspaceLabel(issue);
+      values.set(issue, label);
+      return label;
+    };
+    return (a, b) => compareStrings(value(a), value(b)) * factor;
+  }
+  const ranks = taxonomy ? buildIssuesSortRanks(taxonomy) : defaultRanks();
+  return (a, b) => compareIssuesBySortKey(a, b, sort.key, ranks) * factor;
+}
+
 /** Sort a copy of issues; ties break on id ascending for stability. */
 export function sortIssuesForList(
   issues: IssueCard[],
   sort: IssuesListSort,
   taxonomy?: IssuesTaxonomy,
+  workspaceLabel?: (issue: IssueCard) => string,
 ): IssueCard[] {
-  const ranks = taxonomy ? buildIssuesSortRanks(taxonomy) : defaultRanks();
-  const directionFactor = sort.direction === 'asc' ? 1 : -1;
+  const compareColumn = buildIssueColumnComparator(sort, taxonomy, workspaceLabel);
   return [...issues].sort((a, b) => {
-    const primary = compareIssuesBySortKey(a, b, sort.key, ranks) * directionFactor;
+    const primary = compareColumn(a, b);
     if (primary !== 0) return primary;
     return (
       compareStrings(issueIdKeyPrefix(a.id), issueIdKeyPrefix(b.id)) ||

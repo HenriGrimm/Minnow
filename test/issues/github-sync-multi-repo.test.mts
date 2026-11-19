@@ -143,6 +143,16 @@ describe('multi-repo GitHub sync', () => {
     assert.deepEqual(rows, [['From backend', 'backend', 'acme/api'], ['From frontend', 'frontend', 'acme/web']]);
   });
 
+  test('an explicit import reads both repos while two-way sync is off', async () => {
+    setIssuesGithubMode('off');
+    setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
+    const result = await importGithubIssues({ workspacePath: WS, allPages: true, userInitiated: true });
+    assert.equal(result.imported, 2);
+    assert.deepEqual(calls.map((call) => [call.op, call.repo]), [
+      ['issueList', 'backend'], ['issueList', 'frontend'],
+    ]);
+  });
+
   test('import continues after a repo fails and checks every page without duplicating child workspace cards', async () => {
     setIssuesStateForTests({ version: 2, nextId: 2, workspaces: {}, issues: [
       card({ workspacePath: `${WS}/frontend`, github: {

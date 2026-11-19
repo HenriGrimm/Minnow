@@ -13,6 +13,7 @@ import {
 } from './issues-chat-run-target';
 import { createAppIcon } from '../os/icons';
 import { iconHtml } from './icon';
+import { setButtonLabel } from './components/button';
 import { bindIssueDropTarget } from './issue-drop-target';
 import { setIssueDragData, endIssueDrag, getActiveIssueDragIds } from '../issues/issue-drag';
 import { createIssueEditor, type IssueEditorHandle } from './issue-editor';
@@ -49,7 +50,6 @@ import {
   assignIssueToMe,
   collectIssues,
   collectIssueLabelSuggestions,
-  countOpenIssues,
   declineTriageIssue,
   ensureIssueViews,
   findIssueById,
@@ -62,9 +62,14 @@ import {
   type CollectIssuesOptions,
 } from '../state/issues-store';
 import { sessionState } from '../state/sessions';
-import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
+import { getWorkspaceLabel, getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import { fetchWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
-import { relativeWorkspacePath } from '../lib/normalize-workspace-path';
+import { relativeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { issueRepoPath } from '../issues/repo-scope';
+import {
+  createIssueWorkspaceLabel, issueWorkspaceTargets, issueWorkspaceSortLabel,
+  type IssueWorkspaceContext, type IssueWorkspaceFilter,
+} from './issues-workspace-label';
 import type {
   IssueCard,
   IssuePriority,
@@ -145,6 +150,7 @@ import {
   ariaSortValue,
   cycleIssuesListSort,
   DEFAULT_ISSUES_LIST_SORT,
+  isIssuesSortKey,
   sortIssuesForList,
   type IssuesListSort,
   type IssuesSortKey,
@@ -177,16 +183,6 @@ const MAIN_COLUMN_ISSUES_CLASS = 'main-column--issues';
 const ISSUES_EMBEDDED_CLASS = 'issues-page--embedded';
 const EMBED_BACK_BTN_ID = 'btnIssuesEmbedBack';
 
-const ISSUES_SORT_KEYS = new Set<IssuesSortKey>([
-  'id',
-  'type',
-  'title',
-  'status',
-  'priority',
-  'labels',
-  'created',
-]);
-
 /** Human labels for sort aria-label (avoid reading indicator glyphs from the button). */
 const ISSUES_SORT_LABELS: Record<IssuesSortKey, string> = {
   id: 'ID',
@@ -195,6 +191,7 @@ const ISSUES_SORT_LABELS: Record<IssuesSortKey, string> = {
   status: 'Status',
   priority: 'Priority',
   labels: 'Labels',
+  workspace: 'Workspace',
   created: 'Created',
 };
 
@@ -245,7 +242,7 @@ let initialized = false;
 let currentScreen: IssuesScreen = 'issues';
 let viewMode: IssuesViewMode = 'list';
 let filters: IssuesUiFilters = { ...DEFAULT_FILTERS };
-const subWorkspaceByRoot = new Map<string, string>();
+const subWorkspaceByRoot = new Map<string, IssueWorkspaceFilter>();
 let repoFilters = { workspacePath: '', repos: [] as WorkspaceRepo[] };
 /** Active list-column sort (session-only). Rank wins inside a group when set. */
 let listSort: IssuesListSort = { ...DEFAULT_ISSUES_LIST_SORT };
@@ -514,25 +511,28 @@ function collectOptions(): CollectIssuesOptions {
 
 function issueWorkspaceOptions(): CollectIssuesOptions {
   const workspacePath = getWorkspacePath();
-  const path = filters.scope === 'current_workspace' ? subWorkspaceByRoot.get(workspacePath) : undefined;
+  const filter = subWorkspaceByRoot.get(workspacePath);
   return {
     scope: filters.scope,
     workspacePath,
     includeSubWorkspaces: true,
-    ...(path ? { subWorkspace: { path, repos: repoFilters.workspacePath === workspacePath ? repoFilters.repos : [] } } : {}),
+    ...(filter ? {
+      subWorkspace: { path: filter.path, exact: filter.exact, repoWorkspacePath: repoFilters.workspacePath, repos: repoFilters.repos },
+    } : {}),
   };
 }
 
-function setSubWorkspaceFilter(path?: string): void {
+function setSubWorkspaceFilter(filter?: IssueWorkspaceFilter, scope = filters.scope): void {
   const root = getWorkspacePath();
-  if (path) subWorkspaceByRoot.set(root, path);
+  if (filter) subWorkspaceByRoot.set(root, filter);
   else subWorkspaceByRoot.delete(root);
-  renderIssuesPanel();
+  setControlValue('issuesScope', scope);
+  onFiltersChanged();
 }
 
 function subWorkspaceFilterPaths(): string[] {
   const root = getWorkspacePath();
-  if (!root || filters.scope !== 'current_workspace') return [];
+  if (!root) return [];
   const paths = new Set<string>();
   const add = (relative: string) => {
     if (relative === '.') return;
@@ -557,6 +557,41 @@ async function refreshSubWorkspaceRepos(): Promise<void> {
   if (repoFilters.workspacePath === workspacePath && repoFilters.repos === repos) return;
   repoFilters = { workspacePath, repos };
   if (isIssuesPageOpen()) renderIssuesPanel();
+}
+
+function subWorkspaceMenuItems(paths = subWorkspaceFilterPaths()): IssuesContextMenuItem[] {
+  const root = getWorkspacePath();
+  const selected = subWorkspaceByRoot.get(root);
+  return [
+    {
+      id: 'all-workspaces', label: 'All workspaces', checked: !selected && filters.scope === 'all',
+      onSelect: () => setSubWorkspaceFilter(undefined, 'all'),
+    },
+    {
+      id: 'all-sub-workspaces', label: 'Whole workspace', checked: !selected && filters.scope === 'current_workspace',
+      onSelect: () => setSubWorkspaceFilter(undefined, 'current_workspace'),
+    },
+    ...paths.map((label) => {
+      const path = issueRepoPath(root, label);
+      return {
+        id: `sub-workspace:${label}`,
+        label,
+        checked: Boolean(selected && workspacePathsEqual(path, selected.path)),
+        onSelect: () => setSubWorkspaceFilter({ path, label }, 'current_workspace'),
+      };
+    }),
+  ];
+}
+
+function syncSubWorkspaceControl(): void {
+  const button = document.querySelector<HTMLButtonElement>('#btnIssuesSubWorkspace');
+  if (!button) return;
+  const selected = subWorkspaceByRoot.get(getWorkspacePath());
+  button.hidden = currentScreen !== 'issues' || (!selected && !subWorkspaceFilterPaths().length);
+  const label = selected?.label ?? (filters.scope === 'all' ? 'All workspaces' : 'Whole workspace');
+  button.title = label;
+  button.setAttribute('aria-label', `Filter by sub-workspace, ${label}`);
+  setButtonLabel(button, label);
 }
 
 function asElement(value: EventTarget | null): Element | null {
@@ -604,8 +639,18 @@ function visibleIssueOrder(): IssueCard[] {
   return ordered;
 }
 
+function showsIssueWorkspaceColumn(): boolean {
+  return filters.scope === 'all' ||
+    (repoFilters.workspacePath === getWorkspacePath() && repoFilters.repos.length > 1);
+}
+
+function activeIssuesListSort(): IssuesListSort {
+  return listSort.key === 'workspace' && !showsIssueWorkspaceColumn() ? DEFAULT_ISSUES_LIST_SORT : listSort;
+}
+
 function sortColumnIssues(issues: IssueCard[]): IssueCard[] {
   const taxonomy = getIssuesTaxonomySync();
+  const sort = activeIssuesListSort();
   const byStatus = new Map<string, IssueCard[]>();
   for (const issue of issues) {
     const bucket = byStatus.get(issue.status) ?? [];
@@ -614,16 +659,17 @@ function sortColumnIssues(issues: IssueCard[]): IssueCard[] {
   }
   const out: IssueCard[] = [];
   for (const bucket of byStatus.values()) {
-    out.push(...sortIssuesInGroup(bucket, listSort, taxonomy));
+    out.push(...sortIssuesInGroup(bucket, sort, taxonomy, workspaceSortLabel));
   }
   return out;
 }
 
 function currentGroupedRows() {
   const issues = collectIssues(collectOptions());
-  return buildGroupedIssueRows(issues, groupBy, listSort, {
+  return buildGroupedIssueRows(issues, groupBy, activeIssuesListSort(), {
     taxonomy: getIssuesTaxonomySync(),
     projects: listIssueProjects({ includeArchived: true }),
+    workspaceLabel: workspaceSortLabel,
     allIssues: collectIssues({
       scope: filters.scope,
       workspacePath: getWorkspacePath(),
@@ -660,32 +706,34 @@ function syncListHeadVisibility(): void {
   const head = document.getElementById('issuesListHead');
   if (!head) return;
   head.hidden = viewMode !== 'list';
+  const showWorkspace = showsIssueWorkspaceColumn();
+  head.closest('.issues-shell')?.classList.toggle('is-workspace-column-hidden', !showWorkspace);
+  const workspaceHead = head.querySelector<HTMLButtonElement>('.issues-list-head__workspace');
+  if (workspaceHead) workspaceHead.hidden = !showWorkspace;
 }
 
 /** Reflect active sort in button labels and the visual indicator. */
 function syncListHeadSortUi(): void {
   const head = document.getElementById('issuesListHead');
   if (!head) return;
+  const sort = activeIssuesListSort();
   head.querySelectorAll<HTMLButtonElement>('.issues-list-head__sort[data-sort-key]').forEach((btn) => {
     const key = btn.dataset.sortKey;
     if (!key || !isIssuesSortKey(key)) return;
-    const aria = ariaSortValue(listSort, key);
+    const aria = ariaSortValue(sort, key);
     btn.classList.toggle('is-active', aria !== 'none');
+    btn.dataset.sortDirection = aria;
     const dirLabel =
       aria === 'ascending' ? 'ascending' : aria === 'descending' ? 'descending' : 'unsorted';
     btn.setAttribute('aria-label', `Sort by ${ISSUES_SORT_LABELS[key]}, ${dirLabel}`);
   });
 }
 
-function isIssuesSortKey(value: string): value is IssuesSortKey {
-  return ISSUES_SORT_KEYS.has(value as IssuesSortKey);
-}
-
 /** Apply filters, then list-column sort (list view only). */
 function collectVisibleIssues(): IssueCard[] {
   const issues = collectIssues(collectOptions());
   if (viewMode !== 'list') return issues;
-  return sortIssuesForList(issues, listSort, getIssuesTaxonomySync());
+  return sortIssuesForList(issues, activeIssuesListSort(), getIssuesTaxonomySync(), workspaceSortLabel);
 }
 
 /** Drop selection entries that are no longer visible under current filters. */
@@ -1079,6 +1127,28 @@ function paintRowState(row: HTMLElement, issue: IssueCard): void {
   else row.removeAttribute('aria-description');
 }
 
+function issueWorkspaceContext(): IssueWorkspaceContext {
+  const workspacePath = getWorkspacePath();
+  return {
+    workspacePath,
+    workspaceLabel: getWorkspaceLabel(),
+    repos: repoFilters.workspacePath === workspacePath ? repoFilters.repos : [],
+    qualifyLabels: filters.scope === 'all',
+  };
+}
+
+function workspaceSortLabel(issue: IssueCard): string {
+  return issueWorkspaceSortLabel(issue, issueWorkspaceContext());
+}
+
+function buildIssueWorkspaceLabel(issue: IssueCard, className: string): HTMLElement {
+  const selected = subWorkspaceByRoot.get(getWorkspacePath());
+  return createIssueWorkspaceLabel(issueWorkspaceTargets(issue, issueWorkspaceContext()), className, selected, (filter) => {
+    setSubWorkspaceFilter(filter);
+    document.getElementById('btnIssuesSubWorkspace')?.focus();
+  });
+}
+
 function buildIssueRow(
   issue: IssueCard,
   orderedIssues: IssueCard[],
@@ -1211,6 +1281,7 @@ function buildIssueRow(
     onBlur: () => refreshIssueDetailIfOpen(),
   });
 
+  const workspace = buildIssueWorkspaceLabel(issue, 'issues-row__workspace');
   const created = document.createElement('time');
   created.className = 'issues-row__created';
   created.textContent = formatIssueAge(issue.createdAt);
@@ -1232,6 +1303,7 @@ function buildIssueRow(
     rollup,
     counts,
     status,
+    workspace,
     created,
   );
   row.addEventListener('click', (event) => {
@@ -1425,6 +1497,7 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
     : getBoardStatusOptions();
   const sorted = sortColumnIssues(issues);
   const boardOrderedIssues = buildBoardOrderedIssues(sorted, columns);
+  const sort = activeIssuesListSort();
 
   for (const col of columns) {
     const columnEl = document.createElement('section');
@@ -1442,8 +1515,9 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
 
     for (const issue of sortIssuesInGroup(
       issues.filter((i) => i.status === col.id),
-      listSort,
+      sort,
       taxonomy,
+      workspaceSortLabel,
     )) {
       const boardIndex = boardOrderedIssues.findIndex((row) => row.id === issue.id);
       const card = document.createElement('article');
@@ -1495,6 +1569,7 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
         rollupBit.textContent = `${rollup.done}/${rollup.total}`;
         meta.appendChild(rollupBit);
       }
+      meta.appendChild(buildIssueWorkspaceLabel(issue, 'issues-card__workspace'));
 
       card.append(cardHead, title, meta);
       card.addEventListener('click', (event) => {
@@ -1599,6 +1674,10 @@ export function renderIssuesPanel(): void {
 
   ensureIssueViews();
   syncIssuesScreenNavigation();
+  syncSubWorkspaceControl();
+  syncIssuesGithubSyncAllButton(repoFilters.workspacePath === getWorkspacePath() && repoFilters.repos.some(
+    (repo) => repo.remote?.host === 'github' || repo.remote?.host === 'github-enterprise',
+  ));
   if (currentScreen === 'projects') {
     const next = document.createElement('div');
     renderIssuesProjectsScreen(next, {
@@ -1647,10 +1726,10 @@ export function renderIssuesPanel(): void {
   }
 
   if (summaryEl) {
-    const openAll = countOpenIssues({ scope: 'all' });
+    const openCount = collectIssues({ ...issueWorkspaceOptions(), hideDone: true }).length;
     const triageCount = countUnreviewedTriageIssues();
-    summaryEl.textContent = document.documentElement.classList.contains('mn-graphite-apps') && issues.length === openAll
-      ? `${openAll} open` : `${issues.length} shown · ${openAll} open`;
+    summaryEl.textContent = document.documentElement.classList.contains('mn-graphite-apps') && issues.length === openCount
+      ? `${openCount} open` : `${issues.length} shown · ${openCount} open`;
     if (triageCount > 0) {
       summaryEl.textContent += ` · ${triageCount} to triage`;
     }
@@ -1787,8 +1866,8 @@ function renderFilterChips(): void {
       renderIssuesPanel();
     });
   }
-  const subWorkspace = issueWorkspaceOptions().subWorkspace;
-  if (subWorkspace) addChip('sub-workspace', subWorkspace.path, () => setSubWorkspaceFilter());
+  const subWorkspace = subWorkspaceByRoot.get(getWorkspacePath());
+  if (subWorkspace) addChip('sub-workspace', subWorkspace.label, () => setSubWorkspaceFilter());
 
   const hideChip = document.createElement('button');
   hideChip.type = 'button';
@@ -1812,20 +1891,11 @@ function renderFilterChips(): void {
 function buildFilterMenuItems(): IssuesContextMenuItem[] {
   const taxonomy = getIssuesTaxonomySync();
   const subWorkspaces = subWorkspaceFilterPaths();
-  const selectedSubWorkspace = issueWorkspaceOptions().subWorkspace?.path;
   return [
     ...(subWorkspaces.length ? [{
       id: 'sub-workspace',
       label: 'Sub-workspace',
-      submenu: [
-        { id: 'all-sub-workspaces', label: 'Whole workspace', checked: !selectedSubWorkspace, onSelect: () => setSubWorkspaceFilter() },
-        ...subWorkspaces.map((path) => ({
-          id: `sub-workspace:${path}`,
-          label: path,
-          checked: path === selectedSubWorkspace,
-          onSelect: () => setSubWorkspaceFilter(path),
-        })),
-      ],
+      submenu: subWorkspaceMenuItems(subWorkspaces),
     }] : []),
     {
       id: 'type',
@@ -3020,7 +3090,10 @@ function bindStaticControls(): void {
   root.addEventListener('contextmenu', openBlankIssuesMenu);
   root.addEventListener('change', (event) => {
     const target = asElement(event.target);
-    if (target?.id === 'issuesScope') onFiltersChanged();
+    if (target?.id === 'issuesScope') {
+      subWorkspaceByRoot.delete(getWorkspacePath());
+      onFiltersChanged();
+    }
   });
   root.addEventListener('input', (event) => {
     const target = asElement(event.target);
@@ -3053,6 +3126,16 @@ function bindStaticControls(): void {
       shell?.classList.toggle('is-filter-open', open);
       document.getElementById('btnIssuesFilters')?.setAttribute('aria-expanded', String(open));
       if (search) document.getElementById('issuesSearch')?.focus();
+      return;
+    }
+    const subWorkspaceButton = target.closest<HTMLButtonElement>('#btnIssuesSubWorkspace');
+    if (subWorkspaceButton) {
+      openIssuesContextMenu({
+        anchor: subWorkspaceButton,
+        restoreFocus: subWorkspaceButton,
+        label: 'Filter by sub-workspace',
+        items: subWorkspaceMenuItems(),
+      });
       return;
     }
     if (target.closest('#btnIssuesNew')) {
@@ -3115,7 +3198,7 @@ function bindStaticControls(): void {
     if (sortBtn) {
       const key = sortBtn.getAttribute('data-sort-key');
       if (!key || !isIssuesSortKey(key)) return;
-      listSort = cycleIssuesListSort(listSort, key);
+      listSort = cycleIssuesListSort(activeIssuesListSort(), key);
       renderIssuesPanel();
     }
   });

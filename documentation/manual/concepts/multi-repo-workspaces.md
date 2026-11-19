@@ -20,15 +20,22 @@ The agent's instructions list the workspace's repositories and their remotes. Gi
 
 ## Issues
 
-**Current workspace** shows issues filed in the open folder and its child workspaces. Use **Filter → Sub-workspace** to narrow the list or board to a repository or a folder of repositories. Issues assigned to several repositories appear under each one.
+**Current workspace** shows issues filed in the open folder and its child workspaces. Use **Whole workspace** in the Issues header to narrow the list or board to a repository or a folder of repositories. Issues assigned to several repositories appear under each one.
+
+The **Workspace** column appears in multi-repo workspaces and in **All workspaces**. Select its header to sort by the displayed names. Select a workspace or repository name on an issue to filter the list or Pipeline. An issue assigned to several repositories has a separate filter button for each one. Select the active name again to clear the filter. Hover over a name to see its full folder path.
+
+The Issues side panel in Code includes child workspace issues. For multi-repo workspaces, select a repository label or use **Filter → Workspace** to narrow the list. Use **Sort issues** to switch between newest first and workspace order.
 
 In an issue, use **Repositories** to assign work to one or more repositories. **Git → Create branch** and **Create pull request** use the assigned repository. If the issue targets several, choose one when you run the action. A Git action always runs in one repository, and the branch or pull request link records which one.
+
+Use **Import from GitHub** in the Issues header to bring open and closed issues from the workspace’s GitHub repositories into Triage. With **Two-way mirror** enabled, the header shows **Sync all**. It imports those issues and syncs existing cards with GitHub.
+
+Minnow displays one level of sub-issues. When a GitHub issue’s parent is itself a sub-issue, the imported card can appear as a top-level issue. Minnow preserves its GitHub parent when syncing other edits.
 
 With GitHub sync on, each issue syncs with its own repository:
 
 - A linked issue keeps syncing with the repository it was linked to.
 - A new issue is published to the one repository it targets. An issue that targets no repository, or several, is held back with **Choose a repo for this issue before publishing it to GitHub.** Set its Repositories row and sync again.
-- With **Two-way mirror** enabled, use **Sync all** to bring in open and closed issues from the workspace’s GitHub repositories. New imports are tagged with their repository and appear in **Triage**.
 
 ## Isolated chats
 

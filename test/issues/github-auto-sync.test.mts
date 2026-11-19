@@ -574,7 +574,7 @@ describe('GitHub auto-sync', () => {
     let reset = Date.now() + 200;
     const existingFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
-      if (String(input) === '/api/workspace/repos') return Response.json({ ok: true, repos: [] });
+      if (String(input).startsWith('/api/workspace/repos')) return Response.json({ ok: true, repos: [] });
       requests++;
       if (Date.now() < reset) return gitJsonResponse({ ok: false,
         error: `GraphQL: API rate limit already exceeded. Retry after ${new Date(reset).toISOString()}` });
