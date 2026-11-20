@@ -963,6 +963,8 @@
 .mn-graphite-apps .scc-commit__input {
   min-height: 74px;
   padding-inline-end: 32px;
+  /* field-sizing grows the box with the message; the grip just adds noise. */
+  resize: none;
 }
 
 .scc-commit__field {
@@ -1007,10 +1009,6 @@
   align-items: center;
   gap: var(--mn-space-1-5);
   margin-inline-start: auto;
-}
-
-.mn-graphite-apps .scc-commit__actions {
-  flex-wrap: wrap;
 }
 
 .scc-changes__diff-options {

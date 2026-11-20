@@ -135,11 +135,19 @@ export function createChangesView(ctx: SccContext): SccView {
 
   const commitPushBtn = button({
     label: 'Commit & push',
+    className: 'scc-commit__push',
     onClick: () => void runCommit(true),
   });
 
   let merging = false;
-  const mergeBtn = button({ label: 'Merge worktree', icon: 'gitMerge', onClick: () => void mergeChatRepository() });
+  const mergeBtn = button({
+    label: 'Merge worktree',
+    icon: 'gitMerge',
+    variant: 'ghost',
+    title: 'Merge this worktree’s commits into its target branch',
+    className: 'scc-commit__merge',
+    onClick: () => void mergeChatRepository(),
+  });
   mergeBtn.hidden = !ctx.chatWorktreeMerge?.();
 
   async function mergeChatRepository(): Promise<void> {
@@ -174,11 +182,12 @@ export function createChangesView(ctx: SccContext): SccView {
   const commitHint = el('span', 'scc-commit__hint');
 
   const commitActions = el('div', 'scc-commit__actions');
-  commitActions.append(commitHint, mergeBtn, commitBtn, commitPushBtn);
+  commitBtn.classList.add('scc-commit__primary');
+  commitActions.append(commitBtn, commitPushBtn, mergeBtn);
   const generationStatus = createCommitGenerationStatus();
   const messageField = el('div', 'scc-commit__field');
   messageField.append(messageInput, generateBtn);
-  commitBox.append(messageField, generationStatus, commitActions);
+  commitBox.append(messageField, generationStatus, commitHint, commitActions);
   commitBox.addEventListener('submit', (event) => event.preventDefault());
 
   const stageAllBtn = button({
@@ -595,7 +604,7 @@ export function createChangesView(ctx: SccContext): SccView {
     generateBtn.disabled = !!generateAbort || !hasAny;
     const stageAll = hasAny && !hasStaged;
     commitBtn.querySelector('.scc-btn__label')!.textContent = stageAll ? 'Commit all files' : 'Commit';
-    commitPushBtn.querySelector('.scc-btn__label')!.textContent = stageAll ? 'Commit all and push' : 'Commit & Push';
+    commitPushBtn.querySelector('.scc-btn__label')!.textContent = stageAll ? 'Commit all and push' : 'Commit & push';
 
     commitHint.textContent = hasStaged ? `${lastCounts.staged} staged` : '';
   }
