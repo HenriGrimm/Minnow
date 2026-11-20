@@ -1,11 +1,13 @@
 import { showToast } from './toast';
 import { runSettingsAction } from './settings-controls';
+import { appAlert, appConfirm } from './app-dialog';
 import '../styles/workspace-welcome-page.css';
 
 import {
   cloneWorkspaceRepository,
   createWorkspaceSubfolder,
   fetchWorkspace,
+  moveRecentWorkspace,
   removeRecentWorkspace,
   type WorkspaceRecentItem,
 } from '../config/workspace-api';
@@ -276,6 +278,45 @@ interface RecentRowOptions {
   glyphHtml?: string;
 }
 
+let moveBusy = false;
+
+async function onMoveRecentProject(item: WorkspaceRecentItem, button: HTMLButtonElement): Promise<void> {
+  if (moveBusy) return;
+  moveBusy = true;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  try {
+    const result = await openWorkspaceFolderPicker({
+      title: 'Choose where to move the project',
+      confirmVerb: 'Choose destination',
+      initialPath: wizardParentPath || undefined,
+    });
+    if (result.cancelled || !result.path) return;
+    const confirmed = await appConfirm(
+      `Move “${item.label}” from ${item.path} into ${result.path}? The whole folder moves with its name unchanged. Nothing at the destination will be replaced.`,
+      { title: 'Move project?', confirmLabel: 'Move project' },
+    );
+    if (!confirmed) return;
+    setStatus('spin', 'Moving project…');
+    const moved = await moveRecentWorkspace(item.path, result.path);
+    setStatus('ok', 'Project moved');
+    showToast(`Moved ${item.label}`);
+    await renderRecentsList();
+    const movedRow = Array.from(document.querySelectorAll<HTMLButtonElement>('#welcomeRecentsList button.welcome-page__recents-row'))
+      .find(row => normalizeWorkspacePath(row.title) === normalizeWorkspacePath(moved));
+    movedRow?.focus();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setStatus('err', message);
+    await appAlert(message, 'Could not move project');
+  } finally {
+    moveBusy = false;
+    button.disabled = !getLocalServerAvailable();
+    button.removeAttribute('aria-busy');
+    if (button.isConnected) button.focus();
+  }
+}
+
 function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pinned: boolean): void {
   const actions = document.createElement('div');
   actions.className = 'welcome-page__recents-actions';
@@ -297,6 +338,18 @@ function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pin
 
   // Sandbox is pinned; it cannot be removed from the list.
   if (!pinned) {
+    if (item.exists) {
+      const moveBtn = document.createElement('button');
+      moveBtn.type = 'button';
+      moveBtn.className = 'welcome-page__recents-move';
+      moveBtn.append(createIcon('folder', { size: 14 }));
+      moveBtn.title = `Move project: ${item.label}`;
+      moveBtn.setAttribute('aria-label', moveBtn.title);
+      moveBtn.disabled = !getLocalServerAvailable() || (gateSwitchMode && item.isCurrent);
+      if (gateSwitchMode && item.isCurrent) moveBtn.title = 'Close the project before moving it';
+      moveBtn.addEventListener('click', () => void onMoveRecentProject(item, moveBtn));
+      actions.appendChild(moveBtn);
+    }
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'welcome-page__recents-remove';
@@ -488,6 +541,11 @@ function decorateOpenRecentRow(
   }
 
   row.querySelector('.welcome-page__recents-new-window')?.remove();
+  const move = row.querySelector<HTMLButtonElement>('.welcome-page__recents-move');
+  if (move) {
+    move.disabled = true;
+    move.title = 'Close the project before moving it';
+  }
 
   if (!window.minnow?.window?.closeWorkspace) return;
   const actions = row.querySelector('.welcome-page__recents-actions');

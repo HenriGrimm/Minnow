@@ -173,3 +173,15 @@ export async function removeRecentWorkspace(
   }
   return json.recent ?? [];
 }
+
+/** Move a closed recent project into an existing parent folder. */
+export async function moveRecentWorkspace(path: string, parentPath: string): Promise<string> {
+  const res = await fetch('/api/workspace/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, parentPath }),
+  });
+  const json = await res.json() as { path?: string; error?: string };
+  if (!res.ok || !json.path) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json.path;
+}

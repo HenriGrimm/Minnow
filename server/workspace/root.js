@@ -6,7 +6,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { readConfigJson, writeConfigJson } from '../config/store.js';
+import { readConfigJson, updateConfigJson, writeConfigJson } from '../config/store.js';
 import { mergeConfigMeta } from '../config/validators.js';
 import { maybeAutoApplyWorkspaceProfile } from '../profiles/handlers.js';
 import { getMinnowHome } from '../config/home.js';
@@ -77,6 +77,13 @@ export function isAppRootPackaged() {
  */
 export function getDefaultWorkspaceRoot() {
   return workspaceRoot;
+}
+
+/** Update the live default only after relocation publishes the saved default. */
+export function repointDefaultAfterMove(source, destination) {
+  if (normalizeWorkspacePathKey(workspaceRoot) === normalizeWorkspacePathKey(source)) {
+    workspaceRoot = destination;
+  }
 }
 
 /** Whether the user has explicitly chosen a workspace (welcome / picker / PUT). */
@@ -256,15 +263,12 @@ async function loadRecentPathsFromDisk() {
   return readRecentPathsFromMeta(meta);
 }
 
-/**
- * @param {string[]} recentPaths
- */
-async function persistRecentPaths(recentPaths) {
-  const meta = (await readConfigJson('config.json')) ?? {};
-  const merged = mergeConfigMeta(meta, {
-    workspace: { recentPaths: dedupeRecentPaths(recentPaths) },
-  });
-  await writeConfigJson('config.json', merged);
+/** @param {(paths: string[]) => string[]} transform */
+async function updateRecentPaths(transform) {
+  const meta = await updateConfigJson('config.json', current => mergeConfigMeta(current, {
+    workspace: { recentPaths: dedupeRecentPaths(transform(readRecentPathsFromMeta(current))) },
+  }));
+  return readRecentPathsFromMeta(meta);
 }
 
 /**
@@ -275,7 +279,7 @@ async function pruneRecentPathsOnDisk() {
   const stored = await loadRecentPathsFromDisk();
   const next = stored.filter((p) => isEligibleRecentWorkspacePath(p));
   if (next.length !== stored.length) {
-    await persistRecentPaths(next);
+    return updateRecentPaths(paths => paths.filter(p => isEligibleRecentWorkspacePath(p)));
   }
   return next;
 }
@@ -291,10 +295,7 @@ export async function touchRecentWorkspacePath(absPath) {
   if (!isEligibleRecentWorkspacePath(resolved)) {
     return pruneRecentPathsOnDisk();
   }
-  const existing = await loadRecentPathsFromDisk();
-  const next = dedupeRecentPaths([resolved, ...existing]);
-  await persistRecentPaths(next);
-  return next;
+  return updateRecentPaths(paths => [resolved, ...paths]);
 }
 
 /**
@@ -304,10 +305,7 @@ export async function touchRecentWorkspacePath(absPath) {
  */
 export async function removeRecentWorkspacePath(absPath) {
   const key = normalizeWorkspacePathKey(absPath);
-  const existing = await loadRecentPathsFromDisk();
-  const next = existing.filter((p) => normalizeWorkspacePathKey(p) !== key);
-  await persistRecentPaths(next);
-  return next;
+  return updateRecentPaths(paths => paths.filter(p => normalizeWorkspacePathKey(p) !== key));
 }
 
 /**
@@ -479,12 +477,13 @@ export async function initWorkspaceRoot() {
  */
 export async function setDefaultWorkspaceRoot(userPath) {
   const resolved = await validateWorkspacePath(userPath);
+  await updateConfigJson('config.json', meta => {
+    const recent = readRecentPathsFromMeta(meta).filter(p => isEligibleRecentWorkspacePath(p));
+    if (isEligibleRecentWorkspacePath(resolved)) recent.unshift(resolved);
+    return mergeConfigMeta(meta, { workspace: { path: resolved, userChosen: true, recentPaths: dedupeRecentPaths(recent) } });
+  });
   workspaceRoot = resolved;
   workspaceUserChosen = true;
-  const meta = (await readConfigJson('config.json')) ?? {};
-  const merged = mergeConfigMeta(meta, { workspace: { path: resolved, userChosen: true } });
-  await writeConfigJson('config.json', merged);
-  await touchRecentWorkspacePath(resolved);
   try {
     await maybeAutoApplyWorkspaceProfile(resolved);
   } catch (err) {

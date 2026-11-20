@@ -244,6 +244,12 @@ export async function listJobs() {
   return jobs;
 }
 
+/** Check relocation dependencies without decrypting job prompts. */
+export async function hasJobsForWorkspace(matches) {
+  const store = await readStoreUnlocked();
+  return store.jobs.some(job => job.workspacePath && matches(job.workspacePath));
+}
+
 /** @param {string} id */
 export async function getJobById(id) {
   const store = await readStoreUnlocked();

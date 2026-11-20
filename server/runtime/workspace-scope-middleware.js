@@ -22,6 +22,7 @@
 
 import path from 'node:path';
 import { runWithViewWorkspace } from './path-access.js';
+import { projectMoveBlocks } from '../workspace/project-move.js';
 import {
   isAllowedWorkspaceRoot,
   isAllowedWorkspaceRootAsync,
@@ -69,6 +70,10 @@ export function createWorkspaceScopeMiddleware() {
     }
 
     const resolved = path.resolve(requested);
+    if (projectMoveBlocks(resolved)) {
+      sendJson(res, 409, { error: 'This workspace is involved in a project move.' });
+      return;
+    }
 
     // Fast path: the synchronous allowlist covers open workspaces, the sandboxes
     // and worktrees, and is what almost every request hits.
@@ -81,6 +86,10 @@ export function createWorkspaceScopeMiddleware() {
     // Slow path: registered git worktrees and the persisted MRU need I/O.
     isAllowedWorkspaceRootAsync(resolved)
       .then((allowed) => {
+        if (projectMoveBlocks(resolved)) {
+          sendJson(res, 409, { error: 'This workspace is involved in a project move.' });
+          return;
+        }
         if (!allowed) {
           sendJson(res, 400, {
             error: `Unknown workspace: ${resolved}`,

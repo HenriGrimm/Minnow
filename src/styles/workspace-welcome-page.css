@@ -500,8 +500,13 @@
   padding-inline-end: 10px;
 }
 
+.welcome-page__recents-actions:has(.welcome-page__recents-move) {
+  grid-template-columns: repeat(3, var(--workspace-action-size));
+}
+
 .welcome-page__recents-new-window,
 .welcome-page__recents-close,
+.welcome-page__recents-move,
 .welcome-page__recents-remove {
   grid-column: 1;
   grid-row: 1;
@@ -518,7 +523,16 @@
 }
 
 .welcome-page__recents-remove {
+  grid-column: -2;
+}
+
+.welcome-page__recents-move {
   grid-column: 2;
+}
+
+.welcome-page__recents-move:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .welcome-page__recents-actions button:hover:not(:disabled) {
@@ -532,6 +546,7 @@
 
 .welcome-page__recents-new-window:focus-visible,
 .welcome-page__recents-close:focus-visible,
+.welcome-page__recents-move:focus-visible,
 .welcome-page__recents-remove:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 1px;

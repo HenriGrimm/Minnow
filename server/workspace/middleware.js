@@ -6,6 +6,7 @@ import {
   buildRecentWorkspaceList,
   buildSandboxWorkspaceItem,
   getWorkspaceInfo,
+  normalizeWorkspacePathKey,
   removeRecentWorkspacePath,
   setDefaultWorkspaceRoot,
   validateWorkspacePath,
@@ -24,6 +25,7 @@ import {
 } from './browse.js';
 import { pickWorkspaceFolder } from './pick-folder.js';
 import { cloneWorkspaceRepository } from './clone.js';
+import { moveRecentProject, projectMoveBlocks } from './project-move.js';
 import { countWorkspaceLoc } from './loc.js';
 import {
   getDevServerStatus,
@@ -417,6 +419,22 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
       return true;
     }
 
+    if (pathname === '/api/workspace/move' && req.method === 'POST') {
+      if (getRequestIngress(req) !== 'loopback' || req.minnowAuth?.kind !== 'host') {
+        sendJson(res, 403, { error: 'Projects can only be moved from the local Minnow host.' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      if (req.minnowWorkspaceRoot && typeof body?.path === 'string' &&
+          normalizeWorkspacePathKey(req.minnowWorkspaceRoot) === normalizeWorkspacePathKey(body.path)) {
+        sendJson(res, 409, { error: 'Close the project before moving it.' });
+        return true;
+      }
+      const moved = await moveRecentProject(body?.path, body?.parentPath);
+      sendJson(res, 200, { ok: true, path: moved });
+      return true;
+    }
+
     if (pathname === '/api/workspace' && req.method === 'GET') {
       const viewRoot = getEffectiveWorkspaceRoot();
       const recent = await buildRecentWorkspaceList(viewRoot);
@@ -451,6 +469,7 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
         return true;
       }
       const resolved = await validateWorkspacePath(userPath);
+      if (projectMoveBlocks(resolved)) throw new Error('This workspace is involved in a project move.');
       openWorkspace(resolved);
       sendJson(res, 200, {
         ok: true,
@@ -501,6 +520,7 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
         sendJson(res, 400, { error: 'path is required' });
         return true;
       }
+      if (projectMoveBlocks(userPath)) throw new Error('This workspace is involved in a project move.');
       const resolved = await setDefaultWorkspaceRoot(userPath);
       const info = getWorkspaceInfo(resolved);
       sendJson(res, 200, {
@@ -523,6 +543,7 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
         return true;
       }
       const resolved = await validateWorkspacePath(pick.path);
+      if (projectMoveBlocks(resolved)) throw new Error('This workspace is involved in a project move.');
       await setDefaultWorkspaceRoot(resolved);
       const info = getWorkspaceInfo(resolved);
       sendJson(res, 200, {

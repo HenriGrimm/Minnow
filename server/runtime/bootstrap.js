@@ -20,6 +20,7 @@ import { initializeSessionsDb } from '../config/sessions-db.js';
 import { useJsonSessionsStore } from '../config/sessions-repo.js';
 import { initPluginsApi } from '../tools/middleware.js';
 import { initWorkspaceRoot, getAppRoot } from '../workspace/root.js';
+import { recoverProjectMove } from '../workspace/project-move.js';
 import { recomputeAllNextRuns } from '../scheduler/store.js';
 import { applyPendingRestore } from '../backup/restore-apply.js';
 import { startBackupScheduleLoop } from '../backup/schedule.js';
@@ -64,10 +65,11 @@ export async function bootstrapMinnowRuntime() {
   await ensureBenchmarkWorkspace();
   await ensureSchedulerWorkspace();
   await ensureAgentPacksLayout();
-  const [workspacePath] = await Promise.all([
-    initializeRuntimeServices(),
-    useJsonSessionsStore() ? undefined : initializeSessionsDb(),
-  ]);
+  if (!useJsonSessionsStore()) await initializeSessionsDb();
+  await recoverProjectMove().catch(error => {
+    console.warn('[workspace] Project move recovery could not finish:', error.message);
+  });
+  const workspacePath = await initializeRuntimeServices();
   sweepCheckpoints();
   setImmediate(() => {
     void import('../terminal-runner.js').then((m) => m.warmupTerminalPlatformCaches());
