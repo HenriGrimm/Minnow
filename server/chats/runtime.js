@@ -14,6 +14,7 @@ import { createChatCheckpointCoordinator } from './checkpoints.js';
 import { createChatNativeExecution } from './native-execution.js';
 import { subscribeNativePolicyChanges } from './native-policy-monitor.js';
 import { getMinnowHome } from '../config/home.js';
+import { readConfigJson } from '../config/store.js';
 import { getAgentCliProviderConfig } from '../providers/store.js';
 import { createChatWorkspacePreparation } from './workspace-preparation.js';
 import { createChatRecovery } from './recovery.js';
@@ -142,6 +143,16 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
   }
   const workspacePreparation = createChatWorkspacePreparation({ repository, context, onChange: chatId => presentation.changed(chatId) });
   const service = createChatCommandService({ repository, context,
+    defaultOrdinaryModel: async () => {
+      const saved = await readConfigJson('default-model.json');
+      const value = typeof saved?.value === 'string' ? saved.value.trim() : '';
+      const separator = value.indexOf('\u001f');
+      if (separator > 0 && separator < value.length - 1) {
+        return { providerId: value.slice(0, separator), modelId: value.slice(separator + 1) };
+      }
+      if (value) throw new ChatContractError('invalid_request', 'The remembered model has no provider identity; choose a provider and model explicitly');
+      return undefined;
+    },
     captureNativeSelection: async selection => {
       if (selection.providerId !== 'codex-cli') return { version: 1, requestedMode: 'minnow', effectiveMode: 'minnow' };
       const provider = await getAgentCliProviderConfig('codex');

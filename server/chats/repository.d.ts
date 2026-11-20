@@ -71,6 +71,9 @@ export interface ChatRepository {
   setAutoResumeBlocked(chatId: string, blocked: boolean): void;
   atomic<T>(work: (repository: ChatRepository) => T): T;
   createChat(input: { id: string; [key: string]: unknown }): ChatShell;
+  createOrdinaryRoot(input: { id: string; [key: string]: unknown }, options: {
+    projectId: string; profile: ProfileInput;
+  }): { chat: ChatShell; profile: ProfileInput & { chatId: string } };
   rewriteHistory(input: { chatId: string; index: number; expectedHistoryDigest: string }): number;
   forkChat(input: { sourceChatId: string; messageId: string; expectedRevision: number;
     chat: { id: string; [key: string]: unknown }; profile: ProfileInput; projectId: string }): {

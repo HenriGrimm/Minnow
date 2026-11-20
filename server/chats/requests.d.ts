@@ -4,7 +4,7 @@ import type { ChatCaller } from './caller';
 
 export interface ChatRequestService {
   openLegacy(input: { caller: ChatCaller; toolCallId: string; kind?: 'approval'; title: string; presentation: Record<string, unknown>; expiresAt?: number }): ChatRequest;
-  open(input: { chatId: string; executionId: string; toolCallId: string; kind: 'question' | 'approval'; title: string; presentation: Record<string, unknown>; expiresAt?: number; fence: ExecutionFence }): ChatRequest;
+  open(input: { chatId: string; executionId: string; toolCallId: string; kind: 'question' | 'approval'; title: string; presentation: Record<string, unknown>; expiresAt?: number; expiresInMs?: number; fence: ExecutionFence }): ChatRequest;
   wait(requestId: string, options?: { signal?: AbortSignal }): Promise<unknown>;
   respond(requestId: string, input: { answerCommandId: string; answer: unknown; context?: unknown }): Promise<{ request: ChatRequest; answer: unknown; replayed: boolean }>;
   expireExecution(executionId: string, chatId: string, state?: 'expired' | 'cancelled'): ChatRequest[];

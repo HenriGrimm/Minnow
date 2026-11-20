@@ -27,6 +27,7 @@ export interface ChatExecutionHost {
 }
 export interface ChatSendInput {
   chatId: string; message: string; mode?: 'auto' | 'queue' | 'steer'; clientRequestId?: string;
+  executionId?: string;
   images?: Array<{ name: string; dataUrl: string }>;
   intent?: import('./contracts.js').ChatSendIntent;
   replyToCommandId?: string;
@@ -53,10 +54,30 @@ export interface ReservedChatTask {
   finished: Promise<TurnResult>;
 }
 export interface DeferredChatTask { deferred: true; reason: string }
+export interface OrdinaryChatConsentProof { requestId: string; toolCallId: string; signal?: AbortSignal }
+export interface OrdinaryChatCreateInput {
+  name: string; message?: string; selection?: ModelSelection; workspaceId?: string; reportBack?: boolean; clientRequestId: string;
+}
+export interface OrdinaryChatCreateReceipt {
+  chatId: string; link: string; commandId?: string; disposition: 'created' | 'queued'; replayed: boolean;
+}
+type OrdinaryPeerAction = { chatId: string } & Record<string, unknown>;
+type OrdinaryPeerOperation = 'send' | 'stop' | 'read';
 export interface ChatCommandService {
   ordinaryEligibility(caller: ChatCaller, chatId: string): Promise<{ chatId: string; route: string; eligible: boolean; reason: string; revision: number }>;
   promote(caller: ChatCaller, input: { chatId: string; expectedRevision: number; clientRequestId: string }): Promise<{ chatId: string; disposition: string; revision: number; replayed: boolean }>;
-  send(caller: ChatCaller, input: ChatSendInput): Promise<ChatCommandReceipt>;
+  createOrdinary(caller: ChatCaller, input: OrdinaryChatCreateInput, options?: {
+    confirm?(action: unknown, preview: Record<string, unknown>): Promise<OrdinaryChatConsentProof>;
+    settleReceipt?(receipt: OrdinaryChatCreateReceipt): void;
+    signal?: AbortSignal;
+  }): Promise<OrdinaryChatCreateReceipt>;
+  describeOrdinaryAction(caller: ChatCaller, operation: OrdinaryPeerOperation, input: OrdinaryPeerAction): Promise<{
+    action: unknown; preview: Record<string, unknown>;
+  } | null>;
+  verifyOrdinaryAction(caller: ChatCaller, operation: OrdinaryPeerOperation, input: OrdinaryPeerAction, target: ChatTargetContext, proof?: OrdinaryChatConsentProof): void;
+  ordinaryReport(caller: ChatCaller, target: ChatTargetContext): string | null;
+  replayAgentAction(caller: ChatCaller, operation: 'send' | 'stop', input: ChatSendInput | ChatStopInput): Promise<ChatCommandReceipt | null>;
+  send(caller: ChatCaller, input: ChatSendInput, proof?: OrdinaryChatConsentProof): Promise<ChatCommandReceipt>;
   chooseWorkspace(caller: ChatCaller, input: { chatId: string; action: 'retry' | 'local'; expectedIntentId: string | null; clientRequestId?: string }): Promise<{ chat: import('./repository.js').ChatShell }>;
   recoverMissingWorktree(chatId: string, workspacePath: string): Promise<boolean>;
   fork(caller: ChatCaller, input: {
@@ -75,7 +96,7 @@ export interface ChatCommandService {
   admitLegacyCompletion(caller: ChatCaller, input: Pick<ChatSendInput, 'chatId' | 'message' | 'clientRequestId'> & {
     delivery: NonNullable<ChatSendInput['delivery']>; retainOnly?: boolean;
   }, options?: { canAdmit?: () => boolean }): Promise<ChatCommandReceipt>;
-  stop(caller: ChatCaller, input: ChatStopInput): Promise<ChatCommandReceipt>;
+  stop(caller: ChatCaller, input: ChatStopInput, proof?: OrdinaryChatConsentProof): Promise<ChatCommandReceipt>;
   /** Trusted task-runtime cancellation, pinned to an already admitted execution. */
   stopExecution(executionId: string): boolean;
   waitExecution(executionId: string): Promise<unknown>;
@@ -106,8 +127,9 @@ export interface ChatCommandService {
 }
 export function createChatCommandService(options: {
   repository?: ChatRepository;
-  context: Pick<ChatContext, 'resolveTarget'>;
-  captureProfile?: (input: { target: ChatTargetContext; selection: ModelSelection; caller: ChatCaller; input: ChatSendInput | Parameters<ChatCommandService['configure']>[1] }) => Promise<ProfileInput> | ProfileInput;
+  context: Pick<ChatContext, 'resolveTarget'> & Partial<Pick<ChatContext, 'project'>>;
+  captureProfile?: (input: { target: ChatTargetContext; selection: ModelSelection; caller: ChatCaller; input: ChatSendInput | OrdinaryChatCreateInput | Parameters<ChatCommandService['configure']>[1] }) => Promise<ProfileInput> | ProfileInput;
+  defaultOrdinaryModel?: () => ModelSelection | undefined | Promise<ModelSelection | undefined>;
   captureTurnIntent?: typeof import('./preparation.js').captureChatTurnIntent;
   captureNativeSelection?: (selection: ModelSelection) => Promise<Record<string, unknown>> | Record<string, unknown>;
   captureWorkspacePreparation?: (target: ChatTargetContext) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;

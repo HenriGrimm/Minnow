@@ -24,6 +24,7 @@ export function createAgentChatToolsMiddleware({ getRuntime, approvalTimeoutMs =
         throw new ChatContractError('invalid_request', 'A current source execution and known conversation tool are required');
       }
       const runtime = await getRuntime();
+      if (body.name === 'chat_create') throw new ChatContractError('capability_unavailable', 'Creating a top-level chat requires a managed execution');
       if (!runtime.chatTools) throw new ChatContractError('capability_unavailable', 'Agent chat tools are unavailable');
       const controller = new AbortController();
       const disconnected = () => { if (!res.writableEnded) controller.abort(new DOMException('Tool caller disconnected', 'AbortError')); };

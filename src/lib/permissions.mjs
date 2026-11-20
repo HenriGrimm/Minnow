@@ -534,10 +534,10 @@ export function classifyToolCall(name, args = {}, options = {}) {
     return action;
   }
 
-  if (name === 'chat_send' || name === 'chat_stop') {
+  if (name === 'chat_create' || name === 'chat_send' || name === 'chat_stop') {
     action.kind = 'app';
     action.mutates = true;
-    action.title = name === 'chat_send' ? 'Send work to another chat' : 'Stop another chat';
+    action.title = name === 'chat_create' ? 'Create a new chat' : name === 'chat_send' ? 'Send work to another chat' : 'Stop another chat';
     action.detail = shortArgs(a);
     return action;
   }

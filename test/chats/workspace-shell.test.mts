@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chatHasListableContent, pruneEphemeralEmptyChats } from '../../src/state/session-workspace-scope';
+import { chatHasListableContent, isSidebarListedChat, pruneEphemeralEmptyChats } from '../../src/state/session-workspace-scope';
+import { normalizeChatRow } from '../../src/state/session-schema.mjs';
 import type { Chat, SessionState } from '../../src/types';
 
 function empty(id: string): Chat {
@@ -29,4 +30,16 @@ test('an orphaned child remains reachable with an empty canonical history', () =
   const state = { version: 6, activeId: 'other', chats: [child, empty('other')] } as SessionState;
   pruneEphemeralEmptyChats(state, 'other');
   assert.equal(state.chats.find(row => row.id === 'child'), child);
+});
+
+test('a server-created empty ordinary root stays in the sidebar without moving the current chat', () => {
+  const root = normalizeChatRow({ ...empty('new-root'), chatCommandVersion: 1, explicitOrdinaryRoot: true, historyLoaded: false, messageCount: 0 }) as Chat;
+  const original = { ...empty('original'), composerDraft: 'Keep my draft' };
+  const state = { version: 6, activeId: 'original', chats: [root, original, empty('unused')] } as SessionState;
+  pruneEphemeralEmptyChats(state, 'original');
+  assert.equal(isSidebarListedChat(root), true);
+  assert.deepEqual(state.chats.map(chat => chat.id), ['new-root', 'original']);
+  assert.equal(state.activeId, 'original');
+  assert.equal(original.composerDraft, 'Keep my draft');
+  assert.equal(root.agentConversation, undefined);
 });

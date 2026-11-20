@@ -1,7 +1,7 @@
 export const MAX_PARALLEL_READ_TOOLS = 6;
 
 const PARALLEL_EXTRA_WHITELIST = new Set([
-  'agent_capabilities', 'chat_list', 'chat_read',
+  'agent_capabilities', 'chat_list',
   'get_datetime',
   'calculate',
   'get_system_info',
@@ -19,7 +19,7 @@ const PARALLEL_EXTRA_WHITELIST = new Set([
 ]);
 
 const SEQUENTIAL_DENY = new Set([
-  'chat_send', 'chat_wait', 'chat_stop',
+  'chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
   'ask_question',
   'propose_mode_switch',
   'read_clipboard',

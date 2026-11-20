@@ -15,6 +15,7 @@ import { getActiveChatMountElement } from './chat-mount';
 import { focusAskQuestionModalForChat, isAskQuestionModalOpenForChat, showQuestionCardsModal, syncAskQuestionModalOnDisplayContextChange } from './question-cards-modal';
 import { syncChatItemDotsInDom } from './chat-item-dot';
 import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
+import { syncTurnFailureCard } from './turn-failure-card';
 
 interface RequestPanel { request: ChatRequest; element: HTMLElement; form: HTMLFormElement; status: HTMLElement; busy: boolean; stale: boolean; error?: string; }
 interface ChatRequestsView { chatId: string; host: HTMLElement; mount?: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; pageIds: Set<string>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
@@ -102,16 +103,26 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
     const workspace = document.createElement('p'); workspace.className = 'managed-chat-request__scope';
     workspace.textContent = `${typeof toolName === 'string' ? `Tool: ${toolName}. ` : ''}${typeof request.presentation.workspaceRoot === 'string' ? `Project: ${request.presentation.workspaceRoot}` : 'Applies to this tool call only.'}`;
     const details = document.createElement('details'), summary = document.createElement('summary'), args = document.createElement('pre');
-    summary.textContent = 'Details'; args.textContent = typeof request.presentation.argsPreview === 'string' ? request.presentation.argsPreview : JSON.stringify(request.presentation.arguments ?? {}, null, 2); details.append(summary, workspace, args);
+    const ordinaryConsent = typeof request.presentation.ordinaryChatConsent === 'string';
+    const creating = ordinaryConsent && toolName === 'chat_create';
+    const preview = request.presentation.arguments as { title?: string; checkout?: string; model?: { providerId?: string; modelId?: string }; firstMessage?: string; reportBack?: boolean } | undefined;
+    summary.textContent = creating ? 'What will happen' : 'Details';
+    args.textContent = creating
+      ? [`Title: ${preview?.title ?? ''}`, `Model: ${preview?.model?.modelId ?? ''} (${preview?.model?.providerId ?? ''})`, `Checkout: ${preview?.checkout ?? ''}`,
+        typeof preview?.firstMessage === 'string' ? `First message:\n${preview.firstMessage}` : 'No message will be sent.',
+        ...(preview?.reportBack ? ['The originating chat can read the first reply.'] : [])].join('\n\n')
+      : typeof request.presentation.argsPreview === 'string' ? request.presentation.argsPreview : JSON.stringify(request.presentation.arguments ?? {}, null, 2);
+    details.open = ordinaryConsent;
+    details.append(summary, workspace, args);
     const feedback = document.createElement('input'); feedback.type = 'text'; feedback.className = 'managed-chat-request__feedback';
     feedback.placeholder = 'Or tell Minnow what to do instead…'; feedback.setAttribute('aria-label', 'Deny with a note for the agent');
     const deny = () => { const note = feedback.value.trim(); void submit(view, panel, note ? { decision: 'deny', feedback: note } : { decision: 'deny' }); };
     feedback.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); deny(); } });
     const actions = document.createElement('div'); actions.className = 'managed-chat-request__actions';
     const graphite = Boolean(view.mount?.closest('#workspaceSplit')?.querySelector('#graphiteThreadHeader:not([hidden])'));
-    const allow = button(graphite ? 'Allow once' : 'Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
+    const allow = button(creating ? 'Create chat' : ordinaryConsent || graphite ? 'Allow once' : 'Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
     actions.append(allow);
-    if (action?.grant && action.risk !== 'high') {
+    if (!ordinaryConsent && action?.grant && action.risk !== 'high') {
       actions.append(button(`Allow ${action.grant.label} for this chat`, () => void submit(view, panel, { decision: 'allow_chat' })));
     }
     actions.append(button('Deny', deny));
@@ -318,6 +329,7 @@ function syncHostVisibility(view: ChatRequestsView): void {
 /** Mount alongside the common transcript; forms retain draft/focus across history refreshes. */
 export function syncManagedChatRequests(chat: Chat, mount: HTMLElement): void {
   mountOwners.set(mount, chat.id);
+  syncTurnFailureCard(chat, mount);
   const inline = mount.querySelector<HTMLElement>(':scope > .managed-chat-requests');
   if (inline && inline.dataset.chatId !== chat.id) inline.remove();
   const docked = composerApprovalSlot(mount)?.previousElementSibling;

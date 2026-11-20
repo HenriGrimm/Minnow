@@ -1121,6 +1121,27 @@ export function ensureChatLinks(raw) {
  * @param {unknown} raw
  * @returns {object}
  */
+const EXECUTION_FAILURE_KINDS = new Set(['quota', 'rate_limit', 'unavailable']);
+
+/** Mirrors server/chats/activity.js failureFacts; unknown keys and oversized values are dropped. */
+function normalizeExecutionFailure(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const id = value => typeof value === 'string' && value.length > 0 && value.length <= 512;
+  const time = value => Number.isFinite(value) && value > 0 && value <= 8.64e15;
+  const out = {};
+  if (EXECUTION_FAILURE_KINDS.has(raw.kind)) out.kind = raw.kind;
+  if (raw.outcome === 'timeout') out.outcome = 'timeout';
+  if (raw.quotaExceeded === true) out.quotaExceeded = true;
+  if (raw.providerUnreachable === true) out.providerUnreachable = true;
+  if (Number.isInteger(raw.status) && raw.status >= 100 && raw.status < 600) out.status = raw.status;
+  if (typeof raw.code === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(raw.code)) out.code = raw.code;
+  if (time(raw.resetAt)) out.resetAt = raw.resetAt;
+  if (time(raw.retryAt)) out.retryAt = raw.retryAt;
+  if (id(raw.providerId)) out.providerId = raw.providerId;
+  if (id(raw.modelId)) out.modelId = raw.modelId;
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function normalizeChatRow(raw) {
   if (!raw || typeof raw !== 'object') {
     return {
@@ -1288,6 +1309,7 @@ export function normalizeChatRow(raw) {
   }
   if (row.chatCommandVersion === 1) {
     out.chatCommandVersion = 1;
+    if (row.explicitOrdinaryRoot === true) out.explicitOrdinaryRoot = true;
     if (typeof row.historyDigest === 'string' && /^[a-f0-9]{64}$/.test(row.historyDigest)) out.historyDigest = row.historyDigest;
     if (Number.isSafeInteger(row.historyRewriteRevision) && row.historyRewriteRevision >= 0) out.historyRewriteRevision = row.historyRewriteRevision;
   }
@@ -1309,6 +1331,10 @@ export function normalizeChatRow(raw) {
     if (usage && Number.isFinite(usage.used) && usage.used >= 0 && (usage.limit === null || Number.isFinite(usage.limit) && usage.limit > 0) && typeof usage.isEstimate === 'boolean') {
       execution.contextUsage = { used: usage.used, limit: usage.limit, isEstimate: usage.isEstimate };
     }
+    // Failure facts let a reloaded transcript keep its specific recovery card.
+    if (typeof raw.error === 'string' && raw.error) execution.error = raw.error.slice(0, 1024);
+    const failure = normalizeExecutionFailure(raw.failure);
+    if (failure) execution.failure = failure;
     out.agentExecution = execution;
   }
   const titleCandidate = row.agentTitleCandidate;

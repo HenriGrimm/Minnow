@@ -437,9 +437,9 @@ test('legacy renderer authority drains without bypassing ordinary admission pari
   assert.equal(f.repository.getChat('legacy').chatCommandVersion, undefined);
   assert.equal(f.repository.getExecution(legacy.execution.executionId), null);
   await assert.rejects(f.runtime.legacyCaller({ chatId: 'legacy', ownerId: 'forged-owner' }), error => error.code === 'caller_not_active');
-  const peer = await f.runtime.service.send(legacy.caller, { chatId: 'chat', message: 'Peer input from draining renderer', clientRequestId: 'legacy-peer' });
-  await f.runtime.service.idle('chat');
-  assert.equal(f.repository.getCommand(peer.commandId).command.provenance.causalRootId, legacy.execution.executionId);
+  await assert.rejects(f.runtime.service.send(legacy.caller, { chatId: 'chat', message: 'Peer input from draining renderer', clientRequestId: 'legacy-peer' }),
+    error => error.code === 'policy_denied');
+  assert.deepEqual(f.repository.listCommands({ chatId: 'chat' }), []);
   assert.equal(f.repository.getChat('legacy').chatCommandVersion, undefined);
   await assert.rejects(f.runtime.service.send({ ...legacy.caller }, { chatId: 'chat', message: 'Forged caller' }), error => error.code === 'caller_denied');
   const queued = await f.request('/api/chats/legacy/commands', { action: 'send', text: 'After old flush', clientRequestId: 'legacy-follow-up' });
@@ -447,11 +447,11 @@ test('legacy renderer authority drains without bypassing ordinary admission pari
   assert.match(JSON.stringify(queued.body), /promotion/);
   await f.runtime.service.idle('legacy');
   assert.equal(f.repository.getChat('legacy').chatCommandVersion, undefined);
-  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls.length, 0);
   f.turns.release('legacy', 'old-renderer');
   await f.runtime.service.idle('legacy');
   assert.equal(f.repository.getChat('legacy').chatCommandVersion, undefined);
-  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls.length, 0);
   await assert.rejects(f.runtime.service.send(legacy.caller, { chatId: 'chat', message: 'After legacy release' }), error => error.code === 'caller_not_active');
   assert.equal(f.turns.claim('legacy', 'late-renderer', 'desktop'), true);
 });

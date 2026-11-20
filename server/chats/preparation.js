@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CHAT_PREPARATION_BUNDLE } from '../constants/headless-runner.js';
 import { ChatContractError, validateAgentProfileReference, validateModelSelection } from './contracts.js';
 import { projectAgentConversationTools } from './tool-catalog.js';
-import { getAgentConversationsFeature } from './feature.js';
+import { getAgentConversationsFeature, getOrdinaryChatExecutionFeature } from './feature.js';
 import { createChatPolicy, intersectChatPolicies } from './policy.js';
 import { normalizePermissionLevel, normalizeTurnClamp } from '../../src/lib/permissions.mjs';
 import { createAgentCatalogContext, resolveAgentModelSelection, inspectAgentModel, AGENT_POOL_PROVIDER_ID, AGENT_LIBRARY_PROVIDER_ID } from './model-selection.js';
@@ -108,6 +108,7 @@ export function createChatPreparationAdapters(overrides = {}) {
       const [mcp, plugins] = await Promise.all([listEnabledMcpToolsWithHints(), getPluginToolDefinitions()]);
       const definitions = projectAgentConversationTools([...BUILT_IN_TOOLS.map(row => row.definition), ...mcp.tools, ...plugins], {
         creationEnabled: getAgentConversationsFeature().creationEnabled, includeRecoveryTools: true,
+        ordinaryCreationEnabled: getOrdinaryChatExecutionFeature().admissionEnabled,
       });
       return { definitions, mcpHints: mcp.hints };
     },
@@ -588,7 +589,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     normalizeContextEnforcementPolicy(selectedAgent.contextEnforcementPolicy) ?? 'compact';
   const contextBudget = withCompactionDefaults(agentContextBudgetFromWorkAgent(selectedAgent, contextPolicy), live.subAgents.defaultContextCompaction);
   const native = new Set(['ask_question', 'recall_history', 'spawn_sub_agent', 'cancel_sub_agent',
-    'list_sub_agents', 'get_sub_agent_status', 'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop']);
+    'list_sub_agents', 'get_sub_agent_status', 'agent_capabilities', 'chat_list', 'chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop']);
   const hostAvailability = new Array(tools.length);
   let nextTool = 0;
   await Promise.all(Array.from({ length: Math.min(8, tools.length) }, async () => {

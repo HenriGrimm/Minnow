@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import { initSessionsSchema } from '../../server/config/sessions-schema.js';
 import { createChatRepository } from '../../server/chats/repository.js';
 import { createChatCommandService } from '../../server/chats/service.js';
+import { createChatRequestService } from '../../server/chats/requests.js';
 import { createChatPolicy, intersectChatPolicies } from '../../server/chats/policy.js';
 import { createChatCaller, createChatProjectRegistry, resolveProjectScope } from '../../server/chats/caller.js';
 import { createChatTaskRepository } from '../../server/chats/task-repository.js';
@@ -18,16 +19,18 @@ import { buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bri
 import { isParallelSafeTool } from '../../server/runner/parallel-tool-policy.js';
 
 const enabled = () => ({ creationEnabled: true, recoveryEnabled: true });
-const effects = Object.fromEntries(AGENT_CHAT_TOOL_IDS.map(name => [name, ['chat_send', 'chat_stop'].includes(name) ? 'external-write' : 'read']));
+const effects = Object.fromEntries(AGENT_CHAT_TOOL_IDS.map(name => [name, ['chat_create', 'chat_send', 'chat_stop'].includes(name) ? 'external-write' : 'read']));
 const pair = { providerId: 'fixture', modelId: 'model' };
 async function fixture(run, extra = {}) {
   const db = new Database(':memory:'); initSessionsSchema(db);
   const repository = createChatRepository({ db });
   const root = path.resolve('test-tools-workspace'), foreign = path.resolve('test-tools-foreign');
+  const alternate = path.resolve('documentation');
   const registry = createChatProjectRegistry([{ projectId: 'project', workspaceId: 'main', canonicalKey: root },
+    ...(extra.alternate ? [{ projectId: 'project', workspaceId: 'alternate', canonicalKey: alternate }] : []),
     { projectId: 'foreign', workspaceId: 'other', canonicalKey: foreign }]);
   const scope = resolveProjectScope(registry, { projectId: 'project', workspaceKey: root });
-  const initial = createChatPolicy({ modeId: extra.mode ?? 'build', workspaceIds: ['main'],
+  const initial = createChatPolicy({ modeId: extra.mode ?? 'build', workspaceIds: extra.alternate ? ['main', 'alternate'] : ['main'],
     toolPermissions: { ...Object.fromEntries(AGENT_CHAT_TOOL_IDS.map(name => [name, 'full'])), read_file: 'full' },
     toolEffects: { ...effects, read_file: 'read' }, filesystemAccess: 'workspace',
     fileWriteScope: extra.mode === 'plan' ? 'plans' : 'workspace', capabilities: ['chat.read', 'chat.send', 'chat.stop', 'execution.host'] });
@@ -41,24 +44,45 @@ async function fixture(run, extra = {}) {
       providerId: pair.providerId, modelId: pair.modelId, modeId: initial.modeId });
     policies.set(id, id === 'foreign-chat' ? createChatPolicy({ ...initial, workspaceIds: ['other'] }) : initial);
   }
-  const fence = repository.claimExecution({ chatId: 'source', executionId: 'source-execution', ownerId: 'source-host', runId: extra.runId,
+  const commandId = 'source-input';
+  repository.admitCommand({ version: 1, commandId, chatId: 'source', requestedAt: Date.now(), kind: 'send',
+    message: 'Operate the requested chat', mode: 'auto', provenance: { version: 1, actor: 'human',
+      source: extra.scheduler ? 'scheduler' : 'composer', kind: 'human_message', commandId, causalRootId: commandId },
+  }, { producerId: 'human-fixture', requestKey: commandId, captured: {} });
+  repository.updateCommand(commandId, { state: 'settled' });
+  const fence = repository.claimExecution({ chatId: 'source', executionId: 'source-execution', ownerId: 'source-host', runId: extra.runId, commandId,
     captured: { policy: initial, modelSelection: pair } });
   const caller = createChatCaller({ actor: 'agent', ingress: 'tool', chatId: 'source', executionId: fence.executionId,
     executionActive: true, scope, policy: initial });
-  const context = { async resolveTarget(chatId) {
+  const context = { async project(workspaceKey) {
+    const normalize = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
+    const registered = registry.entries.find(entry => normalize(entry.canonicalKey) === normalize(workspaceKey));
+    return { projectId: 'project', registry, scope: resolveProjectScope(registry, { projectId: 'project', workspaceKey: registered?.canonicalKey ?? workspaceKey }) };
+  }, async resolveTarget(chatId) {
     const chat = repository.getChat(chatId), currentPolicy = chatId === 'source' ? live : policies.get(chatId) ?? initial;
     const targetScope = resolveProjectScope(registry, { projectId: chatId === 'foreign-chat' ? 'foreign' : 'project', workspaceKey: chatId === 'foreign-chat' ? foreign : root });
-    return { chat, scope: targetScope, registry, currentPolicy, policy: intersectChatPolicies(currentPolicy, policies.get(chatId) ?? initial),
+    return { chat, scope: targetScope, registry, checkoutIdentity: 'fixture-checkout', currentPolicy, policy: intersectChatPolicies(currentPolicy, policies.get(chatId) ?? initial),
       project: { projectId: targetScope.projectId, registry, scope: targetScope }, profile: repository.getLatestProfile(chatId) };
   } };
   const errors = [], service = createChatCommandService({ repository, context, feature: enabled,
+    ordinaryFeature: () => ({ admissionEnabled: true }),
+    captureProfile: ({ target, selection }) => ({ profileId: 'profile-' + target.chat.id, profileVersion: 1,
+      snapshot: { policy: target.currentPolicy, modelSelection: selection } }),
     resolveModelSelection: ({ selection }) => selection, onError: error => errors.push(error) });
+  const requests = createChatRequestService({ repository, authorizeResponse: (_request, input) => input?.human === true });
+  const confirm = (decision = 'allow_once') => async input => {
+    const request = requests.open({ ...input, chatId: 'source', executionId: fence.executionId, fence });
+    const waiting = requests.wait(request.requestId);
+    await requests.respond(request.requestId, { answerCommandId: 'answer-' + request.requestId, answer: { decision }, context: { human: true } });
+    await waiting;
+    return request.requestId;
+  };
   const options = { repository, context, service, feature: enabled, validateCaller: candidate => {
     try { return valid && candidate === caller && Boolean(repository.assertFence('source', fence)); } catch { return false; }
   }, ...extra.options };
   const tools = createChatTools(options);
-  const execute = (name, args = {}, overrides = {}) => tools.execute(name, args, { caller, toolCallId: 'call', ...overrides });
-  try { await run({ db, repository, context, caller, fence, tools, options, policies, initial, service, errors, execute,
+  const execute = (name, args = {}, overrides = {}) => tools.execute(name, args, { caller, toolCallId: 'call', requestOrdinaryConfirmation: confirm(), ...overrides });
+  try { await run({ db, repository, context, caller, fence, tools, options, policies, initial, service, errors, execute, confirm,
     revoke() { live = createChatPolicy({ ...initial, toolPermissions: { ...initial.toolPermissions, chat_wait: 'off', chat_send: 'off' } }); },
     invalidate() { valid = false; } });
   } finally { await service.dispose(); db.close(); }
@@ -73,11 +97,12 @@ test('spawn requires a reference title in both legacy and persistent tool schema
   }
 });
 
-test('six catalog schemas retain capability gating without per-tool settings', () => {
+test('chat creation is advertised only on the managed tool path', () => {
   const catalog = BUILT_IN_TOOLS.filter(row => AGENT_CHAT_TOOL_IDS.includes(row.id));
-  assert.equal(catalog.length, 6);
+  assert.equal(catalog.length, 7);
   assert.equal(projectAgentConversationTools(catalog.map(row => row.definition)).length, 0);
   assert.equal(projectAgentConversationTools(catalog.map(row => row.definition), { creationEnabled: true }).length, 6);
+  assert.equal(projectAgentConversationTools(catalog.map(row => row.definition), { creationEnabled: true, ordinaryCreationEnabled: true }).length, 7);
   const defaults = normalizeToolConfig({});
   assert.equal('permissions' in defaults, false);
   const stored = normalizeToolConfig({ enabled: { chat_send: false }, permissions: { default: { chat_send: 'off', chat_stop: 'ask' } } });
@@ -89,8 +114,8 @@ test('native CLI handoff advertises exactly the same bounded tool schemas, with 
   const native = buildAgentCliToolCatalog({ tools: definitions });
   assert.deepEqual(native.map(row => row.name), AGENT_CHAT_TOOL_IDS);
   for (const row of native) assert.deepEqual(row.inputSchema, definitions.find(tool => tool.function.name === row.name).function.parameters);
-  for (const name of ['agent_capabilities', 'chat_list', 'chat_read']) assert.equal(isParallelSafeTool(name), true);
-  for (const name of ['chat_send', 'chat_wait', 'chat_stop']) assert.equal(isParallelSafeTool(name), false);
+  for (const name of ['agent_capabilities', 'chat_list']) assert.equal(isParallelSafeTool(name), true);
+  for (const name of ['chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop']) assert.equal(isParallelSafeTool(name), false);
 });
 
 test('tools require branded active callers, exact current tool grant and known arguments', async () => {
@@ -101,7 +126,7 @@ test('tools require branded active callers, exact current tool grant and known a
     await assert.rejects(f.execute('chat_send', { chat_id: 'target', message: 'x' }), error => error.code === 'policy_denied');
     f.invalidate();
     await assert.rejects(f.execute('chat_list'), error => error.code === 'caller_not_active');
-    assert.equal(f.repository.listCommands().length, 0);
+    assert.equal(f.repository.listCommands().length, 1);
   });
 });
 
@@ -148,7 +173,7 @@ test('broader-target guidance follows a live callback only to the original deleg
     await refused('other', false);
     tasks.setSubscription('child-run', { state: 'disposed' });
     await refused('target', false);
-    assert.equal(f.repository.listCommands().length, 0);
+    assert.equal(f.repository.listCommands().length, 1);
   }, { runId: 'child-run' });
 });
 
@@ -310,15 +335,16 @@ test('stop is idempotent, stale execution never cancels replacement and self-tre
   });
 });
 
-test('native installer derives caller from execution, passes real approval and unregisters all six handlers', async () => {
+test('native installer derives the live caller and passes the exact-confirmation adapter', async () => {
   await fixture(async f => {
     const handlers = new Map();
     const runtime = { ...f.options, isExecutionCallerActive: f.options.validateCaller,
       context: { ...f.context, executionCaller: async id => { assert.equal(id, 'source-execution'); return { caller: f.caller }; } },
       setToolHandler(name, handler) { handlers.set(name, handler); return () => handlers.delete(name); } };
     const installed = installChatTools(runtime, { feature: enabled });
-    const output = await handlers.get('chat_read')({ args: { chat_id: 'target', view: 'activity' }, execution: { executionId: 'source-execution' }, toolContext: {} });
-    assert.equal(JSON.parse(output.content).chat_id, 'target'); assert.equal(handlers.size, 6);
+    const output = await handlers.get('chat_read')({ args: { chat_id: 'target', view: 'activity' }, execution: { executionId: 'source-execution' },
+      toolContext: { toolCallId: 'read-call', requestOrdinaryConfirmation: f.confirm() } });
+    assert.equal(JSON.parse(output.content).chat_id, 'target'); assert.equal(handlers.size, 7);
     installed.dispose(); assert.equal(handlers.size, 0);
   });
 });
@@ -341,12 +367,110 @@ test('global Manual requires a trusted approval; feature disable permits recover
     const ask = createChatPolicy({ ...f.initial, permissionLevel: 'manual' });
     f.policies.set('source', ask);
     await assert.rejects(f.execute('chat_send', { chat_id: 'target', message: 'Needs approval' }), error => error.reason === 'approval_required');
-    assert.equal(f.repository.listCommands().length, 0);
+    assert.equal(f.repository.listCommands().length, 1);
     const approved = await f.execute('chat_send', { chat_id: 'target', message: 'Approved by server host' }, { approvalGranted: true });
     assert.ok(approved.commandId);
     const recovery = createChatTools({ ...f.options, feature: () => ({ creationEnabled: false, recoveryEnabled: true }) });
-    assert.equal((await recovery.execute('chat_read', { chat_id: 'target', view: 'activity' }, { caller: f.caller })).chat_id, 'target');
+    assert.equal((await recovery.execute('chat_read', { chat_id: 'source', view: 'activity' }, { caller: f.caller })).chat_id, 'source');
     await assert.rejects(recovery.execute('chat_send', { chat_id: 'target', message: 'Disabled' }, { caller: f.caller }), error => error.code === 'capability_disabled');
-    await assert.rejects(f.execute('chat_send', { chat_id: 'target', message: 'Steer', mode: 'steer' }, { toolCallId: 'steer', approvalGranted: true }), error => error.code === 'steer_unsupported');
+    await assert.rejects(f.execute('chat_send', { chat_id: 'target', message: 'Steer', mode: 'steer', execution_id: 'old' }, { toolCallId: 'steer', approvalGranted: true }), error => error.code === 'steer_unsupported');
   });
+});
+
+test('creating ordinary roots requires exact human confirmation and replays the same root', async () => {
+  await fixture(async f => {
+    const args = { title: 'Release review', client_request_id: 'create' };
+    await assert.rejects(f.execute('chat_create', args, { approvalGranted: true, requestOrdinaryConfirmation: undefined }), { code: 'capability_unavailable' });
+    await assert.rejects(f.execute('chat_create', args, { toolCallId: 'denied', requestOrdinaryConfirmation: f.confirm('deny') }), { code: 'policy_denied' });
+    await assert.rejects(f.execute('chat_create', args, { toolCallId: 'tampered', requestOrdinaryConfirmation: input =>
+      f.confirm()({ ...input, presentation: { ...input.presentation, ordinaryChatConsent: 'not-the-action' } }) }), { code: 'policy_denied' });
+    assert.equal(f.repository.listChats().length, 4);
+    const original = await f.execute('chat_create', args, { toolCallId: 'confirmed' });
+    const retry = await f.execute('chat_create', args, { requestOrdinaryConfirmation: undefined });
+    assert.equal(retry.chatId, original.chatId);
+    assert.equal(retry.replayed, true);
+    assert.equal(f.repository.listChats().length, 5);
+    const chat = f.repository.getChat(original.chatId);
+    assert.equal(chat.explicitOrdinaryRoot, true);
+    assert.equal(chat.chatCommandVersion, 1);
+    assert.equal(chat.agentConversation, undefined);
+    assert.equal(chat.messageCount, 0);
+    assert.equal(f.repository.listCommands({ chatId: chat.id }).length, 0);
+    await assert.rejects(f.execute('chat_create', { ...args, title: 'Changed' }), { code: 'idempotency_conflict' });
+    await assert.rejects(f.service.send(f.caller, { chatId: chat.id, mode: 'queue', message: 'Not confirmed', clientRequestId: 'send' }), { code: 'policy_denied' });
+  });
+});
+
+test('create-and-send admits one attributed turn and scopes reporting to its command', async () => {
+  await fixture(async f => {
+    const args = { title: 'Review', message: 'Inspect the changelog', report_back: true, client_request_id: 'review' };
+    const result = await f.execute('chat_create', args);
+    const record = f.repository.getCommand(result.commandId);
+    assert.equal(record.chatId, result.chatId);
+    assert.equal(record.command.message, args.message);
+    assert.equal(record.command.provenance.actor, 'agent');
+    assert.equal(record.command.provenance.sourceChatId, 'source');
+    assert.equal((await f.execute('chat_read', { chat_id: result.chatId }, { requestOrdinaryConfirmation: undefined })).command_id, result.commandId);
+    assert.equal((await f.execute('chat_wait', { chat_id: result.chatId, timeout_ms: 0 }, { requestOrdinaryConfirmation: undefined })).command_id, result.commandId);
+    assert.equal(f.repository.listCommands({ chatId: result.chatId }).length, 1);
+  });
+});
+
+test('scheduled turns cannot bootstrap ordinary chat consent', async () => {
+  await fixture(async f => {
+    await assert.rejects(f.execute('chat_create', { title: 'Not requested' }, {
+      requestOrdinaryConfirmation: () => assert.fail('An unattended turn should not open a request'),
+    }), { code: 'policy_denied' });
+    assert.equal(f.repository.listChats().length, 4);
+  }, { scheduler: true });
+});
+
+test('creation is atomic across concurrent requests and a failed tool receipt', async () => {
+  await fixture(async f => {
+    const args = { title: 'Review', message: 'Inspect changelog', client_request_id: 'atomic-root' };
+    await assert.rejects(f.execute('chat_create', args, { toolCallId: 'failing-receipt', settleOrdinaryCreation() {
+      throw new Error('Simulated receipt failure');
+    } }), /receipt failure/);
+    assert.equal(f.repository.listChats().length, 4);
+    const results = await Promise.all([
+      f.execute('chat_create', args, { toolCallId: 'race-one' }),
+      f.execute('chat_create', args, { toolCallId: 'race-two' }),
+    ]);
+    assert.equal(results[0].chatId, results[1].chatId);
+    assert.equal(results.filter(result => result.replayed).length, 1);
+    assert.equal(f.repository.listCommands({ chatId: results[0].chatId }).length, 1);
+  });
+});
+
+test('changing source policy after confirmation prevents the uncommitted root and command', async () => {
+  await fixture(async f => {
+    const confirm = f.confirm();
+    await assert.rejects(f.execute('chat_create', { title: 'Review', message: 'Inspect changelog' }, {
+      requestOrdinaryConfirmation: async input => {
+        const requestId = await confirm(input);
+        f.revoke();
+        return requestId;
+      },
+    }), { code: 'policy_denied' });
+    assert.equal(f.repository.listChats().length, 4);
+  });
+});
+
+test('creation verifies a selected existing checkout and never asks to use a foreign one', async () => {
+  await fixture(async f => {
+    await assert.rejects(f.execute('chat_create', { title: 'Foreign', workspace_id: 'other' }, {
+      requestOrdinaryConfirmation: () => assert.fail('Foreign workspaces must be refused before requesting consent'),
+    }), { code: 'workspace_denied' });
+    const confirm = f.confirm();
+    const result = await f.execute('chat_create', { title: 'Alternate', workspace_id: 'alternate' }, {
+      requestOrdinaryConfirmation: input => {
+        assert.equal(input.presentation.arguments.checkout, path.resolve('documentation'));
+        return confirm(input);
+      },
+    });
+    const created = f.repository.getChat(result.chatId);
+    const normalize = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
+    assert.equal(normalize(created.worktreeRoot), normalize('documentation'));
+    assert.equal(created.projectId, 'project');
+  }, { alternate: true });
 });

@@ -45,6 +45,7 @@ export function isChatArchived(chat: Chat): boolean {
  */
 export function chatHasListableContent(chat: Chat): boolean {
   if (chat.agentConversation?.version === 1) return true;
+  if (chat.chatCommandVersion === 1 && chat.explicitOrdinaryRoot === true) return true;
   // A history rewrite can temporarily or permanently empty a saved chat.
   if (chat.chatCommandVersion === 1 && (chat.historyRewriteRevision ?? 0) > 0) return true;
   if (isChatArchived(chat)) return true;

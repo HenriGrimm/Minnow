@@ -7,6 +7,8 @@ import { captureChatTurnIntent } from './preparation.js';
 import { getAgentConversationsFeature, getOrdinaryChatExecutionFeature } from './feature.js';
 import { resolveAgentModelSelection } from './model-selection.js';
 import { ordinaryChatScopeBlocker, ordinaryChatHistoryBlocker } from './ordinary-routing.js';
+import { assertOrdinaryChatConsent } from './ordinary-consent.js';
+import { createOrdinaryRootAdmission } from './ordinary-create.js';
 
 const ACTIVE = new Set(['running', 'waiting', 'waiting_for_model', 'loading_model', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_approval']);
 const PENDING = ['accepted', 'queued', 'waiting_for_host'];
@@ -54,7 +56,7 @@ function receipt(record, replayed = false) {
 export function createChatCommandService({
   repository = createChatRepository(), context, resolveModelSelection, captureProfile, captureTurnIntent = captureChatTurnIntent,
   captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice, detachMissingWorktree,
-  captureNativeSelection,
+  captureNativeSelection, defaultOrdinaryModel,
   feature = getAgentConversationsFeature, ordinaryFeature = getOrdinaryChatExecutionFeature, now = Date.now, id = randomUUID,
   hasExternalOwner = () => false, getExternalOwner, stopExternalOwner, isExternalExecutionActive, cancelTree, admitChildTask, admitCausality,
   onEvent, onCommand, canResumeQuestionExecution = () => false, onError = (error) => console.error('[chats] command execution failed:', error),
@@ -192,14 +194,40 @@ export function createChatCommandService({
       : await resolveAgentModelSelection({ parentSelection: stored, resolveCliDefaults }, { workspacePath: target.chat.worktreeRoot || target.chat.workspacePath });
     return checked(validateModelSelection(resolved?.selection ?? resolved));
   }
-  async function sendCommand(caller, input, legacyCompletion = null) {
+  const ordinaryPeer = (caller, target) => caller.actor === 'agent' && target.chat.id !== caller.chatId && !target.chat.agentConversation;
+  const ordinaryAction = (operation, input, target) => ({ operation, input, target: [
+    target.scope.workspaceId, target.checkoutIdentity ?? null, target.chat.name ?? '', target.chat.providerId ?? '',
+    target.chat.modelId ?? '', hashChatPayload(target.policy),
+  ] });
+  async function describeOrdinaryAction(caller, operation, input) {
+    if (!['send', 'stop', 'read'].includes(operation)) failure('invalid_request', 'Unsupported chat action');
+    const target = await authorize(caller, input.chatId, operation);
+    if (!ordinaryPeer(caller, target)) return null;
+    if (operation === 'send' && Buffer.byteLength(input.message) > 24_000) failure('invalid_request', 'An ordinary chat message must fit in its confirmation (24 KB)');
+    if (operation !== 'read' && target.chat.chatCommandVersion !== 1) failure('capability_unavailable', 'Open and use the target in Code before operating it from another chat');
+    if (operation === 'stop' && (input.scope !== 'turn' || !input.executionId)
+        || operation === 'send' && input.mode === 'steer' && !input.executionId) {
+      failure('invalid_request', 'Choose turn scope and the exact execution ID to stop or steer');
+    }
+    return { action: ordinaryAction(operation, input, target), preview: {
+      chat: target.chat.name, checkout: target.scope.canonicalKey, ...input,
+    } };
+  }
+  function verifyOrdinaryAction(caller, operation, input, target, proof) {
+    requireCaller(caller);
+    proof?.signal?.throwIfAborted();
+    if (!ordinaryPeer(caller, target)) return;
+    if (operation !== 'read' && target.chat.chatCommandVersion !== 1) failure('capability_unavailable', 'The target is not a managed ordinary chat');
+    assertOrdinaryChatConsent(repository, caller, ordinaryAction(operation, input, target), proof, now());
+  }
+  async function sendCommand(caller, input, legacyCompletion = null, proof) {
     requireCaller(caller);
     const assertLegacyAdmission = () => {
       if (legacyCompletion?.canAdmit && legacyCompletion.canAdmit() !== true) failure('capability_unavailable', 'Legacy completion admission is closing');
     };
     assertLegacyAdmission();
     if (legacyCompletion && (caller.actor !== 'system' || !input?.delivery)) failure('policy_denied', 'Legacy completions require the trusted task delivery ingress');
-    fields(input, ['chatId', 'message', 'mode', 'clientRequestId', 'images', 'intent', 'replyToCommandId', 'delivery']);
+    fields(input, ['chatId', 'message', 'mode', 'clientRequestId', 'images', 'intent', 'replyToCommandId', 'delivery', 'executionId']);
     if (input.intent !== undefined) {
       if (caller.actor !== 'human' || input.mode === 'steer') failure('policy_denied', 'Only human sends can select per-turn context');
       input = { ...input, intent: checked(validateChatSendIntent(input.intent)) };
@@ -223,6 +251,7 @@ export function createChatCommandService({
       if (previous) return previous;
       enabled(caller, input);
       let target = await authorize(caller, input.chatId, 'send');
+      verifyOrdinaryAction(caller, 'send', input, target, proof);
       const epoch = repository.getCancellationEpoch(input.chatId);
       if (caller.actor === 'human' && target.chat.chatCommandVersion !== 1) {
         failure('capability_unavailable', 'Ordinary server execution requires an idle, durably reconciled parity-ready promotion before command admission. Continue using this conversation\'s existing execution host until routing is available.');
@@ -237,7 +266,8 @@ export function createChatCommandService({
       if (legacyCompletion && (active.has(input.chatId) || externallyOwned(input.chatId) || repository.getLease(input.chatId)?.state === 'active' || firstRunnable(input.chatId))) failure('ownership_conflict', 'Legacy completion is deferred until the conversation is idle');
       if (!legacyCompletion && input.delivery?.cancellationEpoch !== undefined && input.delivery.cancellationEpoch !== epoch) failure('ownership_conflict', 'The automatic completion subscription was stopped');
       const live = active.get(input.chatId);
-      if (mode === 'steer' && (!live || !live.host.supportsSteer || live.controller.signal.aborted)) {
+      if (mode === 'steer' && (!live || !live.host.supportsSteer || live.controller.signal.aborted
+          || ordinaryPeer(caller, target) && live.execution.executionId !== input.executionId)) {
         failure('steer_unsupported', 'This conversation has no active turn that supports steering. To request a separate follow-up, send a new message with mode queue if authorized.');
       }
       if (queued(input.chatId).length >= maxPendingCommands) failure('queue_full', 'This conversation has too many pending inputs');
@@ -257,7 +287,10 @@ export function createChatCommandService({
         failure('workspace_denied', 'The conversation checkout changed before admission');
       }
       target = { ...target, policy: intersectChatPolicies(target.policy, currentTarget.policy) };
-      requireCaller(caller);
+      verifyOrdinaryAction(caller, 'send', input, currentTarget, proof);
+      if (mode === 'steer' && ordinaryPeer(caller, target) && (active.get(input.chatId) !== live || live.controller.signal.aborted)) {
+        failure('steer_unsupported', 'The confirmed execution is no longer available for steering');
+      }
       assertLegacyAdmission();
       if (!legacyCompletion && epoch !== repository.getCancellationEpoch(input.chatId)) failure('ownership_conflict', 'Input setup was stopped before admission');
       const commandId = hashId('command', producer(caller) + ':' + key);
@@ -319,7 +352,7 @@ export function createChatCommandService({
       return receipt(record);
     });
   }
-  const send = (caller, input) => sendCommand(caller, input);
+  const send = (caller, input, proof) => sendCommand(caller, input, null, proof);
   function routingState(chatId) {
     const chat = repository.getChat(chatId);
     if (chat.chatCommandVersion === 1) return { chatId, route: 'server', eligible: true, reason: 'already_canonical', revision: chat.revision };
@@ -744,7 +777,7 @@ export function createChatCommandService({
       return receipt(result);
     });
   }
-  async function stop(caller, input) {
+  async function stop(caller, input, proof) {
     requireCaller(caller);
     fields(input, ['chatId', 'executionId', 'runId', 'scope', 'clientRequestId', 'expectedLegacyOwnerId']);
     if (input.expectedLegacyOwnerId !== undefined) {
@@ -761,6 +794,10 @@ export function createChatCommandService({
       return receipt(repository.getCommand(previous.commandId), true);
     }
     const target = await authorize(caller, input.chatId, 'stop');
+    if (ordinaryPeer(caller, target) && (scope !== 'turn' || !input.executionId)) {
+      failure('invalid_request', 'Stopping an ordinary chat requires turn scope and its exact execution ID');
+    }
+    verifyOrdinaryAction(caller, 'stop', input, target, proof);
     if (subtree && typeof cancelTree !== 'function') {
       failure('capability_unavailable', 'Stopping an agent subtree requires the task cancellation adapter');
     }
@@ -1141,6 +1178,19 @@ export function createChatCommandService({
   }
   const service = {
     ordinaryEligibility, promote,
+    async replayAgentAction(caller, operation, input) {
+      requireCaller(caller);
+      if (caller.actor !== 'agent' || !['send', 'stop'].includes(operation)) failure('caller_denied', 'Invalid agent receipt request');
+      const key = keyFor(input);
+      const prior = await replay(caller, input, key, hashChatPayload(input));
+      if (!prior) return null;
+      if (operation === 'stop' && PENDING.includes(prior.state)) await drainControls(input.chatId);
+      return receipt(repository.getCommand(prior.commandId), true);
+    },
+    ...createOrdinaryRootAdmission({ repository, context, enabled, ordinaryFeature, now, requireCaller, producer,
+      keyFor, provenance, selectionFor, captureProfile, captureNativeSelection, defaultOrdinaryModel,
+      admitCausality, emit, announce, schedule }),
+    describeOrdinaryAction, verifyOrdinaryAction,
     send, configure, fork, rewriteHistory, chooseWorkspace, recoverMissingWorktree, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
     stopExecution(executionId) {
       checked(validateChatId(executionId));
@@ -1159,14 +1209,16 @@ export function createChatCommandService({
     pushQueued: (caller, input) => control(caller, input, 'push_queued'),
     async readCommand(caller, commandId) {
       const record = repository.getCommand(commandId); if (!record) failure('command_not_found', 'Command does not exist');
-      await authorize(caller, record.chatId, 'read');
+      const target = await authorize(caller, record.chatId, 'read');
+      if (ordinaryPeer(caller, target)) failure('policy_denied', 'Use the confirmed chat read or wait tools for another ordinary chat');
       return { ...receipt(record), command: record.command, effectiveCommand: record.effectiveCommand,
         ...(['settled', 'failed', 'cancelled'].includes(record.state) ? {
           assistantFinal: record.executionId ? repository.readExecutionFinalAssistant(record.executionId) : '',
         } : {}) };
     },
     async status(caller, chatId) {
-      await authorize(caller, chatId, 'read');
+      const target = await authorize(caller, chatId, 'read');
+      if (ordinaryPeer(caller, target)) failure('policy_denied', 'Use the confirmed chat read or wait tools for another ordinary chat');
       const source = repository.getChat(chatId);
       const executionId = active.get(chatId)?.execution.executionId ?? source.agentExecution?.executionId;
       const execution = executionId ? repository.getExecution(executionId)

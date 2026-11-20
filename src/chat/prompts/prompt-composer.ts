@@ -194,7 +194,7 @@ function resolveSubAgentDelegationBody(ctx: ComposeContext): string {
 }
 
 function resolveChatCoordinationBody(ctx: ComposeContext): string {
-  if (!(ctx.enabledToolIds ?? []).some(name => ['chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(name))) return '';
+  if (!(ctx.enabledToolIds ?? []).some(name => ['chat_list', 'chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(name))) return '';
   return loadPromptById('tool-usage', 'chat-coordination')?.body?.trim() ?? '';
 }
 

@@ -488,11 +488,8 @@ test('ordinary peers require a live branded caller, same project and a target wi
   const fence = f.repository.claimExecution({ chatId: 'sender', executionId: 'sender-execution', ownerId: 'sender-host' });
   const caller = createChatCaller({ actor: 'agent', ingress: 'tool', chatId: 'sender', executionId: fence.executionId,
     executionActive: true, scope: f.scope, policy: f.policy });
-  const sent = await f.service.send(caller, { chatId: 'target', message: 'Peer instruction', clientRequestId: 'peer' });
-  const recorded = f.repository.getCommand(sent.commandId);
-  assert.equal(recorded.command.provenance.actor, 'agent');
-  assert.equal(recorded.command.provenance.sourceChatId, 'sender');
-  assert.equal(recorded.command.provenance.sourceTurnId, 'sender-execution');
+  await assert.rejects(f.service.send(caller, { chatId: 'target', message: 'Peer instruction', clientRequestId: 'peer' }), hasCode('policy_denied'));
+  assert.equal(f.repository.listCommands({ chatId: 'target' }).length, 0);
   await assert.rejects(f.service.send(caller, { chatId: 'sender', message: 'Self' }), hasCode('invalid_request'));
   f.repository.updateExecution(fence.executionId, { status: 'completed' }, { fence });
   f.repository.releaseLease('sender', fence);
@@ -750,10 +747,10 @@ test('legacy callers require an exact runtime-approved identity and expire witho
   const caller = createChatCaller({ actor: 'agent', ingress: 'tool', chatId: 'sender', executionId: 'legacy-execution',
     executionActive: true, scope: f.scope, policy: f.policy });
   permitted.add(caller);
-  const sent = await f.service.send(caller, { chatId: 'target', message: 'Legacy peer input', clientRequestId: 'legacy-peer' });
+  await assert.rejects(f.service.send(caller, { chatId: 'target', message: 'Legacy peer input', clientRequestId: 'legacy-peer' }), hasCode('policy_denied'));
   assert.equal(f.repository.getChat('sender').chatCommandVersion, undefined);
   assert.equal(f.repository.getExecution('legacy-execution'), null);
-  assert.equal(f.repository.getCommand(sent.commandId).command.provenance.causalRootId, caller.executionId);
+  assert.equal(f.repository.listCommands({ chatId: 'target' }).length, 0);
   await assert.rejects(f.service.send({ ...caller }, { chatId: 'target', message: 'Forged copy' }), hasCode('caller_denied'));
   const unrelated = createChatCaller({ actor: 'agent', ingress: 'tool', chatId: 'sender', executionId: 'legacy-execution',
     executionActive: true, scope: f.scope, policy: f.policy });

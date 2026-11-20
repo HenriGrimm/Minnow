@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { ChatContractError } from './contracts.js';
 import { assertExecutionCaller } from './caller.js';
+import { hashChatPayload } from './repository.js';
 
 const requestIdentity = (executionId, toolCallId, kind) =>
   `rq-${createHash('sha256').update(JSON.stringify([executionId, toolCallId, kind])).digest('hex').slice(0, 48)}`;
@@ -39,18 +40,20 @@ export function createChatRequestService({ repository, authorizeResponse, assert
       legacyOwners.set(requestId, caller);
       notify(request); return request;
     },
-    open({ chatId, executionId, toolCallId, kind, title, presentation, expiresAt, fence }) {
+    open({ chatId, executionId, toolCallId, kind, title, presentation, expiresAt, expiresInMs, fence }) {
       const requestId = requestIdentity(executionId, toolCallId, kind);
       const existing = repository.getRequest(requestId);
+      const createdAt = existing?.createdAt ?? now();
+      if (expiresInMs !== undefined) expiresAt = createdAt + expiresInMs;
       if (existing) {
         if (existing.chatId !== chatId || existing.executionId !== executionId || existing.toolCallId !== toolCallId || existing.kind !== kind ||
-            existing.title !== title || JSON.stringify(existing.presentation) !== JSON.stringify(presentation) || existing.expiresAt !== expiresAt) {
+            existing.title !== title || hashChatPayload(existing.presentation) !== hashChatPayload(presentation) || existing.expiresAt !== expiresAt) {
           throw new ChatContractError('idempotency_conflict', 'Human request identity was reused');
         }
         return existing;
       }
       const request = repository.saveRequest({ version: 1, requestId, chatId, executionId, toolCallId,
-        kind, state: 'pending', createdAt: now(), title, presentation,
+        kind, state: 'pending', createdAt, title, presentation,
         ...(expiresAt === undefined ? {} : { expiresAt }),
       }, { fence });
       notify(request);

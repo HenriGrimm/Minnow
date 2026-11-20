@@ -81,13 +81,15 @@ export function createServerChatExecutionHost({
         abort.abort(error);
         return error;
       };
-      const waitForHuman = async (input, waitSignal = combinedSignal) => {
+      const waitForHuman = async (input, waitSignal = combinedSignal, returnRequest = false) => {
         repository.assertFence(chatId, fence);
         const request = requests.open({ ...input, chatId, executionId, fence });
         status(input.kind === 'approval' ? 'waiting_for_approval' : 'waiting_for_input');
         const waiting = timing.start();
-        try { return await requests.wait(request.requestId, { signal: waitSignal }); }
-        finally {
+        try {
+          const answer = await requests.wait(request.requestId, { signal: waitSignal });
+          return returnRequest ? request.requestId : answer;
+        } finally {
           timing.end('human_wait', waiting, { category: 'human_wait' });
           if (!combinedSignal.aborted && ['waiting_for_approval', 'waiting_for_input'].includes(repository.getExecution(executionId)?.status)) status('running');
         }
@@ -170,7 +172,9 @@ export function createServerChatExecutionHost({
         const dispatchTool = async (name, args, ctx) => {
           const started = timing.start();
           if (!hostTools.has(name)) {
-            try { return await dispatch.execute(name, args, { ...ctx, signal: combinedSignal }); }
+            try { return await dispatch.execute(name, args, { ...ctx, signal: combinedSignal,
+              ...(['chat_create', 'chat_read', 'chat_wait', 'chat_send', 'chat_stop'].includes(name)
+                ? { requestOrdinaryConfirmation: input => waitForHuman(input, combinedSignal, true) } : {}) }); }
             finally { timing.end('external_tool_execution', started, { name, id: ctx.toolCallId, category: 'execution' }); }
           }
           if (typeof executeHostTool !== 'function') {
@@ -200,7 +204,11 @@ export function createServerChatExecutionHost({
           repository.assertFence(chatId, fence);
           const approvalKey = digest([name, args]);
           const gate = { workspaceRoot: prepared.cwd, grants: getChatPermissionGrants(chatId) };
-          try { return assertChatToolAllowed(policy, name, args, { ...gate, currentPolicy: await livePolicy(), approvalGranted: approvals.get(toolCallId) === approvalKey }); }
+          // These paths enforce their own exact-action approval at canonical admission.
+          const exactConsent = name === 'chat_create' || ['chat_send', 'chat_stop'].includes(name)
+            && typeof args.chat_id === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(args.chat_id)
+            && args.chat_id !== chatId && !repository.getRelation(args.chat_id);
+          try { return assertChatToolAllowed(policy, name, args, { ...gate, currentPolicy: await livePolicy(), approvalGranted: exactConsent || approvals.get(toolCallId) === approvalKey }); }
           catch (error) {
             if (error?.reason !== 'approval_required') throw error;
             const current = await livePolicy();
@@ -265,9 +273,14 @@ export function createServerChatExecutionHost({
             }
             effectsStarted++;
             try {
-              const result = await dispatchTool(name, args, { ...ctx, approvalGranted: allowed.permission === 'ask' });
+              let committed = false;
+              const result = await dispatchTool(name, args, { ...ctx, approvalGranted: allowed.permission === 'ask',
+                ...(name === 'chat_create' ? { settleOrdinaryCreation: receipt => {
+                  repository.settleToolInvocation(invocationId, { content: JSON.stringify(receipt) }, { fence });
+                  committed = true;
+                } } : {}) });
               // Persist the original result before any runner/UI decoration.
-              repository.settleToolInvocation(invocationId, result, { fence });
+              if (!committed) repository.settleToolInvocation(invocationId, result, { fence });
               return result;
             } catch (error) {
               if (isHostToolNotStartedError(error)) {

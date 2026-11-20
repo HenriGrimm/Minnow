@@ -961,7 +961,7 @@ export interface IssueCard {
   updatedAt: number;
   codeRefs?: IssueCodeRef[];
   gitLinks?: IssueGitLink[];
-  /** Repo ids (workspace-relative) this issue targets in a multi-repo workspace; absent = the only repo. */
+  /** Explicit workspace-relative repo targets. With none, GitHub publishing uses the workspace repo or sole child repo. */
   repos?: string[];
   issueRefs?: IssueIssueRef[];
   chatIds?: string[];
@@ -1243,6 +1243,7 @@ export interface Chat {
   agentTypeId?: string;
   /** Server-derived dispatch marker, also present on managed root conversations. */
   chatCommandVersion?: 1;
+  explicitOrdinaryRoot?: true;
   /** Server-owned CAS counter for editable presentation fields, independent of turns. */
   agentPresentationRevision?: number;
   agentTitleCandidate?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentTitleCandidate']>;
@@ -1250,7 +1251,8 @@ export interface Chat {
   /** Lightweight server view; it carries no transcript, prompts or pending answer bodies. */
   agentExecution?: { executionId: string; commandId?: string | null; runId?: string | null; status: string;
     createdAt?: number; updatedAt?: number; settledAt?: number | null; workDurationMs?: number; modelSelection?: import('../server/chats/contracts').ModelSelection;
-    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string; needsManualRecovery?: true };
+    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string;
+    failure?: import('../server/chats/activity').ChatExecutionFailure; needsManualRecovery?: true };
   agentPendingCommand?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentPendingCommand']>;
   agentActivityCursor?: import('../server/chats/activity').ChatActivityCursor;
   /** Server-projected next-message selection; queued inputs retain their own captured value. */

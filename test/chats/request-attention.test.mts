@@ -122,6 +122,27 @@ test('approvals show exact arguments safely and only Allow or Deny for their own
   assert.deepEqual(posts.map(item => [item.requestId, item.body.answer.decision]), [[first.requestId, 'allow_once'], [second.requestId, 'deny']]);
 });
 
+test('ordinary creation shows the full first message before the one-time Create chat action', async () => {
+  const owner = chat('ordinary-confirmation');
+  owner.composerDraft = 'Do not interrupt this draft';
+  const firstMessage = 'Review <example> safely.\nInclude the changelog section.';
+  const approval: ChatRequest = { ...request(owner.id, 'create-root', 'approval'), title: 'Create a new chat?',
+    presentation: { ordinaryChatConsent: 'fixture', toolName: 'chat_create', arguments: {
+      title: 'Release review', model: { providerId: 'fixture', modelId: 'model' }, checkout: 'C:/fixture', firstMessage, reportBack: true,
+    } } };
+  records.set(owner.id, [approval]);
+  owner.agentRequestSummary = [{ requestId: approval.requestId, kind: 'approval' }];
+  const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
+  const card = panel(approval.requestId);
+  assert.equal(card.querySelector('details')!.open, true);
+  assert.ok(card.querySelector('pre')!.textContent!.includes(firstMessage));
+  assert.equal(card.querySelector('example'), null);
+  assert.deepEqual([...card.querySelectorAll('button')].map(node => node.textContent), ['Create chat', 'Deny']);
+  clickText(card, 'Create chat'); await until(() => records.get(owner.id)![0]!.state === 'answered');
+  assert.equal(posts[0]!.body.answer.decision, 'allow_once');
+  assert.equal(owner.composerDraft, 'Do not interrupt this draft');
+});
+
 for (const surface of ['Code', 'mobile'] as const) {
   test(`live approval docks beside the ${surface} composer without displaying saved receipts`, async () => {
     const owner = chat('docked-owner'), other = chat('other-chat');

@@ -267,6 +267,7 @@ function getReadStmts(db) {
     ),
     runForChat: db.prepare('SELECT payload_json FROM chat_runs WHERE chat_id = ? AND run_id = ?'),
     lastChatProfile: db.prepare('SELECT profile_id,profile_version FROM chat_execution_profiles WHERE chat_id=? ORDER BY rowid DESC LIMIT 1'),
+    explicitOrdinaryRoot: db.prepare("SELECT json_extract(meta_json,'$.explicitOrdinaryRoot') AS explicit FROM chat_conversation_state WHERE chat_id=?"),
   };
   readStmtsByDb.set(db, stmts);
   return stmts;
@@ -356,13 +357,17 @@ function stitchChat(row, children) {
   // Relations are server-owned rows, never claims supplied in a generic save.
   delete chat.agentConversation;
   delete chat.chatCommandVersion;
+  delete chat.explicitOrdinaryRoot;
   delete chat.profileReference;
   for (const key of ['agentExecution', 'agentPendingCommand', 'agentActivityCursor', 'agentRequestSummary', 'agentRequests',
     'agentTaskAttention', 'agentModelSelection', 'agentAuthority', 'agentPresentationRevision']) delete chat[key];
   const db = getSessionsDb();
   const agentConversation = readAgentConversationProjection(db, row.id);
   if (agentConversation) chat.agentConversation = agentConversation;
-  if (isManagedConversation(db, row.id)) chat.chatCommandVersion = 1;
+  if (isManagedConversation(db, row.id)) {
+    chat.chatCommandVersion = 1;
+    if (row.message_count === 0 && getReadStmts(db).explicitOrdinaryRoot.get(row.id)?.explicit === 1) chat.explicitOrdinaryRoot = true;
+  }
   const profile = getReadStmts(db).lastChatProfile.get(row.id);
   if (profile) chat.profileReference = { profileId: profile.profile_id, profileVersion: profile.profile_version };
 

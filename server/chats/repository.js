@@ -267,9 +267,10 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
   }
   function getChat(chatId) {
     const row = chatRow(chatId);
+    const stateMeta = parse(db.prepare('SELECT meta_json FROM chat_conversation_state WHERE chat_id=?').get(chatId)?.meta_json, {});
     const output = {
       ...parse(row.meta_json, {}),
-      ...parse(db.prepare('SELECT meta_json FROM chat_conversation_state WHERE chat_id=?').get(chatId)?.meta_json, {}),
+      ...stateMeta,
       id: row.id, name: row.name, workspacePath: row.workspace_path,
       providerId: row.provider_id, modelId: row.model_id, modeId: row.mode_id,
       groupId: row.group_id, worktreeRoot: row.worktree_root, gitBranch: row.git_branch,
@@ -278,6 +279,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
       historyDigest: row.history_digest, revision: revision(chatId),
     };
     delete output.agentConversation;
+    if (stateMeta.explicitOrdinaryRoot !== true) delete output.explicitOrdinaryRoot;
     const relation = readAgentConversationProjection(db, chatId);
     if (relation) output.agentConversation = relation;
     if (isManagedConversation(db, chatId)) output.chatCommandVersion = 1;
@@ -520,6 +522,13 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
     },
     atomic: (work) => transaction(() => work(repository)),
     createChat: (input) => transaction(() => createChat(input)),
+    createOrdinaryRoot: (input, { projectId, profile }) => transaction(() => {
+      const chat = createChat(input);
+      db.prepare('UPDATE chat_conversation_state SET project_id=?,meta_json=? WHERE chat_id=?')
+        .run(label(projectId, 'project identity', 4096), json({ explicitOrdinaryRoot: true }), chat.id);
+      const saved = saveProfile(chat.id, profile);
+      return { chat: getChat(chat.id), profile: saved };
+    }),
     createChild, getChat,
     /** Drop transcript rows atomically while keeping command receipts and effect journals. */
     rewriteHistory({ chatId, index, expectedHistoryDigest }) {

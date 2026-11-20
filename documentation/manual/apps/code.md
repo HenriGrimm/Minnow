@@ -4,6 +4,12 @@ Start in an open workspace and choose a thread or **New thread**. The thread hea
 
 Drop a file, editor selection, editor or preview tab, or an existing thread onto **New thread** to open a fresh composer with that item already added. Nothing is sent until you send the message.
 
+### Ask the agent to open another thread
+
+In a supported server-run thread, ask Minnow to open a separate thread. For example: “Open a new thread called Release review, ask it to review the changelog, and tell me what it finds.” Review the model, checkout and exact first message in the confirmation. Minnow requires your one-time confirmation even in **Full access**.
+
+The new top-level thread appears in the sidebar without switching your view. It uses the originating thread's verified checkout unless you choose another authorized checkout in the same project. It does not copy the originating transcript or attachments. If you did not ask for a first message, it stays empty. You can open it and continue it yourself. The agent can report the authorized first reply; later actions in another ordinary thread require their own confirmation.
+
 ## Find and edit a file
 
 1. Open **Side panel → Files**. Expand a folder and select a file to open an editor tab.
