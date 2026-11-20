@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { prepareAgentCliInvocation } from '../../server/generations/agent-cli/invocation.js';
+import { cursorAuthPath } from '../../server/models/cursor-cli-usage.js';
 
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-agent-cli-'));
 const common = {
@@ -242,12 +243,13 @@ test('Cursor includes system prompt and partial output controls', async () => {
   assert.ok(result.args.includes('--trust'));
 });
 
-test('Cursor ACP retains the macOS account home while isolating config, data and permissions', async () => {
+test('Cursor ACP retains the native account home while isolating config, data and permissions', async () => {
   const work = path.join(tempDir, 'acp', 'work');
   await fs.mkdir(work, { recursive: true });
   const result = await prepareAgentCliInvocation({ ...common, tempDir: work, kind: 'cursor', acp: true });
   try {
-    assert.equal(result.env.HOME, process.platform === 'darwin' ? process.env.HOME : work);
+    assert.equal(result.env.HOME, process.env.HOME);
+    assert.equal(result.env.USERPROFILE, process.env.USERPROFILE);
     assert.equal(result.env.CURSOR_CONFIG_DIR, path.join(path.dirname(work), 'cursor-config'));
     assert.equal(result.env.CURSOR_DATA_DIR, path.join(path.dirname(work), 'cursor-data'));
     assert.deepEqual(result.mcpServers, [{ name: 'minnow', command: common.bridgeConfig.command, args: common.bridgeConfig.args,
@@ -256,6 +258,60 @@ test('Cursor ACP retains the macOS account home while isolating config, data and
     assert.deepEqual(config.permissions.allow, ['Mcp(minnow:*)']);
     assert.ok(config.permissions.deny.includes('Shell(*)'));
   } finally { await result.cleanup?.(); }
+});
+
+test('Cursor retains XDG login discovery and does not copy credentials from private config', async () => {
+  const previous = { config: process.env.CURSOR_CONFIG_DIR, xdg: process.env.XDG_CONFIG_HOME };
+  const config = path.join(tempDir, 'cursor-account-config');
+  const work = path.join(tempDir, 'cursor-xdg', 'work');
+  await fs.mkdir(config, { recursive: true });
+  await fs.mkdir(work, { recursive: true });
+  await fs.writeFile(path.join(config, 'auth.json'), JSON.stringify({ accessToken: 'not-the-native-login' }));
+  process.env.CURSOR_CONFIG_DIR = config;
+  process.env.XDG_CONFIG_HOME = path.join(tempDir, 'native-xdg');
+  try {
+    for (const acp of [true, false]) {
+      const result = await prepareAgentCliInvocation({ ...common, tempDir: work, kind: 'cursor', acp });
+      assert.equal(result.env.XDG_CONFIG_HOME, process.env.XDG_CONFIG_HOME);
+      assert.notEqual(result.env.CURSOR_CONFIG_DIR, config);
+      assert.equal(result.cleanup, undefined);
+      await assert.rejects(fs.access(path.join(result.env.CURSOR_CONFIG_DIR, 'auth.json')), { code: 'ENOENT' });
+    }
+  } finally {
+    for (const [key, value] of [['CURSOR_CONFIG_DIR', previous.config], ['XDG_CONFIG_HOME', previous.xdg]]) {
+      if (value == null) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test('Cursor redacts native login credentials without copying or modifying the account store', async () => {
+  const keys = ['HOME', 'USERPROFILE', 'APPDATA', 'XDG_CONFIG_HOME'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  const account = path.join(tempDir, 'cursor-native-account');
+  const work = path.join(tempDir, 'cursor-native-redaction', 'work');
+  const auth = JSON.stringify({ accessToken: 'fixture-access-token', refreshToken: 'fixture-refresh-token' });
+  try {
+    for (const key of keys) process.env[key] = account;
+    const source = cursorAuthPath();
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.mkdir(work, { recursive: true });
+    await fs.writeFile(source, auth);
+    for (const acp of [true, false]) {
+      const result = await prepareAgentCliInvocation({ ...common, profile: { binPath: process.execPath }, tempDir: work, kind: 'cursor', acp });
+      assert.ok(result.redactionSecrets.includes('fixture-access-token'));
+      assert.ok(result.redactionSecrets.includes('fixture-refresh-token'));
+      assert.equal(result.env.HOME, account);
+      assert.equal(result.env.USERPROFILE, account);
+      assert.equal(result.env.XDG_CONFIG_HOME, account);
+      assert.equal(result.cleanup, undefined);
+      assert.equal(await fs.readFile(source, 'utf8'), auth);
+      await assert.rejects(fs.access(path.join(result.env.CURSOR_CONFIG_DIR, 'auth.json')), { code: 'ENOENT' });
+    }
+  } finally {
+    for (const key of keys) {
+      if (previous[key] == null) delete process.env[key]; else process.env[key] = previous[key];
+    }
+  }
 });
 
 test('rejects NUL bytes in prompt', async () => {

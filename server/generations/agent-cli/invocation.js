@@ -7,6 +7,7 @@ import { resolveAgentCliBin, applyAgentNodeEnv } from './resolve-bin.js';
 import { MAX_TRANSCRIPT_BYTES } from './prompt.js';
 import { prepareCodexAuth } from './codex-auth.js';
 import { agentCliContextWindowTokens, supportsClaudeExtendedContext } from '../../models/agent-cli-context.js';
+import { cursorAuthPath } from '../../models/cursor-cli-usage.js';
 
 function safeString(value, label, max = 512_000) {
   if (typeof value !== 'string') return '';
@@ -136,6 +137,8 @@ function scopedEnv(bridgeConfig = {}, kind, secrets = {}) {
   }
   if (typeof bridgeConfig.codexHome === 'string' && bridgeConfig.codexHome) env.CODEX_HOME = bridgeConfig.codexHome;
   if (typeof bridgeConfig.cursorConfigDir === 'string' && bridgeConfig.cursorConfigDir) env.CURSOR_CONFIG_DIR = bridgeConfig.cursorConfigDir;
+  // Linux login state is separate from Cursor's private session config.
+  if (kind === 'cursor' && process.env.XDG_CONFIG_HOME) env.XDG_CONFIG_HOME = process.env.XDG_CONFIG_HOME;
   if (typeof bridgeConfig.claudeConfigDir === 'string' && bridgeConfig.claudeConfigDir) env.CLAUDE_CONFIG_DIR = bridgeConfig.claudeConfigDir;
   const cliToken = typeof secrets.cliToken === 'string' ? secrets.cliToken.trim() : '';
   const authKeys = kind === 'claude'
@@ -255,19 +258,19 @@ export async function prepareAgentCliInvocation(input) {
     const configDir = await prepareCursorFiles(cwd, input.bridgeConfig ?? {},
       input.acp ? path.join(path.dirname(cwd), 'cursor-config') : undefined);
     input.bridgeConfig = { ...(input.bridgeConfig ?? {}), cursorConfigDir: configDir };
+    // Capture native file credentials for output redaction, without copying
+    // them to CURSOR_CONFIG_DIR (which the login store does not consult).
+    const auth = await fs.readFile(cursorAuthPath(), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (auth) {
+      try {
+        const collect = value => { for (const [name, entry] of Object.entries(value ?? {})) {
+          if (entry && typeof entry === 'object') collect(entry);
+          else if (/token|password|api.?key/i.test(name) && typeof entry === 'string') redactionSecrets.push(entry);
+        } };
+        collect(JSON.parse(auth));
+      } catch { /* The native CLI validates its credential file. */ }
+    }
     if (input.acp) {
-      const source = path.join(process.env.CURSOR_CONFIG_DIR || path.join(os.homedir(), '.cursor'), 'auth.json');
-      const auth = await fs.readFile(source).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
-      if (auth) {
-        cleanup = await prepareCodexAuth(configDir, { codexAuthPath: source });
-        try {
-          const collect = value => { for (const [name, entry] of Object.entries(value ?? {})) {
-            if (entry && typeof entry === 'object') collect(entry);
-            else if (/token|password|api.?key/i.test(name) && typeof entry === 'string') redactionSecrets.push(entry);
-          } };
-          collect(JSON.parse(auth.toString('utf8')));
-        } catch { /* The native CLI validates its credential file. */ }
-      }
       args.push('--trust', '--approve-mcps');
       if (model) args.push('--model', model);
       args.push('acp');
@@ -288,14 +291,14 @@ export async function prepareAgentCliInvocation(input) {
 
   const env = applyAgentNodeEnv(scopedEnv(input.bridgeConfig, kind, input.secrets), bin.command);
   if (kind === 'cursor' && input.acp) {
-    // macOS security resolves the login keychain through the account home.
-    // Replacing HOME makes ACP authentication stall/fail, then every chat falls
-    // back to process replay. Config, chat data and permissions remain private.
-    if (process.platform !== 'darwin') { env.HOME = cwd; env.USERPROFILE = cwd; }
+    // Login state lives in the native account store, NOT CURSOR_CONFIG_DIR:
+    // Keychain on macOS, APPDATA on Windows, XDG on Linux. Replacing HOME
+    // loses Linux logins; copying auth into private config does not repair it.
+    // Let Cursor own credential refresh while config and chat data stay private.
     // Cursor opens ~/.cursor/ai-tracking/ai-code-tracking.db during every
     // turn and SQLite does not create the folder, so each response otherwise
     // ends in "unable to open database file".
-    await fs.mkdir(path.join(process.platform === 'darwin' ? os.homedir() : cwd, '.cursor', 'ai-tracking'), { recursive: true, mode: 0o700 });
+    await fs.mkdir(path.join(os.homedir(), '.cursor', 'ai-tracking'), { recursive: true, mode: 0o700 });
     env.CURSOR_DATA_DIR = path.join(path.dirname(cwd), 'cursor-data');
     if (process.env.CURSOR_AUTH_TOKEN) env.CURSOR_AUTH_TOKEN = process.env.CURSOR_AUTH_TOKEN;
   }
