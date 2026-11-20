@@ -196,18 +196,18 @@ describe('buildContextUsageBreakdown', () => {
     assert.equal(loadingRows.find((r) => r.key === 'codeMap')?.tokens, 0);
   });
 
-  test('splits Brain notes from system', () => {
+  test('has no Brain notes row: memory is never injected', () => {
     const estimate = computeOutboundPromptEstimateFromParts({
       systemText: 'sys',
       history: [],
       tools: [],
     });
     estimate.composedSystem = 1000;
-    estimate.brainNotesSystem = 250;
-    estimate.brainNotesInjectionEnabled = true;
+    // Stale estimates from older builds may still carry these fields.
+    Object.assign(estimate, { brainNotesSystem: 250, brainNotesInjectionEnabled: true });
     const rows = buildContextUsageBreakdown(estimate, 0, 0);
-    assert.equal(rows.find((r) => r.key === 'system')?.tokens, 750);
-    assert.equal(rows.find((r) => r.key === 'brainNotes')?.tokens, 250);
+    assert.equal(rows.find((r) => r.key === 'system')?.tokens, 1000);
+    assert.equal(rows.some((r) => (r.key as string) === 'brainNotes'), false);
   });
 });
 

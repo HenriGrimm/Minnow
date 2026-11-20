@@ -200,41 +200,43 @@ describe('memory saved toast', () => {
     assert.equal(document.querySelector('.mn-toast'), null);
   });
 
-  test('parses successful save_memory and brain_write_page results', () => {
-    const memoryPayload = memorySavedPayloadFromTool(
-      'save_memory',
-      { title: 'Fixture preference', body: 'Prefer deterministic tests.' },
-      'Saved memory "Fixture preference" (id: 44444444-4444-4444-4444-444444444444) under pages/facts/.',
+  test('parses successful memory_save creations only', () => {
+    const created = memorySavedPayloadFromTool(
+      'memory_save',
+      { title: 'Fixture preference', body: 'Prefer deterministic tests.', kind: 'preference', scope: 'user' },
+      'Saved user memory: "Fixture preference" (id: 44444444-4444-4444-4444-444444444444, revision: ' + 'a'.repeat(64) + ').',
     );
-    const pagePayload = memorySavedPayloadFromTool(
-      'brain_write_page',
-      {
-        path: 'projects/minnow.md',
-        title: 'Minnow',
-        summary: 'Local-first AI workspace.',
-        body: 'Long body.',
-      },
-      'Created wiki page "Minnow" at projects/minnow.md (id: 55555555-5555-5555-5555-555555555555).',
-    );
-
-    assert.deepEqual(memoryPayload, {
+    assert.deepEqual(created, {
       title: 'Fixture preference',
       description: 'Prefer deterministic tests.',
-      target: { kind: 'memory', id: '44444444-4444-4444-4444-444444444444' },
+      target: { kind: 'record', id: '44444444-4444-4444-4444-444444444444' },
     });
-    assert.deepEqual(pagePayload, {
-      title: 'Minnow',
-      description: 'Local-first AI workspace.',
-      target: { kind: 'page', relPath: 'projects/minnow.md' },
-    });
+    const project = memorySavedPayloadFromTool(
+      'memory_save',
+      { title: 'CI runs on Linux', body: 'Use POSIX paths.' },
+      'Saved project memory for minnow: "CI runs on Linux" (id: 55555555-5555-5555-5555-555555555555, revision: ' + 'b'.repeat(64) + ').',
+    );
+    assert.equal(project?.target.kind, 'record');
+    // Rejecting an update would delete the earlier memory, so updates get no card.
+    assert.equal(memorySavedPayloadFromTool(
+      'memory_save',
+      { id: '55555555-5555-5555-5555-555555555555', title: 'CI runs on Linux', body: 'x' },
+      'Updated project memory "CI runs on Linux" (id: 55555555-5555-5555-5555-555555555555, revision: ' + 'c'.repeat(64) + ').',
+    ), null);
+    // Retired tool names produce no card.
+    assert.equal(memorySavedPayloadFromTool(
+      'save_memory',
+      { title: 'Old', body: 'old' },
+      'Saved memory "Old" (id: 66666666-6666-6666-6666-666666666666) under pages/facts/.',
+    ), null);
   });
 
   test('ignores failed tool saves and sanitizes markdown descriptions', () => {
     assert.equal(
       memorySavedPayloadFromTool(
-        'save_memory',
+        'memory_save',
         { title: 'Missing body' },
-        'Error: body is required.',
+        'Error: body is required: the claim, why it holds and the evidence.',
       ),
       null,
     );

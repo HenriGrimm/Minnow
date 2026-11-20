@@ -10,6 +10,7 @@ import { readConfigJson } from '../config/store.js';
 import { listProviders } from '../providers/store.js';
 import { resolveFallbackChain } from './fallback.js';
 import { pumpUpstream } from './upstream.js';
+import { allowanceContext, getAllowanceTracker } from './allowance.js';
 import { bindMinnowOnlyExecution } from './native-execution-context.js';
 import { GRAPHITE_SIDE_CHAT_ROLE } from '../../src/lib/graphite-side-chat.mjs';
 import { getAgentCliOutput, subscribeAgentCliOutput } from './agent-cli/output.js';
@@ -74,6 +75,21 @@ export async function handleGenerationsRequest(req, res, pathname) {
 
   try {
     if (await handleRouterRequest(req, res, pathname, readJsonBody, sendJson)) return true;
+    // A user-initiated retry may probe a usage or rate-limit cooldown early.
+    // It lifts only the matching block; a still-spent allowance re-records it.
+    if (pathname === '/api/generations/allowance/retry') {
+      if (req.method !== 'POST') { sendJson(res, 405, { error: 'Method not allowed' }); return true; }
+      const body = await readJsonBody(req);
+      const modelId = typeof body.modelId === 'string' && body.modelId.length > 0 && body.modelId.length <= 512 ? body.modelId : '';
+      let context;
+      try { context = await allowanceContext(validateProviderId(body.providerId), modelId); }
+      catch { sendJson(res, 400, { error: 'Choose a configured provider and model' }); return true; }
+      const tracker = await getAllowanceTracker();
+      tracker.retry(context);
+      await tracker.flush();
+      sendJson(res, 200, { ok: true, availability: tracker.availability(context) });
+      return true;
+    }
     if (pathname === '/api/generations' && req.method === 'POST') {
       const payload = await readJsonBody(req);
       if (req.minnowAuth?.kind === 'device' && payload.chatId && (payload.persist === true || payload.fallbackRole === 'main-chat')) {

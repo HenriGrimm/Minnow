@@ -138,7 +138,7 @@ import {
 } from './issues-detail-layout';
 import { openIssuesContextMenu, type IssuesContextMenuItem } from './issues-context-menu';
 import { fetchWorkspaceRepos, repoRemoteSlug } from '../state/workspace-repos';
-import { repoQualifiedRef, toggleIssueRepo } from '../issues/repo-scope';
+import { issueAssignedRepoIds, issueRepoIds, repoQualifiedRef, toggleIssueRepo } from '../issues/repo-scope';
 import type {
   IssueCard,
   IssueCodeRef,
@@ -1330,12 +1330,19 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     void fetchWorkspaceRepos({ workspacePath: issue.workspacePath }).then((repos) => {
       if (!repos.some((repo) => !repo.isRoot) || !placeholder.isConnected) return;
       const selected = issue.repos ?? [];
+      const implicit = issue.github
+        ? issueAssignedRepoIds(issue, issue.workspacePath, repos)
+        : issueRepoIds(issue, repos);
       const order = repos.map((repo) => repo.id);
       const row = createDetailRow({
         key: 'repos',
         icon: 'folder',
         label: 'Repositories',
-        summary: selected.map((id) => ({ text: id, mono: true })),
+        summary: selected.length
+          ? selected.map((id) => ({ text: id, mono: true }))
+          : implicit.map((id) => ({
+            text: `${id === '.' ? 'Workspace' : id} (${issue.github ? 'linked' : 'default'})`,
+          })),
         addLabel: 'Choose repositories',
         addIcon: selected.length ? 'more' : 'plus',
         onAdd: (anchor) => {

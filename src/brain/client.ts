@@ -29,6 +29,9 @@ import type {
   CodeMapFileDetail,
   CodeMapFolder,
   CodeMapPathHit,
+  MemoryKind,
+  MemoryListing,
+  MemoryRecord,
 } from './types';
 
 const API_BASE = '';
@@ -540,6 +543,65 @@ async function brainMutate<T extends Record<string, unknown>>(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: message } as BrainMutationResult & T;
+  }
+}
+
+// ── Project memory ───────────────────────────────────────────────────────────
+
+/** Memories agents see for `workspaceRoot` (or the requesting window's project), plus user memories. */
+export async function fetchMemories(workspaceRoot?: string): Promise<MemoryListing | null> {
+  const qs = new URLSearchParams();
+  if (workspaceRoot) qs.set('workspaceRoot', workspaceRoot);
+  const query = qs.toString();
+  return brainFetch<MemoryListing>(`/api/brain/memories${query ? `?${query}` : ''}`);
+}
+
+export type MemoryWriteResult =
+  | { ok: true; memory: MemoryRecord }
+  | { ok: false; error: string; code?: string };
+
+/** Revision-checked edit of one memory. */
+export async function updateMemoryRecord(id: string, input: {
+  expectedRevision: string;
+  title: string;
+  body: string;
+  kind: MemoryKind;
+  evidence?: string;
+  workspaceRoot?: string;
+}): Promise<MemoryWriteResult> {
+  if (!isLocalServerAvailable()) return { ok: false, error: 'Offline — open Minnow.' };
+  try {
+    const res = await fetch(`${API_BASE}/api/brain/memories/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const data = (await res.json().catch(() => ({}))) as MemoryRecord & { error?: string; code?: string };
+    if (!res.ok) return { ok: false, error: data.error ?? `Request failed (${res.status})`, code: data.code };
+    return { ok: true, memory: data };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Delete one memory (a .bak copy stays beside the page). */
+export async function forgetMemoryRecord(id: string, options: {
+  workspaceRoot?: string;
+  expectedRevision?: string;
+} = {}): Promise<BrainMutationResult> {
+  if (!isLocalServerAvailable()) return { ok: false, error: 'Offline — open Minnow.' };
+  try {
+    const qs = new URLSearchParams();
+    if (options.workspaceRoot) qs.set('workspaceRoot', options.workspaceRoot);
+    if (options.expectedRevision) qs.set('expectedRevision', options.expectedRevision);
+    const query = qs.toString();
+    const res = await fetch(`${API_BASE}/api/brain/memories/${encodeURIComponent(id)}${query ? `?${query}` : ''}`,
+      { method: 'DELETE' });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) return { ok: false, error: data.error ?? `Request failed (${res.status})` };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

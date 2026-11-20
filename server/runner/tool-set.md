@@ -35,7 +35,7 @@ each default id is not answered with `Not implemented: <name>`.
 
 ## Port (already server-side — include in the default)
 
-File read/write, git, `execute_command` (+ log/stop/dev-server/JS/Python), code-intel, LSP, Brain wiki read + `save_memory`, web backends + `fetch_web_content` / `rag_web_content`, `minnow_docs_*`, Impeccable load/run.
+File read/write, git, `execute_command` (+ log/stop/dev-server/JS/Python), code-intel, LSP, project memory (`memory_search` / `memory_read` / `memory_save`), web backends + `fetch_web_content` / `rag_web_content`, `minnow_docs_*`, Impeccable load/run.
 
 These already run through `executeServerTool` with cwd-guard, host-kill, host-port-bind, windows-pipe, plan-write, output-cap, and `workspaceRoot` allowlist. The in-process dispatcher is a call-route skip, not a new implementation.
 
@@ -63,7 +63,7 @@ work in one worktree, so it does not need two ways to background a command
 two script runners (`run_javascript` / `run_python` vs `execute_command`), three
 search engines (only `web_search_ddg` needs no API key), or two page fetchers.
 Nor does it need office-document creation, the Minnow product manual, the
-impeccable design-review set, or `save_memory` — an unattended attempt should
+impeccable design-review set, or `memory_save` / `memory_forget` — an unattended attempt should
 not be writing the user's long-term memory.
 
 **A prompt line is not an enforcement point.** The Tester and Final Tester are

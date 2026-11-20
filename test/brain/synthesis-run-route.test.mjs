@@ -1,5 +1,6 @@
 /**
  * POST /api/memory/synthesis/run — throttle, board-chat skip, and force behavior.
+ * Only skill synthesis runs; memories are never written in the background.
  */
 
 import assert from 'node:assert/strict';
@@ -11,6 +12,7 @@ import { after, before, describe, mock, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 
 let memoryRunCount = 0;
+let skillRunCount = 0;
 
 mock.module('../../server/brain/synthesis.js', {
   namedExports: {
@@ -30,7 +32,10 @@ mock.module('../../server/brain/synthesis.js', {
 
 mock.module('../../server/brain/skill-synthesis.js', {
   namedExports: {
-    runSkillSynthesis: async () => ({ skillProposal: null, skipped: [] }),
+    runSkillSynthesis: async () => {
+      skillRunCount += 1;
+      return { skillProposal: null, skipped: [] };
+    },
   },
 });
 
@@ -130,6 +135,7 @@ describe('synthesis run route', () => {
 
   test('throttles when pair count is not on throttle boundary', async () => {
     memoryRunCount = 0;
+    skillRunCount = 0;
     const chatId = '11111111-1111-1111-1111-111111111111';
     const res = await handleRoute(baseUrl, {
       chatId,
@@ -139,11 +145,13 @@ describe('synthesis run route', () => {
     });
     assert.equal(res.status, 200);
     assert.deepEqual(res.json.skipped, ['throttled']);
+    assert.equal(skillRunCount, 0);
     assert.equal(memoryRunCount, 0);
   });
 
-  test('force bypasses throttle and runs synthesis', async () => {
+  test('force bypasses throttle and runs skill synthesis only', async () => {
     memoryRunCount = 0;
+    skillRunCount = 0;
     const chatId = '22222222-2222-2222-2222-222222222222';
     const res = await handleRoute(baseUrl, {
       chatId,
@@ -154,11 +162,16 @@ describe('synthesis run route', () => {
     });
     assert.equal(res.status, 200);
     assert.equal(res.json.ok, true);
-    assert.equal(memoryRunCount, 1);
+    assert.deepEqual(res.json.memoryProposals, []);
+    assert.deepEqual(res.json.memoryPages, []);
+    assert.deepEqual(res.json.memorySkipped, ['retired']);
+    assert.equal(skillRunCount, 1);
+    assert.equal(memoryRunCount, 0);
   });
 
   test('boardChat skips when includeBoardChats is false', async () => {
     memoryRunCount = 0;
+    skillRunCount = 0;
     await saveSynthesisConfig({ includeBoardChats: false, throttleMessagePairs: 1 });
     const chatId = '33333333-3333-3333-3333-333333333333';
     const res = await handleRoute(baseUrl, {
@@ -170,11 +183,13 @@ describe('synthesis run route', () => {
     });
     assert.equal(res.status, 200);
     assert.deepEqual(res.json.skipped, ['board-chat']);
+    assert.equal(skillRunCount, 0);
     assert.equal(memoryRunCount, 0);
   });
 
   test('boardChat runs when includeBoardChats is true', async () => {
     memoryRunCount = 0;
+    skillRunCount = 0;
     await saveSynthesisConfig({ includeBoardChats: true, throttleMessagePairs: 1 });
     const chatId = '44444444-4444-4444-4444-444444444444';
     const res = await handleRoute(baseUrl, {
@@ -185,11 +200,13 @@ describe('synthesis run route', () => {
       toolCount: 0,
     });
     assert.equal(res.status, 200);
-    assert.equal(memoryRunCount, 1);
+    assert.equal(skillRunCount, 1);
+    assert.equal(memoryRunCount, 0);
   });
 
   test('boardChat with force always runs', async () => {
     memoryRunCount = 0;
+    skillRunCount = 0;
     await saveSynthesisConfig({ includeBoardChats: false, throttleMessagePairs: 4 });
     const chatId = '55555555-5555-5555-5555-555555555555';
     const res = await handleRoute(baseUrl, {
@@ -201,7 +218,8 @@ describe('synthesis run route', () => {
       toolCount: 0,
     });
     assert.equal(res.status, 200);
-    assert.equal(memoryRunCount, 1);
+    assert.equal(skillRunCount, 1);
+    assert.equal(memoryRunCount, 0);
   });
 
   test('forced runs do not increment synthesis-state counter', async () => {

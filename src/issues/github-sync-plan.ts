@@ -192,7 +192,10 @@ function hasLocalChanged(issue: IssueCard, link: IssueGithubLink): boolean {
 export function issueNeedsGithubPush(issue: IssueCard): boolean {
   const link = issue.github;
   if (!link) return false;
-  return hasLocalChanged(issue, link);
+  const replicas = issue.githubReplicas ?? [];
+  const changedAt = link.localChangedAt ?? issue.updatedAt;
+  return hasLocalChanged(issue, link) ||
+    replicas.some((copy) => changedAt > (copy.localUpdatedAt ?? copy.syncedAt));
 }
 
 /** Parse `#12` / `12` from a git-link ref. */
@@ -208,13 +211,15 @@ export function githubIssueNumberFromRef(ref: string): number | null {
  * Peek renders that identity once on the sync row, not again as a chip.
  */
 export function gitLinkDuplicatesGithubIssue(
-  link: Pick<IssueGitLink, 'kind' | 'ref'>,
+  link: Pick<IssueGitLink, 'kind' | 'ref' | 'url'>,
   issue: Pick<IssueCard, 'github'>,
 ): boolean {
   if (link.kind !== 'github-issue') return false;
   const number = issue.github?.number;
   if (!number) return false;
-  return githubIssueNumberFromRef(link.ref) === number;
+  if (githubIssueNumberFromRef(link.ref) !== number) return false;
+  const url = link.url;
+  return !url || !issue.github?.url || url.toLowerCase() === issue.github.url.toLowerCase();
 }
 
 function hasRemoteChanged(remote: RemoteIssueSnapshot, link: IssueGithubLink): boolean {

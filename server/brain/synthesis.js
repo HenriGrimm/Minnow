@@ -1,4 +1,5 @@
 import { llmCall } from '../research/llm.js';
+import { containsSecretPatterns } from './secret-patterns.js';
 import { loadAllPagesWithBodies } from './retrieve.js';
 import { createPage, loadBrainConfig, updatePage } from './store.js';
 import { loadSynthesisConfig, resolveSynthesisModel } from './synthesis-config.js';
@@ -51,25 +52,7 @@ Scope: "personal" or "workspace".
 
 Return ONLY valid JSON, no markdown fences.`;
 
-const SECRET_PATTERNS = [
-  /\bsk-[a-zA-Z0-9]{10,}\b/,
-  /\bBearer\s+[a-zA-Z0-9._-]{8,}\b/i,
-  /\bapi[_-]?key\b/i,
-  /\bpassword\b/i,
-  /\bsecret\b/i,
-  /\btoken\b/i,
-  /\bghp_[a-zA-Z0-9]{20,}\b/,
-  /\bxox[baprs]-[a-zA-Z0-9-]{10,}\b/,
-];
-
-/**
- * @param {string} text
- * @returns {boolean}
- */
-export function containsSecretPatterns(text) {
-  const value = String(text ?? '');
-  return SECRET_PATTERNS.some((re) => re.test(value));
-}
+export { containsSecretPatterns };
 
 /**
  * @param {string} raw

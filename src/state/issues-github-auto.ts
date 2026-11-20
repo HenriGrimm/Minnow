@@ -22,7 +22,7 @@ import {
   subscribeIssuesGithubMode,
   syncIssueWithGithub,
   readGithubIssueBatch,
-  scopeForIssue,
+  scopesForIssue,
   localIsClosed,
   type GithubBatchSnapshot,
   type SyncOutcome,
@@ -223,10 +223,16 @@ export async function runGithubAutoSyncLinkedPass(): Promise<void> {
     const shouldContinue = () => nowMs() >= pollerCooldownUntil && githubAutoSyncActive() &&
       workspacePathsEqual(cwd, getWorkspacePath());
     const groups = new Map<string, { scope: IssueForgeScope; issues: typeof issues }>();
+    const multi: typeof issues = [];
     for (const issue of issues) {
       if (!shouldContinue()) break;
       try {
-        const scope = await scopeForIssue(issue);
+        const scopes = await scopesForIssue(issue);
+        if (scopes.length > 1) {
+          multi.push(issue);
+          continue;
+        }
+        const [scope] = scopes;
         const key = forgeScopeKey(scope);
         const existing = groups.get(key);
         if (existing) existing.issues.push(issue);
@@ -256,6 +262,9 @@ export async function runGithubAutoSyncLinkedPass(): Promise<void> {
       }
     }
 
+    await runGithubSyncQueue(multi, async (issue) => {
+      if (!isGithubAutoSyncBusy(issue.id)) await runAutoSync(issue.id);
+    }, shouldContinue);
   } finally {
     pollerInFlight = false;
   }

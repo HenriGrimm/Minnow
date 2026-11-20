@@ -1838,62 +1838,120 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
-    id: 'brain_search',
-    label: 'Brain search',
+    id: 'memory_search',
+    label: 'Memory search',
     description:
-      'Semantic/hybrid search over the Brain wiki (workspace-scoped). Requires Minnow running locally.',
+      'Search the current project memory and the user cross-project preferences. Requires Minnow running locally.',
     category: 'utility',
     serverRequired: true,
     definition: toolSchema(
-      'brain_search',
-      'Search the Brain wiki for relevant pages using keyword and optional semantic hybrid retrieval. Use for fuzzy prose lookup (why, decisions, domain model, gotchas). Scoped to the active workspace plus global pages.',
+      'memory_search',
+      'Search this project\'s memory (decisions, constraints, gotchas, user preferences). Returns short matches or nothing; read a match with memory_read before relying on it.',
       {
         query: {
           type: 'string',
-          description: 'Natural-language search query',
+          description: 'Specific words: a component, error text, decision topic or preference',
         },
         limit: {
           type: 'number',
-          description: 'Max pages to return (default 8, max 20)',
+          description: 'Max results (default 5, max 10)',
         },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Optional tag filter',
+        kind: {
+          type: 'string',
+          enum: ['decision', 'constraint', 'gotcha', 'preference', 'reference'],
+          description: 'Optional kind filter',
         },
       },
       ['query'],
     ),
   },
   {
-    id: 'brain_read_page',
-    label: 'Brain read page',
-    description: 'Read a Brain wiki page by relative path. Requires Minnow running locally.',
+    id: 'memory_read',
+    label: 'Memory read',
+    description: 'Read one project or user memory by id. Requires Minnow running locally.',
     category: 'utility',
     serverRequired: true,
     definition: toolSchema(
-      'brain_read_page',
-      'Read one wiki page from ~/.minnow/brain/pages, including its revision for conditional writes. Use the full relative path from brain_search (e.g. minnow/architecture.md, facts/api-preference.md) or a matched page id.',
+      'memory_read',
+      'Read one memory in full, including its revision.',
       {
-        path: {
+        id: {
           type: 'string',
-          description:
-            'Relative path under pages/ from brain_search (e.g. minnow/architecture.md) or a page id',
+          description: 'Memory id from memory_search',
         },
       },
-      ['path'],
+      ['id'],
     ),
   },
   {
-    id: 'brain_list',
-    label: 'Brain list pages',
-    description: 'List the Brain wiki page tree. Requires Minnow running locally.',
+    id: 'memory_save',
+    label: 'Memory save',
+    description: 'Save or update one durable project or user memory. Requires Minnow running locally.',
     category: 'utility',
     serverRequired: true,
     definition: toolSchema(
-      'brain_list',
-      'Return the nested tree of wiki pages (metadata only) under ~/.minnow/brain/pages/.',
-      {},
+      'memory_save',
+      'Save or update one durable memory for this project (or the user\'s cross-project preferences). Search first; pass id and expectedRevision to update instead of duplicating.',
+      {
+        title: {
+          type: 'string',
+          description: 'Specific one-line claim (max 100 characters)',
+        },
+        body: {
+          type: 'string',
+          description: 'The claim, why it holds and the evidence, in a few lines (max 1,200 characters)',
+        },
+        kind: {
+          type: 'string',
+          enum: ['decision', 'constraint', 'gotcha', 'preference', 'reference'],
+          description: 'What sort of memory this is',
+        },
+        scope: {
+          type: 'string',
+          enum: ['project', 'user'],
+          description: 'project (default): this repository and its worktrees. user: a preference the user applies across projects',
+        },
+        evidence: {
+          type: 'string',
+          description: 'Optional file, command or issue that backs the claim (max 300 characters)',
+        },
+        id: {
+          type: 'string',
+          description: 'Id of the memory to update (from memory_search); omit to create',
+        },
+        expectedRevision: {
+          type: 'string',
+          description: 'Revision from memory_read; required when id is set',
+        },
+        supersedes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Ids of memories this one replaces; they stop appearing in search',
+        },
+      },
+      ['title', 'body', 'kind'],
+    ),
+  },
+  {
+    id: 'memory_forget',
+    label: 'Memory forget',
+    description: 'Delete a project or user memory that is wrong or obsolete. Requires Minnow running locally.',
+    category: 'utility',
+    serverRequired: true,
+    definition: toolSchema(
+      'memory_forget',
+      'Delete a memory that is wrong or no longer applies.',
+      {
+        id: {
+          type: 'string',
+          description: 'Memory id from memory_search',
+        },
+        reason: {
+          type: 'string',
+          description: 'Why it is wrong or no longer applies',
+        },
+      },
+      ['id', 'reason'],
     ),
   },
   {
@@ -1955,89 +2013,6 @@ export const BUILT_IN_TOOLS = [
           description: 'Optional path prefix such as documentation/manual/get-started/',
         },
       },
-    ),
-  },
-  {
-    id: 'brain_write_page',
-    label: 'Brain write page',
-    description: 'Create or update a Brain wiki page. Requires Minnow running locally.',
-    category: 'utility',
-    serverRequired: true,
-    definition: toolSchema(
-      'brain_write_page',
-      'Create or update a wiki page (YAML frontmatter + markdown body). Use for durable knowledge: decisions, domain model, conventions, gotchas. Paths are sandboxed under ~/.minnow/brain/pages/. Pass expectedRevision from brain_read_page to reject a stale update; omit it for an unconditional write.',
-      {
-        path: {
-          type: 'string',
-          description: 'Relative path under pages/ ending in .md',
-        },
-        title: {
-          type: 'string',
-          description: 'Page title',
-        },
-        body: {
-          type: 'string',
-          description: 'Markdown body (may include [[wikilinks]])',
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Optional tags for retrieval',
-        },
-        summary: {
-          type: 'string',
-          description: 'Optional one-line summary for the catalog',
-        },
-        expectedRevision: {
-          type: 'string',
-          description: 'Optional revision returned by brain_read_page; reject the write if the page changed or was deleted',
-        },
-      },
-      ['path', 'title', 'body'],
-    ),
-  },
-  {
-    id: 'brain_append_log',
-    label: 'Brain append log',
-    description: 'Append a changelog entry to brain log.md. Requires Minnow running locally.',
-    category: 'utility',
-    serverRequired: true,
-    definition: toolSchema(
-      'brain_append_log',
-      'Append a timestamped line to ~/.minnow/brain/log.md (wiki changelog).',
-      {
-        entry: {
-          type: 'string',
-          description: 'Changelog note to append',
-        },
-      },
-      ['entry'],
-    ),
-  },
-  {
-    id: 'brain_ingest_source',
-    label: 'Brain ingest source',
-    description: 'Ingest a non-code source into the Brain wiki. Requires Minnow running locally.',
-    category: 'utility',
-    serverRequired: true,
-    definition: toolSchema(
-      'brain_ingest_source',
-      'Store raw source text under ~/.minnow/brain/sources/ and synthesize one or more wiki pages from it.',
-      {
-        content: {
-          type: 'string',
-          description: 'Raw source text to ingest',
-        },
-        filename: {
-          type: 'string',
-          description: 'Optional original filename hint',
-        },
-        title: {
-          type: 'string',
-          description: 'Optional source title for synthesis',
-        },
-      },
-      ['content'],
     ),
   },
   {
@@ -2276,34 +2251,6 @@ export const BUILT_IN_TOOLS = [
         familyName: { type: 'string', description: 'CSS font-family name for uploaded fonts' },
       },
       ['kind', 'path'],
-    ),
-  },
-  {
-    id: 'save_memory',
-    label: 'Save memory',
-    description:
-      'Persist a discrete fact to pages/facts/ (alias for brain_write_page). Requires Minnow running locally.',
-    category: 'utility',
-    serverRequired: true,
-    definition: toolSchema(
-      'save_memory',
-      'Save a durable fact under ~/.minnow/brain/pages/facts/ for retrieval in later sessions. Alias for writing a facts/ wiki page. Use when the user asks you to remember something, or when you learn a stable preference, convention, or project fact. Do not save secrets, one-off task state, or ephemeral details.',
-      {
-        title: {
-          type: 'string',
-          description: 'Short label for the memory (e.g. "Preferred test runner")',
-        },
-        body: {
-          type: 'string',
-          description: 'Full note text to store',
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Optional tags for retrieval (e.g. ["testing", "preferences"])',
-        },
-      },
-      ['title', 'body'],
     ),
   },
   {

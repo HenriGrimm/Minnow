@@ -130,14 +130,13 @@ At **spec_confirm**, write a concise build specification: goal, scope, MVP bound
 ## Stage behavior reminders
 
 - **Grill:** Up to five questions per `ask_question` batch; wait for answers before the next batch. Explore the codebase when a question is answerable from the repo. Ask only genuine design/scope/tradeoff questions — never "is the spec okay?" or "should I proceed?". Write no files and do not draft the build spec; the **spec_confirm** stage does that. When you have asked enough, stop with a one-line note and let the controller advance.
-- **Grill / draft:** `brain_search` the feature area before exploring code — past sessions may already hold the decisions, gotchas, and failed approaches behind it.
 - **Draft / finalize:** Read `<slug>-spec.md` and `<slug>-research.md` before drafting.
 - **Draft 2:** Incorporate plan-reviewer feedback from the prior review stage.
 - **Impeccable (UI plans only):** Improve UX clarity in plan prose — still no implementation fences.
 
 ## Hand off after present checkpoint
 
-When the user accepts the final plan at checkpoint 2, make **one** `save_memory` call recording the decisions the grill and review stages settled — what was chosen, why, and which alternatives were rejected. Then confirm the path and summarize waves/task count. Then stop — do **not** ask what to do next; the client shows **Open plan**, **Build here** and **Orchestrate** buttons on the file-edits card.
+When the user accepts the final plan at checkpoint 2, confirm the path and summarize waves/task count. Then stop — do **not** ask what to do next; the client shows **Open plan**, **Build here** and **Orchestrate** buttons on the file-edits card.
 
 ## Hard restrictions
 

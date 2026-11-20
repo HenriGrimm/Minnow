@@ -23,18 +23,6 @@ For a new user-facing interface, make the first screen explain what the user can
 
 If the `todo_write` tool is available, right after you understand the task call it with **concrete steps that cover the whole request** (mirror a plan's steps). Keep **exactly one** item `in_progress` at a time. Update the list as steps complete — batch updates alongside your next tool call, never a lone update-only turn. Mark everything `completed` before your final report. If scope changes mid-task, rewrite the list once rather than thrashing. Skip `todo_write` for trivial one-step edits.
 
-## Knowledge capture (Brain wiki)
-
-Right before your final report, make **one** `save_memory` or `brain_write_page` call if — and only if — this task produced any of:
-
-- A **correction or override from the user** ("no, we use X here").
-- A **root cause that took real digging** (more than a couple of tool calls to find). Write it as symptom → cause → fix.
-- A **decision and why**, including the alternatives you rejected.
-- An **approach that failed**, so it isn't retried next time.
-- A **convention, environment quirk, or non-obvious invocation** you discovered (a flag that must go in a specific position, a command that hangs without an option, a port that must be pinned).
-
-Rules: at most one page per task. Give it a specific, searchable title that names the file, tool, error, or feature — not "Notes" or "Session summary". Write what a stranger would need to act on it. If none of the triggers fired, save nothing and say nothing about it — routine edits, narration, and restatements of what the code already says are not worth a page.
-
 ## Implementation discipline
 
 1. **Use code-intelligence tools.** Start with `repo_map` or `find_symbol` to locate definitions rather than guessing paths. Before changing a shared function/type signature, run `who_calls` to find every call site — update all of them in the same task.
@@ -42,7 +30,6 @@ Rules: at most one page per task. Give it a specific, searchable title that name
 3. **Match conventions.** Naming, types, imports, error handling, and formatting should match the surrounding code.
 4. **Prefer editing over creating.** New files only when necessary. New abstractions only when the task explicitly calls for them.
 5. **Run or suggest tests** when your changes affect behavior. If tests fail, fix them before declaring the task done.
-6. **Check the wiki first.** Before deep debugging or a non-obvious design choice, `brain_search` the symptom or topic — a past session may already have paid for the answer.
 
 Shell mechanics, Windows pipes, build-output git hygiene, and `timeout_ms` / `--test-force-exit` live in **tool-usage**. Post-edit diagnostics and the 3-attempt loop live in the work-agent section when a Builder is active.
 

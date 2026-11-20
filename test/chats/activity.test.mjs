@@ -156,3 +156,29 @@ test('additive migration clears old active-execution read baselines instead of p
   f.repository.updateExecution('active-before-migration', { status: 'failed' }, { fence });
   assert.equal(f.repository.getActivity('child').turnError, true);
 });
+
+test('failed executions project structured refusal facts for recovery and keep them through normalization', t => {
+  const f = fixture(t); const fence = f.claim('quota');
+  const resetAt = 5_000_000;
+  f.repository.updateExecution('quota', { status: 'failed', result: { outcome: 'crashed', error: 'You have hit your usage limit',
+    quotaExceeded: true, failure: { kind: 'quota', scope: 'provider', resetAt, retryAt: resetAt, identity: 'opaque-hash',
+      providerId: 'codex-cli', modelId: 'gpt-5', status: 429, code: 'usage_limit' } } }, { fence });
+  f.repository.releaseLease('child', fence);
+  const execution = f.repository.getActivity('child').agentExecution;
+  assert.deepEqual(execution.failure, { kind: 'quota', quotaExceeded: true, status: 429, code: 'usage_limit', resetAt, retryAt: resetAt,
+    providerId: 'codex-cli', modelId: 'gpt-5' });
+  // The opaque allowance identity is internal and never projected.
+  assert.doesNotMatch(JSON.stringify(execution), /opaque-hash/);
+  const shell = normalizeChatRow({ id: 'child', history: [], agentExecution: execution }).agentExecution;
+  assert.deepEqual(shell.failure, execution.failure);
+  assert.equal(shell.error, execution.error);
+  assert.equal(normalizeChatRow({ id: 'child', history: [], agentExecution: { ...execution, failure: { kind: 'bogus', resetAt: -1, code: 'has spaces' } } })
+    .agentExecution.failure, undefined);
+});
+
+test('timeouts project as a failure outcome even without an error line', t => {
+  const f = fixture(t); const fence = f.claim('slow');
+  f.repository.updateExecution('slow', { status: 'failed', result: { outcome: 'timeout' } }, { fence });
+  f.repository.releaseLease('child', fence);
+  assert.deepEqual(f.repository.getActivity('child').agentExecution.failure, { outcome: 'timeout' });
+});

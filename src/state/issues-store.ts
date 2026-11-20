@@ -400,6 +400,7 @@ const NORMALIZED_ISSUE_CARD_KEYS: ReadonlySet<string> = new Set([
   'comments',
   'activity',
   'githubSync',
+  'githubReplicas',
 ]);
 
 /** Top-level state keys this revision normalizes (see above). */
@@ -559,6 +560,11 @@ function applyIssueCardV3Fields(card: IssueCard, raw: Record<string, unknown>): 
   if (typeof raw.githubSync === 'boolean') card.githubSync = raw.githubSync;
   const github = parseIssueGithubLink(raw.github);
   if (github) card.github = github;
+  if (github && Array.isArray(raw.githubReplicas)) {
+    const replicas = raw.githubReplicas.map(parseIssueGithubLink)
+      .filter((link): link is IssueGithubLink => Boolean(link?.repo));
+    if (replicas.length) card.githubReplicas = replicas;
+  }
 }
 
 const NORMALIZED_GITHUB_KEYS: ReadonlySet<string> = new Set([
@@ -1798,7 +1804,7 @@ export function updateIssue(
   }
   touchIssuesStore();
   // Auto-sync keys off GitHub-shaped fields, not every updatedAt bump (rank, assignee, …).
-  if (!options?.skipGithubAutoSync && githubSyncedFieldsChanged(beforeSynced, afterSynced)) {
+  if (!options?.skipGithubAutoSync && (patch.repos !== undefined || githubSyncedFieldsChanged(beforeSynced, afterSynced))) {
     notifyGithubSyncedFieldWrite(issueId);
   }
   return issue;

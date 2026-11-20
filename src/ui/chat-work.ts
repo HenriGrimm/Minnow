@@ -89,7 +89,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (!target) return false;
       // Streaming markdown can change every token; only structural/phase changes
       // affect the work disclosure. Never walk the transcript for prose deltas.
-      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-presented-files, .chat-reply-foot, .msg-bubble, .thoughts-flow, .managed-chat-requests')) return false;
+      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-presented-files, .chat-reply-foot, .msg-bubble, .thoughts-flow, .managed-chat-requests, .chat-turn-failure')) return false;
       // Token counts and elapsed clocks rewrite every ~80ms while streaming; the
       // 1s live tick picks them up. Phase changes still land via classes/data-stream-phase.
       if (target.closest(LIVE_TEXT_LEAVES)) return false;

@@ -112,6 +112,27 @@ afterEach(() => {
 });
 
 describe('issues detail display', () => {
+  test('the Repositories row shows the workspace repo as the GitHub default', async (t) => {
+    setupDom();
+    const workspacePath = '/workspace-with-root';
+    const repos = ['backend', '.'].map((id) => ({
+      id, relPath: id, absPath: id === '.' ? workspacePath : `${workspacePath}/${id}`, isRoot: id === '.', remote: null,
+    }));
+    t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) =>
+      String(input).startsWith('/api/workspace/repos') ? Response.json({ ok: true, repos }) : Response.json({}));
+    seedIssues([{
+      id: 'GET-3', title: 'Default repo', description: '', type: 'task', status: 'backlog',
+      priority: 'none', labels: [], source: 'user', workspacePath,
+      createdAt: FIXED_NOW, updatedAt: FIXED_NOW,
+    }]);
+    openIssueDetail('GET-3');
+    for (let i = 0; i < 20 && !sectionCount(document.body, 'repos'); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(sectionCount(document.body, 'repos'), 'Workspace (default)');
+    assert.equal(findIssueById('GET-3')?.repos, undefined);
+  });
+
   test('Git actions let a multi-repo issue choose the checkout, push, and PR destination', async (t) => {
     setupDom();
     setLocalServerAvailableForTests(true);

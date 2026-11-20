@@ -68,7 +68,6 @@ export function mountHistoryPager(options: HistoryPagerOptions): () => void {
       } while (index > start && performance.now() - started < SLICE_MS);
       if (index > start) { schedule(step); return; }
 
-      // Resolve layout once per requested page, after every construction slice is finished.
       scroller.preserve(mount, () => {
         mount.prepend(...chunk.childNodes);
         end = start;

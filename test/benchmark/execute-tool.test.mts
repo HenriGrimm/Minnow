@@ -11,7 +11,7 @@ import { isBenchmarkStubbedTool } from '../../src/benchmark/execute-tool-sandbox
 describe('capability matrix execute-tool', () => {
   test('side-effect catalog includes emit-only probe tools', () => {
     assert.equal(isCapabilitySideEffectTool('web_search'), true);
-    assert.equal(isCapabilitySideEffectTool('brain_write_page'), true);
+    assert.equal(isCapabilitySideEffectTool('memory_save'), true);
     assert.equal(isCapabilitySideEffectTool('git_commit'), true);
     assert.equal(isCapabilitySideEffectTool('get_datetime'), false);
     assert.ok(CAPABILITY_SIDE_EFFECT_TOOL_IDS.size >= 20);

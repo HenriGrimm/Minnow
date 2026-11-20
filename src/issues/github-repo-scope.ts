@@ -3,8 +3,7 @@
  *
  * In a single-repo workspace every forge call runs in the workspace, exactly as
  * before. In a folder of several repos each call names the repo: a linked issue
- * follows its stored `github.repo` (`owner/name`); an unlinked one publishes to
- * the single repo it targets, and is held back when it targets none or several.
+ * follows its stored remote identities and publishes missing copies to its targets.
  */
 
 import type { IssueCard } from '../types';
@@ -46,6 +45,8 @@ export function resolveIssueForgeScope(
     if (!hit) throw new Error(`GitHub repo ${issue.github?.repo} is not in this workspace any more.`);
     return scopeOf(cwd, hit);
   }
+  // An unidentified legacy link cannot safely inherit a new publishing target.
+  if (issue.github && !issue.repos?.length && repos.length > 1) throw new Error(CHOOSE_REPO_ERROR);
   const ids = issueRepoIds(issue, repos).filter((id) => repos.some((repo) => repo.id === id));
   if (ids.length !== 1) throw new Error(CHOOSE_REPO_ERROR);
   return scopeOf(cwd, repos.find((repo) => repo.id === ids[0])!);
@@ -68,8 +69,38 @@ export function importScopes(cwd: string, repos: readonly WorkspaceRepo[]): Issu
     .map((repo) => scopeOf(cwd, repo));
 }
 
-/** True when a linked issue belongs to the scope's remote (legacy links without a repo match any). */
-export function issueInScope(issue: Pick<IssueCard, 'github'>, scope: IssueForgeScope): boolean {
+export function githubLinkInScope(issue: Pick<IssueCard, 'github' | 'githubReplicas' | 'repos'>, scope: IssueForgeScope) {
   const slug = issueGithubSlug(issue);
-  return !scope.slug || !slug || slug === scope.slug.toLowerCase();
+  if ((!scope.repo && !scope.slug) || (slug && slug === scope.slug?.toLowerCase()) ||
+      (!slug && issue.repos?.length === 1 && issue.repos[0] === scope.repo)) return issue.github;
+  if (scope.slug) {
+    return issue.githubReplicas?.find((link) => issueGithubSlug({ github: link }) === scope.slug?.toLowerCase());
+  }
+}
+
+export function resolveIssueForgeScopes(
+  issue: Pick<IssueCard, 'workspacePath' | 'repos' | 'github' | 'githubReplicas'>,
+  repos: readonly WorkspaceRepo[],
+): IssueForgeScope[] {
+  if (!issue.githubReplicas?.length && (!repos.length ||
+      (repos.length === 1 && repos[0].isRoot && !issue.repos?.some((id) => id !== '.')))) {
+    return [resolveIssueForgeScope(issue, repos)];
+  }
+  if (!issue.githubReplicas?.length &&
+      ((issue.repos?.length ?? 0) < 2 && !(issue.github && issue.repos?.length))) {
+    return [resolveIssueForgeScope(issue, repos)];
+  }
+  const linked = issue.github ? [resolveIssueForgeScope(issue, repos)] : [];
+  for (const github of issue.githubReplicas ?? []) {
+    linked.push(resolveIssueForgeScope({ ...issue, github }, repos));
+  }
+  const scopes = new Map(linked.map((scope) => [scope.slug?.toLowerCase() ?? forgeScopeKey(scope), scope]));
+  for (const id of issue.repos ?? []) {
+    const repo = repos.find((candidate) => candidate.id === id);
+    if (!repo) throw new Error(`Repository ${id} is not in this workspace any more.`);
+    const scope = scopeOf(issue.workspacePath, repo);
+    const key = scope.slug?.toLowerCase() ?? forgeScopeKey(scope);
+    if (!scopes.has(key)) scopes.set(key, scope);
+  }
+  return [...scopes.values()];
 }

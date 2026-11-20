@@ -7,6 +7,27 @@ function selection(value) {
   const checked = validateModelSelection(parse(value));
   return checked.ok ? checked.value : undefined;
 }
+const FAILURE_KINDS = new Set(['quota', 'rate_limit', 'unavailable']);
+const safeId = value => typeof value === 'string' && value.length > 0 && value.length <= 512 ? value : undefined;
+const futureTime = value => Number.isFinite(value) && value > 0 && value <= 8.64e15 ? value : undefined;
+
+/** Structured refusal facts for recovery UI; vendor prose stays in the sanitized `error` line. */
+function failureFacts(row) {
+  if (!row) return undefined;
+  const facts = {
+    ...(row.outcome === 'timeout' ? { outcome: 'timeout' } : {}),
+    ...(FAILURE_KINDS.has(row.kind) ? { kind: row.kind } : {}),
+    ...(row.quota === 1 || row.quota === true ? { quotaExceeded: true } : {}),
+    ...(row.unreachable === 1 || row.unreachable === true ? { providerUnreachable: true } : {}),
+    ...(Number.isInteger(row.http_status) && row.http_status >= 100 && row.http_status < 600 ? { status: row.http_status } : {}),
+    ...(typeof row.code === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(row.code) ? { code: row.code } : {}),
+    ...(futureTime(row.reset_at) ? { resetAt: row.reset_at } : {}),
+    ...(futureTime(row.retry_at) ? { retryAt: row.retry_at } : {}),
+    ...(safeId(row.provider_id) ? { providerId: row.provider_id } : {}),
+    ...(safeId(row.model_id) ? { modelId: row.model_id } : {}),
+  };
+  return Object.keys(facts).length ? facts : undefined;
+}
 
 /** Lightweight canonical activity, shared by summaries, mounted frames and notices. */
 export function readChatActivity(db, chatId) {
@@ -30,7 +51,14 @@ export function readChatActivity(db, chatId) {
   const resolvedModel = selection(JSON.stringify(activity.resolvedModel ?? null));
   const contextUsage = activity.contextUsage;
   const failed = execution && ['failed', 'recovery_required'].includes(execution.status);
-  const error = failed ? db.prepare("SELECT substr(json_extract(result_json,'$.error'),1,2048) AS message FROM chat_executions WHERE execution_id=?").get(execution.execution_id)?.message : null;
+  const outcome = failed ? db.prepare(`SELECT substr(json_extract(result_json,'$.error'),1,2048) AS message, json_extract(result_json,'$.outcome') AS outcome,
+    json_extract(result_json,'$.failure.kind') AS kind, json_extract(result_json,'$.failure.resetAt') AS reset_at, json_extract(result_json,'$.failure.retryAt') AS retry_at,
+    json_extract(result_json,'$.failure.status') AS http_status, json_extract(result_json,'$.failure.code') AS code,
+    json_extract(result_json,'$.failure.providerId') AS provider_id, json_extract(result_json,'$.failure.modelId') AS model_id,
+    json_extract(result_json,'$.quotaExceeded') AS quota, json_extract(result_json,'$.providerUnreachable') AS unreachable
+    FROM chat_executions WHERE execution_id=?`).get(execution.execution_id) : null;
+  const error = outcome?.message;
+  const failure = execution?.status === 'failed' ? failureFacts(outcome) : undefined;
   const title = managed && !chat.delegated && execution?.status === 'completed' ? db.prepare("SELECT command_id,json_extract(captured_json,'$.titleUpdate.name') AS placeholder,json_extract(captured_json,'$.titleUpdate.expectedName') AS original_name FROM chat_commands WHERE chat_id=? AND json_extract(payload_json,'$.kind')='send' AND json_extract(payload_json,'$.provenance.actor')='human' ORDER BY position LIMIT 1").get(chatId) : null;
   const autoTitle = title &&
     (chat.name.trim().toLowerCase() === 'new chat' || title.original_name?.trim().toLowerCase() === 'new chat' && chat.name === title.placeholder);
@@ -44,6 +72,7 @@ export function readChatActivity(db, chatId) {
       ...(modelSelection ? { modelSelection } : {}), ...(resolvedModel ? { resolvedModel } : {}),
       ...(contextUsage ? { contextUsage } : {}),
       ...(typeof error === 'string' && error ? { error: safeAgentCliDiagnostic(error).slice(0, 1024) } : {}),
+      ...(failure ? { failure } : {}),
     } : null,
     agentPendingCommand: pending ? { commandId: pending.command_id, runId: pending.run_id, state: pending.state,
       held: pending.held === 1, ...(typeof pending.error_code === 'string' ? { errorCode: pending.error_code } : {}) } : null,

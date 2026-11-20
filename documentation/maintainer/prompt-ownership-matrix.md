@@ -11,7 +11,7 @@ Defines which layer owns which instruction so composed system prompts do not rep
 | **tool-usage (fragments)** | Conditional features: fact-verification ladder, mode-handoff, ask-question enforcement, browser allowlist, sub-agent delegation, Context7, settings, launch-app | Content duplicated in base or mode |
 | **mode** | Mode mechanics only: tool policy deltas, handoff triggers, mode-specific reporting (e.g. READY FOR VERIFICATION), `todo_write` when no default work-agent | Full implementation how-to when default work-agent is active |
 | **work-agent** | Deliverable spec: Builder persistence/diagnostics, Planner plan schema, Orchestrator board workflow | Base safety, generic shell rules |
-| **memory** | Brain wiki layout, routing table, save_memory / brain_write rules, brain-before-web | Base one-line pointer to memory section |
+| **memory** (`tool-usage/memory.md`, `memory-readonly.md`) | When to search, save, update and forget project memory; included only when memory tools are enabled, never with retrieved content | Mode, work-agent and skill prompts (no capture mandates) |
 
 ## Suppression rules (composer)
 

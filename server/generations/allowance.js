@@ -165,7 +165,13 @@ export async function withAllowance(context, attempt, cancelled = () => false) {
     if (failure?.kind === 'quota' && context.cli && !result.failure) failure.scope = 'provider';
     claim.finish(failure, result.outcome === 'complete' && !cancelled());
     await tracker.flush().catch(() => {});
-    if (failure) { result.failure = { ...failure, identity: context.identity, providerId: context.providerId, modelId: context.modelId }; result.quotaExceeded = failure.kind === 'quota'; }
+    if (failure) {
+      // The recorded cooldown is when this model accepts requests again; the
+      // same time a blocked attempt reports, so recovery UI can offer it.
+      const retryAt = failure.retryAt ?? tracker.availability(context).retryAt;
+      result.failure = { ...failure, ...(Number.isFinite(retryAt) ? { retryAt } : {}), identity: context.identity, providerId: context.providerId, modelId: context.modelId };
+      result.quotaExceeded = failure.kind === 'quota';
+    }
     else if (result.outcome === 'fatal') result.failure = { identity: context.identity, providerId: context.providerId, modelId: context.modelId };
     return result;
   } finally { claim.finish(null); }

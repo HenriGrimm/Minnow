@@ -38,18 +38,26 @@ describe('injection notice', () => {
       updatedAt: 1,
     };
     const added = appendInjectionNoticesForTurn(chat, {
-      brainNotes: 'wiki hit',
+      brainNotes: null,
       codeMap: 'export function main() {}',
-      contextDocuments: null,
+      contextDocuments: 'AGENTS.md body',
     });
     assert.equal(added.length, 2);
     assert.equal(chat.history.length, 3);
     assert.equal(chat.history[1].role, 'injection');
     if (chat.history[1].role === 'injection') {
-      assert.equal(chat.history[1].kind, 'brain-notes');
-      assert.equal(chat.history[1].body, 'wiki hit');
+      assert.equal(chat.history[1].kind, 'code-map');
+      assert.equal(chat.history[1].body, 'export function main() {}');
     }
     assert.equal(chat.history[2].role, 'injection');
+  });
+
+  test('appendInjectionNoticesForTurn never records memory as injected', () => {
+    const chat: Chat = { id: 'c-mem', name: 'Test', history: [{ role: 'user', content: 'hello' }], createdAt: 1, updatedAt: 1 };
+    const added = appendInjectionNoticesForTurn(chat, { brainNotes: 'stale wiki hit', codeMap: null, contextDocuments: null });
+    assert.equal(added.length, 0);
+    assert.equal(chat.history.length, 1);
+    assert.equal(chat.injectedContext?.['brain-notes'], undefined);
   });
 
   test('appendInjectionNoticesForTurn skips empty blocks', () => {
@@ -77,8 +85,8 @@ describe('injection notice', () => {
       createdAt: 1,
       updatedAt: 1,
     };
-    appendInjectionNoticesForTurn(chat, { brainNotes: 'same', codeMap: null, contextDocuments: null });
-    appendInjectionNoticesForTurn(chat, { brainNotes: 'same', codeMap: null, contextDocuments: null });
+    appendInjectionNoticesForTurn(chat, { brainNotes: null, codeMap: 'same', contextDocuments: null });
+    appendInjectionNoticesForTurn(chat, { brainNotes: null, codeMap: 'same', contextDocuments: null });
     assert.equal(chat.history.length, 2);
   });
 
@@ -117,15 +125,15 @@ describe('injection notice', () => {
       updatedAt: 1,
     };
     appendInjectionNoticesForTurn(chat, {
-      brainNotes: 'wiki hit',
-      codeMap: null,
+      brainNotes: null,
+      codeMap: 'map hit',
       contextDocuments: null,
     });
     const row = chat.history[1];
     if (row.role === 'injection') {
       assert.equal(row.truncated, undefined);
     }
-    assert.equal(chat.injectedContext?.['brain-notes'], 'wiki hit');
+    assert.equal(chat.injectedContext?.['code-map'], 'map hit');
   });
 
   test('historyToApiMessagesForEstimate skips injection notices', () => {

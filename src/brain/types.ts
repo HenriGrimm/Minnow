@@ -479,3 +479,30 @@ export interface CodeMapPathHit {
   path: string;
   kind: 'file' | 'folder';
 }
+
+export type MemoryKind = 'decision' | 'constraint' | 'gotcha' | 'preference' | 'reference';
+export type MemoryScope = 'project' | 'user';
+
+/** One project or user memory from GET /api/brain/memories. */
+export interface MemoryRecord {
+  id: string;
+  title: string;
+  kind: MemoryKind;
+  scope: MemoryScope;
+  body: string;
+  evidence: string;
+  supersedes: string[];
+  source?: string;
+  sourceChatId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: string;
+}
+
+/** Memories agents can see for one project, plus the user's cross-project memories. */
+export interface MemoryListing {
+  project: { key: string; label: string } | null;
+  kinds: MemoryKind[];
+  limits: { title: number; body: number; evidence: number; projectCap: number; userCap: number };
+  memories: MemoryRecord[];
+}

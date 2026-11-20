@@ -32,10 +32,11 @@ Use **Import from GitHub** in the Issues header to bring open and closed issues 
 
 Minnow displays one level of sub-issues. When a GitHub issue’s parent is itself a sub-issue, the imported card can appear as a top-level issue. Minnow preserves its GitHub parent when syncing other edits.
 
-With GitHub sync on, each issue syncs with its own repository:
+With GitHub sync on, an issue syncs with each repository it targets:
 
-- A linked issue keeps syncing with the repository it was linked to.
-- A new issue is published to the one repository it targets. An issue that targets no repository, or several, is held back with **Choose a repo for this issue before publishing it to GitHub.** Set its Repositories row and sync again.
+- Minnow keeps one local card and creates one GitHub issue in each targeted repository. Existing GitHub links remain linked when you change the targets. Retrying after a partial failure reuses copies already linked.
+- An unlinked issue with no target publishes to the Git repository at the workspace folder, if there is one. If the folder has no repository of its own, Minnow uses the only child repository or asks you to choose under **Repositories** when there are several.
+- To delete the GitHub copies of a multi-repo card, delete them individually on GitHub. You can delete the local card without deleting its GitHub copies.
 
 ## Isolated chats
 

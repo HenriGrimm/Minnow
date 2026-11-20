@@ -48,8 +48,10 @@ describe('multi-repo issue fields', () => {
     });
   }
 
-  test('issueRepoIds falls back to the only repo', () => {
+  test('issueRepoIds falls back to the workspace repo or the only repo', () => {
     assert.deepEqual(issueRepoIds({}, [{ id: '.' }]), ['.']);
+    assert.deepEqual(issueRepoIds({ repos: [] }, [{ id: 'frontend' }, { id: '.' }]), ['.']);
+    assert.deepEqual(issueRepoIds({}, [{ id: 'frontend' }]), ['frontend']);
     assert.deepEqual(issueRepoIds({}, [{ id: 'frontend' }, { id: 'backend' }]), []);
     assert.deepEqual(issueRepoIds({ repos: ['backend'] }, [{ id: 'frontend' }, { id: 'backend' }]), ['backend']);
   });

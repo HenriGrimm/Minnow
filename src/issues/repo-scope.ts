@@ -2,8 +2,8 @@
  * Which repos an issue targets in a multi-repo workspace.
  *
  * Issues stay workspace-scoped (one ISS-n numbering). `IssueCard.repos` lists
- * the workspace-relative repo ids the work touches; absent means "the
- * workspace's only repo". Links (`IssueGitLink.repo`, `agent.prRepo`) record
+ * the workspace-relative repo ids the work explicitly targets. Links
+ * (`IssueGitLink.repo`, `agent.prRepo`) record
  * which repo a PR, commit or branch lives in, so `#12` in one repo is never
  * mistaken for `#12` in another.
  */
@@ -33,12 +33,13 @@ export function normalizeIssueGitLinkRepo<T>(link: T): T {
 }
 
 /**
- * The repo ids an issue targets: its explicit `repos`, else the single repo
- * when the workspace has exactly one, else none.
+ * Publishing targets for an unlinked issue: explicit repos, then the workspace
+ * repo, then the only child repo if there is one. Never guess among siblings.
  */
 export function issueRepoIds(issue: Pick<IssueCard, 'repos'>, repos: ReadonlyArray<{ id: string }>): string[] {
   if (issue.repos?.length) return [...issue.repos];
-  return repos.length === 1 ? [repos[0].id] : [];
+  const fallback = repos.find((repo) => repo.id === '.') ?? (repos.length === 1 ? repos[0] : undefined);
+  return fallback ? [fallback.id] : [];
 }
 
 /** Older GitHub links may only have a URL. */

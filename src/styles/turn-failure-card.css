@@ -1,0 +1,172 @@
+/* In-transcript recovery card for a failed server-run turn (src/ui/turn-failure-card.ts). */
+.chat-turn-failure {
+  --turn-failure-tone: var(--mn-danger);
+  --turn-failure-soft: var(--mn-danger-soft);
+  --turn-failure-border: var(--mn-danger-border);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  max-width: var(--chat-reading-width, 100%);
+  align-self: center;
+  min-width: 0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--turn-failure-border);
+  border-radius: var(--mn-radius-lg);
+  background: color-mix(in srgb, var(--turn-failure-soft) 45%, var(--mn-surface-1));
+  color: var(--mn-fg);
+}
+
+/* Waiting for an allowance or a busy provider is expected, not broken. */
+.chat-turn-failure:is([data-kind='usage_limit'], [data-kind='rate_limit'], [data-kind='signed_out'], [data-kind='timeout']) {
+  --turn-failure-tone: var(--mn-warning);
+  --turn-failure-soft: var(--mn-warning-soft);
+  --turn-failure-border: var(--mn-warning-border);
+}
+
+.chat-turn-failure__icon {
+  display: grid;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: var(--mn-radius-md);
+  background: var(--turn-failure-soft);
+  color: var(--turn-failure-tone);
+}
+
+.chat-turn-failure__body {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-turn-failure__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--mn-fg);
+}
+
+.chat-turn-failure__title:focus { outline: none; }
+
+.chat-turn-failure__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--mn-fg-muted);
+  text-wrap: pretty;
+}
+
+.chat-turn-failure__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chat-turn-failure__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.chat-turn-failure__btn:hover:not(:disabled) { background: var(--mn-surface-2); }
+
+.chat-turn-failure__btn--primary {
+  border-color: transparent;
+  background: var(--mn-accent);
+  color: var(--mn-fg-on-accent);
+}
+
+.chat-turn-failure__btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mn-accent) 88%, var(--mn-fg));
+}
+
+.chat-turn-failure__btn--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--mn-fg-muted);
+}
+
+.chat-turn-failure__btn--quiet:hover:not(:disabled) { color: var(--mn-fg); }
+
+.chat-turn-failure__btn[aria-pressed='true'] {
+  border-color: var(--turn-failure-border);
+  background: var(--turn-failure-soft);
+}
+
+.chat-turn-failure__btn:disabled { opacity: 0.55; cursor: default; }
+
+.chat-turn-failure__btn:focus-visible,
+.chat-turn-failure__details summary:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: var(--mn-focus-ring-offset);
+}
+
+.chat-turn-failure__status {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+}
+
+.chat-turn-failure__status:empty { display: none; }
+
+.chat-turn-failure__sign-in[hidden] { display: none; }
+
+.chat-turn-failure__sign-in {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-surface-0);
+}
+
+.chat-turn-failure__details { margin-top: 4px; font-size: 12px; color: var(--mn-fg-muted); }
+
+.chat-turn-failure__details summary {
+  width: fit-content;
+  padding-block: 2px;
+  cursor: pointer;
+}
+
+.chat-turn-failure__details pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-surface-0);
+  font: 11.5px/1.6 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .chat-turn-failure { gap: 10px; padding: 12px; }
+  .chat-turn-failure__icon { width: 26px; height: 26px; }
+  .chat-turn-failure__btn { flex: 1 1 auto; justify-content: center; }
+  .chat-turn-failure__btn--quiet { flex: 0 1 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-turn-failure__btn { transition: none; }
+}

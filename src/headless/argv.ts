@@ -29,7 +29,7 @@ export interface HeadlessRunCliOptions {
   persistChat: boolean;
   chatId: string | null;
   chatName: string | null;
-  /** Scheduled job subprocess — adds guidance to avoid save_memory noise. */
+  /** Scheduled job subprocess — adds guidance to avoid routine memory_save calls. */
   schedulerRun: boolean;
   /** Session token override; falls back to MINNOW_TOKEN env, then ~/.minnow/session-token. */
   token: string | null;
@@ -81,7 +81,7 @@ Session:
   --client-request-id <id>  Retry an existing managed message receipt without duplicates
   --wait-timeout <s>      Managed command wait deadline; expiry keeps accepted work running
   --chat-name <label>     Sidebar title for the persisted chat (default: Headless run)
-  --scheduler-run         Scheduled-job context (suppress routine save_memory)
+  --scheduler-run         Scheduled-job context (suppress routine memory_save)
 
 Env:
   BROWSER=none                             Use with npm start in CI

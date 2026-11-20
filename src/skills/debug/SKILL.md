@@ -42,7 +42,6 @@ Help the user **file, triage, and fix issues** via the **Issues** app (`#/app/is
 
 ## Agent pipeline (Issues detail)
 
-0. **Search the wiki** — before investigating, `brain_search` the error message or symptom. A past session may already have the root cause.
 1. **Send to chat** — open the issue in a chat (add `/debug` to investigate).
 2. **Plan** — use `/plan` to write `documentation/plans/issues/<id>.md`.
 3. **Send to board** — launch an Orchestrate board from the plan; board completion moves linked issues to **Review**.
@@ -50,18 +49,6 @@ Help the user **file, triage, and fix issues** via the **Issues** app (`#/app/is
 ## Ad-hoc sub-agents
 
 Only when the user explicitly requests delegation, spawn a sub-agent with a focused brief (reproduce, bisect, or read a subsystem). Fuller fixes can go to a board from the issue plan.
-
-## Knowledge capture (Brain wiki)
-
-When a bug is resolved, make **one** `save_memory` or `brain_write_page` call if the fix produced any of:
-
-- A **root cause that took real digging** — write it as symptom → cause → fix. This is the common case here; a bug worth an issue is usually worth a page.
-- An **approach that failed**, so nobody retries it.
-- A **decision and why**, including rejected alternatives.
-- A **convention or environment quirk** the bug exposed.
-- A **correction from the user** about how this system actually works.
-
-At most one page per issue. Title it with the specific symptom, error string, or component — something a future search would actually type. A one-line typo fix gets no page; skip silently rather than writing filler.
 
 ## Conventions
 

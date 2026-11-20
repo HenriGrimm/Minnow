@@ -419,23 +419,23 @@ export const CAPABILITY_CATALOG_ENTRIES: CapabilityCatalogEntry[] =
   {
     "id": "knowledge-brain-read",
     "group": "knowledge",
-    "header": "brain_search / read_page / list",
+    "header": "memory_search / memory_read",
     tier: 2,
     "scoreMode": "auto",
-    "howToTest": "'What does the Brain say about the session engine?'",
+    "howToTest": "'What did we decide earlier about the session engine? Check project memory.'",
     "setup": "Benchmark scratch workspace with tool server running; capability-matrix fixtures seeded when required.",
-    "prompt": "What does the Brain say about the session engine?",
+    "prompt": "What did we decide earlier about the session engine? Check project memory.",
     "passCriteria": "Automated probe returns pass, partial, or fail; n-a when requirements (vision, LSP, workspace, mode prompt) are missing."
   },
   {
     "id": "knowledge-brain-write",
     "group": "knowledge",
-    "header": "brain_write_page / append_log / ingest",
+    "header": "memory_forget",
     tier: 3,
     "scoreMode": "auto",
-    "howToTest": "'Write what we just learned to a Brain page.'",
+    "howToTest": "'The memory about our CI runner is wrong now. Forget it.'",
     "setup": "Benchmark scratch workspace with tool server running; capability-matrix fixtures seeded when required.",
-    "prompt": "Write what we just learned to a Brain page.",
+    "prompt": "The memory about our CI runner is wrong now. Forget it.",
     "passCriteria": "Automated probe returns pass, partial, or fail; n-a when requirements (vision, LSP, workspace, mode prompt) are missing."
   },
   {
@@ -452,7 +452,7 @@ export const CAPABILITY_CATALOG_ENTRIES: CapabilityCatalogEntry[] =
   {
     "id": "knowledge-save-memory",
     "group": "knowledge",
-    "header": "save_memory",
+    "header": "memory_save",
     tier: 2,
     "scoreMode": "auto",
     "howToTest": "'Remember that I always want tests run before commits.'",

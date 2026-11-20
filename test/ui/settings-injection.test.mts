@@ -34,7 +34,7 @@ describe('settings injection section', () => {
     setStorageModeForTests(null);
   });
 
-  test('renders Brain notes, code map, and context document settings together', async () => {
+  test('renders code map and context document settings without a Brain notes row', async () => {
     const mount = setupDom();
     setStorageModeForTests('server');
     globalThis.fetch = async () =>
@@ -55,7 +55,8 @@ describe('settings injection section', () => {
 
     await renderInjectionSettingsSection(mount, () => {});
 
-    assert.ok(document.getElementById('settingsBrainNotesInjectionDefault'));
+    assert.equal(document.getElementById('settingsBrainNotesInjectionDefault'), null);
+    assert.doesNotMatch(mount.textContent ?? '', /Brain notes/);
     assert.ok(document.getElementById('settingsCodeMapInjectionDefault'));
     assert.ok(document.getElementById('settingsContextDocumentsInjectionDefault'));
     assert.equal(

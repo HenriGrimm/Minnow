@@ -95,7 +95,7 @@ describe('buildComposeContext cwd', () => {
     resetConfigFileCacheForTests();
   });
 
-  it('parallel optional lanes have a cold-setup deadline and discard late renderer results', async t => {
+  it('the optional code-map lane has a cold-setup deadline and memory is never retrieved', async t => {
     const originalFetch = globalThis.fetch;
     const wasAvailable = isLocalServerAvailable();
     t.after(() => { globalThis.fetch = originalFetch; setLocalServerAvailableForTests(wasAvailable); });
@@ -116,11 +116,13 @@ describe('buildComposeContext cwd', () => {
       return Response.json({});
     };
     const ctx = await buildComposeContext(baseChat({ memoryEnabled: true }), { firstUserSend: true, enrichmentTimeoutMs: 30 });
-    assert.ok([...seen].some(url => url.includes('/api/brain/retrieve')));
+    assert.ok(![...seen].some(url => url.includes('/api/brain/retrieve')));
     assert.ok([...seen].some(url => url.includes('/api/brain/code/config')));
     assert.equal(ctx.memoryBlock, null);
+    assert.equal(ctx.memoryEnabled, false);
     assert.equal(ctx.codeMapBlock, null);
-    assert.match(ctx.enrichmentNotice!, /code-map \(deadline\).*memory \(deadline\)/);
+    assert.match(ctx.enrichmentNotice!, /code-map \(deadline\)/);
+    assert.doesNotMatch(ctx.enrichmentNotice!, /memory/);
     assert.equal(ctx.chatLinksBlock, null);
     releaseMemory(Response.json({ block: 'LATE OLD MEMORY' }));
     releaseCode(Response.json({ code: { enabled: true } }));

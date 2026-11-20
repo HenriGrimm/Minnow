@@ -50,9 +50,10 @@ import { fetchWorkspaceRepos } from './workspace-repos';
 import {
   forgeScopeArgs,
   forgeScopeKey,
+  githubLinkInScope,
   importScopes,
-  issueInScope,
   resolveIssueForgeScope,
+  resolveIssueForgeScopes,
   type IssueForgeScope,
 } from '../issues/github-repo-scope';
 import { githubRetryAt } from '../lib/github-rate-limit.mjs';
@@ -218,6 +219,9 @@ export async function deleteIssueFromGithub(issueId: string): Promise<{
       const issue = findIssueById(issueId);
       const number = issue?.github?.number;
       if (!issue || !number) return { ok: false, error: 'Issue is not linked to GitHub' };
+      if (issue.githubReplicas?.length) {
+        return { ok: false, error: 'This card has multiple GitHub copies. Delete them individually on GitHub, or delete only the local card.' };
+      }
       const result = await forge('issueDelete', { number, ...forgeScopeArgs(await scopeForIssue(issue)) });
       return result.ok
         ? { ok: true }
@@ -246,6 +250,14 @@ export async function scopeForIssue(
     throw new Error('Could not find the issue’s repository in its workspace.');
   }
   return resolveIssueForgeScope(issue, repos);
+}
+
+export async function scopesForIssue(issue: NonNullable<ReturnType<typeof findIssueById>>): Promise<IssueForgeScope[]> {
+  const repos = issue.workspacePath ? await fetchWorkspaceRepos({ workspacePath: issue.workspacePath }) : [];
+  if (!repos.length && (issue.githubReplicas?.length || issue.repos?.some((id) => id !== '.'))) {
+    throw new Error('Could not find the issue’s repository in its workspace.');
+  }
+  return resolveIssueForgeScopes(issue, repos);
 }
 
 /**
@@ -288,7 +300,7 @@ export function localIsClosed(status: string): boolean {
   return isClosedStatus(getIssuesTaxonomySync(), status);
 }
 
-function portableFields(issue: NonNullable<ReturnType<typeof findIssueById>>): SyncFields {
+function portableFields(issue: NonNullable<ReturnType<typeof findIssueById>>, scope: IssueForgeScope): SyncFields {
   const taxonomy = getIssuesTaxonomySync();
   const type = taxonomy.types.find((row) => row.id === issue.type);
   const priority = taxonomy.priorities.find((row) => row.id === issue.priority);
@@ -296,8 +308,9 @@ function portableFields(issue: NonNullable<ReturnType<typeof findIssueById>>): S
   if (!type || !priority || !status) throw new Error('Issue categorization is missing from the taxonomy');
   const project = issue.projectId ? findIssueProject(issue.projectId) : undefined;
   const parent = issue.parentId ? findIssueById(issue.parentId) : undefined;
-  if (issue.parentId && (!parent?.github || normalizeWorkspacePath(parent.workspacePath) !== normalizeWorkspacePath(issue.workspacePath))) {
-    throw new Error('Sync the parent issue in the same workspace before syncing this sub-issue.');
+  const parentLink = parent && githubLinkInScope(parent, scope);
+  if (issue.parentId && (!parent || !parentLink || normalizeWorkspacePath(parent.workspacePath) !== normalizeWorkspacePath(issue.workspacePath))) {
+    throw new Error('Sync the parent issue to the same repository before syncing this sub-issue.');
   }
   const metadata: GithubIssueMetadata = {
     version: 1,
@@ -306,7 +319,7 @@ function portableFields(issue: NonNullable<ReturnType<typeof findIssueById>>): S
     status: { id: status.id, label: status.label, order: 0,
       ...(status.role ? { role: status.role } : {}), isClosed: Boolean(status.isClosed) },
     project: project ? { id: project.id, name: project.name } : null,
-    parent: parent?.github?.number ?? null,
+    parent: parentLink?.number ?? null,
     comments: structuredClone(issue.comments ?? []),
   };
   return { ...githubSyncedSnapshot(issue, localIsClosed(issue.status)), metadata };
@@ -366,7 +379,11 @@ async function readRemote(issueId: string): Promise<RemoteIssueSnapshot | null> 
   const issue = findIssueById(issueId);
   const number = issue?.github?.number;
   if (!number || !issue) return null;
-  const res = await forge('issueView', { number, ...forgeScopeArgs(await scopeForIssue(issue)) });
+  return readScopedRemote(number, await scopeForIssue(issue));
+}
+
+async function readScopedRemote(number: number, scope: IssueForgeScope): Promise<RemoteIssueSnapshot> {
+  const res = await forge('issueView', { number, ...forgeScopeArgs(scope) });
   if (!res.ok || !res.issue) throw new Error(res.error ?? 'Could not read the GitHub issue');
   return res.issue;
 }
@@ -400,7 +417,6 @@ export async function syncIssueWithGithub(issueId: string, batch?: GithubBatchSn
       }
       const outcome = await runIssueSync(issueId, batch?.remote);
       if (
-        outcome.ok &&
         getIssuesGithubMode() !== 'off' &&
         typeof navigator !== 'undefined' &&
         navigator.locks
@@ -422,35 +438,119 @@ export async function syncIssueWithGithub(issueId: string, batch?: GithubBatchSn
 async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Promise<SyncOutcome> {
   const mode = getIssuesGithubMode();
   if (mode === 'off') return { ok: true, action: 'noop' };
-  const remote = snapshot ?? await readRemote(issueId);
+  const initial = findIssueById(issueId);
+  if (!initial) return { ok: false, action: 'noop', error: 'Issue not found' };
+  const captured = { ...initial };
+  const scopes = await scopesForIssue(captured);
+  const targets: { scope: IssueForgeScope; remote: RemoteIssueSnapshot | null; prefersPull: boolean }[] = [];
+  const errors: string[] = [];
+  let outcome: SyncOutcome = { ok: true, action: 'noop' };
+  function recordError(scope: IssueForgeScope, error: string) {
+    errors.push(scopes.length > 1 && scope.repo ? `${scope.repo}: ${error}` : error);
+  }
+  for (const scope of scopes) {
+    const link = githubLinkInScope(captured, scope);
+    try {
+      const remote = link ? (scopes.length === 1 && snapshot ? snapshot : await readScopedRemote(link.number, scope)) : null;
+      targets.push({ scope, remote, prefersPull: false });
+    } catch (err) {
+      recordError(scope, userFacingGithubError(err instanceof Error ? err.message : String(err)));
+      if (githubRetryAt(errors.at(-1)) > Date.now()) break;
+    }
+  }
+  // Settle the newest eligible pull before writing other copies. A newer no-op
+  // (for example an unrelated GitHub comment) must not hide an older pull.
+  const latest = findIssueById(issueId);
+  if (!latest || latest.workspacePath !== captured.workspacePath) return outcome;
+  if (targets.length > 1) {
+    for (const target of targets) {
+      if (!target.remote) continue;
+      try {
+        const local = portableFields(latest, target.scope);
+        target.prefersPull = planIssueSync({
+          mode, issue: issueForTarget(latest, target.scope),
+          isClosed: local.closed, local, remote: target.remote,
+        }).kind === 'pull';
+      } catch {
+        // Report per-target preparation errors when executing that target.
+      }
+    }
+    targets.sort((a, b) => Number(b.prefersPull) - Number(a.prefersPull) ||
+      (b.remote?.updatedAt ?? -1) - (a.remote?.updatedAt ?? -1));
+  }
+  for (const { scope, remote } of targets) {
+    if (githubRetryAt(errors.at(-1)) > Date.now() || getIssuesGithubMode() === 'off') break;
+    try {
+      const current = findIssueById(issueId);
+      if (!current || current.workspacePath !== captured.workspacePath ||
+          current.repos !== captured.repos && JSON.stringify(current.repos) !== JSON.stringify(captured.repos)) break;
+      const result = await syncIssueTarget(issueId, scope, remote, scopes.length > 1);
+      if (result.ok && result.action === 'pull' && scopes.length > 1) {
+        // The other snapshots participated in this decision. A failed push
+        // must leave the winning revision pending instead of pulling one of
+        // those already considered snapshots back on the next retry.
+        const pulled = findIssueById(issueId);
+        if (pulled) {
+          for (const other of targets) {
+            if (other.scope === scope || other.remote?.updatedAt === undefined) continue;
+            const copy = githubLinkInScope(pulled, other.scope);
+            if (copy?.number === other.remote.number) {
+              copy.remoteUpdatedAt = Math.max(copy.remoteUpdatedAt ?? 0, other.remote.updatedAt);
+            }
+          }
+          scheduleSaveIssues();
+        }
+      }
+      if (!result.ok) {
+        if (result.conflict) return result;
+        recordError(scope, result.error ?? 'Could not sync GitHub issue');
+        if (scopes.length === 1) return result;
+      }
+      if (result.action !== 'noop' || targets.length === 1) {
+        outcome = { ...result, droppedLabels: outcome.droppedLabels || result.droppedLabels };
+      }
+    } catch (err) {
+      recordError(scope, userFacingGithubError(err instanceof Error ? err.message : String(err)));
+    }
+  }
+  return errors.length ? { ...outcome, ok: false, error: errors.join('\n') } : outcome;
+}
+
+function issueForTarget(issue: NonNullable<ReturnType<typeof findIssueById>>, scope: IssueForgeScope) {
+  const link = githubLinkInScope(issue, scope);
+  return { ...issue, labels: [...issue.labels], github: link && {
+    ...link, localChangedAt: issue.github?.localChangedAt ?? issue.updatedAt,
+  } };
+}
+
+async function syncIssueTarget(issueId: string, scope: IssueForgeScope, remote: RemoteIssueSnapshot | null, multi: boolean): Promise<SyncOutcome> {
   let current = findIssueById(issueId);
   if (!current) return { ok: false, action: 'noop', error: 'Issue not found' };
-  // Which repo this issue syncs with; unclear targets fail here, before any write.
-  const scope = await scopeForIssue(current);
   const remoteParentNumber = remote && decodeGithubIssueBody(remote.body).metadata?.parent;
   let parentId: string | undefined;
   if (remote) {
     const workspacePath = current.workspacePath;
-    const number = current.github?.number;
+    const number = githubLinkInScope(current, scope)?.number;
     const parent = await ensureRemoteParent(remote.number, remoteParentNumber, scope);
     // Parent discovery may take time; retain edits made while it was in flight.
     const latest = findIssueById(issueId);
-    if (!latest || latest.workspacePath !== workspacePath || latest.github?.number !== number) {
+    if (!latest || latest.workspacePath !== workspacePath || githubLinkInScope(latest, scope)?.number !== number) {
       return { ok: true, action: 'noop' };
     }
     current = latest;
     if (parent && validateParentLink(issueId, parent.id, listIssues()).ok) parentId = parent.id;
   }
   // Freeze the sent revision: edits during network calls must remain pending.
-  const issue = { ...current, labels: [...current.labels] };
-  const local = portableFields(issue);
+  const revision = current.github?.localChangedAt ?? current.updatedAt;
+  const issue = issueForTarget(current, scope);
+  const local = portableFields(issue, scope);
   // Keep the original GitHub relation in the payload when the local
   // one-level hierarchy cannot represent it and the user hasn't reparented it.
   if (local.metadata && remoteParentNumber && !parentId && !issue.parentId) {
     local.metadata.parent = remoteParentNumber;
   }
   const action = planIssueSync({
-    mode,
+    mode: getIssuesGithubMode(),
     issue,
     isClosed: localIsClosed(issue.status),
     remote,
@@ -460,7 +560,7 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
   switch (action.kind) {
     case 'noop':
       if (remote && issue.github) {
-        writeLink(issueId, issue.github.number, remote.url, remote.updatedAt, issue.updatedAt, scope);
+        writeLink(issueId, issue.github.number, remote.url, remote.updatedAt, revision, scope);
       }
       return { ok: true, action: 'noop', error: action.reason };
 
@@ -478,16 +578,14 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
           error: userFacingGithubError(res.error ?? 'Could not create the issue'),
         };
       }
-      writeLink(issueId, res.number, res.url ?? '', undefined, issue.updatedAt, scope);
+      writeLink(issueId, res.number, res.url ?? '', undefined, local.closed ? 0 : revision, scope);
       if (localIsClosed(issue.status)) {
         const closed = await forge('issueState', { number: res.number, state: 'closed', ...forgeScopeArgs(scope) });
         if (!closed.ok) {
           // Keep the created identity, but leave the closed-state change pending.
-          const linked = findIssueById(issueId)?.github;
-          if (linked) linked.localUpdatedAt = 0;
-          scheduleSaveIssues();
           return { ok: false, action: 'create', error: closed.error };
         }
+        writeLink(issueId, res.number, res.url ?? '', undefined, revision, scope);
       }
       return { ok: true, action: 'create', droppedLabels: res.droppedLabels };
     }
@@ -497,8 +595,8 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
       if (!number) return { ok: false, action: 'push', error: 'Not linked to a GitHub issue' };
       const res = await pushSyncedFieldsToGithub(number, action.fields, remote, forgeScopeArgs(scope));
       if (!res.ok) return { ok: false, action: 'push', error: res.error };
-      const after = await readRemote(issueId);
-      writeLink(issueId, number, issue.github?.url ?? '', after?.updatedAt, issue.updatedAt, scope);
+      const after = await readScopedRemote(number, scope);
+      writeLink(issueId, number, issue.github?.url ?? '', after.updatedAt, revision, scope);
       return { ok: true, action: 'push', droppedLabels: res.droppedLabels };
     }
 
@@ -508,7 +606,13 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
         return { ok: false, action: 'pull', error: 'Not linked to a GitHub issue' };
       }
       applyRemoteToIssue(issueId, action.fields, parentId);
-      writeLink(issueId, number, issue.github?.url ?? remote.url, remote.updatedAt, undefined, scope);
+      const pulled = findIssueById(issueId);
+      if (multi && pulled?.github) {
+        // A pull is a new local revision for every *other* replica.
+        pulled.github.localChangedAt = Math.max(pulled.updatedAt, revision + 1, (remote.updatedAt ?? 0) + 1);
+      }
+      writeLink(issueId, number, issue.github?.url ?? remote.url, remote.updatedAt,
+        multi ? pulled?.github?.localChangedAt : undefined, scope);
       return { ok: true, action: 'pull' };
     }
 
@@ -635,8 +739,9 @@ function writeLink(
   const issue = findIssueById(issueId);
   if (!issue) return;
   const localChangedAt = issue.github?.localChangedAt ?? issue.updatedAt;
-  issue.github = nextGithubLink({
-    previous: issue.github,
+  const previous = scope ? githubLinkInScope(issue, scope) : issue.github;
+  const link = nextGithubLink({
+    previous,
     number,
     url,
     ...(scope?.slug ? { repo: scope.slug } : {}),
@@ -644,7 +749,12 @@ function writeLink(
     remoteUpdatedAt,
     now: Date.now(),
   });
-  issue.github.localChangedAt = localChangedAt;
+  link.localChangedAt = localChangedAt;
+  if (!issue.github || previous === issue.github) {
+    issue.github = link;
+  } else {
+    issue.githubReplicas = [...(issue.githubReplicas ?? []).filter((copy) => copy !== previous), link];
+  }
   appendIssueLinks(issueId, {
     gitLinks: [{ kind: 'github-issue', ref: `#${number}`, url, ...(scope?.repo ? { repo: scope.repo } : {}) }],
   });
@@ -653,7 +763,7 @@ function writeLink(
 
 function findLinkedGithubIssue(number: number, workspacePath: string, scope?: IssueForgeScope) {
   return listIssues().find((row) => normalizeWorkspacePath(row.workspacePath) === normalizeWorkspacePath(workspacePath) &&
-    row.github?.number === number && (!scope || issueInScope(row, scope)));
+    (scope ? githubLinkInScope(row, scope) : row.github)?.number === number);
 }
 
 /** Restore an identity only after its parent is available; never watermark a partial import. */
@@ -758,17 +868,18 @@ export async function importGithubIssues(options?: {
     const childIdentities = new Set<string>();
     for (const issue of collectIssues({ workspacePath, includeSubWorkspaces: true, hideDone: false })) {
       if (!issue.github || relativeWorkspacePath(workspacePath, issue.workspacePath) === '.') continue;
-      if (issue.github.url) childUrls.add(issue.github.url.toLowerCase());
-      else if (issue.github.repo) childIdentities.add(`${issueGithubSlug(issue)}#${issue.github.number}`);
+      for (const github of [issue.github, ...(issue.githubReplicas ?? [])]) {
+        if (github.url) childUrls.add(github.url.toLowerCase());
+        else if (github.repo) childIdentities.add(`${issueGithubSlug({ github })}#${github.number}`);
+      }
     }
     const errors: string[] = [];
     let skipped = 0;
     for (const scope of scopes) {
       const linked = new Set(
         collectIssues({ scope: 'current_workspace', workspacePath, includeSubWorkspaces: true, hideDone: false })
-          .filter((issue) => (!workspacePath || relativeWorkspacePath(workspacePath, issue.workspacePath) === '.') &&
-            issueInScope(issue, scope))
-          .map((issue) => issue.github?.number)
+          .filter((issue) => !workspacePath || relativeWorkspacePath(workspacePath, issue.workspacePath) === '.')
+          .map((issue) => githubLinkInScope(issue, scope)?.number)
           .filter((n): n is number => typeof n === 'number'),
       );
 
@@ -878,14 +989,23 @@ export async function syncAllIssuesWithGithub(options?: {
   let retryAt = 0;
   // One batch read per remote: a workspace, or one repo of a multi-repo workspace.
   const groups = new Map<string, { scope: IssueForgeScope; issues: typeof eligible }>();
+  const multi = new Set<string>();
+  const singleScopes = new Map<string, IssueForgeScope>();
   for (const issue of eligible) {
-    let scope: IssueForgeScope;
     try {
-      scope = await scopeForIssue(issue);
+      const scopes = await scopesForIssue(issue);
+      if (scopes.length > 1) multi.add(issue.id);
+      else singleScopes.set(issue.id, scopes[0]);
     } catch (err) {
       outcomes.set(issue.id, { ok: false, action: 'noop', error: err instanceof Error ? err.message : String(err) });
       continue;
     }
+  }
+  const direct = eligible.filter((issue) => multi.has(issue.id) ||
+    (issue.parentId && multi.has(issue.parentId) && singleScopes.has(issue.id)));
+  for (const issue of eligible) {
+    const scope = singleScopes.get(issue.id);
+    if (!scope || (issue.parentId && multi.has(issue.parentId))) continue;
     const key = forgeScopeKey(scope);
     const group = groups.get(key) ?? { scope, issues: [] };
     group.issues.push(issue);
@@ -921,6 +1041,11 @@ export async function syncAllIssuesWithGithub(options?: {
       }
     }
   }
+  await runGithubSyncQueue(direct, async (issue) => {
+    const outcome = await syncIssueWithGithub(issue.id);
+    outcomes.set(issue.id, outcome);
+    retryAt = Math.max(retryAt, githubRetryAt(outcome.error));
+  }, () => Date.now() >= retryAt && getIssuesGithubMode() !== 'off');
   if (Date.now() < retryAt) errors.push(`GitHub sync paused. Retry after ${new Date(retryAt).toISOString()}`);
   // Report in list order even when network requests complete out of order.
   for (const issue of eligible) {

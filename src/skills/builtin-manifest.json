@@ -1,6 +1,13 @@
 {
   "skills": [
     {
+      "id": "antislop",
+      "label": "Antislop",
+      "description": "Run an evidence-based audit for anti-patterns, bugs, and AI-generated maintenance debt across the codebase or a diff, resume a saved audit, run an approval-gated comment cleanup, or audit and then implement approved fixes. Use for Antislop, Antislop Multi, Issues, Report, Diff, Resume, Comments, or Auto.",
+      "source": "builtin",
+      "disableModelInvocation": false
+    },
+    {
       "id": "ask",
       "label": "Ask",
       "description": "Answer, explain, compare or brainstorm without changing anything. The turn is read-only: files, git and settings stay untouched, whatever the permission level.",

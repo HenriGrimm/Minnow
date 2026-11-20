@@ -18,7 +18,7 @@ export interface TranscriptTurn {
 }
 
 /** These calls record completed work without starting another work step. */
-const REPLY_BOOKKEEPING_TOOLS = new Set(['save_memory', 'todo_write']);
+const REPLY_BOOKKEEPING_TOOLS = new Set(['save_memory', 'memory_save', 'todo_write']);
 
 /** Presentation boundaries only: never rewrite or compact the model's history. */
 export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {

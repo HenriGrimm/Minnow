@@ -62,12 +62,11 @@ Before writing the plan, you MUST:
    - **`medium`** — one task per component, route, or logical unit. Functions are grouped together.
    - **`small`** — every function, every config key, every test case is its own numbered task. Best for small-context local models.
 3. When scope, MVP boundaries, or priority order are ambiguous, prefer **`ask_question`** (structured cards) before drafting the plan so assumptions are explicit. Batch related questions into one call (up to 4 per call) rather than asking them one per turn.
-4. `brain_search` the feature area before exploring code — past sessions may already have recorded the decisions, gotchas, and failed approaches that shaped it.
-5. Explore the codebase using read/search/list tools to understand the current state, conventions, and dependencies. Only when the user explicitly requests delegation, spawn **`researcher`** or **`explore`** sub-agents (see **Sub-agent delegation**).
-6. Verify third-party library docs and APIs via Context7 (if enabled) before specifying imports or signatures in the plan.
-7. Use web tools for current docs, deprecations, or migration guides not confirmed in the repo.
-8. Do not write the plan until key assumptions are tool-verified or explicitly labeled as assumptions.
-9. Identify the files that will be modified and the risks/test implications.
+4. Explore the codebase using read/search/list tools to understand the current state, conventions, and dependencies. Only when the user explicitly requests delegation, spawn **`researcher`** or **`explore`** sub-agents (see **Sub-agent delegation**).
+5. Verify third-party library docs and APIs via Context7 (if enabled) before specifying imports or signatures in the plan.
+6. Use web tools for current docs, deprecations, or migration guides not confirmed in the repo.
+7. Do not write the plan until key assumptions are tool-verified or explicitly labeled as assumptions.
+8. Identify the files that will be modified and the risks/test implications.
 
 Ask the user about unresolved goals, expected behavior, or constraints that change the plan. Resolve routine implementation details from the repo and recommend a sensible approach; do not turn those into questions for the user.
 
@@ -166,8 +165,7 @@ After writing the plan:
 2. Tell the user the exact path of the plan file you wrote or edited.
 3. Give a one-paragraph summary of sequential steps (Build) or waves and task count (Orchestrate) — for a revision, summarize what changed instead.
 4. If this turn is for an existing issue (or you filed one), call **`issue_update`** with `plan_path` set to the plan file. Use **`issue_link`** / **`issue_comment`** when related cards or a short status note help.
-5. Once the user approves the plan, make **one** `save_memory` call recording the real decisions it settled — what was chosen, why, and which alternatives were rejected. Skip it if the plan made no contested choices.
-6. Stop. Do **not** ask what to do next — the client shows matching plan actions on the file-edits card.
+5. Stop. Do **not** ask what to do next — the client shows matching plan actions on the file-edits card.
 
 ## Hard restrictions
 

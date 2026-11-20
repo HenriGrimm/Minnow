@@ -18,7 +18,16 @@ Start with **/ask** for read-only investigation, **/plan** for a saved plan, or 
 
 ## Recover after a failed turn
 
-Read the error and the last tool step. For a model or provider failure, check the connection under **Models** and retry after it is available. If a command failed, copy the command and its first useful error into your follow-up. If Minnow asks you to **Confirm stopped**, verify the command has stopped on the host first.
+When a turn fails, a card at the end of the chat says what happened and how to recover. Your message and any finished work stay in the chat.
+
+| Card | What to do |
+| --- | --- |
+| **Signed out** | Select **Sign in** to renew your Claude Code, Codex or Cursor login in place, then **Retry now**. |
+| **Out of usage** | Select **Retry now** to try anyway, or **Retry automatically** to have Minnow retry when the allowance resets. Minnow must stay open for the automatic retry. You can also pick another model in the composer. |
+| **Busy or unreachable provider** | Wait a moment, check the provider under **Models** if needed, then retry. |
+| **Credentials, model or conversation length** | Fix the API key under **Models → Providers**, pick another model, or run `/compact`, then retry. |
+
+**Try again** sends your message again. When the turn already did some work, **Continue** asks the agent to pick up where it stopped, and **Start over** replaces the turn. Open **Technical details** for the provider's own error. If a command failed, copy the command and its first useful error into your follow-up. If Minnow asks you to **Confirm stopped**, verify the command has stopped on the host first.
 
 When the message menu offers retry, edit, undo, or fork actions, inspect what the action affects before using it. Review the checkout separately in **Diff** or **Source Control**, especially after a command with side effects.
 

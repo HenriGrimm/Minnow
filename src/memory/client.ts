@@ -3,11 +3,9 @@
  */
 
 import { isLocalServerAvailable } from '../tools/config';
-import { getWorkspacePath } from '../state/workspace';
 import type {
   MemoryEntryMeta,
   MemoryEntryWithBody,
-  MemoryRetrieveResult,
   MemoryEmbeddingsStatus,
   MemoryEmbeddingsReindexResult,
   MemoryEmbeddingsWarmupResult,
@@ -180,33 +178,6 @@ export async function fetchMemoryStatus(): Promise<MemoryStatus | null> {
 export async function fetchMemoryEnabled(): Promise<boolean> {
   const status = await fetchMemoryStatus();
   return status?.enabled !== false;
-}
-
-/** Retrieve formatted memory block for prompt injection (via Brain wiki retrieve). */
-export async function retrieveMemoryBlock(options: {
-  query?: string;
-  limit?: number;
-  expertId?: string;
-  autoInject?: boolean;
-}): Promise<string> {
-  const enabled = await fetchMemoryEnabled();
-  if (!enabled) return '';
-
-  const workspaceRoot = getWorkspacePath();
-
-  const data = await memoryFetch<MemoryRetrieveResult>('/api/brain/retrieve', {
-    method: 'POST',
-    body: JSON.stringify({
-      query: options.query ?? '',
-      limit: options.limit ?? 12,
-      workspaceRoot,
-      ...(options.autoInject ? { autoInject: true } : {}),
-      ...(options.expertId?.trim()
-        ? { scope: { expertId: options.expertId.trim() } }
-        : {}),
-    }),
-  });
-  return data?.block?.trim() ?? '';
 }
 
 /** Create a memory entry (settings / agent use). */

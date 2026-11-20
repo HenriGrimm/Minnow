@@ -184,21 +184,23 @@ export const REMAINING_AUTO_PROBES: Record<string, CapabilityProbeSpec> = {
   },
   'knowledge-brain-read': {
     kind: 'tool-call',
-    toolIds: ['brain_search', 'brain_read_page', 'brain_list'],
+    toolIds: ['memory_search', 'memory_read'],
     emitOnly: true,
     verdict: (out) =>
-      hasAnyTool(out.toolCalls, ['brain_search', 'brain_read_page', 'brain_list'])
-        ? pass('Brain read tool emitted')
-        : fail('No brain read tool'),
+      hasAnyTool(out.toolCalls, ['memory_search', 'memory_read'])
+        ? pass('Memory read tool emitted')
+        : fail('No memory read tool'),
   },
   'knowledge-brain-write': {
     kind: 'tool-call',
-    toolIds: ['brain_write_page', 'brain_append_log', 'brain_ingest_source'],
+    toolIds: ['memory_search', 'memory_forget'],
     emitOnly: true,
     verdict: (out) =>
-      hasAnyTool(out.toolCalls, ['brain_write_page', 'brain_append_log', 'brain_ingest_source'])
-        ? pass('Brain write tool emitted')
-        : fail('No brain write tool'),
+      hasAnyTool(out.toolCalls, ['memory_forget'])
+        ? pass('memory_forget emitted')
+        : hasAnyTool(out.toolCalls, ['memory_search'])
+          ? partial('Searched memory without forgetting')
+          : fail('No memory_forget'),
   },
   'knowledge-minnow-docs': {
     kind: 'tool-call',
@@ -211,10 +213,10 @@ export const REMAINING_AUTO_PROBES: Record<string, CapabilityProbeSpec> = {
   },
   'knowledge-save-memory': {
     kind: 'tool-call',
-    toolIds: ['save_memory'],
+    toolIds: ['memory_search', 'memory_save'],
     emitOnly: true,
     verdict: (out) =>
-      hasTool(out.toolCalls, 'save_memory') ? pass('save_memory emitted') : fail('No save_memory'),
+      hasTool(out.toolCalls, 'memory_save') ? pass('memory_save emitted') : fail('No memory_save'),
   },
   'apps-settings-appearance': {
     kind: 'tool-call',

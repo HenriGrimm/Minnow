@@ -320,8 +320,8 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
       ? [
           'You are executing a Minnow scheduled job in headless mode.',
           'Server tools (read/write files, shell, git, search, etc.) are available via the local tool API.',
-          'Do not call save_memory to record routine run output — the scheduler stores run history automatically.',
-          'Only use save_memory when the job prompt explicitly asks you to remember something for future chats.',
+          'Do not call memory_save to record routine run output — the scheduler stores run history automatically.',
+          'Only use memory_save when the job prompt explicitly asks you to remember something for future chats.',
         ].join(' ')
       : '';
 

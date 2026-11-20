@@ -11,7 +11,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { pathToFileURL } from 'node:url';
 
-test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brain', async t => {
+test('MCP hub: authenticated HTTP and stdio share live workspace Issues and memory', async t => {
   // realpath: a stdio child sees its cwd resolved (macOS /var -> /private/var).
   const home = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-mcp-hub-')));
   process.env.MINNOW_HOME = home;
@@ -75,7 +75,10 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
   });
   await t.test('curated schemas and runtime validation', async () => {
     const names = (await client.listTools()).tools.map(tool => tool.name);
-    assert.ok(names.includes('brain_write_page'));
+    assert.ok(names.includes('memory_save'));
+    for (const retired of ['brain_search', 'brain_read_page', 'brain_list', 'brain_write_page', 'brain_append_log', 'save_memory']) {
+      assert.ok(!names.includes(retired), retired);
+    }
     assert.ok(names.includes('issue_create'));
     assert.ok(names.includes('minnow_docs_search'));
     assert.ok(!names.includes('execute_command'));
@@ -149,27 +152,34 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     assert.notEqual(rekeyed.id, created[0].id);
     assert.equal(new Set(merged.issues.map(card => card.id)).size, merged.issues.length);
   });
-  await t.test('Brain round trip and read-only enforcement', async () => {
-    const writeTool = (await client.listTools()).tools.find(tool => tool.name === 'brain_write_page');
-    assert.ok(writeTool.inputSchema.properties.expectedRevision);
-    assert.notEqual((await call('brain_write_page', { path: 'facts/mcp-test.md', title: 'MCP fact', body: 'External agents share this knowledge.' })).isError, true);
-    const page = await call('brain_read_page', { path: 'facts/mcp-test.md' });
-    assert.match(page.content[0].text, /External agents share this knowledge/);
-    const revision = page.content[0].text.match(/^revision: ([a-f0-9]{64})$/m)?.[1];
+  await t.test('memory round trip and read-only enforcement', async () => {
+    const tools = (await client.listTools()).tools;
+    const saveTool = tools.find(tool => tool.name === 'memory_save');
+    assert.ok(saveTool.inputSchema.properties.expectedRevision);
+    assert.equal(saveTool.annotations.readOnlyHint, false);
+    assert.equal(tools.find(tool => tool.name === 'memory_search').annotations.readOnlyHint, true);
+    const saved = await call('memory_save', { title: 'MCP agents share this project memory', body: 'External agents share this knowledge.', kind: 'reference' });
+    assert.notEqual(saved.isError, true, JSON.stringify(saved));
+    const id = saved.content[0].text.match(/id: ([0-9a-f-]{36})/)?.[1];
+    assert.ok(id);
+    const read = await call('memory_read', { id });
+    assert.match(read.content[0].text, /External agents share this knowledge/);
+    const revision = read.content[0].text.match(/^revision: ([a-f0-9]{64})$/m)?.[1];
     assert.ok(revision);
-    assert.notEqual((await call('brain_write_page', {
-      path: 'facts/mcp-test.md', title: 'MCP fact', body: 'Updated knowledge.', expectedRevision: revision,
+    assert.notEqual((await call('memory_save', {
+      id, expectedRevision: revision, title: 'MCP agents share this project memory', body: 'Updated knowledge.', kind: 'reference',
     })).isError, true);
-    const stale = await call('brain_write_page', {
-      path: 'facts/mcp-test.md', title: 'MCP fact', body: 'Stale knowledge.', expectedRevision: revision,
+    const stale = await call('memory_save', {
+      id, expectedRevision: revision, title: 'MCP agents share this project memory', body: 'Stale knowledge.', kind: 'reference',
     });
     assert.equal(stale.isError, true);
-    assert.match((await call('brain_read_page', { path: 'facts/mcp-test.md' })).content[0].text, /Updated knowledge\./);
-    assert.equal((await call('brain_write_page', { path: '../../escape.md', title: 'Escape', body: 'No' })).isError, true);
+    assert.match((await call('memory_read', { id })).content[0].text, /Updated knowledge\./);
     const readOnly = await clientFor(workspace, '?readOnly=1');
     const names = (await readOnly.listTools()).tools.map(tool => tool.name);
     assert.ok(!names.includes('issue_create'));
-    assert.ok(!names.includes('brain_write_page'));
+    assert.ok(!names.includes('memory_save'));
+    assert.ok(!names.includes('memory_forget'));
+    assert.ok(names.includes('memory_search'));
     assert.equal((await readOnly.callTool({ name: 'issue_create', arguments: { title: 'No' } })).isError, true);
   });
   await t.test('stdio CLI interoperates with a real SDK client', async () => {
@@ -177,20 +187,25 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     existingStdio = stdio;
     clients.push(stdio);
     await stdio.connect(new StdioClientTransport({ command: process.execPath, args: [path.resolve('bin/minnow.mjs'), 'mcp', '--base-url', base, '--workspace', workspace, '--read-only'], env: { ...process.env, MINNOW_HOME: home }, stderr: 'pipe' }));
-    assert.ok((await stdio.listTools()).tools.some(tool => tool.name === 'brain_read_page'));
+    assert.ok((await stdio.listTools()).tools.some(tool => tool.name === 'memory_read'));
     assert.equal(json(await stdio.callTool({ name: 'issue_get', arguments: { issue_id: issue.id } })).title, 'Edited task');
   });
-  await t.test('concurrent Brain writes retain every page and log entry', async () => {
-    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => call('brain_write_page', {
-      path: `facts/concurrent-${i}.md`, title: `Concurrent ${i}`, body: `Knowledge ${i}`,
-    })));
+  await t.test('concurrent memory saves retain every memory', async () => {
+    // Distinct topics: near-duplicates are (correctly) refused by the store.
+    const facts = [
+      ['Concurrent: database migrations run with Flyway', 'Schema changes go through versioned Flyway scripts.'],
+      ['Concurrent: the docs site builds with Astro', 'Documentation pages are generated by Astro.'],
+      ['Concurrent: payments use the Stripe test keys in staging', 'Staging never charges real cards.'],
+      ['Concurrent: images are resized by a Lambda worker', 'Uploads trigger a resize function.'],
+      ['Concurrent: feature flags live in LaunchDarkly', 'Rollouts are toggled remotely.'],
+      ['Concurrent: the mobile app targets iOS 17', 'Older iOS versions are unsupported.'],
+      ['Concurrent: logs ship to Grafana Loki', 'Search logs in the Loki explorer.'],
+      ['Concurrent: email templates are written in MJML', 'Compile templates before sending.'],
+    ];
+    const results = await Promise.all(facts.map(([title, body]) => call('memory_save', { title, body, kind: 'reference' })));
     for (const result of results) assert.notEqual(result.isError, true, JSON.stringify(result));
     const { listPages } = await import('../../server/brain/store.js');
-    assert.equal((await listPages()).filter(page => page.path.startsWith('facts/concurrent-')).length, 8);
-    const logs = await Promise.all(Array.from({ length: 8 }, (_, i) => call('brain_append_log', { entry: `external-progress-${i}` })));
-    for (const result of logs) assert.notEqual(result.isError, true);
-    const log = await fs.readFile(path.join(home, 'brain', 'log.md'), 'utf8');
-    for (let i = 0; i < 8; i++) assert.ok(log.includes(`external-progress-${i}`));
+    assert.equal((await listPages()).filter(page => page.path.startsWith('memory/projects/') && /\/concurrent-/.test(page.path)).length, 8);
   });
   await t.test('one agent credential routes concurrent calls without workspace configuration', async () => {
     const response = await fetch(`${base}/api/mcp/hub/connections`, {
@@ -220,16 +235,16 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     assert.equal((await fetch(`${base}/api/config/ping`, { headers: { 'X-Minnow-Token': agentToken } })).status, 401);
     const scopedList = await (await fetch(`${base}/api/mcp/hub/connections`, { headers: { ...headers, 'X-Minnow-Workspace': otherWorkspace } })).json();
     assert.ok(scopedList.connections.some(row => row.id === connection.id));
-    const { createPage } = await import('../../server/brain/store.js');
-    const { brainWorkspaceKeyFromPath } = await import('../../server/brain/paths.js');
-    await createPage({ relPath: `workspaces/${brainWorkspaceKeyFromPath(workspace)}/scope-proof.md`, title: 'MCPscopeproof first', body: 'MCPscopeproof first-workspace knowledge.' });
-    await createPage({ relPath: `workspaces/${brainWorkspaceKeyFromPath(otherWorkspace)}/scope-proof.md`, title: 'MCPscopeproof second', body: 'MCPscopeproof second-workspace knowledge.' });
-    const searches = await Promise.all([workspace, otherWorkspace].map(workspace_path => invoke('brain_search', { query: 'MCPscopeproof', workspace_path })));
+    for (const [workspace_path, label] of [[workspace, 'first'], [otherWorkspace, 'second']]) {
+      const saved = await invoke('memory_save', { title: `MCPscopeproof ${label}`, body: `MCPscopeproof ${label}-workspace knowledge.`, kind: 'reference', workspace_path });
+      assert.notEqual(saved.isError, true, JSON.stringify(saved));
+    }
+    const searches = await Promise.all([workspace, otherWorkspace].map(workspace_path => invoke('memory_search', { query: 'MCPscopeproof', workspace_path })));
     for (const result of searches) assert.notEqual(result.isError, true, JSON.stringify(result));
-    assert.match(searches[0].content[0].text, /first-workspace knowledge/);
-    assert.doesNotMatch(searches[0].content[0].text, /second-workspace knowledge/);
-    assert.match(searches[1].content[0].text, /second-workspace knowledge/);
-    assert.doesNotMatch(searches[1].content[0].text, /first-workspace knowledge/);
+    assert.match(searches[0].content[0].text, /MCPscopeproof first/);
+    assert.doesNotMatch(searches[0].content[0].text, /MCPscopeproof second/);
+    assert.match(searches[1].content[0].text, /MCPscopeproof second/);
+    assert.doesNotMatch(searches[1].content[0].text, /MCPscopeproof first/);
     const readResponse = await fetch(`${base}/api/mcp/hub/connections`, {
       method: 'POST', headers: { 'X-Minnow-Token': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Mobile reader', access: 'read' }),
@@ -295,10 +310,10 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     await reader.connect(new StreamableHTTPClientTransport(new URL(`${base}/api/mcp/hub?readOnly=0`), { requestInit: { headers: capabilityHeaders } }));
     const names = (await reader.listTools()).tools.map(tool => tool.name);
     assert.ok(!names.includes('issue_create'));
-    assert.ok(!names.includes('brain_write_page'));
+    assert.ok(!names.includes('memory_save'));
     assert.equal((await reader.callTool({ name: 'issue_create', arguments: { title: 'Denied' } })).isError, true);
     assert.equal((await reader.callTool({ name: 'issue_list', arguments: { workspace_path: otherWorkspace } })).isError, true);
-    assert.equal((await reader.callTool({ name: 'brain_write_page', arguments: { path: 'facts/denied.md', title: 'Denied', body: 'Denied' } })).isError, true);
+    assert.equal((await reader.callTool({ name: 'memory_save', arguments: { title: 'Denied', body: 'Denied', kind: 'reference' } })).isError, true);
     for (const route of ['/api/config/ping', '/api/mcp/hub/info', '/api/mcp/hub/connections', '/api/streams/ws']) {
       assert.equal((await fetch(`${base}${route}`, { headers: capabilityHeaders })).status, 401);
     }

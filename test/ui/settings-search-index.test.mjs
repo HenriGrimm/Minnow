@@ -91,11 +91,13 @@ describe('settings-search-index', () => {
 
   test('injection fields route to the main Agents settings section', () => {
     const index = buildSettingsSearchIndex();
-    const injection = index.find((e) => e.id === 'field:agents.injection.brainNotes');
+    const injection = index.find((e) => e.id === 'field:agents.injection.codeMap');
     assert.ok(injection);
     assert.equal(injection.kind, 'field');
     assert.equal(injection.sectionId, 'injection');
-    assert.equal(injection.searchKey, 'agents.injection.brainNotes');
+    assert.equal(injection.searchKey, 'agents.injection.codeMap');
+    // Memory is searched on demand; there is no Brain notes injection setting.
+    assert.equal(index.some((e) => e.id === 'field:agents.injection.brainNotes'), false);
     assert.equal(index.some((e) => e.id === 'brain:memories-injection'), false);
     assert.equal(index.some((e) => e.id === 'brain:code-map-injection-default'), false);
   });

@@ -496,6 +496,17 @@
   gap: 8px;
 }
 
+.msg-bubble--error .msg-error-title { color: var(--mn-fg); font-weight: 600; }
+.msg-bubble--error .msg-error-note { color: var(--mn-fg-muted); white-space: normal; }
+.msg-bubble--error .msg-error-details { color: var(--mn-fg-muted); font-size: 0.85em; white-space: normal; }
+.msg-bubble--error .msg-error-details summary { width: fit-content; cursor: pointer; }
+.msg-bubble--error .msg-error-details p {
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .msg-error-recover-actions {
   display: flex;
   flex-wrap: wrap;

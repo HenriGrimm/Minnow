@@ -97,7 +97,7 @@ export const CORE_AND_FILES_PROBES: Record<string, CapabilityProbeSpec> = {
   'core-no-hallucinated-tools': {
     kind: 'derived',
     maxToolRounds: 4,
-    toolIds: ['get_datetime', 'save_memory'],
+    toolIds: ['get_datetime', 'memory_save'],
     verdict: (out) => {
       const invented = hallucinatedToolNames(out);
       if (invented.length > 0) {

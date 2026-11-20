@@ -33,6 +33,8 @@ const TOOL_ICON: Record<string, IconName> = {
   get_system_info: 'deviceDesktop',
   todo_write: 'check',
   save_memory: 'brainMemories',
+  memory_save: 'brainMemories',
+  memory_forget: 'trash',
   recall_history: 'thinkingBrain',
   search_settings: 'appSettings',
   get_settings: 'appSettings',
@@ -112,6 +114,8 @@ const TOOL_ICON: Record<string, IconName> = {
   browser_eval: 'terminal',
   browser_screenshot: 'deviceDesktop',
 
+  memory_search: 'search',
+  memory_read: 'brainMemories',
   brain_search: 'search',
   brain_read_page: 'appBrain',
   brain_list: 'appBrain',
@@ -141,6 +145,8 @@ const TOOL_ACTION: Record<string, string> = {
   get_system_info: 'System info',
   todo_write: 'Update todos',
   save_memory: 'Remember',
+  memory_save: 'Remember',
+  memory_forget: 'Forget',
   recall_history: 'Recall history',
   search_settings: 'Find setting',
   get_settings: 'Read settings',
@@ -219,6 +225,9 @@ const TOOL_ACTION: Record<string, string> = {
   browser_eval: 'Evaluate',
   browser_screenshot: 'Screenshot',
 
+  memory_search: 'Search memory',
+  memory_read: 'Read memory',
+  // Retired wiki tools still label older transcripts.
   brain_search: 'Brain search',
   brain_read_page: 'Read note',
   brain_list: 'List notes',

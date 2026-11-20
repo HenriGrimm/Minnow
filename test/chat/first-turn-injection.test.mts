@@ -161,7 +161,7 @@ describe('injection replay on later turns', () => {
     assert.equal(ctx.injectionsReplayed, true);
   });
 
-  test('turn 2 replays code map and brain notes without live Brain/memory gates', async () => {
+  test('turn 2 replays the code map but never stored legacy brain notes', async () => {
     const notes = 'wiki note from first turn';
     const map = 'src/chat/prompts/compose-context.ts:80';
     const chat = chatWithStoredInjection({
@@ -175,11 +175,11 @@ describe('injection replay on later turns', () => {
       ],
     });
     const ctx = await buildComposeContext(chat);
-    assert.equal(ctx.memoryBlock, notes);
+    assert.equal(ctx.memoryBlock, null);
     assert.equal(ctx.codeMapBlock, map);
     assert.equal(ctx.injectionsReplayed, true);
     const composed = composeSystemPrompt(ctx);
-    assert.ok(composed.includes(notes));
+    assert.ok(!composed.includes(notes));
     assert.ok(composed.includes(map));
   });
 

@@ -55,6 +55,7 @@ import type {
   UserMessage,
 } from '../types';
 import { createIcon, type IconName } from './icon';
+import { classifyTurnFailure } from '../chat/turn-failure';
 import { getModelRowForSelectOrCanonicalId, resolveModelInfo, showCachedModelInfo } from '../api/models';
 import { getPermissionLevelCached } from '../config/tool-security-meta';
 import { PERMISSION_LEVEL_META } from '../lib/permissions.mjs';
@@ -1308,12 +1309,39 @@ export function appendBubble(
   return { wrap, bubble };
 }
 
+/** Plain-language title, guidance and raw reason for a failed reply bubble. */
+function appendClassifiedError(host: HTMLElement, bubble: HTMLElement, message: string): void {
+  const chatId = bubble.closest<HTMLElement>('.msg')?.dataset.chatId;
+  const chat = chatId ? sessionState?.chats.find(row => row.id === chatId) : undefined;
+  const view = classifyTurnFailure({
+    message: message.replace(/^Could not complete this reply:\s*/i, ''),
+    providerId: chat?.providerId,
+  });
+  const title = document.createElement('strong');
+  title.className = 'msg-error-title';
+  title.textContent = view.title;
+  const note = document.createElement('span');
+  note.className = 'msg-error-note';
+  note.textContent = view.body;
+  host.append(title, note);
+  if (view.detail && view.detail !== view.body) {
+    const details = document.createElement('details');
+    details.className = 'msg-error-details';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Details';
+    const reason = document.createElement('p');
+    reason.textContent = view.detail;
+    details.append(summary, reason);
+    host.append(details);
+  }
+}
+
 /** Inline assistant failure copy (network, provider, or lost generation). */
 export function setAssistantErrorBubble(bubble: HTMLDivElement, message: string): void {
   bubble.classList.remove('msg-bubble--md', 'msg-bubble--awaiting', 'graphite-turn-recovery');
   bubble.classList.add('msg-bubble--error');
   bubble.replaceChildren();
-  bubble.textContent = message;
+  appendClassifiedError(bubble, bubble, message);
 }
 
 export interface AssistantErrorRecoveryOptions {
@@ -1339,26 +1367,13 @@ export function setAssistantErrorBubbleWithRecovery(
     icon.append(createIcon('warning', { size: 14 }));
     const body = document.createElement('div');
     body.className = 'graphite-turn-recovery__body';
-    const title = document.createElement('strong');
-    title.textContent = 'Turn failed';
-    const note = document.createElement('span');
-    note.textContent = 'Your completed work is kept.';
-    const details = document.createElement('details');
-    const summary = document.createElement('summary');
-    summary.textContent = 'Details';
-    const reason = document.createElement('p');
-    reason.textContent = message;
-    details.append(summary, reason);
-    body.append(title, note, details);
+    appendClassifiedError(body, bubble, message);
     appendFailedTurnRecoveryActions(body, recovery);
     bubble.append(icon, body);
     return;
   }
 
-  const text = document.createElement('span');
-  text.textContent = message;
-  bubble.appendChild(text);
-
+  appendClassifiedError(bubble, bubble, message);
   appendFailedTurnRecoveryActions(bubble, recovery);
 }
 
