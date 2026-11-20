@@ -20,7 +20,7 @@
         "Keep work running or quit"
       ],
       "section": "Get started",
-      "hash": "252305fc0edc4841b1c34ce1f155d2d280a98c65674a82431d970415388d4dae"
+      "hash": "af9df1fda8c2bfebe5ffce72453422c7b9ae8d8b24601e5bbd659e145253f8ab"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -82,7 +82,7 @@
         "Keep decisions across threads"
       ],
       "section": "Core concepts",
-      "hash": "ba4e0833dd4c6a85cbb63e4e614c1da641077dedd2fc904ee5ea17c4e72a91a8"
+      "hash": "9b32792c512b7b568486e4dbadda46baea98300fb1b8e3612ef155c961013479"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -179,14 +179,15 @@
     },
     {
       "path": "documentation/manual/apps/brain.md",
-      "title": "Save and find project knowledge in Brain",
-      "summary": "Open Brain from the command palette. Use it for decisions or context you want to retrieve in a later thread. Save a decision and check it 1. Open Edit to create a page, or ask the agent to save a named page in Brain. 2. Include the decision, a reason, the scope (workspace or shar",
+      "title": "Review what agents remember in Brain",
+      "summary": "Open Brain from the command palette. Memories shows what agents can recall for the open project, and the preferences you apply to every project. How project memory works Each project has its own memory. A repository and all its worktrees share one memory, so a chat in a worktree ",
       "headings": [
-        "Save a decision and check it",
-        "Review suggestions and index code"
+        "How project memory works",
+        "Review and correct memories",
+        "Legacy notes and other tools"
       ],
       "section": "Apps",
-      "hash": "2c681c3008067193fb33500406320a98aa41e5ea36f31b33b1f0a3f9682ceaaf"
+      "hash": "0865a862703e260224abb081a389b7724113cfc181357061f6812ce50c3e4184"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -246,14 +247,14 @@
     {
       "path": "documentation/manual/extend/mcp-hub.md",
       "title": "Connect other agents to Minnow",
-      "summary": "Keep Minnow running on the computer that holds the project. Open the project once so the hub can recognize its folder. The hub lets another agent work with Minnow issues, Brain pages, and the shipped manual. Connect over HTTP 1. Open Settings → Extensions → Connect other apps . C",
+      "summary": "Keep Minnow running on the computer that holds the project. Open the project once so the hub can recognize its folder. The hub lets another agent work with Minnow issues, project memory, and the shipped manual. Connect over HTTP 1. Open Settings → Extensions → Connect other apps ",
       "headings": [
         "Connect over HTTP",
         "Connect over stdio",
         "What the connection exposes"
       ],
       "section": "Extend Minnow",
-      "hash": "5cfbb6e61b46e445d19970fa583bcb030b4b0be94f9f1e156e7019f1a6a2540b"
+      "hash": "0bf3505dcab157f9dca1ae7ebbd401da5dfda89437c84efc299721d3ad34c62b"
     },
     {
       "path": "documentation/manual/plugins.md",
@@ -358,7 +359,7 @@
       "summary": "To learn how to use Minnow, select Minnow wiki at the bottom of the workspace sidebar, or use Open Minnow wiki in the command palette. Search the manual shipped with your build. You can also ask in chat, “Search the Minnow manual for how to connect to Ollama and cite the page.” T",
       "headings": [],
       "section": "Reference",
-      "hash": "76d5969ef73001ea05f08cfe9682b981c2af601ca03e51552f66d42056b524e1"
+      "hash": "60954e752e8e6b69eb693d5ec27b5325422d4b8beeb8cf55b9243fdd58578255"
     },
     {
       "path": "documentation/manual/reference/roadmap.md",
@@ -417,7 +418,7 @@
         "Limits"
       ],
       "section": "Core concepts",
-      "hash": "9c79d040ab6ddbbe18b816c29aa6b8298dbbbd11a2f2ef9f315353f70659f991"
+      "hash": "f0899a8d5d28fa355b4d1844b32af9cecc4cda5e906d4f7eb86129353044b0cc"
     }
   ]
 }

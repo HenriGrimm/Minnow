@@ -30,7 +30,6 @@ import {
 
 export type ContextUsageSectionKey =
   | 'system'
-  | 'brainNotes'
   | 'codeMap'
   | 'contextDocuments'
   | 'rules'
@@ -50,7 +49,6 @@ export interface ContextUsageSection {
 /** Breakdown rows that describe the last request (not pending extras). */
 const CORE_USAGE_SECTION_KEYS = new Set<ContextUsageSectionKey>([
   'system',
-  'brainNotes',
   'codeMap',
   'contextDocuments',
   'rules',
@@ -160,25 +158,11 @@ export function buildContextUsageBreakdown(
       tokens: Math.max(
         0,
         estimate.composedSystem -
-          (estimate.brainNotesSystem ?? 0) -
           (estimate.codeMapSystem ?? 0) -
           (estimate.contextDocumentsSystem ?? 0),
       ),
     },
   ];
-  if (estimate.brainNotesSystem != null && estimate.brainNotesSystem > 0) {
-    rows.push({
-      key: 'brainNotes',
-      label: 'Brain notes',
-      tokens: estimate.brainNotesSystem,
-    });
-  } else if (estimate.brainNotesInjectionEnabled) {
-    rows.push({
-      key: 'brainNotes',
-      label: 'Brain notes (loading)',
-      tokens: 0,
-    });
-  }
   if (estimate.codeMapSystem != null && estimate.codeMapSystem > 0) {
     rows.push({
       key: 'codeMap',

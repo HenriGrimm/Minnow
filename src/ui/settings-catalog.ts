@@ -456,10 +456,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   ),
   field('agents.prompting.hub', 'Agent cards', 'agents', 'agent-center'),
   field('agents.injection', 'Injection', 'agents', 'injection', {
-    keywords: ['context', 'brain notes', 'code map', 'prompt context', 'composer'],
-  }),
-  field('agents.injection.brainNotes', 'Inject Brain notes by default', 'agents', 'injection', {
-    keywords: ['memory injection', 'brain notes', 'memories', 'recall'],
+    keywords: ['context', 'code map', 'prompt context', 'composer'],
   }),
   field('agents.injection.codeMap', 'Inject code map by default', 'agents', 'injection', {
     keywords: ['code map injection', 'repo map injection', 'code map default'],

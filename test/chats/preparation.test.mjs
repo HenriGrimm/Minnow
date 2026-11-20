@@ -54,7 +54,7 @@ function fixture(overrides = {}) {
     loadSkill: async id => ({ body: `Workflow skill: ${id}`, access: id === 'plan' ? 'plans' : null }),
     readTranscript: async () => transcript,
     readProfile: async reference => profiles.get(`${reference.profileId}:${reference.profileVersion}`) ?? null,
-    retrieveMemory: async () => 'Retrieved notes.', retrieveCodeMap: async () => 'Retrieved map.',
+    retrieveCodeMap: async () => 'Retrieved map.',
     isServerToolAvailable: async name => !name.startsWith('browser_'),
     resolveModelContextLimit: async () => 32000,
   };
@@ -219,13 +219,30 @@ test('follow-ups replay exact stored context, including CLI stable/current separ
   const f = fixture({ cli: true });
   f.setTranscript({ messages: [{ role: 'user', commandId: 'previous' }, { role: 'user', commandId: 'command' }],
     meta: { injectedContext: { 'context-documents': 'STORED CONTEXT', 'brain-notes': 'STORED NOTES' } } });
-  f.adapters.retrieveMemory = async () => { throw new Error('Must replay'); };
   const prepared = await f.prepare();
   assert.equal(prepared.contextBodies['context-documents'], 'STORED CONTEXT');
   assert.match(prepared.cliTurnContext, /STORED CONTEXT/);
-  assert.match(prepared.cliTurnContext, /STORED NOTES/);
+  // Legacy Brain notes stay parseable but are never replayed.
+  assert.equal(prepared.contextBodies['brain-notes'], undefined);
+  assert.doesNotMatch(prepared.cliTurnContext + prepared.systemPrompt, /STORED NOTES/);
   assert.ok(!prepared.systemPrompt.includes('STORED CONTEXT'));
   assert.match(prepared.systemPrompt, /Use the configured rule/);
+});
+
+test('old captured profiles receive static memory guidance but never their legacy memory bodies', async () => {
+  for (const writable of [true, false]) {
+    const f = fixture({ cli: true });
+    f.names.push('memory_search', 'memory_read', ...(writable ? ['memory_save', 'memory_forget'] : []));
+    const captured = await captureChatProfile(f.chat, f.scope, { adapters: f.adapters, modelAdapters: f.options.modelAdapters });
+    // A profile captured before the memory rework has no memory tool-usage source.
+    f.setProfile(captured);
+    f.setTranscript({ messages: [{ role: 'user', commandId: 'previous' }, { role: 'user', commandId: 'command' }],
+      meta: { injectedContext: { 'brain-notes': 'NEVER REPLAY THESE NOTES' } } });
+    const prepared = await f.prepare();
+    assert.equal(prepared.systemPrompt.split('**Project memory.**').length - 1, 1);
+    assert.doesNotMatch(prepared.systemPrompt + prepared.cliTurnContext, /NEVER REPLAY THESE NOTES/);
+    if (!writable) assert.match(prepared.systemPrompt, /You can't save or forget memories/);
+  }
 });
 
 test('disabling a delegated type preserves read and stop but blocks new work', async () => {
@@ -426,7 +443,7 @@ test('pool image preflight retains bytes and excludes unverified members before 
 });
 
 
-test('hung optional memory and code-map share a total budget and late results cannot enter retry', async () => {
+test('a hung optional code map is bounded, late results cannot enter retry, and memory is never retrieved', async () => {
   const f = fixture({ cli: true });
   f.settings.meta.features.memoryInjection = true;
   f.settings.meta.features.codeMapInjectionDefault = true;
@@ -435,30 +452,29 @@ test('hung optional memory and code-map share a total budget and late results ca
   const signals = [];
   let finish;
   const late = new Promise(resolve => { finish = resolve; });
-  f.adapters.retrieveMemory = ({ signal }) => { signals.push(signal); return late; };
-  f.adapters.retrieveCodeMap = ({ signal }) => { signals.push(signal); return new Promise(() => {}); };
+  f.adapters.retrieveMemory = () => { throw new Error('memory must not be retrieved'); };
+  f.adapters.retrieveCodeMap = ({ signal }) => { signals.push(signal); return late; };
   const bounded = await f.prepare();
-  assert.deepEqual(bounded.enrichmentOmissions, [{ kind: 'code-map', reason: 'deadline' }, { kind: 'memory', reason: 'deadline' }]);
+  assert.deepEqual(bounded.enrichmentOmissions, [{ kind: 'code-map', reason: 'deadline' }]);
   assert.ok(signals.every(signal => signal.aborted));
   assert.deepEqual(bounded.contextBodies, {});
   assert.match(bounded.cliTurnContext, /Optional enrichment unavailable/);
   assert.doesNotMatch(bounded.systemPrompt, /Optional enrichment unavailable/);
-  finish('LATE OLD NOTES');
-  f.adapters.retrieveMemory = async () => 'NEW NOTES';
+  finish('LATE OLD MAP');
   f.adapters.retrieveCodeMap = async () => 'NEW MAP';
   const retry = await f.prepare();
-  assert.equal(retry.contextBodies['brain-notes'], 'NEW NOTES');
+  assert.equal(retry.contextBodies['brain-notes'], undefined);
   assert.equal(retry.contextBodies['code-map'], 'NEW MAP');
   assert.equal(retry.systemPrompt, bounded.systemPrompt, 'CLI stable prefix is unchanged');
-  assert.doesNotMatch(retry.cliTurnContext, /LATE OLD NOTES/);
+  assert.doesNotMatch(retry.cliTurnContext, /LATE OLD MAP/);
 });
 
 test('required custom context fails actionably; optional failure is reported instead', async () => {
   const f = fixture();
-  f.settings.meta.features.memoryInjection = true;
-  f.adapters.retrieveMemory = async () => { throw Error('private diagnostic'); };
+  f.settings.meta.features.codeMapInjectionDefault = true;
+  f.adapters.retrieveCodeMap = async () => { throw Error('private diagnostic'); };
   const prepared = await f.prepare();
-  assert.deepEqual(prepared.enrichmentOmissions, [{ kind: 'memory', reason: 'unavailable' }]);
+  assert.deepEqual(prepared.enrichmentOmissions, [{ kind: 'code-map', reason: 'unavailable' }]);
   assert.match(prepared.systemPrompt, /Optional enrichment unavailable/);
   assert.doesNotMatch(prepared.systemPrompt, /private diagnostic/);
   f.settings.meta.contextDocuments = { enabledPresets: [], customPaths: ['required-missing.md'] };
@@ -470,8 +486,8 @@ test('Stop interrupts hung optional enrichment instead of being swallowed as an 
   const abort = new AbortController();
   let started;
   const ready = new Promise(resolve => { started = resolve; });
-  f.settings.meta.features.memoryInjection = true;
-  f.adapters.retrieveMemory = async () => { started(); return new Promise(() => {}); };
+  f.settings.meta.features.codeMapInjectionDefault = true;
+  f.adapters.retrieveCodeMap = async () => { started(); return new Promise(() => {}); };
   const preparing = prepareChatExecution({ command: f.command, execution: f.execution, fence: f.fence, signal: abort.signal }, f.options);
   await ready;
   abort.abort(new Error('Stopped by test'));

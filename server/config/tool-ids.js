@@ -1,15 +1,9 @@
 /** Built-in tool ids (keep in sync with src/tools/definitions.ts). */
 
-/** Wiki tools seeded at permission `full` (no prompt) on first run and back-fill. */
-export const BRAIN_WIKI_TOOL_IDS = [
-  'brain_search',
-  'brain_read_page',
-  'brain_list',
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
-  'save_memory',
-];
+/** Project memory tools (read-only pair first). */
+export const MEMORY_READ_TOOL_IDS = ['memory_search', 'memory_read'];
+export const MEMORY_WRITE_TOOL_IDS = ['memory_save', 'memory_forget'];
+export const MEMORY_TOOL_IDS = [...MEMORY_READ_TOOL_IDS, ...MEMORY_WRITE_TOOL_IDS];
 
 /** Code-index tools seeded at permission `full` (MIN-B7). */
 export const BRAIN_CODE_TOOL_IDS = [
@@ -21,7 +15,7 @@ export const BRAIN_CODE_TOOL_IDS = [
 
 /** All Brain tools that default to permission `full`. */
 export const BRAIN_FULL_PERMISSION_TOOL_IDS = [
-  ...BRAIN_WIKI_TOOL_IDS,
+  ...MEMORY_TOOL_IDS,
   ...BRAIN_CODE_TOOL_IDS,
 ];
 
@@ -35,7 +29,7 @@ export const MINNOW_DOCS_TOOL_IDS = [
   'minnow_docs_list',
 ];
 
-export const BRAIN_WIKI_TOOL_ID_SET = new Set(BRAIN_WIKI_TOOL_IDS);
+export const MEMORY_TOOL_ID_SET = new Set(MEMORY_TOOL_IDS);
 export const BRAIN_CODE_TOOL_ID_SET = new Set(BRAIN_CODE_TOOL_IDS);
 export const BRAIN_FULL_PERMISSION_TOOL_ID_SET = new Set(BRAIN_FULL_PERMISSION_TOOL_IDS);
 export const BRAIN_DESTRUCTIVE_TOOL_ID_SET = new Set(BRAIN_DESTRUCTIVE_TOOL_IDS);
@@ -123,14 +117,8 @@ export const ALL_TOOL_IDS = [
   'load_skill',
   'get_lsp_diagnostics',
   'godot_inspect',
-  'save_memory',
-  'brain_search',
-  'brain_read_page',
-  'brain_list',
+  ...MEMORY_TOOL_IDS,
   ...MINNOW_DOCS_TOOL_IDS,
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
   'manage_brain',
   'search_settings',
   'get_settings',

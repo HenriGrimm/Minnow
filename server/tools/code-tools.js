@@ -17,6 +17,8 @@ import {
   whoCalls,
 } from '../brain/code/query.js';
 import { REPO_MAP_TOOL_DEFAULT_TOKEN_BUDGET } from '../brain/code/config.js';
+import { memoryScopeOfPath, resolveMemoryProject } from '../brain/memory/scope.js';
+import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 
 /** Callers listed in full before `who_calls` summarizes the tail. */
 const WHO_CALLS_MAX = 60;
@@ -178,11 +180,17 @@ export async function toolReadSymbol(args) {
   let anchors = '';
   try {
     const { pages } = await explainSymbol(row.id);
-    if (pages?.length) {
-      const titles = pages
+    // Only memories the agent may read: this project's and the user's.
+    const project = pages?.length ? await resolveMemoryProject(getEffectiveWorkspaceRoot()) : null;
+    const visible = (pages ?? []).filter((p) => {
+      const scope = memoryScopeOfPath(p.path);
+      return scope && (scope.scope === 'user' || scope.projectKey === project?.key);
+    });
+    if (visible.length) {
+      const titles = visible
         .slice(0, 3)
-        .map((p) => `${p.path}${p.status === 'stale' ? ' (stale)' : ''}`);
-      anchors = `\nExplained in Brain: ${titles.join(', ')} — brain_read_page for the design intent.`;
+        .map((p) => `${p.title} (id: ${p.pageId})${p.status === 'stale' ? ' (stale)' : ''}`);
+      anchors = `\nExplained in memory: ${titles.join(', ')} — memory_read for the design intent.`;
     }
   } catch {
     // An anchor lookup must never fail a source read.

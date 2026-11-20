@@ -995,6 +995,8 @@ export interface IssueCard {
   githubSync?: boolean;
   /** Remote identity and the watermark conflict detection compares against. */
   github?: IssueGithubLink;
+  /** Other GitHub copies of the same local card, each with its own watermark. */
+  githubReplicas?: IssueGithubLink[];
 }
 
 /**
@@ -1293,7 +1295,7 @@ export interface Chat {
   thinkingMode?: ThinkingTriState;
   /** Tri-state code map injection override (inherit uses features.codeMapInjectionDefault). */
   codeMapInjection?: ThinkingTriState;
-  /** Tri-state Brain notes (memory retrieve) override (inherit uses features.memoryInjection). */
+  /** Retired injection setting; retained for parsing legacy sessions, ignored at runtime. */
   brainNotesInjection?: ThinkingTriState;
   /** Tri-state workspace context documents override (inherit uses features.contextDocumentsInjectionDefault). */
   contextDocumentsInjection?: ThinkingTriState;

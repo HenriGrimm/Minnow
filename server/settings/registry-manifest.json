@@ -1967,29 +1967,9 @@
     "label": "Injection",
     "keywords": [
       "context",
-      "brain notes",
       "code map",
       "prompt context",
       "composer"
-    ],
-    "category": "agents",
-    "area": "injection",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "injection"
-    ]
-  },
-  {
-    "key": "agents.injection.brainNotes",
-    "label": "Inject Brain notes by default",
-    "keywords": [
-      "memory injection",
-      "brain notes",
-      "memories",
-      "recall"
     ],
     "category": "agents",
     "area": "injection",

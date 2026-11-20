@@ -8,7 +8,8 @@ const DESCRIPTION_MAX_LENGTH = 160;
 
 export type MemorySavedTarget =
   | { kind: 'page'; relPath: string }
-  | { kind: 'memory'; id: string };
+  | { kind: 'memory'; id: string }
+  | { kind: 'record'; id: string };
 
 export interface MemorySavedPayload {
   title: string;
@@ -87,34 +88,17 @@ export function memorySavedPayloadFromTool(
     return null;
   }
 
-  const id = result.match(/\(id:\s*([0-9a-f-]{36})\)/i)?.[1];
+  const id = result.match(/\(id:\s*([0-9a-f-]{36})[,)]/i)?.[1];
   if (!id) {
     return null;
   }
 
   const title = readStringArg(args, 'title') || 'Untitled memory';
-  const description = memorySavedDescription(
-    readStringArg(args, 'summary') || readStringArg(args, 'body'),
-  );
+  const description = memorySavedDescription(readStringArg(args, 'body'));
 
-  if (toolName === 'save_memory' && result.startsWith('Saved memory')) {
-    return {
-      title,
-      description,
-      target: { kind: 'memory', id },
-    };
-  }
-
-  if (toolName === 'brain_write_page' && /^(Created|Updated) wiki page/.test(result)) {
-    const relPath = readStringArg(args, 'path').replace(/\\/g, '/');
-    if (!relPath) {
-      return null;
-    }
-    return {
-      title,
-      description,
-      target: { kind: 'page', relPath },
-    };
+  // Only new memories get a card: rejecting an update would delete the earlier memory too.
+  if (toolName === 'memory_save' && /^Saved (user|project) memory/.test(result)) {
+    return { title, description, target: { kind: 'record', id } };
   }
 
   return null;
@@ -130,6 +114,10 @@ async function openSavedMemory(payload: MemorySavedPayload): Promise<void> {
 }
 
 async function rejectSavedMemory(payload: MemorySavedPayload): Promise<boolean> {
+  if (payload.target.kind === 'record') {
+    const { forgetMemoryRecord } = await import('../brain/client');
+    return (await forgetMemoryRecord(payload.target.id)).ok;
+  }
   if (payload.target.kind === 'memory') {
     const { deleteMemoryEntry } = await import('../memory/client');
     return deleteMemoryEntry(payload.target.id);
@@ -198,6 +186,9 @@ export function notifyMemorySavedFromTool(
   args: unknown,
   result: string,
 ): void {
+  if (typeof window !== 'undefined' && toolName.startsWith('memory_') && /^(Saved (user|project) memory|Updated (user|project) memory|Forgot (user|project) memory)/.test(result)) {
+    window.dispatchEvent(new Event('minnow:memory-changed'));
+  }
   const payload = memorySavedPayloadFromTool(toolName, args, result);
   if (payload) {
     showMemorySavedToast(payload);

@@ -190,7 +190,7 @@ describe('composer compact overflow', () => {
     syncComposerCompactFromWidth(700);
 
     const wrap = document.createElement('div');
-    wrap.id = 'composerBrainNotesWrap';
+    wrap.id = 'composerCodeMapWrap';
     row.appendChild(wrap);
     const runTarget = document.createElement('div');
     runTarget.id = 'composerRunTargetWrap';
@@ -243,7 +243,7 @@ describe('composer compact overflow', () => {
     assert.match(css, /content:\s*'Reasoning'/);
     assert.match(css, /content:\s*'Context documents'/);
     assert.match(css, /content:\s*'Code map'/);
-    assert.match(css, /content:\s*'Brain notes'/);
+    assert.doesNotMatch(css, /content:\s*'Brain notes'/);
     assert.match(css, /\.composer-overflow-popover \{[\s\S]*?z-index:\s*1200;/);
   });
 

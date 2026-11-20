@@ -549,16 +549,6 @@
   align-items: center;
 }
 
-.brain-notes-toggle-host {
-  display: flex;
-  align-items: center;
-}
-
-.brain-notes-control-wrap {
-  display: flex;
-  align-items: center;
-}
-
 .context-documents-toggle-host {
   display: flex;
   align-items: center;

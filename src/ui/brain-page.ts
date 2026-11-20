@@ -71,16 +71,16 @@ const SECTION_TITLES: Record<BrainSectionId, string> = {
 
 /** One-line descriptions for the page header lead line. */
 const SECTION_LEADS: Record<BrainSectionId, string> = {
-  graph: 'Explore wiki pages, tags, and wikilinks on an interactive canvas.',
+  graph: 'Explore legacy wiki pages, tags, and wikilinks. Agents use Memories instead.',
   edit: 'Draft markdown with a full-page preview that matches how the wiki reads.',
   log: 'Read-only changelog from log.md.',
   schema: 'View and edit the wiki taxonomy in schema.md.',
-  proposals: 'Review AI-suggested memories before they enter the wiki.',
-  memories: 'Browse stored facts, tune injection, and add entries that ride along on send.',
+  proposals: 'Review skills suggested from completed conversations.',
+  memories: 'Review, edit or forget what agents remember for this project and across projects.',
   ingest: 'Submit a raw source; the utility model synthesizes wiki pages.',
   lint: 'Health report: orphans, stale pages, broken links, contradictions.',
   code: 'Browse the indexed repo map, search symbols, and inspect call graphs.',
-  settings: 'Memory synthesis cadence, semantic embeddings, and code index settings.',
+  settings: 'Skill suggestions, semantic embeddings, and code index settings.',
 };
 
 const BRAIN_WORKSPACE_SECTIONS: BrainSectionId[] = [

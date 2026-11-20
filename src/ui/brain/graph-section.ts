@@ -671,7 +671,7 @@ export async function renderGraphSection(): Promise<void> {
     return;
   }
 
-  catalogPages = filterCatalogPages(flattenBrainTree(tree));
+  catalogPages = filterCatalogPages(flattenBrainTree(filterBrainTreeForDisplay(tree, true)));
   if (selectedPath && !catalogPages.some((p) => p.path === selectedPath)) {
     setGraphSelectedPath(null);
   }

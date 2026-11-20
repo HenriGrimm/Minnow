@@ -41,14 +41,16 @@ describe('prompt-composer', () => {
   test('CLI composition keeps stable instructions while current-turn info changes', async () => {
     registerPromptFilesFromRaw(await loadFixtureMap());
     const context = { cwd: '/one', modeId: 'build', expertId: null, workAgentId: null,
-      skillBody: null, memoryBlock: 'Memory one', enabledToolIds: ['get_datetime'], infoPresetId: null };
+      skillBody: null, memoryBlock: 'Memory one', codeMapBlock: 'Map one', codeMapInjectionEnabled: true,
+      enabledToolIds: ['get_datetime'], infoPresetId: null };
     const first = [], second = [];
     const a = composeSystemPrompt(context, { turnContext: first });
-    const b = composeSystemPrompt({ ...context, memoryBlock: 'Memory two' }, { turnContext: second });
+    const b = composeSystemPrompt({ ...context, memoryBlock: 'Memory two', codeMapBlock: 'Map two' }, { turnContext: second });
     assert.equal(a, b); assert.equal(a.includes('Memory one'), false);
-    assert.ok(first.join('').includes('Memory one'));
+    assert.ok(!first.join('').includes('Memory one'));
+    assert.ok(first.join('').includes('Map one'));
     assert.notDeepEqual(first, second);
-    const notice = 'Optional enrichment unavailable: memory (deadline).';
+    const notice = 'Optional enrichment unavailable: code-map (deadline).';
     const feedback = [];
     assert.equal(composeSystemPrompt({ ...context, enrichmentNotice: notice }, { turnContext: feedback }), a);
     assert.ok(feedback.includes(notice), 'omissions are per-turn CLI feedback, not stable instructions');
@@ -65,7 +67,6 @@ describe('prompt-composer', () => {
       'info',
       'workspace-repos',
       'skill',
-      'memory',
       'code-map',
       'context-documents',
     ]);

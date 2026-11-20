@@ -100,7 +100,7 @@ const NO_EFFECT_TOOLS = new Set([
   'agent_capabilities', 'chat_list', 'chat_read', 'chat_wait',
   'spawn_sub_agent', 'cancel_sub_agent', 'list_sub_agents', 'get_sub_agent_status', 'agent',
   'issue_get_state', 'issue_search', 'bug_get_state',
-  'brain_search', 'brain_read_page', 'brain_list',
+  'memory_search', 'memory_read',
   'minnow_docs_search', 'minnow_docs_read', 'minnow_docs_list',
   'search_settings', 'get_settings', 'get_appearance', 'read_diagnostics',
   'load_impeccable_context', 'load_aesthetics_reference',
@@ -144,7 +144,7 @@ const GIT_WRITE_TOOLS = new Set(['git_add', 'git_commit', 'git_checkout', 'git_b
 const APP_WRITE_TOOLS = new Set([
   'issue_add', 'issue_update', 'issue_link', 'issue_delete', 'issue_comment', 'issue_assign',
   'issue_unlink', 'issue_move', 'bug_add', 'bug_update',
-  'save_memory', 'brain_write_page', 'brain_append_log', 'brain_ingest_source', 'manage_brain',
+  'memory_save', 'memory_forget', 'manage_brain',
   'write_clipboard',
 ]);
 

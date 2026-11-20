@@ -2,7 +2,7 @@ import { USER_INPUT_BLOCKING_TOOLS } from '../chat/incomplete-tool-batch.ts';
 import { TOOL_GROUP_IDS } from '../chat/modes/tool-groups.ts';
 import {
   BRAIN_DESTRUCTIVE_TOOL_ID_SET,
-  BRAIN_WIKI_TOOL_IDS,
+  MEMORY_WRITE_TOOL_ID_SET,
 } from './brain-tool-ids.ts';
 import { getCachePolicyForTool } from './tool-cache-policy.ts';
 import type { ToolCall } from '../types.ts';
@@ -24,18 +24,13 @@ const PARALLEL_EXTRA_WHITELIST = new Set([
   'find_symbol',
   'who_calls',
   'read_symbol',
+  // Project memory reads.
+  'memory_search',
+  'memory_read',
 ]);
 
-/** Brain wiki tools that mutate persisted state (always sequential). */
-const BRAIN_MUTATOR_TOOL_IDS = new Set(
-  BRAIN_WIKI_TOOL_IDS.filter(
-    (id) =>
-      id === 'brain_write_page' ||
-      id === 'brain_append_log' ||
-      id === 'brain_ingest_source' ||
-      id === 'save_memory',
-  ),
-);
+/** Memory tools that mutate persisted state (always sequential). */
+const BRAIN_MUTATOR_TOOL_IDS = MEMORY_WRITE_TOOL_ID_SET;
 
 /** Tool groups whose members always run sequentially (spawn/cancel handled separately). */
 const SEQUENTIAL_TOOL_GROUP_IDS = [

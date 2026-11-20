@@ -8,6 +8,9 @@ const META_SPAWN_TOOLS = new Set([
   'get_sub_agent_status',
 ]);
 
+/** Sub-agents read project memory; the parent decides what to save. */
+const MEMORY_WRITE_TOOLS = ['memory_save', 'memory_forget'];
+
 export function resolveSubAgentTools(
   typeConfig: SubAgentTypeConfig,
   typeId: string,
@@ -23,6 +26,7 @@ export function resolveSubAgentTools(
   const deny = new Set([
     ...typeConfig.deniedTools,
     ...(typeId === 'orchestrator' ? [] : META_SPAWN_TOOLS),
+    ...MEMORY_WRITE_TOOLS,
   ]);
   tools = tools.filter((t) => t.function.name.startsWith('mcp__') || !deny.has(t.function.name));
 

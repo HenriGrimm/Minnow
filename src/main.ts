@@ -186,7 +186,6 @@ import { registerSlashMenuCommands } from './ui/slash-menu-commands';
 import { initComposerCompact } from './ui/composer-compact';
 import { initThinkingControl } from './ui/composer-thinking';
 import { initCodeMapInjectionControl } from './ui/composer-code-map';
-import { initBrainNotesInjectionControl } from './ui/composer-brain-notes';
 import { initContextDocumentsInjectionControl } from './ui/composer-context-documents';
 import {
   initComposerReasoningEffort,
@@ -353,7 +352,6 @@ export async function initApp(): Promise<void> {
     registerSlashMenuCommands();
     initThinkingControl();
     initCodeMapInjectionControl();
-    initBrainNotesInjectionControl();
     initContextDocumentsInjectionControl();
     initComposerReasoningEffort();
     initOrchestratePlanSelector();

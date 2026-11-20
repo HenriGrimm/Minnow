@@ -37,6 +37,24 @@ const DEFAULT_CATALOG = { version: 1, generatedAt: null, pages: [] };
 
 const VALID_SOURCES = new Set(['user', 'agent', 'synthesis', 'ingest', 'archive']);
 const VALID_STATUS = new Set(['current', 'stale', 'orphan']);
+// Project/user memory frontmatter (server/brain/memory/store.js owns validation).
+const MEMORY_STRING_FIELDS = ['kind', 'scope', 'projectKey', 'projectLabel', 'sourceChatId', 'evidence'];
+
+/** Copy memory frontmatter fields from input onto meta (strings + supersedes list). */
+function copyMemoryFields(meta, input) {
+  for (const field of MEMORY_STRING_FIELDS) {
+    if (input[field] !== undefined) {
+      const value = String(input[field] ?? '');
+      if (value) meta[field] = value;
+      else delete meta[field];
+    }
+  }
+  if (input.supersedes !== undefined) {
+    const list = Array.isArray(input.supersedes) ? input.supersedes.map(String).filter(Boolean) : [];
+    if (list.length) meta.supersedes = list;
+    else delete meta.supersedes;
+  }
+}
 
 // Share write serialization across the UI, built-in agents and external MCP clients.
 function serialQueue() {
@@ -288,6 +306,12 @@ export function serializePage(meta, body) {
   if (meta.assignedWorkspace) {
     archiveLines.push(`assignedWorkspace: ${quoteYamlString(meta.assignedWorkspace)}`);
   }
+  for (const field of MEMORY_STRING_FIELDS) {
+    if (meta[field]) archiveLines.push(`${field}: ${quoteYamlString(meta[field])}`);
+  }
+  if (Array.isArray(meta.supersedes) && meta.supersedes.length > 0) {
+    archiveLines.push(`supersedes: ${serializeArrayField(meta.supersedes)}`);
+  }
   const archiveBlock = archiveLines.length ? `${archiveLines.join('\n')}\n` : '';
   return `---
 id: ${quoteYamlString(meta.id)}
@@ -359,6 +383,10 @@ export function buildCatalogEntry(front, relPath, body) {
       ? { sourceTurnIndices: front.sourceTurnIndices }
       : {}),
     ...(Array.isArray(front.similarTo) ? { similarTo: front.similarTo } : {}),
+    ...Object.fromEntries(MEMORY_STRING_FIELDS
+      .filter((field) => typeof front[field] === 'string' && front[field])
+      .map((field) => [field, front[field]])),
+    ...(Array.isArray(front.supersedes) && front.supersedes.length ? { supersedes: front.supersedes } : {}),
     ...parts,
   };
 }
@@ -739,6 +767,7 @@ async function createPageNow(input) {
   if (Array.isArray(input.similarTo) && input.similarTo.length > 0) {
     meta.similarTo = input.similarTo.map((s) => String(s));
   }
+  copyMemoryFields(meta, input);
 
   await atomicWritePage(abs, serializePage(meta, body));
   syncAnchorsForPage(id, meta.anchors);
@@ -813,6 +842,7 @@ async function updatePageNow(relPath, input) {
   if (input.similarTo !== undefined) {
     meta.similarTo = Array.isArray(input.similarTo) ? input.similarTo.map(String) : [];
   }
+  copyMemoryFields(meta, input);
   meta.updatedAt = new Date().toISOString();
 
   const body = input.body !== undefined ? String(input.body) : existing.body;

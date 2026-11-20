@@ -5,12 +5,12 @@ export function isBrainArchivePagePath(relPath: string): boolean {
   return /\/workspaces\/[^/]+\/archive\//.test(relPath.replace(/\\/g, '/'));
 }
 
-/** Remove archive subtrees unless showArchives is true. */
+/** Legacy wiki view: exclude agent memories, and archives unless requested. */
 export function filterBrainTreeForDisplay(
   tree: BrainTreeNode | Record<string, BrainTreeNode> | null | undefined,
   showArchives: boolean,
 ): Record<string, BrainTreeNode> {
-  if (!tree || typeof tree !== 'object' || showArchives) {
+  if (!tree || typeof tree !== 'object') {
     return (tree ?? {}) as Record<string, BrainTreeNode>;
   }
 
@@ -18,7 +18,8 @@ export function filterBrainTreeForDisplay(
     node: BrainTreeNode | Record<string, BrainTreeNode>,
   ): BrainTreeNode | Record<string, BrainTreeNode> | null => {
     if ('type' in node && node.type === 'page') {
-      return isBrainArchivePagePath(node.path) ? null : node;
+      const isMemory = node.path.replace(/\\/g, '/').startsWith('memory/');
+      return isMemory || (!showArchives && isBrainArchivePagePath(node.path)) ? null : node;
     }
     if ('type' in node && node.type === 'folder' && node.children) {
       const children: Record<string, BrainTreeNode> = {};

@@ -162,8 +162,7 @@
 
 .composer-overflow-page--settings .thinking-toggle-host,
 .composer-overflow-page--settings .context-documents-toggle-host,
-.composer-overflow-page--settings .code-map-toggle-host,
-.composer-overflow-page--settings .brain-notes-toggle-host {
+.composer-overflow-page--settings .code-map-toggle-host {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -262,10 +261,6 @@
 
 .composer-overflow-page--settings .code-map-toggle-btn::after {
   content: 'Code map';
-}
-
-.composer-overflow-page--settings .brain-notes-toggle-btn::after {
-  content: 'Brain notes';
 }
 
 .composer-overflow-page--settings .thinking-toggle-btn[aria-pressed='true'] .thinking-toggle-icon {

@@ -54,7 +54,7 @@ const TOOL_FAMILIES = [
   ['shell & processes', (n) => ['list_running_commands', 'start_background_command', 'stop_background_command', 'manage_dev_servers', 'run_javascript', 'run_python'].includes(n)],
   ['web', (n) => n.startsWith('web_') || ['wikipedia_search', 'rag_web_content'].includes(n)],
   ['sub-agents & chats', (n) => n.endsWith('_sub_agent') || n === 'list_sub_agents' || n === 'wait' || n.startsWith('chat_') || n === 'agent_capabilities'],
-  ['brain & memory', (n) => n.startsWith('brain_') || n === 'manage_brain' || n === 'save_memory'],
+  ['memory', (n) => n.startsWith('memory_') || n === 'manage_brain'],
   ['Minnow docs', (n) => n.startsWith('minnow_docs_')],
   ['Minnow settings & appearance', (n) => /(_settings|_appearance|appearance_asset|read_diagnostics)$/.test(n) || n === 'search_settings' || n === 'launch_minnow_app'],
   ['skills & design', (n) => n.startsWith('load_') || n === 'run_impeccable'],

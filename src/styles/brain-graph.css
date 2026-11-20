@@ -792,6 +792,19 @@
   border-bottom: none;
 }
 
+.brain-graph-tree-note {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--mn-border);
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+.brain-graph-tree-panel.is-collapsed .brain-graph-tree-note {
+  display: none;
+}
+
 .brain-graph-tree-head .brain-section-subtitle {
   margin: 0;
 }

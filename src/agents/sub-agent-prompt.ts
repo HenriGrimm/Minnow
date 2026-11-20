@@ -1,12 +1,6 @@
-import { interpolatePromptBody } from '../chat/prompts/interpolate';
 import { loadPromptById } from '../chat/prompts/prompt-loader';
 import { fetchPromptFile } from '../chat/prompts/prompt-file-api';
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
-import { fetchMemoryEnabled, retrieveMemoryBlock } from '../memory/client';
-import {
-  fetchMemoryInjectionEnabled,
-  isMemoryEnabledForChat,
-} from '../memory/config';
 import type { Chat } from '../types';
 import { SHIPPED_SUB_AGENT_PROMPTS } from './shipped-sub-agent-prompts';
 import { getWorkAgentPromptOverride } from './work-agent-registry';
@@ -67,76 +61,24 @@ export function appendSubAgentAskQuestionRules(
   return `${systemPrompt}${SUB_AGENT_ASK_QUESTION_RULES}`;
 }
 
-const SUB_AGENT_SAVE_MEMORY_RULES = `
+const SUB_AGENT_MEMORY_FALLBACK = `### Project memory (sub-agent)
+Search project memory with \`memory_search\` when the task touches earlier decisions or a familiar-looking problem, and read a match with \`memory_read\` before relying on it. You can't save or forget memories: report anything a future agent would need to whoever assigned the task.`;
 
-### Brain wiki (sub-agent)
-Notes below are from the Brain wiki — treat as context and verify against the codebase.
-Use \`brain_search\` for fuzzy lookup; \`brain_read_page\` / \`brain_write_page\` for structured pages; \`save_memory\` for quick facts under pages/facts/. Skip secrets and one-off state. Confirm only after a write tool succeeds.
-Before returning, make one \`save_memory\` call **only if** your task produced a user correction, a root cause that took real digging (symptom → cause → fix), a decision + why with rejected alternatives, an approach that failed, or a discovered convention/environment quirk. Give it a specific searchable title; at most one page. Otherwise save nothing.`;
-
+/**
+ * Append the read-only memory policy when memory tools are enabled. Nothing is
+ * retrieved or injected: sub-agents search memory on demand.
+ */
 export async function appendSubAgentMemorySection(
   systemPrompt: string,
-  task: string,
+  _task: string,
   enabledToolNames: string[],
-  parentChat?: Chat | null,
+  _parentChat?: Chat | null,
 ): Promise<string> {
-  const injectionOn = await fetchMemoryInjectionEnabled();
-  if (!injectionOn) {
-    return appendSubAgentSaveMemoryRules(systemPrompt, enabledToolNames);
-  }
-  const globalEnabled = await fetchMemoryEnabled();
-  const inject = parentChat
-    ? isMemoryEnabledForChat(parentChat, globalEnabled)
-    : globalEnabled;
-  if (!inject) {
-    return appendSubAgentSaveMemoryRules(systemPrompt, enabledToolNames);
-  }
-
-  const block = await retrieveMemoryBlock({ query: task });
-
-  let result = systemPrompt;
-  if (block.trim()) {
-    const loaded = loadPromptById('info', 'memory');
-    const template = loaded?.body?.trim() ?? 'Prior notes:\n\n{{memory}}';
-    const section = interpolatePromptBody(template, {
-      mode: '',
-      mode_label: '',
-      profile: 'full',
-      expert: '',
-      cwd: '',
-      memory: block,
-      user_message: task,
-      work_agent: '',
-      work_agent_label: '',
-      skill: '',
-      date: new Date().toISOString().slice(0, 10),
-      os: typeof navigator !== 'undefined' ? navigator.platform : 'node',
-      plan_granularity: '',
-      orchestrate_plan: '',
-      permission_line: '',
-    });
-    if (section.trim()) {
-      result = `${result}\n\n---\n\n${section.trim()}`;
-    }
-  }
-
-  return appendSubAgentSaveMemoryRules(result, enabledToolNames);
-}
-
-function appendSubAgentSaveMemoryRules(
-  systemPrompt: string,
-  enabledToolNames: string[],
-): string {
-  const hasBrainTool = enabledToolNames.some((name) =>
-    ['save_memory', 'brain_search', 'brain_read_page', 'brain_write_page'].includes(name),
-  );
-  if (!hasBrainTool) {
+  if (!enabledToolNames.includes('memory_search') || /#{2,3} Project memory/.test(systemPrompt)) {
     return systemPrompt;
   }
-  if (systemPrompt.includes('brain_search') || systemPrompt.includes('save_memory')) {
-    return systemPrompt;
-  }
-  return `${systemPrompt}${SUB_AGENT_SAVE_MEMORY_RULES}`;
+  const body = loadPromptById('tool-usage', 'memory-readonly')?.body?.trim() || SUB_AGENT_MEMORY_FALLBACK;
+  return `${systemPrompt}\n\n${body}`;
 }
 
 export async function buildSubAgentSystemPrompt(

@@ -3,7 +3,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
 import { BUILT_IN_TOOLS } from '../tools/builtin-catalog.js';
 import { issueHubTools, callIssueHubTool } from './issues.js';
-import { toolBrainSearch, toolBrainReadPage, toolBrainList, toolBrainWritePage, toolBrainAppendLog } from '../tools/brain-tools.js';
+import { toolMemorySearch, toolMemoryRead, toolMemorySave, toolMemoryForget } from '../tools/memory-tools.js';
 import { toolMinnowDocsSearch, toolMinnowDocsRead, toolMinnowDocsList } from '../tools/minnow-docs-tools.js';
 import path from 'node:path';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
@@ -11,17 +11,17 @@ import { runWithViewWorkspace } from '../runtime/path-access.js';
 import { mcpWorkspaceKey } from '../auth/mcp-store.js';
 
 const handlers = {
-  brain_search: toolBrainSearch, brain_read_page: toolBrainReadPage, brain_list: toolBrainList,
-  brain_write_page: toolBrainWritePage, brain_append_log: toolBrainAppendLog,
+  memory_search: toolMemorySearch, memory_read: toolMemoryRead,
+  memory_save: toolMemorySave, memory_forget: toolMemoryForget,
   minnow_docs_search: toolMinnowDocsSearch, minnow_docs_read: toolMinnowDocsRead, minnow_docs_list: toolMinnowDocsList,
 };
-const writes = new Set(['brain_write_page', 'brain_append_log']);
+const writes = new Set(['memory_save', 'memory_forget']);
 const catalog = [
   ...issueHubTools,
   ...BUILT_IN_TOOLS.filter(tool => Object.hasOwn(handlers, tool.id)).map(tool => ({
     name: tool.id, description: tool.definition.function.description,
     inputSchema: { ...tool.definition.function.parameters, additionalProperties: false },
-    annotations: { readOnlyHint: !writes.has(tool.id), destructiveHint: tool.id === 'brain_write_page', openWorldHint: false },
+    annotations: { readOnlyHint: !writes.has(tool.id), destructiveHint: writes.has(tool.id), openWorldHint: false },
   })),
 ].map(tool => ({ ...tool, inputSchema: {
   ...tool.inputSchema,
@@ -43,7 +43,7 @@ export function createHubServer({ workspace, boundWorkspace = null, readOnly = f
   const allowed = new Set(tools.map(tool => tool.name));
   const server = new Server({ name: 'minnow-hub', version: '1.0.0' }, {
     capabilities: { tools: {} },
-    instructions: `Minnow is your shared issue tracker and knowledge hub. ${workspace ? `Transport workspace: ${workspace}.` : 'Pass your current agent workspace as workspace_path on every tool call.'} Workspace selection is per call; no active Minnow window is used as a fallback. Issues are restricted to the selected workspace. Brain pages are shared across Minnow; search uses workspace context. Read issue_taxonomy before choosing status/type/priority ids. Use comments for progress and Brain pages for durable knowledge. ${readOnly ? 'This connection is read-only.' : 'This connection can create and update issues and Brain pages.'}`,
+    instructions: `Minnow is your shared issue tracker and project memory. ${workspace ? `Transport workspace: ${workspace}.` : 'Pass your current agent workspace as workspace_path on every tool call.'} Workspace selection is per call; no active Minnow window is used as a fallback. Issues are restricted to the selected workspace. Memory belongs to the selected workspace's repository (shared by its worktrees) plus the user's cross-project preferences. Read issue_taxonomy before choosing status/type/priority ids. Use comments for progress and memory only for durable decisions, constraints, preferences and verified gotchas. ${readOnly ? 'This connection is read-only.' : 'This connection can create and update issues and memories.'}`,
   });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
   server.setRequestHandler(CallToolRequestSchema, async request => {

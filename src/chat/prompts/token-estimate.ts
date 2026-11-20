@@ -43,7 +43,6 @@ import { shouldRunFirstTurnInjections } from './first-turn-injection';
 import { latestInjectionBodies } from '../context/injection-replay';
 import {
   composeSystemPrompt,
-  isBrainNotesPartEnabled,
   isCodeMapPartEnabled,
   isContextDocumentsPartEnabled,
 } from './prompt-composer';
@@ -290,8 +289,6 @@ interface CachedOutboundStaticEstimate {
   composedSystem: number;
   userRulesTokens: number;
   tools: number;
-  brainNotesSystem?: number;
-  brainNotesInjectionEnabled?: boolean;
   codeMapSystem?: number;
   codeMapInjectionEnabled?: boolean;
   contextDocumentsSystem?: number;
@@ -316,11 +313,10 @@ function outboundStaticEstimateCacheKey(
   const bodies = firstTurn ? {} : latestInjectionBodies(chat.history);
   const injectionFp = [
     firstTurn ? 'first' : 'replay',
-    `bn:${bodies['brain-notes']?.length ?? 0}`,
     `cm:${bodies['code-map']?.length ?? 0}`,
     `cd:${bodies['context-documents']?.length ?? 0}`,
-    `snap:${chat.injectedContext?.['brain-notes']?.length ?? 0}:${chat.injectedContext?.['code-map']?.length ?? 0}:${chat.injectedContext?.['context-documents']?.length ?? 0}`,
-    `tog:${chat.brainNotesInjection ?? ''}:${chat.codeMapInjection ?? ''}:${chat.contextDocumentsInjection ?? ''}`,
+    `snap:${chat.injectedContext?.['code-map']?.length ?? 0}:${chat.injectedContext?.['context-documents']?.length ?? 0}`,
+    `tog:${chat.codeMapInjection ?? ''}:${chat.contextDocumentsInjection ?? ''}`,
   ].join('\0');
   return `${chat.id}\0${modelId}\0${getToolConfigEpoch()}\0${getPromptConfigEpoch()}\0${injectionFp}`;
 }
@@ -379,12 +375,6 @@ async function resolveCachedStaticOutboundEstimate(
   };
 
   if (ctx) {
-    if (ctx.memoryEnabled === true) {
-      entry.brainNotesInjectionEnabled = true;
-    }
-    if (isBrainNotesPartEnabled(ctx) && ctx.memoryBlock?.trim()) {
-      entry.brainNotesSystem = estimateTokensFromText(ctx.memoryBlock);
-    }
     if (ctx.codeMapInjectionEnabled === true) {
       entry.codeMapInjectionEnabled = true;
     }
@@ -428,8 +418,6 @@ export async function resolveOutboundPromptEstimate(
     userRules: staticPart.userRulesTokens,
     history: historyTokens,
     tools: staticPart.tools,
-    brainNotesSystem: staticPart.brainNotesSystem,
-    brainNotesInjectionEnabled: staticPart.brainNotesInjectionEnabled,
     codeMapSystem: staticPart.codeMapSystem,
     codeMapInjectionEnabled: staticPart.codeMapInjectionEnabled,
     contextDocumentsSystem: staticPart.contextDocumentsSystem,

@@ -40,6 +40,16 @@ import { getEnginePaths } from './engine-paths.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { inspectBrainWorkspace } from './workspace-ownership.js';
 import { brainWorkspaceKeyFromPath, isValidPageId } from './paths.js';
+import { resolveMemoryProject } from './memory/scope.js';
+import {
+  MEMORY_KINDS,
+  MEMORY_LIMITS,
+  MemoryError,
+  forgetMemory,
+  loadMemoryEntries,
+  updateMemory,
+} from './memory/store.js';
+import { getRequestWorkspaceRoot } from '../runtime/path-access.js';
 import {
   createPage as createWikiPage,
   assignBrainPage,
@@ -89,6 +99,80 @@ async function requestWorkspaceKey(body) {
   return body.workspaceRoot
     ? brainWorkspaceKeyFromPath(await validateAllowedWorkspaceRoot(body.workspaceRoot))
     : body.workspaceKey;
+}
+
+/** Memory project for a request: explicit workspaceRoot, else the requesting view's workspace. */
+async function requestMemoryProject(workspaceRoot) {
+  const root = workspaceRoot
+    ? await validateAllowedWorkspaceRoot(workspaceRoot)
+    : getRequestWorkspaceRoot();
+  return root ? resolveMemoryProject(root).catch(() => null) : null;
+}
+
+function memoryErrorStatus(error) {
+  if (error.code === 'not_found') return 404;
+  if (error.code === 'stale' || error.code === 'duplicate') return 409;
+  return 400;
+}
+
+function memoryRecord(entry) {
+  return {
+    id: entry.meta.id,
+    title: entry.meta.title,
+    kind: entry.meta.kind ?? 'reference',
+    scope: entry.meta.scope,
+    body: entry.body,
+    evidence: entry.meta.evidence ?? '',
+    supersedes: entry.meta.supersedes ?? [],
+    source: entry.meta.source,
+    sourceChatId: entry.meta.sourceChatId ?? null,
+    createdAt: entry.meta.createdAt,
+    updatedAt: entry.meta.updatedAt,
+    revision: entry.revision,
+  };
+}
+
+/** /api/brain/memories — the memories agents can see for one project, plus user memories. */
+async function handleMemoryRequest(req, res, pathname) {
+  const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+  if (pathname === '/api/brain/memories' && req.method === 'GET') {
+    const project = await requestMemoryProject(url.searchParams.get('workspaceRoot'));
+    const entries = await loadMemoryEntries(project);
+    entries.sort((a, b) => String(b.meta.updatedAt).localeCompare(String(a.meta.updatedAt)));
+    sendJson(res, 200, {
+      project: project ? { key: project.key, label: project.label } : null,
+      kinds: MEMORY_KINDS,
+      limits: MEMORY_LIMITS,
+      memories: entries.map(memoryRecord),
+    });
+    return true;
+  }
+  const match = pathname.match(/^\/api\/brain\/memories\/([^/]+)$/);
+  if (!match) return false;
+  const id = decodeURIComponent(match[1]);
+  try {
+    if (req.method === 'PUT') {
+      const body = await readJsonBody(req);
+      const project = await requestMemoryProject(body.workspaceRoot);
+      const updated = await updateMemory({
+        project, id, expectedRevision: body.expectedRevision,
+        title: body.title, body: body.body, kind: body.kind, evidence: body.evidence, source: 'user',
+      });
+      sendJson(res, 200, memoryRecord({ meta: { ...updated.meta, scope: updated.scope }, body: updated.body, revision: updated.revision }));
+      return true;
+    }
+    if (req.method === 'DELETE') {
+      const project = await requestMemoryProject(url.searchParams.get('workspaceRoot'));
+      const expected = url.searchParams.get('expectedRevision') ?? undefined;
+      sendJson(res, 200, { ok: true, ...(await forgetMemory({ project, id, expectedRevision: expected })) });
+      return true;
+    }
+  } catch (error) {
+    if (!(error instanceof MemoryError)) throw error;
+    sendJson(res, memoryErrorStatus(error), { error: error.message, code: error.code });
+    return true;
+  }
+  return false;
 }
 
 function pageMetaToEntry(meta) {
@@ -144,6 +228,10 @@ export async function handleBrainRequest(req, res, pathname) {
     if (pathname === '/api/brain/tree' && req.method === 'GET') {
       const tree = await getPageTree();
       sendJson(res, 200, { tree });
+      return true;
+    }
+
+    if (pathname.startsWith('/api/brain/memories') && await handleMemoryRequest(req, res, pathname)) {
       return true;
     }
 
@@ -234,7 +322,6 @@ export async function handleBrainRequest(req, res, pathname) {
       const { block, ids, hits } = await retrieveBrainBlockHybrid(
         {
           query: body.query,
-          autoInject: body.autoInject === true,
           limit: body.limit ?? 12,
           tags: body.tags,
           maxChars,

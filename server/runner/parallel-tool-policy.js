@@ -13,6 +13,9 @@ const PARALLEL_EXTRA_WHITELIST = new Set([
   'find_symbol',
   'who_calls',
   'read_symbol',
+  // Project memory reads.
+  'memory_search',
+  'memory_read',
 ]);
 
 const SEQUENTIAL_DENY = new Set([
@@ -71,10 +74,8 @@ const SEQUENTIAL_DENY = new Set([
   'set_chat_mode',
   'create_chat_with_mode',
   'launch_minnow_app',
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
-  'save_memory',
+  'memory_save',
+  'memory_forget',
   'manage_brain',
 ]);
 

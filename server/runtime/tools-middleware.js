@@ -55,12 +55,6 @@ import {
   resolveInsertLineFromAnchor,
 } from '../tools/flexible-match.js';
 import {
-  toolBrainAppendLog,
-  toolBrainIngestSource,
-  toolBrainList,
-  toolBrainReadPage,
-  toolBrainSearch,
-  toolBrainWritePage,
   toolManageBrain,
 } from '../tools/brain-tools.js';
 import {
@@ -79,7 +73,7 @@ import {
   toolRepoMap,
   toolWhoCalls,
 } from '../tools/code-tools.js';
-import { toolSaveMemory } from '../tools/memory-tools.js';
+import { toolMemoryForget, toolMemoryRead, toolMemorySave, toolMemorySearch } from '../tools/memory-tools.js';
 import { toolPresentFiles } from '../tools/present-files.js';
 import {
   extractWorkspaceDocumentText,
@@ -1590,22 +1584,19 @@ const SERVER_TOOL_HANDLERS = {
     const { getLspDiagnostics } = await import('../lsp/manager.js');
     return getLspDiagnostics(String(args?.path ?? ''));
   },
-  brain_search: toolBrainSearch,
+  memory_search: toolMemorySearch,
+  memory_read: toolMemoryRead,
+  memory_save: toolMemorySave,
+  memory_forget: toolMemoryForget,
   plugin_inspect: async args => JSON.stringify(await inspectPlugins(args)),
   plugin_manage: async args => JSON.stringify(await pluginManage(args)),
-  brain_read_page: toolBrainReadPage,
-  brain_list: toolBrainList,
   minnow_docs_search: toolMinnowDocsSearch,
   minnow_docs_read: toolMinnowDocsRead,
   minnow_docs_list: toolMinnowDocsList,
-  brain_write_page: toolBrainWritePage,
-  brain_append_log: toolBrainAppendLog,
-  brain_ingest_source: toolBrainIngestSource,
   manage_brain: toolManageBrain,
   search_settings: toolSearchSettings,
   get_settings: toolGetSettings,
   update_settings: toolUpdateSettings,
-  save_memory: toolSaveMemory,
   board_provision_infra: toolBoardProvisionInfra,
   repo_map: toolRepoMap,
   find_symbol: toolFindSymbol,

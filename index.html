@@ -1358,11 +1358,12 @@
             ></div>
             <aside id="brainGraphTreePanel" class="brain-graph-tree-panel brain-overlay-card">
               <div class="brain-graph-tree-head">
-                <h2 class="brain-section-subtitle">Pages</h2>
+                <h2 class="brain-section-subtitle">Legacy notes</h2>
                 <button type="button" class="brain-action-btn brain-graph-tree-toggle icon-btn" id="brainGraphTreeToggle" aria-expanded="true" aria-label="Collapse page tree">
                   <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
                 </button>
               </div>
+              <p class="brain-graph-tree-note" id="brainGraphLegacyNote">Not used by agents. Agent memories are under <strong>Memories</strong>.</p>
               <div id="brainGraphTree" class="brain-graph-tree-mount" role="region" aria-label="Page tree"></div>
             </aside>
             <aside id="brainGraphLegend" class="brain-graph-readout brain-overlay-card" aria-label="Graph readout">
@@ -1478,58 +1479,64 @@
           </div>
         </div>
       </section>
-      <section id="brainSection-memories" class="brain-section brain-section--memories" aria-label="Memory store">
+      <section id="brainSection-memories" class="brain-section brain-section--memories" aria-label="Agent memory">
         <div class="brain-memory-shell">
           <header class="brain-memory-toolbar">
             <div class="brain-memory-toolbar__controls">
               <label class="brain-memory-toggle">
-                <span class="brain-memory-toggle__label">Memory store</span>
+                <span class="brain-memory-toggle__label">Agent memory</span>
                 <input type="checkbox" id="brainMemoryEnabled" role="switch">
               </label>
-              <p class="brain-memory-toolbar__hint">Prompt injection defaults are managed in Settings → Agents → Injection.</p>
+              <p class="brain-memory-toolbar__hint">Agents search these memories when a task calls for it. Nothing is added to prompts automatically.</p>
             </div>
             <div id="brainMemoryStats" class="brain-memory-stats" aria-live="polite">
-              <span class="brain-memory-stat" id="brainMemoryEntryCount">— entries</span>
+              <span class="brain-memory-stat" id="brainMemoryEntryCount">— memories</span>
               <span class="brain-memory-stat brain-memory-stat--muted" id="brainMemoryServerHint">Checking server…</span>
             </div>
             <div class="brain-memory-toolbar__actions">
-              <button type="button" class="brain-action-btn" id="brainMemoryAddOpen">Add memory</button>
-              <button type="button" class="brain-action-btn" id="brainMemoryBackup">Backup</button>
-              <button type="button" class="brain-action-btn brain-action-btn--danger" id="brainMemoryClear">Clear (archive)</button>
+              <button type="button" class="brain-action-btn" id="brainMemoryRefresh">Refresh</button>
             </div>
             <p id="brainMemoriesStatus" class="brain-memory-status brain-status" aria-live="polite"></p>
             <p id="brainMemoryOffline" class="brain-memory-offline brain-muted hidden">
-              Start with <code>npm start</code> to add and manage memories. Files live under <code>~/.minnow/memory/</code>.
+              Start Minnow with <code>npm start</code> to review memories.
             </p>
           </header>
           <div class="brain-memory-workspace">
-            <aside class="brain-memory-list-pane" aria-label="Memory entries">
-              <p class="brain-memory-list-pane__eyebrow">Entries</p>
+            <aside class="brain-memory-list-pane" aria-label="Memories">
               <div id="brainMemoryList" class="brain-memory-list" role="list"></div>
             </aside>
             <div class="brain-memory-detail-pane" id="brainMemoryDetailPane">
-              <p id="brainMemoryEmptyState" class="brain-memory-empty brain-muted">Select an entry to read the full text, or add a new memory.</p>
+              <p id="brainMemoryEmptyState" class="brain-memory-empty brain-muted">Select a memory to read it. Agents save decisions, constraints, your preferences and verified gotchas here.</p>
               <div id="brainMemoryDetail" class="brain-memory-detail hidden" hidden></div>
               <div id="brainMemoryAddPanel" class="brain-memory-compose hidden" hidden>
-                <p class="brain-memory-compose__eyebrow">New memory</p>
+                <p class="brain-memory-compose__eyebrow">Edit memory</p>
                 <form id="brainMemoryAddForm" class="brain-memory-form" novalidate>
                   <label class="brain-memory-form__field">
                     <span class="brain-edit-field__label">Title</span>
-                    <input type="text" id="brainMemoryAddTitle" name="title" required maxlength="200" class="brain-edit-input" autocomplete="off" placeholder="e.g. Preferred test command">
+                    <input type="text" id="brainMemoryAddTitle" name="title" required maxlength="100" class="brain-edit-input" autocomplete="off">
+                  </label>
+                  <label class="brain-memory-form__field">
+                    <span class="brain-edit-field__label">Kind</span>
+                    <select id="brainMemoryAddKind" name="kind" class="brain-edit-input">
+                      <option value="decision">Decision</option>
+                      <option value="constraint">Constraint</option>
+                      <option value="gotcha">Gotcha</option>
+                      <option value="preference">Preference</option>
+                      <option value="reference">Reference</option>
+                    </select>
                   </label>
                   <label class="brain-memory-form__field brain-memory-form__field--grow">
                     <span class="brain-edit-field__label">Body</span>
-                    <textarea id="brainMemoryAddBody" name="body" required class="brain-edit-source brain-memory-form__body" placeholder="What should be remembered across chats?"></textarea>
-                    <span class="brain-memory-form__hint">Max 32 KB. Retrieved on send when injection is enabled.</span>
+                    <textarea id="brainMemoryAddBody" name="body" required maxlength="1200" class="brain-edit-source brain-memory-form__body"></textarea>
+                    <span class="brain-memory-form__hint" id="brainMemoryBodyHint">The claim, why it holds and the evidence. Up to 1,200 characters.</span>
                   </label>
                   <label class="brain-memory-form__field">
-                    <span class="brain-edit-field__label">Tags</span>
-                    <input type="text" id="brainMemoryAddTags" name="tags" class="brain-edit-input" autocomplete="off" placeholder="testing, npm">
+                    <span class="brain-edit-field__label">Evidence (optional)</span>
+                    <input type="text" id="brainMemoryAddEvidence" name="evidence" maxlength="300" class="brain-edit-input" autocomplete="off" placeholder="A file, command or issue">
                   </label>
                   <p id="brainMemoryAddError" class="brain-memory-form-error hidden" role="alert"></p>
                   <div class="brain-memory-form__actions">
-                    <button type="submit" id="brainMemoryAddSubmit" class="brain-action-btn is-primary">Save memory</button>
-                    <button type="button" id="brainMemoryAddReset" class="brain-action-btn">Clear form</button>
+                    <button type="submit" id="brainMemoryAddSubmit" class="brain-action-btn is-primary">Save changes</button>
                     <button type="button" id="brainMemoryAddCancel" class="brain-action-btn is-ghost">Cancel</button>
                   </div>
                 </form>
@@ -1659,23 +1666,20 @@
         <div class="brain-settings-stack">
           <div class="brain-settings-group">
             <div class="brain-settings-group__head">
-              <h3 class="brain-settings-group__title">Auto-learning cadence</h3>
+              <h3 class="brain-settings-group__title">Skill proposals</h3>
               <p id="brainSynthesisOffline" class="brain-settings-group__offline hidden">Offline</p>
             </div>
             <div class="brain-form-grid">
-              <label><input type="checkbox" id="brainSynthesisEnabled" checked> Enable post-turn memory synthesis</label>
+              <p class="brain-form-hint brain-form-hint--lead">Minnow can suggest a reusable skill when separate sessions solve the same kind of problem. Memories are never written automatically — agents save them only when they decide to, and you can review them under Memories.</p>
+              <label><input type="checkbox" id="brainSynthesisEnabled" checked> Suggest skills after completed turns</label>
               <label>Extraction throttle (message pairs)
                 <input type="number" id="brainSynthesisThrottle" class="settings-input settings-input--narrow" min="1" value="4">
               </label>
               <p id="brainSynthesisThrottleHint" class="brain-form-hint">Runs after every 4 completed user+assistant turns.</p>
-              <label><input type="checkbox" id="brainSynthesisIncludeBoards"> Also run auto-learning on every Orchestrate board turn</label>
-              <p class="brain-form-hint">Off by default. Board runs already synthesize once per task at build pass and after merge; turning this on adds the throttled per-turn pass for planner, builder, tester and fixer chats.</p>
-              <label>Auto-write confidence
-                <input type="number" id="brainSynthesisAutoWrite" class="settings-input settings-input--narrow" min="0" max="1" step="0.05" value="0.85">
-              </label>
-              <p class="brain-form-hint">Facts at or above this confidence are written to the wiki directly. Below it, they queue as proposals for review.</p>
+              <label><input type="checkbox" id="brainSynthesisIncludeBoards"> Also look for skills on every Orchestrate board turn</label>
+              <p class="brain-form-hint">Off by default. Turning this on adds the throttled per-turn pass for planner, builder, tester and fixer chats.</p>
               <div class="brain-settings-subsection" aria-labelledby="brainSkillProposalTitle">
-                <h4 class="brain-settings-subsection__title" id="brainSkillProposalTitle">Skill proposals</h4>
+                <h4 class="brain-settings-subsection__title" id="brainSkillProposalTitle">When to propose</h4>
                 <p class="brain-form-hint brain-form-hint--lead">Propose a skill when separate sessions solve the same kind of problem.</p>
                 <div class="brain-settings-metrics">
                   <label>Minimum rounds
@@ -2278,9 +2282,6 @@
           </div>
           <div id="composerCodeMapWrap" class="composer-control code-map-control-wrap hidden">
             <div id="composerCodeMapControl" class="code-map-toggle-host"></div>
-          </div>
-          <div id="composerBrainNotesWrap" class="composer-control brain-notes-control-wrap hidden">
-            <div id="composerBrainNotesControl" class="brain-notes-toggle-host"></div>
           </div>
           <div class="composer-control context-usage-anchor">
             <button

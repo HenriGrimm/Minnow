@@ -16,8 +16,6 @@ import { getExpertAwareToolNamesForChat } from '../experts/expert-tool-policy';
 import { loadToolConfig } from '../../tools/config';
 import type { Chat } from '../../types';
 import { formatChatLinksPromptBlock } from '../links';
-import { retrieveMemoryBlock } from '../../memory/client';
-import { shouldInjectMemory } from '../../memory/config';
 import { shouldInjectCodeMap } from '../../brain/code-injection-config';
 import { retrieveCodeMapBlock } from '../../brain/code-map-injection';
 import { extractCodeMapFocusHints } from '../../brain/code-map-focus';
@@ -136,20 +134,8 @@ export async function buildComposeContext(
     }
   };
 
-  const memory = async (signal: AbortSignal) => {
-    const replay = replayBodies['brain-notes'] && shouldReplayStoredInjection(chat.brainNotesInjection)
-      ? replayBodies['brain-notes'] : null;
-    const enabled = runFirstTurn ? await shouldInjectMemory(chat) : Boolean(replay);
-    if (!enabled || !runFirstTurn) return { enabled, block: replay };
-    signal.throwIfAborted();
-    const block = await retrieveMemoryBlock({
-      query: options?.routeUserText ?? options?.userMessagePreview ?? '',
-      autoInject: chat.kind !== 'expert',
-      ...(chat.kind === 'expert' && chat.expertId?.trim() && chat.expertRuntime?.memoryEnabled !== false
-        ? { expertId: chat.expertId.trim() } : {}),
-    });
-    return { enabled, block: block || null };
-  };
+  // Project memory is never injected: agents call memory_search on demand, and
+  // stored legacy `brain-notes` bodies are not replayed.
   const codeMap = async (signal: AbortSignal) => {
     const replay = replayBodies['code-map'] && shouldReplayStoredInjection(chat.codeMapInjection)
       ? replayBodies['code-map'] : null;
@@ -201,16 +187,15 @@ export async function buildComposeContext(
       throw error;
     }
   };
-  // Three independent lanes with deterministic assembly; replay never fetches.
-  const [memoryResult, codeResult, documentsResult] = await Promise.all([
-    optional('memory', memory), optional('code-map', codeMap),
+  // Independent lanes with deterministic assembly; replay never fetches.
+  const [codeResult, documentsResult] = await Promise.all([
+    optional('code-map', codeMap),
     documents(),
   ]);
   options?.signal?.throwIfAborted();
-  const { block: memoryBlock, enabled: injectMemory } = memoryResult;
   const { block: codeMapBlock, enabled: injectCodeMap } = codeResult;
   const { block: contextDocumentsBlock, enabled: injectContextDocuments } = documentsResult;
-  const injectionsReplayed = !runFirstTurn && (injectMemory || injectCodeMap || injectContextDocuments);
+  const injectionsReplayed = !runFirstTurn && (injectCodeMap || injectContextDocuments);
   // Keep omission feedback in turn context, not the reusable CLI prefix.
   const notice = omissions.length ? 'Optional enrichment unavailable: ' + omissions.sort().join(', ') + '. Use tools if this context is needed.' : '';
 
@@ -221,8 +206,8 @@ export async function buildComposeContext(
     expertId: null,
     workAgentId: null,
     skillBody: null,
-    memoryBlock,
-    memoryEnabled: injectMemory,
+    memoryBlock: null,
+    memoryEnabled: false,
     codeMapBlock,
     codeMapInjectionEnabled: injectCodeMap,
     contextDocumentsBlock,
@@ -378,11 +363,10 @@ export async function resolveOutboundSystemMessages(
     cliTurnContext = parts.join('\n\n---\n\n');
   }
   if (!ctx.injectionsReplayed) {
-    const brain = ctx.memoryBlock?.trim() ?? '';
     const codeMap = ctx.codeMapBlock?.trim() ?? '';
     const contextDocuments = ctx.contextDocumentsBlock?.trim() ?? '';
     injectionBlocks = {
-      brainNotes: brain || null,
+      brainNotes: null,
       codeMap: codeMap || null,
       contextDocuments: contextDocuments || null,
     };

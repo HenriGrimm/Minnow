@@ -1,8 +1,8 @@
 import { showToast } from '../toast';
 import { runSettingsAction } from '../settings-controls';
-import { appAlert, appConfirm, appPrompt } from '../app-dialog';
+import { appConfirm } from '../app-dialog';
 /**
- * Brain app — Proposals section: reuse memory/skill synthesis review panel.
+ * Brain app — Proposals section: review suggested skills only.
  */
 
 import { mountMemoryProposalsPanel } from '../memory-proposals-panel';
@@ -28,7 +28,7 @@ export async function renderProposalsSection(): Promise<void> {
     clearPendingBound = true;
     document.getElementById('brainProposalsClearPending')?.addEventListener('click', () => {
       void runSettingsAction(document.getElementById('brainProposalsClearPending'), 'Clearing…', async () => {
-        const ok = await appConfirm('Clear all pending memory and skill proposals?');
+        const ok = await appConfirm('Clear all pending proposals?');
         if (!ok) return;
         const { clearBrainProposals } = await import('../../brain/client');
         const result = await clearBrainProposals('pending');
@@ -43,16 +43,13 @@ export async function renderProposalsSection(): Promise<void> {
   }
 
   await mountMemoryProposalsPanel(root, setProposalsStatus, {
-    onMemoryAccepted: () => {
-      void import('./graph-section').then((m) => m.renderGraphSection());
-    },
     renderEmpty: (mount) => {
       renderBrainEmptyState(mount, {
         icon: 'inbox',
         title: "You're all caught up",
-        message: 'No pending synthesis proposals. Ingest new sources to generate wiki pages.',
-        ctaLabel: 'Go to Ingest',
-        onCta: () => { void import('../brain-page').then(({ openBrain }) => openBrain('ingest')); },
+        message: 'No pending skill proposals. Minnow suggests a skill when separate sessions solve the same kind of problem.',
+        ctaLabel: 'Review memories',
+        onCta: () => { void import('../brain-page').then(({ openBrain }) => openBrain('memories')); },
       });
     },
   }, {

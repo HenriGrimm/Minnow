@@ -1,12 +1,7 @@
-export const BRAIN_WIKI_TOOL_IDS = [
-  'brain_search',
-  'brain_read_page',
-  'brain_list',
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
-  'save_memory',
-] as const;
+/** Project memory tools; search/read are read-only, save/forget write. */
+export const MEMORY_READ_TOOL_IDS = ['memory_search', 'memory_read'] as const;
+export const MEMORY_WRITE_TOOL_IDS = ['memory_save', 'memory_forget'] as const;
+export const MEMORY_TOOL_IDS = [...MEMORY_READ_TOOL_IDS, ...MEMORY_WRITE_TOOL_IDS] as const;
 
 export const BRAIN_CODE_TOOL_IDS = [
   'repo_map',
@@ -16,14 +11,15 @@ export const BRAIN_CODE_TOOL_IDS = [
 ] as const;
 
 export const BRAIN_FULL_PERMISSION_TOOL_IDS = [
-  ...BRAIN_WIKI_TOOL_IDS,
+  ...MEMORY_TOOL_IDS,
   ...BRAIN_CODE_TOOL_IDS,
 ] as const;
 
 /** Destructive Brain tool — defaults to permission `ask`. */
 export const BRAIN_DESTRUCTIVE_TOOL_IDS = ['manage_brain'] as const;
 
-export const BRAIN_WIKI_TOOL_ID_SET = new Set<string>(BRAIN_WIKI_TOOL_IDS);
+export const MEMORY_TOOL_ID_SET = new Set<string>(MEMORY_TOOL_IDS);
+export const MEMORY_WRITE_TOOL_ID_SET = new Set<string>(MEMORY_WRITE_TOOL_IDS);
 export const BRAIN_CODE_TOOL_ID_SET = new Set<string>(BRAIN_CODE_TOOL_IDS);
 export const BRAIN_FULL_PERMISSION_TOOL_ID_SET = new Set<string>(BRAIN_FULL_PERMISSION_TOOL_IDS);
 export const BRAIN_DESTRUCTIVE_TOOL_ID_SET = new Set<string>(BRAIN_DESTRUCTIVE_TOOL_IDS);

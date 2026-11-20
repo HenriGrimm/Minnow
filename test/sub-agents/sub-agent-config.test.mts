@@ -64,18 +64,20 @@ describe('sub-agent config', () => {
     assert.equal(r.label, 'Research worker');
     assert.equal(r.maxConcurrent, 5);
     assert.ok(r.allowedTools?.includes('web_search'));
-    assert.ok(r.allowedTools?.includes('brain_search'));
+    assert.ok(r.allowedTools?.includes('memory_search'));
     assert.ok(r.allowedTools?.includes('repo_map'));
     assert.ok(r.allowedTools?.includes('read_document'));
     assert.ok(r.deniedTools.includes('save_file'));
     assert.ok(r.deniedTools.includes('spawn_sub_agent'));
   });
 
-  test('explore type includes brain and web RAG tools', () => {
+  test('explore type includes memory read and web RAG tools', () => {
     const merged = mergeSubAgentConfig(DEFAULTS as never, null);
     const e = merged.types.explore;
     assert.ok(e.allowedTools?.includes('rag_web_content'));
-    assert.ok(e.allowedTools?.includes('brain_read_page'));
+    assert.ok(e.allowedTools?.includes('memory_read'));
+    assert.ok(e.allowedTools?.includes('memory_search'));
+    assert.ok(!e.allowedTools?.includes('memory_save'));
     assert.ok(e.allowedTools?.includes('repo_map'));
     assert.ok(e.allowedTools?.includes('read_document'));
   });

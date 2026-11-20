@@ -45,7 +45,6 @@ body: |                   # optional inline body (alternative to markdown below)
 | `{{mode}}` | Active mode id |
 | `{{expert}}` | Expert id / label |
 | `{{cwd}}` | Project / page origin |
-| `{{memory}}` | Retrieved memory block (Step 16) |
 | `{{user_message}}` | Current turn preview |
 | `{{chat_history_summary}}` | Optional summarizer |
 | `{{work_agent}}` | Work agent id |

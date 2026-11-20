@@ -139,12 +139,6 @@ function bindSettingsSection(): void {
         setStatus('err', 'Throttle must be at least 1 message pair');
         return;
       }
-      const autoWrite = readNumberField('brainSynthesisAutoWrite', 0.85);
-      if (autoWrite < 0 || autoWrite > 1) {
-        setStatus('err', 'Auto-write confidence must be between 0 and 1');
-        return;
-      }
-
       const includeBoardsEl = document.getElementById(
         'brainSynthesisIncludeBoards',
       ) as HTMLInputElement | null;
@@ -152,7 +146,6 @@ function bindSettingsSection(): void {
       const saved = await saveSynthesisConfig({
         enabled: enabledEl?.checked === true,
         throttleMessagePairs: Math.round(throttle),
-        autoWriteConfidence: autoWrite,
         includeBoardChats: includeBoardsEl?.checked === true,
         skillMinRounds: Math.round(readNumberField('brainSkillMinRounds', 2)),
         skillMinToolCalls: Math.round(readNumberField('brainSkillMinToolCalls', 2)),
@@ -470,7 +463,6 @@ async function refreshSynthesisFields(): Promise<void> {
     );
   }
 
-  setNumberField('brainSynthesisAutoWrite', config.autoWriteConfidence, 0.85);
   setNumberField('brainSkillMinRounds', config.skillMinRounds, 2);
   setNumberField('brainSkillMinToolCalls', config.skillMinToolCalls, 2);
   setNumberField('brainSkillMinOccurrences', config.skillMinOccurrences, 2);

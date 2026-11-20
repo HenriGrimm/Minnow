@@ -5,6 +5,8 @@ import http from 'node:http';
 import { after, before, test } from 'node:test';
 import { brainWorkspaceKeyFromPath } from '../../server/brain/paths.js';
 import { createPage, readPage } from '../../server/brain/store.js';
+import { resolveMemoryProject } from '../../server/brain/memory/scope.js';
+import { createMemory, readMemory } from '../../server/brain/memory/store.js';
 import { checkoutKey, identity } from '../../server/chats/checkout-identity.js';
 import { loadChatProjectRegistry } from '../../server/chats/context.js';
 import { createChatRepository } from '../../server/chats/repository.js';
@@ -61,6 +63,9 @@ test('host move preserves a Git folder, local files, managed chats, groups and r
   const oldPath = normalizeWorkspacePath(source);
   const brainPath = `workspaces/${brainWorkspaceKeyFromPath(source)}/notes.md`;
   await createPage({ relPath: brainPath, body: 'Keep these notes.', skipVectorSync: true });
+  await updateConfigJson('config.json', meta => ({ ...meta, brain: { ...meta.brain, embeddings: { enabled: false } } }));
+  const memory = await createMemory({ project: await resolveMemoryProject(source),
+    title: 'Move preserves release cadence', body: 'Release on Fridays.', kind: 'decision' });
   await updateIssuesResource(state => ({
     ...state,
     issues: [...state.issues, { id: 'MOV-8', title: 'Keep this issue', workspacePath: oldPath }],
@@ -111,6 +116,9 @@ test('host move preserves a Git folder, local files, managed chats, groups and r
   const page = await readPage(brainPath);
   assert.equal(page.meta.assignedWorkspace, brainWorkspaceKeyFromPath(destination));
   assert.equal(page.body.trim(), 'Keep these notes.');
+  const movedMemory = await readMemory(memory.meta.id, { project: await resolveMemoryProject(destination) });
+  assert.equal(movedMemory.body, memory.body);
+  assert.notEqual(movedMemory.meta.projectKey, memory.meta.projectKey);
   const { projectId, scope } = await loadChatProjectRegistry(destination);
   assert.equal(repository.getChatProjectId('chat'), projectId);
   assert.deepEqual(repository.getLatestProfile('chat').snapshot.policy, { workspaceIds: [scope.workspaceId], permissionLevel: 'manual' });

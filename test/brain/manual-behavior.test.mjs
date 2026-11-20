@@ -1,27 +1,28 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { test } from 'node:test';
-import { DEFAULT_SYNTHESIS_CONFIG } from '../../server/brain/synthesis-config.js';
-import { routeSynthesisFact } from '../../server/brain/synthesis.js';
+import { MEMORY_LIMITS } from '../../server/brain/memory/store.js';
 
-test('manual confidence routing agrees with shipped defaults and review override', async () => {
-  const manual = await fs.readFile(new URL('../../documentation/manual/apps/brain.md', import.meta.url), 'utf8');
-  const config = DEFAULT_SYNTHESIS_CONFIG;
-  assert.equal(config.requireConfirmation, false);
-  assert.ok(manual.includes(`below ${config.confidenceThreshold} confidence are skipped`));
-  assert.ok(manual.includes(`at or above ${config.autoWriteConfidence} are saved directly`));
-  assert.equal(routeSynthesisFact({ confidence: config.confidenceThreshold }, config), 'propose');
-  assert.equal(routeSynthesisFact({ confidence: config.autoWriteConfidence }, config), 'write');
-  assert.equal(routeSynthesisFact({ confidence: 1 }, { ...config, requireConfirmation: true }), 'propose');
-  assert.ok(manual.includes('PUT /api/memory/synthesis/config'));
-  assert.ok(manual.includes('"requireConfirmation":true,"autoWriteConfidence":0.85'));
+const read = name => fs.readFile(new URL(`../../documentation/manual/${name}`, import.meta.url), 'utf8');
+
+test('the Brain manual matches shipped memory limits and on-demand recall', async () => {
+  const manual = await read('apps/brain.md');
+  assert.ok(manual.includes(`up to ${MEMORY_LIMITS.body.toLocaleString('en-US')} characters`));
+  assert.ok(manual.includes(`up to ${MEMORY_LIMITS.projectCap} memories`));
+  assert.ok(manual.includes(`up to ${MEMORY_LIMITS.userCap}`));
+  for (const tool of ['memory_search', 'memory_read', 'memory_save', 'memory_forget']) assert.ok(manual.includes(tool), tool);
+  assert.match(manual, /Nothing from memory is added to your messages/);
+  assert.match(manual, /worktrees share one memory/);
+  assert.match(manual, /Legacy notes/);
 });
-test('both memory pages explain snapshot replay and supported freshness paths', async () => {
-  for (const name of ['apps/brain.md', 'concepts/context-and-memory.md']) {
-    const manual = await fs.readFile(new URL(`../../documentation/manual/${name}`, import.meta.url), 'utf8');
-    assert.match(manual, /first user turn/);
-    assert.match(manual, /Later turns replay that (saved )?snapshot/);
-    assert.ok(manual.includes('brain_search') && manual.includes('brain_read_page'));
-    assert.match(manual, /new chat/);
+
+test('manual pages no longer describe injected Brain notes or retired wiki tools', async () => {
+  for (const name of ['apps/brain.md', 'concepts/context-and-memory.md', 'reference/wiki-and-brain.md', 'extend/mcp-hub.md']) {
+    const manual = await read(name);
+    for (const retired of ['brain_search', 'brain_read_page', 'brain_write_page', 'save_memory', 'Brain notes', 'Brain context']) {
+      assert.ok(!manual.includes(retired), `${name} mentions ${retired}`);
+    }
+    assert.doesNotMatch(manual, /suggested memories|saved directly/, name);
   }
+  assert.match(await read('concepts/context-and-memory.md'), /Nothing from it is added to your prompt/);
 });

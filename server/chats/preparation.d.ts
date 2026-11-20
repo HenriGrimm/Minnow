@@ -26,7 +26,6 @@ export interface ChatPreparationAdapters {
   loadTypePrompt(typeId: string, type: any): Promise<string>;
   readTranscript(chatId: string): Promise<any>;
   readProfile(reference: import('./contracts.js').AgentProfileReference): Promise<import('./repository.js').ProfileRecord | null>;
-  retrieveMemory(input: any): Promise<string>;
   retrieveCodeMap(input: any): Promise<string>;
 }
 export interface PreparedChatExecution {

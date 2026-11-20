@@ -76,10 +76,10 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'who_calls',
   'read_symbol',
   'get_lsp_diagnostics',
-  'brain_search',
-  'brain_read_page',
-  'brain_list',
-  'save_memory',
+  'memory_search',
+  'memory_read',
+  'memory_save',
+  'memory_forget',
   'web_search_ddg',
   'web_search_tavily',
   'web_map',
@@ -110,12 +110,11 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
  * - `web_search_tavily` / `web_search_searxng` -> `web_search_ddg`, the one that
  *   needs no API key and so works in every workspace
  * - `rag_web_content` -> `fetch_web_content`
- * - `brain_list` -> `brain_search`
  *
  * — and tools no board task has a use for: office-document creation,
  * `read_document`, the Minnow product manual, the impeccable design-review set,
- * `manage_dev_servers` (the browser rung starts its own app), and `save_memory`,
- * because an unattended attempt should not write the user's long-term memory.
+ * `manage_dev_servers` (the browser rung starts its own app), and `memory_save` /
+ * `memory_forget`, because an unattended attempt should not write project memory.
  */
 export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
   'load_skill',
@@ -141,8 +140,8 @@ export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
   'who_calls',
   'read_symbol',
   'get_lsp_diagnostics',
-  'brain_search',
-  'brain_read_page',
+  'memory_search',
+  'memory_read',
   'web_search_ddg',
   'fetch_web_content',
 ]);

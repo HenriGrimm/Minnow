@@ -569,7 +569,7 @@ export function createChatCommandService({
             worktreeRoot: current.chat.worktreeRoot, gitBranch: current.chat.gitBranch, modeId: currentPolicy.modeId,
             providerId: selection.providerId, modelId: selection.modelId,
             workAgentId: current.chat.workAgentId, workAgentAuto: current.chat.workAgentAuto,
-            brainNotesInjection: current.chat.brainNotesInjection, codeMapInjection: current.chat.codeMapInjection,
+            codeMapInjection: current.chat.codeMapInjection,
             contextDocumentsInjection: current.chat.contextDocumentsInjection, memoryEnabled: current.chat.memoryEnabled,
           } });
         const record = repository.admitCommand(command, { producerId: hashId('producer', receiptId), requestKey: input.clientRequestId, captured: {

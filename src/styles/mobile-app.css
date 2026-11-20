@@ -884,7 +884,6 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
 .m-thread #composerThinkingWrap,
 .m-thread #composerContextDocumentsWrap,
 .m-thread #composerCodeMapWrap,
-.m-thread #composerBrainNotesWrap,
 .m-thread #orchestratePlanStrip,
 .m-thread #workAgentDev,
 .m-thread #btnViewModeToggleBoard,

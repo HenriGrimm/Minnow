@@ -2,11 +2,6 @@ import {
   fetchCodeMapInjectionDefault,
   saveCodeMapInjectionDefault,
 } from '../brain/code-injection-config';
-import {
-  fetchMemoryInjectionEnabled,
-  saveMemorySettings,
-} from '../memory/config';
-import { syncComposerBrainNotesFromActiveChat } from './composer-brain-notes';
 import { syncComposerCodeMapFromActiveChat } from './composer-code-map';
 import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
 import { renderContextDocumentsInjectionSection } from './settings-context-documents';
@@ -17,7 +12,6 @@ type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 function refreshComposerInjectionControls(): void {
   void Promise.all([
-    syncComposerBrainNotesFromActiveChat(),
     syncComposerCodeMapFromActiveChat(),
     syncComposerContextDocumentsFromActiveChat(),
   ]);
@@ -44,12 +38,7 @@ export async function renderInjectionSettingsSection(
   content.className = 'settings-general__content';
   shell.appendChild(content);
 
-  const [initialBrainNotesDefault, initialCodeMapDefault] = await Promise.all([
-    fetchMemoryInjectionEnabled(),
-    fetchCodeMapInjectionDefault(),
-  ]);
-  let brainNotesDefault = initialBrainNotesDefault;
-  let codeMapDefault = initialCodeMapDefault;
+  let codeMapDefault = await fetchCodeMapInjectionDefault();
 
   const defaults = appendSettingsGroup(
     content,
@@ -58,29 +47,6 @@ export async function renderInjectionSettingsSection(
     'agents.injection',
     { emphasis: true },
   );
-
-  const { row: brainNotesRow, input: brainNotesInput } = createSettingsToggleRow(
-    'Include Brain notes in new chats',
-    {
-      id: 'settingsBrainNotesInjectionDefault',
-      checked: brainNotesDefault,
-      searchKey: 'agents.injection.brainNotes',
-      description: 'The Brain notes composer toggle is available when this is enabled.',
-      onChange: (checked) => {
-        void (async () => {
-          const ok = await saveMemorySettings({ injectionEnabled: checked });
-          if (!ok) {
-            brainNotesInput.checked = brainNotesDefault;
-            setStatus('err', 'Could not save Brain notes injection setting');
-            return;
-          }
-          brainNotesDefault = checked;
-          refreshComposerInjectionControls();
-        })();
-      },
-    },
-  );
-  defaults.appendChild(brainNotesRow);
 
   const { row: codeMapRow, input: codeMapInput } = createSettingsToggleRow(
     'Include the code map in new chats',

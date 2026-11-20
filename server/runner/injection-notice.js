@@ -64,8 +64,8 @@ function rememberInjectedContext(chat, kind, body) {
 }
 function appendInjectionNoticesForTurn(chat, blocks) {
   const added = [];
+  // Memory is never injected; `brain-notes` labels above remain for legacy rows.
   const candidates = [
-    { kind: "brain-notes", raw: blocks.brainNotes },
     { kind: "code-map", raw: blocks.codeMap },
     { kind: "context-documents", raw: blocks.contextDocuments }
   ];

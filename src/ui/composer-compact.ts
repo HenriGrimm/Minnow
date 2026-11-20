@@ -16,7 +16,6 @@ const SETTINGS_ITEM_IDS = [
   'composerCursorFast',
   'composerContextDocumentsWrap',
   'composerCodeMapWrap',
-  'composerBrainNotesWrap',
   'orchestratePlanStrip',
   'workAgentDev',
   'btnViewModeToggleBoard',

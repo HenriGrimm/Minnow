@@ -22,6 +22,21 @@ import { withSubAgentReportTool } from './sub-agent-report-tool.js';
 
 const appRoot = fileURLToPath(new URL('../../', import.meta.url));
 let composerPromise;
+const memoryPolicySources = new Map();
+
+/** Older captured profiles predate the on-demand policy; add only that static source. */
+async function withMemoryPolicySource(sources, tools) {
+  const names = tools.map(tool => tool.function.name);
+  if (!names.includes('memory_search')) return sources;
+  const id = names.includes('memory_save') ? 'memory' : 'memory-readonly';
+  const captured = [...Object.values(sources.builtinRaw ?? {}), ...Object.values(sources.userRaw ?? {})];
+  if (captured.some(raw => new RegExp(`^id: ${id}\\s*$`, 'm').test(raw))) return sources;
+  const file = `tool-usage/${id}.md`;
+  if (!memoryPolicySources.has(file)) {
+    memoryPolicySources.set(file, await fs.readFile(path.join(appRoot, 'src/chat/prompts', file), 'utf8'));
+  }
+  return { ...sources, builtinRaw: { ...sources.builtinRaw, [file]: memoryPolicySources.get(file) } };
+}
 
 export async function loadChatPreparationComposer() {
   composerPromise ??= import(pathToFileURL(path.join(appRoot, CHAT_PREPARATION_BUNDLE)).href).catch(() => {
@@ -156,19 +171,6 @@ export function createChatPreparationAdapters(overrides = {}) {
     async readProfile(reference) {
       const { createChatRepository } = await import('./repository.js');
       return createChatRepository().getProfile(reference.profileId, reference.profileVersion);
-    },
-    async retrieveMemory({ chat, cwd, query, signal }) {
-      const { loadBrainConfig } = await import('../brain/store.js');
-      const { retrieveBrainBlockHybrid } = await import('../brain/retrieve.js');
-      const { brainWorkspaceKeyFromPath } = await import('../brain/paths.js');
-      const brain = await loadBrainConfig();
-      if (brain.enabled === false) return '';
-      const result = await retrieveBrainBlockHybrid({ query, limit: 12, signal,
-        autoInject: chat.kind !== 'expert', workspaceKey: brainWorkspaceKeyFromPath(cwd),
-        maxChars: brain.maxInjectCharsFull ?? 8000,
-        ...(chat.kind === 'expert' && chat.expertId ? { scope: { expertId: chat.expertId } } : {}),
-      }, brain);
-      return result.block ?? '';
     },
     async retrieveCodeMap({ cwd, query, composer, signal }) {
       const { loadBrainCodeConfig, repoMap } = await import('../brain/code/query.js');
@@ -330,7 +332,7 @@ export async function captureChatProfile(chat, scope, options = {}) {
     sampler: pick(meta.sampler, ['temperature', 'topP', 'topK', 'minP', 'repetitionPenalty', 'presencePenalty', 'maxTokens', 'stop']),
     thinking: pick(meta.thinking, ['defaultMode', 'thinkingBudgetTokens']),
     memory: { enabled: meta.memory?.enabled !== false }, contextDocuments: pick(meta.contextDocuments, ['enabledPresets', 'customPaths', 'maxTotalChars']),
-    features: { memoryInjection: meta.features?.memoryInjection !== false, codeMapInjectionDefault: meta.features?.codeMapInjectionDefault === true,
+    features: { codeMapInjectionDefault: meta.features?.codeMapInjectionDefault === true,
       contextDocumentsInjectionDefault: meta.features?.contextDocumentsInjectionDefault !== false },
     toolSecurity: { shellSandbox: policy.shellSandboxMode },
   };
@@ -339,7 +341,7 @@ export async function captureChatProfile(chat, scope, options = {}) {
   const sources = live.composer.captureChatPromptSources({ chat: promptChat, workAgents: promptAgents,
     workAgentOverrides: live.workAgentOverrides, ...role.sources,
     context: { cwd: scope.canonicalKey, modeId: policy.modeId,
-      expertId: null, workAgentId: null, skillBody: null, memoryBlock: '{{memory}}', memoryEnabled: true,
+      expertId: null, workAgentId: null, skillBody: null, memoryBlock: null, memoryEnabled: false,
       codeMapBlock: '{{code_map}}', codeMapInjectionEnabled: true,
       contextDocumentsBlock: '{{context_documents}}', contextDocumentsInjectionEnabled: true,
       enabledToolIds: Object.keys(policy.toolPermissions).filter(name => policy.toolPermissions[name] !== 'off'),
@@ -354,7 +356,7 @@ export async function captureChatProfile(chat, scope, options = {}) {
   const runSettings = live.composer.resolveChatRunSettings({ chat: live.effectiveChat, workAgents: live.agents,
     workAgentOverrides: live.workAgentOverrides, meta,
     ...(live.typeId ? { typeId: live.typeId, typeConfig: live.type } : {}) });
-  const chatSettings = pick(chat, ['thinkingMode', 'brainNotesInjection', 'codeMapInjection', 'contextDocumentsInjection', 'memoryEnabled']);
+  const chatSettings = pick(chat, ['thinkingMode', 'codeMapInjection', 'contextDocumentsInjection', 'memoryEnabled']);
   const prompt = { sources, workAgent: role.workAgent, meta: capturedMeta,
     chatLinksBlock: standingChatLinks(chat.links),
     workAgentOverrides, rules: structuredClone(live.settings.rules) };
@@ -517,8 +519,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   model.thinking = runSettings.thinking;
   const shellSandboxMode = policy.shellSandboxMode;
   const query = command.message ?? '';
-  const memoryEnabled = firstTurn ? enabled(acceptedChat.brainNotesInjection, meta.features?.memoryInjection !== false) &&
-    (acceptedChat.memoryEnabled ?? meta.memory?.enabled ?? true) && !(chat.kind === 'expert' && chat.expertRuntime?.memoryEnabled === false) : Boolean(replay.memoryBlock);
+  // Memory is never injected; stored legacy `brain-notes` bodies are ignored on replay.
   const codeMapEnabled = firstTurn ? enabled(acceptedChat.codeMapInjection, meta.features?.codeMapInjectionDefault === true) : Boolean(replay.codeMapBlock);
   const documentsEnabled = firstTurn ? enabled(acceptedChat.contextDocumentsInjection, meta.features?.contextDocumentsInjectionDefault !== false) : Boolean(replay.contextDocumentsBlock);
   const enrichmentOmissions = [];
@@ -548,8 +549,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const capturedPrompt = snapshot.prompt;
   const capturedPromptProfile = capturedPrompt?.meta?.activePromptProfile;
   const useCapturedSources = capturedPrompt?.sources && (!capturedPromptProfile || capturedPromptProfile === 'full');
-  const [memoryBlock, codeMapBlock, contextDocumentsBlock, role, workspaceReposBlock] = await Promise.all([
-    memoryEnabled ? firstTurn ? optional('memory', enrichmentSignal => live.adapters.retrieveMemory({ chat, cwd, query, signal: enrichmentSignal })) : replay.memoryBlock : null,
+  const [codeMapBlock, contextDocumentsBlock, role, workspaceReposBlock] = await Promise.all([
     codeMapEnabled ? firstTurn ? optional('code-map', enrichmentSignal => live.adapters.retrieveCodeMap({ cwd, query, composer: live.composer, signal: enrichmentSignal })) : replay.codeMapBlock : null,
     documentsEnabled ? firstTurn ? readDocuments() : replay.contextDocumentsBlock : null,
     useCapturedSources ? { sources: capturedPrompt.sources, workAgent: capturedPrompt.workAgent ?? null }
@@ -562,11 +562,12 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const promptChat = role.workAgent ? { ...effectiveChat, workAgentAuto: false, workAgentId: role.workAgent.id } : effectiveChat;
   const promptAgents = role.workAgent ? [...live.agents.filter(agent => agent.id !== role.workAgent.id), role.workAgent] : live.agents;
   const composed = live.composer.composeChatPrompt({ chat: promptChat, workAgents: promptAgents,
-    workAgentOverrides: snapshot.prompt?.workAgentOverrides ?? live.workAgentOverrides, ...role.sources,
+    workAgentOverrides: snapshot.prompt?.workAgentOverrides ?? live.workAgentOverrides,
+    ...await withMemoryPolicySource(role.sources, tools),
     context: { cwd, modeId: policy.modeId,
       expertId: snapshot.prompt?.expertId ?? null, expertLabel: snapshot.prompt?.expertLabel ?? null,
       workAgentId: null, skillBody: turn?.skillBody ?? snapshot.prompt?.skillBody ?? null,
-      memoryBlock: nonempty(memoryBlock), memoryEnabled, codeMapBlock: nonempty(codeMapBlock), codeMapInjectionEnabled: codeMapEnabled,
+      memoryBlock: null, memoryEnabled: false, codeMapBlock: nonempty(codeMapBlock), codeMapInjectionEnabled: codeMapEnabled,
       contextDocumentsBlock: nonempty(contextDocumentsBlock), contextDocumentsInjectionEnabled: documentsEnabled,
       chatLinksBlock: snapshot.prompt?.chatLinksBlock ?? null, workspaceReposBlock: nonempty(workspaceReposBlock), enabledToolIds: tools.map(row => row.function.name),
       infoPresetId: meta.activeInfoPresetId ?? 'general-assistant', planGranularity: meta.planning?.granularity ?? 'medium',
@@ -578,7 +579,6 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     }, rules: snapshot.prompt?.rules ?? live.settings.rules, separateCliContext: cli,
   });
   const contextBodies = {};
-  if (nonempty(memoryBlock)) contextBodies['brain-notes'] = memoryBlock;
   if (nonempty(codeMapBlock)) contextBodies['code-map'] = codeMapBlock;
   if (nonempty(contextDocumentsBlock)) contextBodies['context-documents'] = contextDocumentsBlock;
   const selectedAgent = live.type ?? live.mode.workAgent ?? {};

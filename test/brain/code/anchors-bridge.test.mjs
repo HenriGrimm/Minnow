@@ -21,6 +21,7 @@ import {
 } from '../../../server/brain/code/indexer.js';
 import { closeCodeDbForTests, getCodeDb, upsertSymbol } from '../../../server/brain/code/schema.js';
 import { brainWorkspaceKeyFromPath } from '../../../server/brain/paths.js';
+import { projectMemoryFolder, resolveMemoryProject } from '../../../server/brain/memory/scope.js';
 import { lintBrainWiki } from '../../../server/brain/lint.js';
 import { createPage, ensureBrainStore, readPage, rebuildCatalog } from '../../../server/brain/store.js';
 import { executeServerTool } from '../../../server/runtime/tools-middleware.js';
@@ -94,7 +95,7 @@ describe('MIN-B9 bridge anchors', () => {
     await fs.rm(homeDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   });
 
-  it('read_symbol names the wiki pages that anchor the symbol', async () => {
+  it('read_symbol names only the current project memories that anchor the symbol', async () => {
     const repo = brainWorkspaceKeyFromPath(workspaceDir);
     const symbolId = `${repo}:MY_EXPORT.callee`;
 
@@ -114,10 +115,33 @@ describe('MIN-B9 bridge anchors', () => {
     assert.equal(pages[0].path, 'facts/callee-design.md');
     assert.equal(pages[0].title, 'Callee design note');
 
-    // The anchor bridge is no longer its own tool: read_symbol carries it.
+    // Legacy wiki pages are never surfaced to agents.
+    const legacyOut = await executeServerTool('read_symbol', { symbol: 'callee' });
+    assert.doesNotMatch(legacyOut.result, /Explained in/);
+
+    const project = await resolveMemoryProject(workspaceDir);
+    const memoryId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    await createPage({
+      relPath: `${projectMemoryFolder(project.key)}/callee-design.md`,
+      id: memoryId,
+      title: 'Callee stays synchronous',
+      anchors: [symbolId],
+      body: 'Callers rely on a synchronous return.',
+      kind: 'decision',
+      scope: 'project',
+      skipVectorSync: true,
+    });
+    await createPage({
+      relPath: `${projectMemoryFolder(`other--${'0'.repeat(32)}`)}/callee-other.md`,
+      title: 'Other project note',
+      anchors: [symbolId],
+      body: 'Belongs to another repository.',
+      skipVectorSync: true,
+    });
     const toolOut = await executeServerTool('read_symbol', { symbol: 'callee' });
-    assert.match(toolOut.result, /Explained in Brain/);
-    assert.match(toolOut.result, /facts\/callee-design\.md/);
+    assert.match(toolOut.result, /Explained in memory: Callee stays synchronous \(id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\)/);
+    assert.match(toolOut.result, /memory_read/);
+    assert.doesNotMatch(toolOut.result, /Other project note|callee-design\.md/);
   });
 
   it('anchor drift flags page stale after symbol content_hash changes', async () => {

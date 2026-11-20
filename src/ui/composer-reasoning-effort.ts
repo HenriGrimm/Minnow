@@ -20,7 +20,6 @@ import {
 import type { ReasoningEffortOption as EffortOption } from '../types';
 import { syncThinkingControlFromActiveChat } from './composer-thinking';
 import { syncComposerCodeMapFromActiveChat } from './composer-code-map';
-import { syncComposerBrainNotesFromActiveChat } from './composer-brain-notes';
 import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
 import { isComposerRecoveryBlocked } from './composer-send';
 import { modelCache } from '../app-state';
@@ -346,7 +345,6 @@ export function syncComposerReasoningEffortFromActiveChat(): void {
   syncThinkingControlFromActiveChat();
   syncComposerModelTriggers();
   void syncComposerCodeMapFromActiveChat();
-  void syncComposerBrainNotesFromActiveChat();
   void syncComposerContextDocumentsFromActiveChat();
 }
 

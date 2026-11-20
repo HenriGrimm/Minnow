@@ -15,7 +15,9 @@ const fail = (code, message) => { throw new ChatContractError(code, message); };
 /** The one sub-agent profile ("Agent"); legacy rows keep their own ids. */
 export const DEFAULT_AGENT_TYPE = 'generalPurpose';
 const keys = new Set(['type', 'task', 'title', 'target', 'workspace_strategy', 'workspace_id', 'client_request_id', 'wait', 'providerId', 'modelId', 'category', 'board_task_id']);
-const disabledChildTools = new Set(['spawn_sub_agent', 'cancel_sub_agent', 'list_sub_agents', 'get_sub_agent_status']);
+// Children read project memory but report memory-worthy findings to their parent.
+const disabledChildTools = new Set(['spawn_sub_agent', 'cancel_sub_agent', 'list_sub_agents', 'get_sub_agent_status',
+  'memory_save', 'memory_forget']);
 
 function normalize(input, toolCallId) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !keys.has(key))) fail('invalid_request', 'Unsupported delegation input');

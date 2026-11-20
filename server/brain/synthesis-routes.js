@@ -6,7 +6,7 @@ import { createUserSkill, saveUserSkillContent } from '../skills/user-skills.js'
 import { parseSkillFrontmatter } from '../skills/parse-frontmatter.js';
 import { getAppRoot } from '../workspace/root.js';
 import { loadSynthesisConfig, saveSynthesisConfig } from './synthesis-config.js';
-import { runMemorySynthesis, writeSynthesisFactPage } from './synthesis.js';
+import { writeSynthesisFactPage } from './synthesis.js';
 import { runSkillSynthesis } from './skill-synthesis.js';
 import { incrementMessagePairs, getMessagePairs } from './synthesis-state.js';
 import {
@@ -150,30 +150,13 @@ export async function handleSynthesisRequest(req, res, pathname) {
       }
 
       const messages = Array.isArray(body.messages) ? body.messages : [];
-      const sourceExcerpt =
-        typeof body.sourceExcerpt === 'string'
-          ? body.sourceExcerpt.slice(0, 2000)
-          : undefined;
       const roundCount =
         typeof body.roundCount === 'number' ? body.roundCount : 1;
       const toolCount =
         typeof body.toolCount === 'number' ? body.toolCount : 0;
-      const explicitProviderId =
-        typeof body.providerId === 'string' ? body.providerId.trim() : undefined;
-      const explicitModelId =
-        typeof body.modelId === 'string' ? body.modelId.trim() : undefined;
-      const expertId =
-        typeof body.expertId === 'string' ? body.expertId.trim() : undefined;
 
-      const memoryResult = await runMemorySynthesis({
-        messages,
-        sourceChatId: chatId || undefined,
-        sourceExcerpt,
-        providerId: explicitProviderId,
-        modelId: explicitModelId,
-        ...(expertId ? { expertId } : {}),
-      });
-
+      // Memories are written only by explicit agent or user actions; background
+      // synthesis proposes skills only.
       const skillResult = await runSkillSynthesis({
         messages,
         roundCount,
@@ -184,9 +167,9 @@ export async function handleSynthesisRequest(req, res, pathname) {
       sendJson(res, 200, {
         ok: true,
         messagePairs: pairCount,
-        memoryProposals: memoryResult.memoryProposals,
-        memoryPages: memoryResult.pages,
-        memorySkipped: memoryResult.skipped,
+        memoryProposals: [],
+        memoryPages: [],
+        memorySkipped: ['retired'],
         skillProposal: skillResult.skillProposal,
         skillSkipped: skillResult.skipped,
       });

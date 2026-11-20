@@ -22,7 +22,6 @@ export const PART_ORDER: PromptPartId[] = [
   'info',
   'workspace-repos',
   'skill',
-  'memory',
   'code-map',
   'context-documents',
 ];
@@ -33,23 +32,6 @@ const PART_SEPARATOR = '\n\n---\n\n';
 const MODE_PART_IDS = new Set(['orchestrate']);
 
 // ── Gates ────────────────────────────────────────────────────────────────────
-
-/** Brain write tools whose presence warrants save guidance even with an empty wiki. */
-const BRAIN_WRITE_TOOL_IDS = new Set(['save_memory', 'brain_write_page']);
-
-function contextHasBrainWriteTools(ctx: ComposeContext): boolean {
-  return (ctx.enabledToolIds ?? []).some((id) => BRAIN_WRITE_TOOL_IDS.has(id));
-}
-
-function isMemoryPartEnabled(ctx: ComposeContext): boolean {
-  if (ctx.memoryBlock?.trim()) return true;
-  return ctx.memoryEnabled === true && contextHasBrainWriteTools(ctx);
-}
-
-/** True when a non-empty Brain notes block is in the composed system prompt. */
-export function isBrainNotesPartEnabled(ctx: ComposeContext): boolean {
-  return Boolean(ctx.memoryBlock?.trim());
-}
 
 /** True when the outbound prompt will include the code-map part (injection on + non-empty map). */
 export function isCodeMapPartEnabled(ctx: ComposeContext): boolean {
@@ -98,9 +80,6 @@ function isPartEnabled(ctx: ComposeContext, partId: PromptPartId): boolean {
   }
   if (partId === 'skill') {
     return Boolean(ctx.skillBody?.trim());
-  }
-  if (partId === 'memory') {
-    return isMemoryPartEnabled(ctx);
   }
   if (partId === 'code-map') {
     return isCodeMapPartEnabled(ctx);
@@ -161,13 +140,6 @@ function resolvePartBody(partId: PromptPartId, ctx: ComposeContext): string {
   if (partId === 'skill' && ctx.skillBody?.trim()) {
     return ctx.skillBody.trim();
   }
-  if (partId === 'memory' && isMemoryPartEnabled(ctx)) {
-    const loaded = loadPromptById('info', 'memory');
-    if (loaded?.body?.trim()) {
-      return loaded.body.trim();
-    }
-    return ctx.memoryBlock?.trim() ?? '';
-  }
   if (partId === 'code-map' && isCodeMapPartEnabled(ctx)) {
     const loaded = loadPromptById('info', 'code-map');
     if (loaded?.body?.trim()) {
@@ -226,13 +198,16 @@ function resolveChatCoordinationBody(ctx: ComposeContext): string {
   return loadPromptById('tool-usage', 'chat-coordination')?.body?.trim() ?? '';
 }
 
-/** Brain save guidance when write tools are enabled for this chat. */
-function resolveMemorySaveBody(ctx: ComposeContext): string {
-  if (!contextHasBrainWriteTools(ctx)) {
-    return '';
-  }
-  const loaded = loadPromptById('info', 'memory-save');
-  return loaded?.body?.trim() ?? '';
+/**
+ * Project memory policy: static text gated only on which memory tools exist
+ * (no counts or titles, so the prompt-cache prefix stays stable). Agents that
+ * can only read memory get the read-only variant.
+ */
+export function resolveMemoryToolBody(ctx: ComposeContext): string {
+  const tools = ctx.enabledToolIds ?? [];
+  if (!tools.includes('memory_search')) return '';
+  const id = tools.includes('memory_save') ? 'memory' : 'memory-readonly';
+  return loadPromptById('tool-usage', id)?.body?.trim() ?? '';
 }
 
 /** Default-on interface icon guidance; users can disable it in Settings → Agents. */
@@ -250,21 +225,6 @@ function resolveFlaticonIconGuidanceBody(
 function resolveLocalModelGuidanceBody(ctx: ComposeContext): string {
   if (!isLocalModelGuidanceEnabled(ctx)) return '';
   return loadPromptById('info', 'local-model')?.body?.trim() ?? '';
-}
-
-/** Work-agent knowledge capture when save_memory / brain_write_page are enabled. */
-function resolveWorkAgentKnowledgeCaptureBody(
-  ctx: ComposeContext,
-): string {
-  if (!contextHasBrainWriteTools(ctx)) {
-    return '';
-  }
-  const agentId = ctx.workAgentId?.trim();
-  if (!agentId || agentId === 'default') {
-    return '';
-  }
-  const loaded = loadPromptById('tool-usage', `${agentId}-knowledge-capture`);
-  return loaded?.body?.trim() ?? '';
 }
 
 function contextHasAskQuestionTool(ctx: ComposeContext): boolean {
@@ -344,9 +304,8 @@ function buildInterpolationVars(ctx: ComposeContext): InterpolationVars {
     profile: 'full',
     expert: ctx.expertLabel?.trim() || ctx.expertId || '',
     cwd: ctx.cwd,
-    memory:
-      ctx.memoryBlock?.trim() ||
-      '(no wiki notes matched this message — the wiki may still be empty)',
+    // Memory is searched on demand; nothing is interpolated into prompts.
+    memory: '',
     code_map: ctx.codeMapBlock?.trim() ?? '',
     context_documents: ctx.contextDocumentsBlock?.trim() ?? '',
     user_message: ctx.userMessagePreview ?? '',
@@ -374,6 +333,11 @@ export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext
   for (const partId of PART_ORDER) {
     if (!isPartEnabled(ctx, partId)) continue;
 
+    if (partId === 'tool-usage') {
+      const memoryRaw = resolveMemoryToolBody(ctx);
+      if (memoryRaw) sections.push(interpolatePromptBody(memoryRaw, vars).trim());
+    }
+
     const rawBody = resolvePartBody(partId, ctx);
     if (!rawBody.trim()) continue;
 
@@ -381,28 +345,9 @@ export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext
     if (interpolated.trim()) {
       // These shipped parts carry retrieved data/current-turn information.
       const target = options
-        && ['memory', 'code-map', 'context-documents', 'info'].includes(partId)
+        && ['code-map', 'context-documents', 'info'].includes(partId)
         ? options.turnContext : sections;
       target.push(interpolated.trim());
-    }
-
-    if (partId === 'memory') {
-      const saveRaw = resolveMemorySaveBody(ctx);
-      if (saveRaw.trim()) {
-        const saveInterpolated = interpolatePromptBody(saveRaw, vars);
-        if (saveInterpolated.trim()) {
-          sections.push(saveInterpolated.trim());
-        }
-      }
-    }
-    if (partId === 'work-agent') {
-      const captureRaw = resolveWorkAgentKnowledgeCaptureBody(ctx);
-      if (captureRaw.trim()) {
-        const captureInterpolated = interpolatePromptBody(captureRaw, vars);
-        if (captureInterpolated.trim()) {
-          sections.push(captureInterpolated.trim());
-        }
-      }
     }
 
     if (partId === 'tool-usage') {

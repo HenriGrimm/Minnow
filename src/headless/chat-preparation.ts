@@ -87,7 +87,7 @@ export function classifyChatBuiltinTools(names: string[]): Record<string, string
   for (const name of ['read_command_log', 'list_running_commands', 'issue_get_state', 'issue_search',
     'agent_capabilities', 'chat_list', 'chat_read', 'chat_wait',
     'list_sub_agents', 'get_sub_agent_status', 'get_settings', 'search_settings', 'get_appearance',
-    'brain_search', 'brain_read_page', 'brain_list', 'read_clipboard']) {
+    'memory_search', 'memory_read', 'read_clipboard']) {
     if (names.includes(name)) result[name] = 'read';
   }
   if (names.includes('write_clipboard')) result.write_clipboard = 'external-write';
@@ -97,7 +97,8 @@ export function classifyChatBuiltinTools(names: string[]): Record<string, string
 export function replayChatContext(chat: Chat) {
   const bodies = resolveInjectionReplay(chat.history ?? [], chat.injectedContext);
   return {
-    memoryBlock: shouldReplayStoredInjection(chat.brainNotesInjection) ? bodies['brain-notes'] ?? null : null,
+    // Legacy `brain-notes` bodies stay parseable but are never replayed.
+    memoryBlock: null,
     codeMapBlock: shouldReplayStoredInjection(chat.codeMapInjection) ? bodies['code-map'] ?? null : null,
     contextDocumentsBlock: shouldReplayStoredInjection(chat.contextDocumentsInjection) ? bodies['context-documents'] ?? null : null,
   };

@@ -52,8 +52,8 @@ const READ_TOOLS = Object.freeze([
   'git_status',
   'git_log',
   'git_diff',
-  'brain_search',
-  'brain_read_page',
+  'memory_search',
+  'memory_read',
   'web_search_ddg',
   'fetch_web_content',
 ]);

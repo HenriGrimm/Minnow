@@ -3,10 +3,7 @@
  */
 
 import { fetchMemoryEnabled } from '../../memory/client';
-import {
-  fetchMemoryInjectionEnabled,
-  saveMemorySettings,
-} from '../../memory/config';
+import { saveMemorySettings } from '../../memory/config';
 import { setPermissionLevel } from '../../config/tool-security-meta';
 import { PERMISSION_LEVEL_META, type PermissionLevel } from '../../lib/permissions.mjs';
 import { el, createChoiceCard, renderStepHeader } from '../ui-helpers';
@@ -15,7 +12,6 @@ import { recordStepProgress } from '../state-core';
 
 let permissionPreset: PermissionLevel = 'auto';
 let memoryStoreEnabled = true;
-let memoryInjectionEnabled = true;
 
 /** Toggle row for onboarding brain/memory preferences. */
 function createMemoryToggleRow(options: {
@@ -119,7 +115,7 @@ export const memoryStep: OnboardingStep = {
       el(
         'p',
         'mn-onboarding-step-desc',
-        'Minnow remembers facts locally under ~/.minnow and files them into your Brain wiki. Both stay on by default.',
+        'Agents can keep a small memory for each project — decisions, constraints, your preferences and verified gotchas — stored locally under ~/.minnow. They search it when a task calls for it; nothing is added to your messages automatically.',
       ),
     );
 
@@ -127,28 +123,20 @@ export const memoryStep: OnboardingStep = {
     const toggles = el('div', 'mn-onboarding-toggle-list');
 
     const storeToggle = createMemoryToggleRow({
-      title: 'Enable memory store',
-      description: 'Save facts locally under ~/.minnow for recall across chats.',
+      title: 'Enable project memory',
+      description: 'Let agents search and save memories for this project and your cross-project preferences.',
       checked: memoryStoreEnabled,
       onChange: (checked) => {
         memoryStoreEnabled = checked;
       },
     });
-    const injectionToggle = createMemoryToggleRow({
-      title: 'Semantic recall on send',
-      description: 'Inject matching memories into new messages when relevant.',
-      checked: memoryInjectionEnabled,
-      onChange: (checked) => {
-        memoryInjectionEnabled = checked;
-      },
-    });
-    toggles.append(storeToggle, injectionToggle);
+    toggles.append(storeToggle);
     card.appendChild(toggles);
     card.appendChild(
       el(
         'p',
         'mn-onboarding-toggle-footnote',
-        'View and edit memories anytime in the Brain app.',
+        'Review, edit or forget memories anytime in the Brain app.',
       ),
     );
     container.appendChild(card);
@@ -161,14 +149,11 @@ export const memoryStep: OnboardingStep = {
       const inputs = toggles.querySelectorAll('input');
       inputs.forEach(input => { input.disabled = true; });
       void (async () => {
-        const [store, injection] = await Promise.all([fetchMemoryEnabled(), fetchMemoryInjectionEnabled()]);
+        const store = await fetchMemoryEnabled();
         if (!active) return;
         memoryStoreEnabled = store;
-        memoryInjectionEnabled = injection;
         const storeInput = storeToggle.querySelector('input') as HTMLInputElement | null;
-        const injectionInput = injectionToggle.querySelector('input') as HTMLInputElement | null;
         if (storeInput) storeInput.checked = memoryStoreEnabled;
-        if (injectionInput) injectionInput.checked = memoryInjectionEnabled;
         inputs.forEach(input => { input.disabled = false; });
         actions.setPrimaryEnabled(true);
       })().catch(() => {
@@ -185,14 +170,12 @@ export const memoryStep: OnboardingStep = {
     if (ctx.configServerAvailable) {
       await saveMemorySettings({
         storeEnabled: memoryStoreEnabled,
-        injectionEnabled: memoryInjectionEnabled,
       });
     }
     ctx.state = recordStepProgress(ctx.state, 'memory', {
       done: true,
       data: {
         memoryStore: memoryStoreEnabled,
-        memoryInjection: memoryInjectionEnabled,
       },
     });
   },

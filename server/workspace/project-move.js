@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { brainWorkspaceKeyFromPath } from '../brain/paths.js';
+import { resolveMemoryProject } from '../brain/memory/scope.js';
 import { checkoutKey, identity } from '../chats/checkout-identity.js';
 import { createChatRepository } from '../chats/repository.js';
 import { getMinnowHome } from '../config/home.js';
@@ -269,6 +270,17 @@ async function reassignBrainPages(move) {
   }
 }
 
+/** Project memory is keyed by the Git common directory, which moves with the folder. */
+async function rebindProjectMemory(move) {
+  if (!move.memoryKey) return;
+  const { clearMemoryProjectCache } = await import('../brain/memory/scope.js');
+  const { rebindProjectMemories } = await import('../brain/memory/store.js');
+  clearMemoryProjectCache(move.source);
+  clearMemoryProjectCache(move.destination);
+  const to = await resolveMemoryProject(move.destination);
+  if (to) await rebindProjectMemories(move.memoryKey, to);
+}
+
 async function finishMove(db, move) {
   if (lstat(move.source) || stamp(lstat(move.destination)) !== move.stamp) {
     throw new Error('Cannot verify the moved folder. Restore the project to the move destination before restarting Minnow.');
@@ -279,6 +291,7 @@ async function finishMove(db, move) {
     await updateIssuesResource(state => issuesAfterMove(state, move));
   }
   await reassignBrainPages(move);
+  await rebindProjectMemory(move);
   await updateConfigJson('config.json', meta => configAfterMove(meta, move));
   repointDefaultAfterMove(move.source, move.destination);
   invalidateWorkspaceRepos(move.source);
@@ -365,6 +378,7 @@ export async function moveRecentProject(sourcePath, parentPath) {
     }
     readRows(db, move, true);
     move.brainKey = brainWorkspaceKeyFromPath(source);
+    move.memoryKey = (await resolveMemoryProject(source).catch(() => null))?.key ?? null;
     writeSessionMeta(db, MOVE_KEY, move);
     // Reserve an empty destination on POSIX where rename could otherwise
     // overwrite an empty directory. Never copy or recursively remove folders.
