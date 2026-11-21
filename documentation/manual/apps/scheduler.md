@@ -11,6 +11,10 @@ Open **Automations** from the command palette. Jobs run while Minnow is running,
 
 Jobs use the current permission mode. They cannot answer interactive questions or grant tool approvals. If a run fails on permissions or lacks a required tool, simplify the prompt or change its inputs, then test it again.
 
+## Let a job start new chats
+
+Turn on **Start new chats without asking** under **Permissions** in a custom job or an instructions-based preset. Runs of that job can then open separate top-level chats in its workspace without your approval. Each new chat can get a first message, and it then works on its own. For example: “For each failing test, open a chat named after it and ask it to fix that test.” A run can open up to 10 chats. The new chats appear in Code’s sidebar, and you can continue them yourself. Chats opened this way cannot open further chats on their own. Leave the option off and the job cannot create chats.
+
 ## Use a GitHub preset
 
 Connect GitHub and select a checkout whose `origin` matches the repository. In **New automation**, choose the preset and review its generated instructions and options before starting it. A **PR Reviewer** can post a review and, if configured, merge eligible PRs. Check the selected action when you only need comments. **Issue Watcher** picks up issues with its configured label, runs implementation on a board, and can publish a PR after verification.

@@ -147,6 +147,22 @@ test('devices observe routing but cannot promote, and legacy tool/native history
 });
 
 
+test('a scheduled run may promote only a new empty root, never one with history or from the CLI', async t => {
+  const f = await fixture(t);
+  const scheduler = createChatCaller({ actor: 'human', ingress: 'scheduler', chatId: 'scheduler', scope: f.scope, policy: f.policy });
+  const cli = createChatCaller({ actor: 'human', ingress: 'cli', chatId: 'cli', scope: f.scope, policy: f.policy });
+  await assert.rejects(f.service.promote(cli, f.input('cli')), code('caller_denied'));
+  f.history([{ role: 'user', content: 'Earlier work' }, { role: 'assistant', content: 'Done' }]);
+  assert.equal((await f.service.ordinaryEligibility(f.caller, 'root')).reason, 'idle_root');
+  await assert.rejects(f.service.promote(scheduler, f.input('historical')), code('caller_denied'));
+  assert.notEqual(f.repository.getChat('root').chatCommandVersion, 1);
+  f.db.prepare('DELETE FROM messages WHERE chat_id=?').run('root'); f.db.prepare('UPDATE chats SET message_count=0 WHERE id=?').run('root');
+  assert.equal((await f.service.ordinaryEligibility(f.caller, 'root')).reason, 'new_root');
+  assert.equal((await f.service.promote(scheduler, f.input('fresh'))).disposition, 'promoted');
+  const accepted = await f.service.send(scheduler, { chatId: 'root', message: 'First automation message', clientRequestId: 'first' });
+  assert.ok(accepted.commandId);
+});
+
 test('settled historical tool groups promote as observations without dispatching past effects', async t => {
   const f = await fixture(t);
   const history = [{ role: 'user', content: 'Earlier task' },

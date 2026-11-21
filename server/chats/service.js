@@ -373,7 +373,10 @@ export function createChatCommandService({
   /** Promotion changes ownership only, never starts a turn or releases a legacy lease. */
   async function promote(caller, input) {
     requireCaller(caller);
-    if (caller.actor !== 'human' || caller.ingress !== 'renderer') failure('caller_denied', 'Only the local conversation client may promote an idle root');
+    // A scheduler run may promote only a root it just created and has not used
+    // yet (automation chat_create); anything with history stays renderer-only.
+    const newRootOnly = caller.actor === 'human' && caller.ingress === 'scheduler';
+    if (caller.actor !== 'human' || (caller.ingress !== 'renderer' && !newRootOnly)) failure('caller_denied', 'Only the local conversation client may promote an idle root');
     fields(input, ['chatId', 'expectedRevision', 'clientRequestId']);
     checked(validateChatId(input.chatId)); checked(validateChatId(input.clientRequestId));
     if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) failure('invalid_request', 'Promotion requires the durably saved revision');
@@ -396,6 +399,7 @@ export function createChatCommandService({
         const state = routingState(input.chatId);
         if (state.revision !== input.expectedRevision) failure('stale_revision', 'The saved conversation changed before promotion');
         if (!state.eligible) failure(state.reason === 'legacy_owner_active' ? 'ownership_conflict' : 'capability_unavailable', 'Ordinary execution cannot promote this conversation: ' + state.reason);
+        if (newRootOnly && state.reason !== 'new_root') failure('caller_denied', 'A scheduled run may only promote a new empty chat');
       };
       assertEligible();
       const selection = await selectionFor(target, caller, { chatId: input.chatId }, false);

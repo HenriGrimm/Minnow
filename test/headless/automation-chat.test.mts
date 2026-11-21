@@ -12,7 +12,7 @@ import {
 
 const context = () => ({ workspacePath: '/repo', modeId: 'build', providerId: 'p', modelId: 'm' });
 
-function harness(response: { ok: boolean; status?: number; body: unknown } = { ok: true, body: { receipt: { commandId: 'cmd-1', state: 'queued' } } }) {
+function harness(response: { ok: boolean; status?: number; body: unknown } = { ok: true, body: { receipt: { commandId: 'cmd-1', state: 'queued' } } }, route = 'legacy') {
   const persisted: any[] = [], requests: { url: string; init: RequestInit }[] = [];
   let n = 0;
   const create = createAutomationChatCreator(context, {
@@ -20,6 +20,10 @@ function harness(response: { ok: boolean; status?: number; body: unknown } = { o
     persist: async input => { persisted.push(input); },
     fetch: (async (url: string, init: RequestInit) => {
       requests.push({ url: String(url), init });
+      if (String(url).endsWith('/ordinary-routing')) {
+        const body = init.method === 'POST' ? { receipt: { disposition: 'promoted' } } : { route, revision: 3, reason: 'new_root' };
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }
       return { ok: response.ok, status: response.status ?? 202, json: async () => response.body } as Response;
     }) as typeof fetch,
   });
@@ -43,14 +47,21 @@ describe('automation chat_create', () => {
     assert.equal(h.requests.length, 0);
   });
 
-  it('starts the first message as the scheduler, with a stable request id', async () => {
+  it('promotes the new root, then starts the first message as the scheduler', async () => {
     const h = harness();
     const result = JSON.parse((await h.create({ title: 'Fix CI', message: 'Fix the lint job' })).content);
     assert.equal(result.commandId, 'cmd-1');
-    assert.match(h.requests[0].url, /\/api\/chats\/auto-1\/commands$/);
-    assert.equal((h.requests[0].init.headers as Record<string, string>)['X-Minnow-Chat-Client'], 'scheduler');
-    const body = JSON.parse(String(h.requests[0].init.body));
-    assert.deepEqual(body, { action: 'send', text: 'Fix the lint job', mode: 'auto', clientRequestId: 'auto-1-first' });
+    assert.deepEqual(h.requests.map(r => (r.init.method ?? 'GET') + ' ' + r.url.replace(/^.*\/api\/chats\/auto-1/, '')),
+      ['GET /ordinary-routing', 'POST /ordinary-routing', 'POST /commands']);
+    assert.ok(h.requests.every(r => (r.init.headers as Record<string, string>)['X-Minnow-Chat-Client'] === 'scheduler'));
+    assert.deepEqual(JSON.parse(String(h.requests[1].init.body)), { expectedRevision: 3, clientRequestId: 'auto-1-promote' });
+    assert.deepEqual(JSON.parse(String(h.requests[2].init.body)), { action: 'send', text: 'Fix the lint job', mode: 'auto', clientRequestId: 'auto-1-first' });
+  });
+
+  it('skips promotion when the server already owns the chat', async () => {
+    const h = harness(undefined, 'server');
+    await h.create({ title: 'T', message: 'go' });
+    assert.deepEqual(h.requests.map(r => r.init.method ?? 'GET'), ['GET', 'POST']);
   });
 
   it('rejects invalid input before creating anything', async () => {
