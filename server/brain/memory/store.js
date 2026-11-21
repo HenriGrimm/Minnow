@@ -36,8 +36,6 @@ export const MEMORY_LIMITS = Object.freeze({
   body: 1200,
   evidence: 300,
   summary: 160,
-  projectCap: 150,
-  userCap: 40,
 });
 export const DUPLICATE_MIN_COSINE = 0.85;
 
@@ -221,12 +219,6 @@ export function createMemory(input, deps = {}) {
     const fields = validateFields(input);
     const folder = folderFor(scope, input.project);
     const supersedes = await assertSupersedes(input.supersedes, input.project);
-    const existing = await listMemories({ project: input.project, scope });
-    const cap = scope === 'user' ? MEMORY_LIMITS.userCap : MEMORY_LIMITS.projectCap;
-    if (existing.length >= cap) {
-      throw new MemoryError('full',
-        `${scope === 'user' ? 'User' : 'Project'} memory is full (${existing.length}/${cap}). Nothing was saved. Update an existing memory or forget one that no longer applies, then try again.`);
-    }
     await assertNotDuplicate(fields, scope, input.project, { deps });
     const id = randomUUID();
     const relPath = `${folder}/${slugFor(fields.title, id)}.md`;

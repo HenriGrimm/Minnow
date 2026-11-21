@@ -257,13 +257,12 @@ describe('memory store', () => {
     assert.deepEqual(next.meta.supersedes, [old.meta.id]);
   });
 
-  test('the user cap refuses the next save without evicting', async () => {
+  test('there is no cap on how many memories a scope holds', async () => {
     const existing = (await listMemories({ project: alpha, scope: 'user' })).length;
-    for (let i = existing; i < MEMORY_LIMITS.userCap; i += 1) {
+    for (let i = 0; i < 45; i += 1) {
       await save(alpha, { title: `Preference number ${i}`, body: `pref ${i}`, kind: 'preference', scope: 'user' });
     }
-    await assert.rejects(save(alpha, { title: 'One too many', body: 'b', kind: 'preference', scope: 'user' }), /full \(40\/40\)/);
-    assert.equal((await listMemories({ project: alpha, scope: 'user' })).length, MEMORY_LIMITS.userCap);
+    assert.equal((await listMemories({ project: alpha, scope: 'user' })).length, existing + 45);
   });
 
   test('moving a repository rebinds its memories to the new key', async () => {

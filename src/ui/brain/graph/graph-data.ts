@@ -76,14 +76,12 @@ export function buildMemoryGraph(listing: MemoryListing, options: MemoryGraphOpt
   for (const scope of scopes) {
     const rows = visible.filter((m) => m.scope === scope);
     const total = listing.memories.filter((m) => m.scope === scope).length;
-    const cap = scope === 'user' ? listing.limits.userCap : listing.limits.projectCap;
     nodes.push({
       id: hubId(scope),
       kind: 'hub',
+      group: scope,
       label: scope === 'project' ? listing.project!.label : 'You',
-      sublabel: scope === 'project'
-        ? `This project · ${total} / ${cap} memories`
-        : `All projects · ${total} / ${cap} preferences`,
+      sublabel: `${scope === 'project' ? 'This project' : 'All projects'} · ${total} ${total === 1 ? 'memory' : 'memories'}`,
     });
     for (const kind of MEMORY_KIND_ORDER) {
       const items = rows.filter((m) => (m.kind ?? 'reference') === kind);
@@ -92,6 +90,7 @@ export function buildMemoryGraph(listing: MemoryListing, options: MemoryGraphOpt
       nodes.push({
         id: cid,
         kind: 'cluster',
+        group: scope,
         label: MEMORY_KIND_PLURAL[kind],
         sublabel: `${items.length} ${items.length === 1 ? 'memory' : 'memories'}`,
         tone: kind,
@@ -102,6 +101,7 @@ export function buildMemoryGraph(listing: MemoryListing, options: MemoryGraphOpt
         nodes.push({
           id: mid,
           kind: 'memory',
+          group: scope,
           label: memory.title || 'Untitled',
           sublabel: `${MEMORY_KIND_PLURAL[kind].slice(0, -1)} · ${String(memory.updatedAt ?? '').slice(0, 10)}`,
           tone: kind,

@@ -8,8 +8,7 @@ const read = name => fs.readFile(new URL(`../../documentation/manual/${name}`, i
 test('the Brain manual matches shipped memory limits and on-demand recall', async () => {
   const manual = await read('apps/brain.md');
   assert.ok(manual.includes(`up to ${MEMORY_LIMITS.body.toLocaleString('en-US')} characters`));
-  assert.ok(manual.includes(`up to ${MEMORY_LIMITS.projectCap} memories`));
-  assert.ok(manual.includes(`up to ${MEMORY_LIMITS.userCap}`));
+  assert.ok(manual.includes('no limit on how many memories'));
   for (const tool of ['memory_search', 'memory_read', 'memory_save', 'memory_forget']) assert.ok(manual.includes(tool), tool);
   assert.match(manual, /Nothing from memory is added to your messages/);
   assert.match(manual, /worktrees share one memory/);

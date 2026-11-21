@@ -18,6 +18,8 @@ export interface GraphNode {
   tone?: string;
   /** Memory id when kind === 'memory'. */
   memoryId?: string;
+  /** Layout lane: nodes sharing a group are pulled toward the same side of the canvas. */
+  group?: string;
   x?: number;
   y?: number;
   vx?: number;

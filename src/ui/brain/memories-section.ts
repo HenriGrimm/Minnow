@@ -55,23 +55,19 @@ export interface MemoryGroup {
   scope: MemoryScope;
   title: string;
   count: number;
-  cap: number;
   kinds: { kind: MemoryKind; label: string; items: MemoryRecord[] }[];
 }
 
 /** Group a listing by scope (project first), then by kind in a stable order. */
 export function groupMemories(listing: MemoryListing, memories: MemoryRecord[] = listing.memories): MemoryGroup[] {
-  const scopes: { scope: MemoryScope; title: string; cap: number }[] = [];
-  if (listing.project) {
-    scopes.push({ scope: 'project', title: `Project · ${listing.project.label}`, cap: listing.limits.projectCap });
-  }
-  scopes.push({ scope: 'user', title: 'Your preferences · all projects', cap: listing.limits.userCap });
-  return scopes.map(({ scope, title, cap }) => {
+  const scopes: { scope: MemoryScope; title: string }[] = [];
+  if (listing.project) scopes.push({ scope: 'project', title: `Project · ${listing.project.label}` });
+  scopes.push({ scope: 'user', title: 'Your preferences · all projects' });
+  return scopes.map(({ scope, title }) => {
     const rows = memories.filter((memory) => memory.scope === scope);
     return {
       scope,
       title,
-      cap,
       count: listing.memories.filter((memory) => memory.scope === scope).length,
       kinds: MEMORY_KIND_ORDER
         .map((kind) => ({
@@ -205,19 +201,16 @@ function renderOverview(): void {
   }
   mount.append(el('p', 'bm-eyebrow', 'Overview'));
   const scopes = el('div', 'bm-meters');
-  const meters: Array<{ scope: MemoryScope; label: string; cap: number }> = [];
-  if (listing.project) meters.push({ scope: 'project', label: listing.project.label, cap: listing.limits.projectCap });
-  meters.push({ scope: 'user', label: 'You · all projects', cap: listing.limits.userCap });
+  const meters: Array<{ scope: MemoryScope; label: string }> = [];
+  if (listing.project) meters.push({ scope: 'project', label: listing.project.label });
+  meters.push({ scope: 'user', label: 'You · all projects' });
   for (const meter of meters) {
     const count = listing.memories.filter((m) => m.scope === meter.scope).length;
     const item = button('', 'bm-meter', { memoryNode: hubId(meter.scope) });
     const head = el('span', 'bm-meter__head');
-    head.append(el('span', 'bm-meter__label', meter.label), el('span', 'bm-meter__count', `${count} / ${meter.cap}`));
-    const bar = el('span', 'bm-meter__bar');
-    const fill = el('span', 'bm-meter__fill');
-    fill.style.inlineSize = `${Math.min(100, (count / Math.max(1, meter.cap)) * 100)}%`;
-    bar.append(fill);
-    item.append(head, bar);
+    head.append(el('span', 'bm-meter__label', meter.label),
+      el('span', 'bm-meter__count', `${count} ${count === 1 ? 'memory' : 'memories'}`));
+    item.append(head);
     scopes.append(item);
   }
   mount.append(scopes);
@@ -456,15 +449,15 @@ function renderScopeChips(): void {
   if (!mount) return;
   mount.replaceChildren();
   if (!listing) return;
-  const scopes: Array<{ scope: MemoryScope; label: string; cap: number }> = [];
-  if (listing.project) scopes.push({ scope: 'project', label: listing.project.label, cap: listing.limits.projectCap });
-  scopes.push({ scope: 'user', label: 'You', cap: listing.limits.userCap });
-  for (const { scope, label, cap } of scopes) {
+  const scopes: Array<{ scope: MemoryScope; label: string }> = [];
+  if (listing.project) scopes.push({ scope: 'project', label: listing.project.label });
+  scopes.push({ scope: 'user', label: 'You' });
+  for (const { scope, label } of scopes) {
     const count = listing.memories.filter((m) => m.scope === scope).length;
     const chip = button('', 'bm-chip', { memoryScope: scope });
     chip.setAttribute('aria-pressed', hiddenScopes.has(scope) ? 'false' : 'true');
     chip.title = scope === 'user' ? 'Your preferences across all projects' : 'Memories for this project';
-    chip.append(el('span', 'bm-chip__label', label), el('span', 'bm-chip__count', `${count}/${cap}`));
+    chip.append(el('span', 'bm-chip__label', label), el('span', 'bm-chip__count', String(count)));
     mount.append(chip);
   }
 }
@@ -496,7 +489,7 @@ function renderList(): void {
     const section = el('section', 'bm-group');
     section.setAttribute('aria-label', group.title);
     const head = el('header', 'bm-group__head');
-    head.append(el('h3', 'bm-group__title', group.title), el('span', 'bm-group__count', `${group.count} / ${group.cap}`));
+    head.append(el('h3', 'bm-group__title', group.title), el('span', 'bm-group__count', String(group.count)));
     section.append(head);
     if (!group.kinds.length) {
       section.append(el('p', 'bm-group__empty', query
@@ -542,7 +535,9 @@ function renderGraph(): void {
   if (view !== 'graph') return;
   ensureGraph();
   if (!graph) return;
-  graph.setData(graphData.nodes, graphData.edges);
+  // With nothing to show, empty hubs read as content; the stage explainer takes over instead.
+  const empty = visibleMemories().length === 0;
+  graph.setData(empty ? [] : graphData.nodes, empty ? [] : graphData.edges);
   if (selectedNode && graph.hasNode(selectedNode)) graph.selectNode(selectedNode);
 }
 
@@ -571,14 +566,17 @@ function renderAll(): void {
   const empty = $('brainMemoryStageEmpty');
   if (empty) {
     const nothing = Boolean(listing) && !listing!.memories.length;
-    empty.toggleAttribute('hidden', !(nothing || (listing && !total)));
+    const showEmpty = Boolean(listing) && !total;
+    empty.toggleAttribute('hidden', !showEmpty);
+    $('brainMemoryGraphView')?.classList.toggle('is-empty', showEmpty);
+    empty.querySelector('.bm-stage-empty__art')?.toggleAttribute('hidden', !nothing);
     const title = empty.querySelector('.bm-stage-empty__title');
     const text = empty.querySelector('.bm-stage-empty__text');
     if (title) title.textContent = nothing ? 'No memories yet' : 'Nothing matches';
     if (text) {
       text.textContent = nothing
-        ? 'Agents save decisions, constraints, your preferences and verified gotchas here as they work.'
-        : 'Clear the search or turn a hidden kind back on.';
+        ? 'As agents work, they save decisions, constraints, gotchas and your preferences here. Each memory joins this project, or You if it applies to all your projects, grouped by kind.'
+        : 'No memories match. Clear the search, or turn a hidden scope or kind back on.';
     }
     empty.querySelector('[data-memory-compose]')?.toggleAttribute('hidden', !nothing);
   }

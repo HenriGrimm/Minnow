@@ -638,8 +638,8 @@ export function createForceGraph(
     }
     if (!isFinite(minX)) return;
     // Room for the labels that hang below and beside nodes.
-    const availW = w - Math.min(200, w * 0.3);
-    const availH = h - Math.min(120, h * 0.26);
+    const availW = w - Math.min(140, w * 0.2);
+    const availH = h - Math.min(100, h * 0.18);
     const gw = Math.max(1, maxX - minX);
     const gh = Math.max(1, maxY - minY);
     const k = Math.min(availW / gw, availH / gh, 2.5);
@@ -661,7 +661,23 @@ export function createForceGraph(
     select(canvas).call(zoomBehavior.transform, transform);
   };
 
+  /** Spacing between group lanes in world units. */
+  const LANE_GAP = 520;
+  let laneOf = new Map<string, number>();
+  /** Lanes run side by side on a wide canvas and stacked on a tall one. */
+  let lanesVertical = false;
+  const laneOffset = (node: SimNode): number => {
+    if (!node.group || laneOf.size < 2) return 0;
+    return ((laneOf.get(node.group) ?? 0) - (laneOf.size - 1) / 2) * LANE_GAP;
+  };
+  const laneX = (node: SimNode): number => (lanesVertical ? 0 : laneOffset(node));
+  const laneY = (node: SimNode): number => (lanesVertical ? laneOffset(node) : 0);
+  const laneStrength = (d: SimNode): number => (d.group ? (d.kind === 'hub' ? 0.4 : 0.07) : 0.025);
+
   const restartSimulation = (): void => {
+    laneOf = new Map([...new Set(nodes.map((n) => n.group).filter(Boolean) as string[])].map((g, i) => [g, i]));
+    const viewport = visibleViewport();
+    lanesVertical = Boolean(viewport && viewport.h > viewport.w * 1.1);
     simulation?.stop();
 
     simulation = forceSimulation(nodes)
@@ -675,19 +691,20 @@ export function createForceGraph(
             if (l.kind === 'related') return 110;
             if (l.kind === 'supersedes') return 56;
             const hubLink = s.kind === 'hub' || t.kind === 'hub';
-            return (hubLink ? 92 : 40) + (s.radius + t.radius) * 1.2;
+            return (hubLink ? 110 : 62) + (s.radius + t.radius) * 1.2;
           })
           .strength((l) => (l.kind === 'related' ? 0.05 : l.kind === 'supersedes' ? 0.35 : 0.7)),
       )
       .force(
         'charge',
-        forceManyBody<SimNode>().strength((d) => (d.kind === 'hub' ? -700 : d.kind === 'cluster' ? -260 : -90)),
+        forceManyBody<SimNode>().strength((d) => (d.kind === 'hub' ? -800 : d.kind === 'cluster' ? -320 : -150)),
       )
       .force('center', forceCenter(0, 0))
       // Disconnected groups still need to stay near the catalog when zooming to fit.
-      .force('x', forceX<SimNode>(0).strength(0.025))
-      .force('y', forceY<SimNode>(0).strength(0.025))
-      .force('collide', forceCollide<SimNode>().radius((d) => d.radius + 14))
+      // Each group (scope) gets its own lane so separate hubs never interleave.
+      .force('x', forceX<SimNode>((d) => laneX(d)).strength((d) => (lanesVertical ? 0.025 : laneStrength(d))))
+      .force('y', forceY<SimNode>((d) => laneY(d)).strength((d) => (lanesVertical ? laneStrength(d) : 0.025)))
+      .force('collide', forceCollide<SimNode>().radius((d) => d.radius + (d.kind === 'memory' ? 20 : 14)))
       .alpha(0.9)
       .alphaDecay(0.035);
 

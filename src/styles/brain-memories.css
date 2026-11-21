@@ -459,8 +459,8 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  inline-size: min(340px, calc(100% - 32px));
-  padding: 18px 20px;
+  inline-size: min(380px, calc(100% - 32px));
+  padding: 22px 24px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
   background: var(--mn-surface-1);
@@ -468,6 +468,35 @@
   text-align: center;
   transform: translate(-50%, -50%);
 }
+
+.bm-graph.is-empty :is(.bm-legend, .bm-zoom) {
+  display: none;
+}
+
+.bm-stage-empty__art {
+  inline-size: 200px;
+  block-size: auto;
+  margin-block-end: 6px;
+}
+
+.bm-art__edges path {
+  fill: none;
+  stroke: var(--brain-edge);
+  stroke-width: 1.2;
+}
+
+.bm-art__edges .bm-art__related {
+  stroke: var(--brain-edge-related);
+  stroke-dasharray: 3 3;
+}
+
+.bm-art__hub { fill: var(--brain-node-hub); }
+.bm-art__core { fill: var(--brain-node-core); }
+.bm-art__kind,
+.bm-art__mem { fill: var(--brain-node-memory); }
+.bm-art__kind { stroke: var(--brain-stage-bg); stroke-width: 1.5; }
+[data-kind='decision']:is(.bm-art__kind, .bm-art__mem) { fill: var(--brain-kind-decision); }
+[data-kind='gotcha']:is(.bm-art__kind, .bm-art__mem) { fill: var(--brain-kind-gotcha); }
 
 .bm-stage-empty__title {
   margin: 0;
@@ -675,7 +704,6 @@
 .bm-meter {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   padding: 10px 12px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
@@ -714,20 +742,7 @@
   color: var(--mn-fg-muted);
 }
 
-.bm-meter__bar {
-  display: block;
-  block-size: 4px;
-  overflow: hidden;
-  border-radius: var(--mn-radius-pill);
-  background: color-mix(in oklch, var(--mn-fg) 9%, transparent);
-}
 
-.bm-meter__fill {
-  display: block;
-  block-size: 100%;
-  border-radius: inherit;
-  background: var(--mn-accent);
-}
 
 .bm-kind-list {
   display: flex;

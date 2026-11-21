@@ -1044,9 +1044,25 @@
                 <div id="brainMemoryList" class="bm-list__inner" role="list" aria-label="Memories"></div>
               </div>
               <div class="bm-stage-empty" id="brainMemoryStageEmpty" hidden>
+                <svg class="bm-stage-empty__art" viewBox="0 0 240 96" aria-hidden="true" focusable="false">
+                  <g class="bm-art__edges">
+                    <path d="M60 48 L104 24 M60 48 L104 72 M104 24 L140 12 M104 24 L144 32 M104 72 L140 64 M104 72 L146 84 M180 48 L144 32"/>
+                    <path class="bm-art__related" d="M140 12 Q170 18 180 48"/>
+                  </g>
+                  <circle class="bm-art__hub" cx="60" cy="48" r="11"/><circle class="bm-art__core" cx="60" cy="48" r="4.5"/>
+                  <circle class="bm-art__hub" cx="180" cy="48" r="9"/><circle class="bm-art__core" cx="180" cy="48" r="3.5"/>
+                  <circle class="bm-art__kind" data-kind="decision" cx="104" cy="24" r="6"/>
+                  <circle class="bm-art__kind" data-kind="gotcha" cx="104" cy="72" r="6"/>
+                  <circle class="bm-art__mem" data-kind="decision" cx="140" cy="12" r="3.5"/>
+                  <circle class="bm-art__mem" data-kind="decision" cx="144" cy="32" r="3.5"/>
+                  <circle class="bm-art__mem" data-kind="gotcha" cx="140" cy="64" r="3.5"/>
+                  <circle class="bm-art__mem" data-kind="gotcha" cx="146" cy="84" r="3.5"/>
+                </svg>
                 <p class="bm-stage-empty__title">No memories yet</p>
                 <p class="bm-stage-empty__text"></p>
-                <button type="button" class="bm-btn" data-memory-compose=":">Add a memory</button>
+                <button type="button" class="bm-btn bm-btn--primary" data-memory-compose=":">
+                  <i class="fi fi-rr-plus-small icon-svg" aria-hidden="true"></i><span>Add a memory</span>
+                </button>
               </div>
               <p id="brainMemoriesStatus" class="bm-status" role="status" aria-live="polite"></p>
               <p id="brainMemoryOffline" class="bm-offline hidden" hidden>Start Minnow with <code>npm start</code> to review memories.</p>

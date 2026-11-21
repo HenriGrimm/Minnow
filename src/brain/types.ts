@@ -503,6 +503,6 @@ export interface MemoryRecord {
 export interface MemoryListing {
   project: { key: string; label: string } | null;
   kinds: MemoryKind[];
-  limits: { title: number; body: number; evidence: number; projectCap: number; userCap: number };
+  limits: { title: number; body: number; evidence: number };
   memories: MemoryRecord[];
 }

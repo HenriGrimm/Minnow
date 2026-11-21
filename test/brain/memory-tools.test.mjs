@@ -186,7 +186,7 @@ describe('memory tools', () => {
       const id = idOf(saved);
       const listing = await (await fetch(`${base}/api/brain/memories?workspaceRoot=${encodeURIComponent(workspaceDir)}`)).json();
       assert.equal(listing.project.label, 'fixture-workspace');
-      assert.equal(listing.limits.projectCap, 150);
+      assert.equal(listing.limits.projectCap, undefined);
       const row = listing.memories.find(memory => memory.id === id);
       assert.equal(row.scope, 'project');
       assert.ok(listing.memories.every(memory => memory.scope === 'project' || memory.scope === 'user'));

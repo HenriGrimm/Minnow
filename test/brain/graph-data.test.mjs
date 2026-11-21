@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildMemoryGraph, memoryTokens, neighborIds } from '../../src/ui/brain/graph/graph-data.ts';
 
-const limits = { title: 100, body: 1200, evidence: 300, projectCap: 150, userCap: 40 };
+const limits = { title: 100, body: 1200, evidence: 300 };
 
 function memory(id, partial = {}) {
   return {

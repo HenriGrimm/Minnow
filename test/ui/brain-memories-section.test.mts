@@ -32,7 +32,7 @@ function memory(partial: Partial<MemoryRecord>): MemoryRecord {
   };
 }
 
-const limits = { title: 100, body: 1200, evidence: 300, projectCap: 150, userCap: 40 };
+const limits = { title: 100, body: 1200, evidence: 300 };
 
 describe('brain memories section', () => {
   test('memories rail and panel exist in index.html', () => {
@@ -80,7 +80,7 @@ describe('brain memories section', () => {
     assert.equal(edge('mem:u', 'kind:user:preference'), 'member');
     assert.equal(edge('mem:b', 'mem:a'), 'supersedes');
     assert.equal(edges.filter((e) => e.kind === 'related').length, 0, 'a supersedes pair is not linked twice');
-    assert.equal(nodes.find((n) => n.id === 'hub:project')?.sublabel, 'This project · 2 / 150 memories');
+    assert.equal(nodes.find((n) => n.id === 'hub:project')?.sublabel, 'This project · 2 memories');
   });
 
   test('buildMemoryGraph keeps empty hubs, and filters by search, scope and kind', () => {
@@ -116,7 +116,7 @@ describe('brain memories section', () => {
     }
   });
 
-  test('groupMemories puts the project first, groups by kind and reports caps', () => {
+  test('groupMemories puts the project first, groups by kind and reports counts', () => {
     const listing: MemoryListing = {
       project: { key: 'minnow--abc', label: 'minnow' },
       kinds: ['decision', 'constraint', 'gotcha', 'preference', 'reference'],
@@ -128,9 +128,9 @@ describe('brain memories section', () => {
       ],
     };
     const groups = groupMemories(listing);
-    assert.deepEqual(groups.map((g) => [g.scope, g.title, g.count, g.cap]), [
-      ['project', 'Project · minnow', 2, 150],
-      ['user', 'Your preferences · all projects', 1, 40],
+    assert.deepEqual(groups.map((g) => [g.scope, g.title, g.count]), [
+      ['project', 'Project · minnow', 2],
+      ['user', 'Your preferences · all projects', 1],
     ]);
     assert.deepEqual(groups[0].kinds.map((k) => [k.label, k.items.map((m) => m.id)]), [
       ['Decisions', ['d']],

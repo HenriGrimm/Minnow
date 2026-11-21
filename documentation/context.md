@@ -1044,7 +1044,7 @@ API: `GET /api/skills`, `GET/PUT /api/skills/:id`, `GET/PUT /api/config/skills`.
 
 ## Official Minnow wiki, Memory, and Brain
 
-**Memory capacity:** Project memories are capped at 150 per project and 40 user memories; title ≤ 100, body ≤ 1,200 and evidence ≤ 300 characters ([`server/brain/memory/store.js`](../server/brain/memory/store.js) `MEMORY_LIMITS`). Over-limit, duplicate (same normalized title or cosine ≥ 0.85 in the same scope) and credential-like writes fail with a message naming the conflicting memory; nothing is evicted. Legacy `/api/memory/entries` facts keep their 32 KiB body limit and are not visible to agents.
+**Memory capacity:** There is no cap on the number of project or user memories; title ≤ 100, body ≤ 1,200 and evidence ≤ 300 characters ([`server/brain/memory/store.js`](../server/brain/memory/store.js) `MEMORY_LIMITS`). Over-limit, duplicate (same normalized title or cosine ≥ 0.85 in the same scope) and credential-like writes fail with a message naming the conflicting memory; nothing is evicted. Legacy `/api/memory/entries` facts keep their 32 KiB body limit and are not visible to agents.
 
 Workspace notes and the derived code map use a key based on the canonical checkout path. Two checkouts with the same folder name get separate keys. Older pages keep their paths and links. When a captured page can be traced to a saved chat, Brain scopes it to that chat’s recorded checkout. Other legacy notes stay browsable in Brain and can be assigned individually with **Assign to this workspace**.
 
