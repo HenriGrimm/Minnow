@@ -22,6 +22,8 @@ export interface ScheduledJob {
   providerId?: string;
   modelId?: string;
   workspacePath?: string;
+  /** Runs may open new top-level chats without asking first. */
+  allowChatCreation?: boolean;
   githubWatch?: { repository: string; label?: string } | null;
   /** Automation preset this job was created from. */
   preset?: { id: string; config: Record<string, any>; customInstructions?: boolean } | null;

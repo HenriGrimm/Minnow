@@ -923,7 +923,7 @@
 .mn-graphite-apps .scc-changes__graphite-action { display: inline-flex; }
 .mn-graphite-apps .scc-changes__legacy-action { display: none; }
 
-.mn-graphite-apps :is(.scc-commit__input, .scc-filerow.is-selected) {
+.mn-graphite-apps .scc-filerow.is-selected {
   border-radius: 7px;
   background: var(--mn-graphite-raised, var(--mn-surface-1));
 }
@@ -958,26 +958,6 @@
 
 .mn-graphite-apps .scc-filerow:is(:hover, :focus-within) .scc-filerow__actions {
   pointer-events: auto;
-}
-
-.mn-graphite-apps .scc-commit__input {
-  min-height: 74px;
-  padding-inline-end: 32px;
-  /* field-sizing grows the box with the message; the grip just adds noise. */
-  resize: none;
-}
-
-.scc-commit__field {
-  position: relative;
-}
-
-.scc-commit__field > .scc-btn {
-  position: absolute;
-  inset: 4px 4px auto auto;
-}
-
-.scc-commit__field > .scc-commit__input {
-  padding-inline-end: 32px;
 }
 
 .mn-graphite-apps .scc-changes__diff-body .graphite-git-patch {

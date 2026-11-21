@@ -87,6 +87,7 @@ async function toPublicJob(stored) {
     providerId: stored.providerId ?? undefined,
     modelId: stored.modelId ?? undefined,
     workspacePath: stored.workspacePath ?? undefined,
+    allowChatCreation: stored.allowChatCreation === true ? true : undefined,
     githubWatch: stored.githubWatch ?? undefined,
     preset: stored.preset ?? undefined,
     channels: Array.isArray(stored.channels) ? [...stored.channels] : ['in_app'],
@@ -189,6 +190,8 @@ async function normalizeJobInput(input, existingId) {
     providerId: input.providerId ? String(input.providerId).trim() : undefined,
     modelId: input.modelId ? String(input.modelId).trim() : undefined,
     workspacePath: input.workspacePath ? String(input.workspacePath).trim() : undefined,
+    // Opt-in: runs may open new top-level chats without asking first.
+    allowChatCreation: input.allowChatCreation === true ? true : undefined,
     channels: normalizedChannels,
     lastRunAt: input.lastRunAt ?? undefined,
     nextRunAt: input.nextRunAt ?? undefined,

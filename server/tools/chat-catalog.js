@@ -8,7 +8,7 @@ const entries = [
     { search: string(), cursor: string(), limit }, []],
   ['chat_list', 'List chats', 'List project chats; children omitted by default.',
     { query: string(), status: string(), include_subagents: { type: 'boolean' }, cursor: string(), limit }, []],
-  ['chat_create', 'Create a top-level chat', 'Only when explicitly requested by the user. Proposes a separate ordinary chat for one-time human confirmation. Optional message starts work; report_back allows reading or waiting for that reply only.',
+  ['chat_create', 'Create a top-level chat', 'Only when explicitly requested by the user. Creates a separate ordinary chat (one-time human confirmation outside Full access). Optional message starts work; report_back allows reading or waiting for that reply only.',
     { title: string(), message: string(), provider_id: string(), model_id: string(), workspace_id: string(), report_back: { type: 'boolean' }, client_request_id: string() }, ['title']],
   ['chat_read', 'Read chat', 'Read bounded attributed messages/activity; image/reasoning bytes omitted.',
     { chat_id: string(), view: { type: 'string', enum: ['messages', 'activity'] }, after_sequence: { type: 'integer', minimum: -1 }, limit }, ['chat_id']],

@@ -225,6 +225,7 @@ async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl, 
     args.push('--persist-chat', '--chat-id', runId, '--chat-name', chatName || storedJob.label || 'Scheduled job');
   }
   args.push('--scheduler-run');
+  if (storedJob.allowChatCreation === true) args.push('--allow-chat-create');
   // Stream runner events for the live hub; the final result lands in a file.
   const resultDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-run-'));
   const resultFile = path.join(resultDir, 'result.json');

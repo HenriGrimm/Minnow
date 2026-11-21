@@ -33,6 +33,13 @@ describe('parseRunArgs', () => {
     }
   });
 
+  it('parses --allow-chat-create (off by default)', () => {
+    const plain = parseRunArgs(['--prompt', 'x']);
+    const allowed = parseRunArgs(['--prompt', 'x', '--scheduler-run', '--allow-chat-create']);
+    assert.equal(plain.ok && plain.options.allowChatCreate, false);
+    assert.equal(allowed.ok && allowed.options.allowChatCreate, true);
+  });
+
   it('rejects orchestrate mode in v1', () => {
     const parsed = parseRunArgs(['--prompt', 'x', '--mode', 'orchestrate']);
     assert.equal(parsed.ok, false);

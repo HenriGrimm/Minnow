@@ -53,6 +53,7 @@ import type { TranscriptMessage } from '../../server/runner/transcript-store';
 import type { TurnEvent } from '../../server/runner/run-turn.js';
 import { resolveHeadlessContextLimits } from './context-policy';
 import { runManagedChatIfPresent } from './managed-chat';
+import { AUTOMATION_CHAT_CREATE_TOOL, createAutomationChatCreator } from './automation-chat';
 
 /** @internal Exposed for generation transport regression tests. */
 export interface ActiveHeadlessGeneration {
@@ -322,17 +323,25 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
           'Server tools (read/write files, shell, git, search, etc.) are available via the local tool API.',
           'Do not call memory_save to record routine run output — the scheduler stores run history automatically.',
           'Only use memory_save when the job prompt explicitly asks you to remember something for future chats.',
+          ...(options.cli.allowChatCreate ? ['This automation may open new top-level chats with chat_create without asking; do so only when the job calls for it.'] : []),
         ].join(' ')
       : '';
 
     const modeId = normalizeModeId(chat.modeId);
     const resolvedSampler = resolveHeadlessTurnSampler(activeWorkAgent?.id ?? null);
 
+    // Only an automation that opted in gets chat_create; the job setting is its approval.
+    const withAutomationTools = (tools: typeof enabledTools) => options.cli.allowChatCreate && options.cli.schedulerRun
+      ? [...tools.filter(tool => tool.function.name !== 'chat_create'), AUTOMATION_CHAT_CREATE_TOOL] : tools;
     let enabledTools = await getHeadlessToolsWithMcp(modeId);
     if (activeWorkAgent?.allowedTools?.length) {
       const allow = new Set(activeWorkAgent.allowedTools);
       enabledTools = enabledTools.filter((t) => (t.function.name.startsWith('mcp__') || allow.has(t.function.name)));
     }
+    enabledTools = withAutomationTools(enabledTools);
+    const createAutomationChat = options.cli.allowChatCreate && options.cli.schedulerRun
+      ? createAutomationChatCreator(() => ({ workspacePath, modeId, providerId: sendProviderId, modelId: sendModelId }))
+      : null;
 
     const approvalOpts = {
       noApproval: options.cli.noApproval,
@@ -374,9 +383,10 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
           const allow = new Set(activeWorkAgent.allowedTools);
           tools = tools.filter(tool => tool.function.name.startsWith('mcp__') || allow.has(tool.function.name));
         }
-        return tools;
+        return withAutomationTools(tools);
       },
       execute: async (name, args, signal) => {
+        if (name === 'chat_create' && createAutomationChat) return createAutomationChat(args as Record<string, unknown>, signal);
         const result = await executeHeadlessTool(name, args as Record<string, unknown>, {
           modeId, workAgentId: workAgentId ?? undefined, chatId: chat.id,
         }, approvalOpts, signal);

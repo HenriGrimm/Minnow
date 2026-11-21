@@ -100,6 +100,7 @@ export function renderSetupView(options: SetupOptions): { root: HTMLElement; dis
     customInstructions: Boolean(job?.preset?.customInstructions),
     scheduleText: options.draft?.scheduleText ?? (job ? scheduleToText(job.schedule) : preset ? scheduleToText(preset.schedule) : 'every weekday at 9am'),
     manual: job?.schedule.kind === 'manual',
+    allowChatCreation: job?.allowChatCreation === true,
   };
   if (options.draft?.guidance && preset?.id === 'pr-review') state.config.guidance = options.draft.guidance;
   if (job?.githubWatch && !state.config.repository) state.config.repository = job.githubWatch.repository;
@@ -299,6 +300,17 @@ export function renderSetupView(options: SetupOptions): { root: HTMLElement; dis
     text.append(el('div', 'auto-toggle__title', title), el('p', 'auto-field__help', help));
     row.append(text, toggleSwitch(title, Boolean(state.config[key]), (on) => { state.config[key] = on; refreshAll(); }));
     parent.append(row);
+  }
+
+  function chatCreationField(): void {
+    const node = section('Permissions');
+    const row = el('div', 'auto-toggle');
+    const text = el('div', 'auto-toggle__text');
+    const title = 'Start new chats without asking';
+    text.append(el('div', 'auto-toggle__title', title),
+      el('p', 'auto-field__help', 'Runs can open separate top-level chats in this workspace and give them a first message. You won’t be asked to approve each one. At most 10 per run.'));
+    row.append(text, toggleSwitch(title, state.allowChatCreation, (on) => { state.allowChatCreation = on; }));
+    node.append(row);
   }
 
   function instructionsField(opts: { editable: boolean }): void {
@@ -512,6 +524,7 @@ export function renderSetupView(options: SetupOptions): { root: HTMLElement; dis
       aside.append(capabilitiesCard(p));
     }
     modelField();
+    if (p.engine === 'prompt') chatCreationField();
   }
 
   function buildCustom(): void {
@@ -542,6 +555,7 @@ export function renderSetupView(options: SetupOptions): { root: HTMLElement; dis
     select.addEventListener('change', () => { state.modeId = select.value; });
     mode.append(select);
     modelField();
+    chatCreationField();
 
     const card = el('div', 'auto-steps-card');
     card.append(el('div', 'auto-rail__eyebrow', 'Ready to run unattended?'));
@@ -636,6 +650,7 @@ export function renderSetupView(options: SetupOptions): { root: HTMLElement; dis
         modelId: state.modelId ?? '',
         workspacePath: state.workspacePath || undefined,
         channels: ['in_app'],
+        allowChatCreation: state.allowChatCreation,
       };
       if (preset) {
         if (preset.group === 'github' && !state.workspacePath) throw new Error('Choose the local checkout of the repository.');

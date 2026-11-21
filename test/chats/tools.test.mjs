@@ -30,7 +30,7 @@ async function fixture(run, extra = {}) {
     ...(extra.alternate ? [{ projectId: 'project', workspaceId: 'alternate', canonicalKey: alternate }] : []),
     { projectId: 'foreign', workspaceId: 'other', canonicalKey: foreign }]);
   const scope = resolveProjectScope(registry, { projectId: 'project', workspaceKey: root });
-  const initial = createChatPolicy({ modeId: extra.mode ?? 'build', workspaceIds: extra.alternate ? ['main', 'alternate'] : ['main'],
+  const initial = createChatPolicy({ modeId: extra.mode ?? 'build', ...(extra.permissionLevel ? { permissionLevel: extra.permissionLevel } : {}), workspaceIds: extra.alternate ? ['main', 'alternate'] : ['main'],
     toolPermissions: { ...Object.fromEntries(AGENT_CHAT_TOOL_IDS.map(name => [name, 'full'])), read_file: 'full' },
     toolEffects: { ...effects, read_file: 'read' }, filesystemAccess: 'workspace',
     fileWriteScope: extra.mode === 'plan' ? 'plans' : 'workspace', capabilities: ['chat.read', 'chat.send', 'chat.stop', 'execution.host'] });
@@ -399,6 +399,22 @@ test('creating ordinary roots requires exact human confirmation and replays the 
     await assert.rejects(f.execute('chat_create', { ...args, title: 'Changed' }), { code: 'idempotency_conflict' });
     await assert.rejects(f.service.send(f.caller, { chatId: chat.id, mode: 'queue', message: 'Not confirmed', clientRequestId: 'send' }), { code: 'policy_denied' });
   });
+});
+
+test('Full access creates ordinary roots without asking, but only for human-started turns', async () => {
+  await fixture(async f => {
+    const result = await f.execute('chat_create', { title: 'Review', message: 'Inspect changelog', client_request_id: 'full' }, {
+      requestOrdinaryConfirmation: () => assert.fail('Full access should not ask before creating a chat'),
+    });
+    assert.equal(f.repository.getChat(result.chatId).explicitOrdinaryRoot, true);
+    assert.equal(f.repository.listCommands({ chatId: result.chatId }).length, 1);
+    await assert.rejects(f.service.send(f.caller, { chatId: result.chatId, mode: 'queue', message: 'Still needs consent', clientRequestId: 'send' }), { code: 'policy_denied' });
+  }, { permissionLevel: 'full' });
+  await fixture(async f => {
+    await assert.rejects(f.execute('chat_create', { title: 'Not requested' }, {
+      requestOrdinaryConfirmation: () => assert.fail('An unattended turn should not open a request'),
+    }), { code: 'policy_denied' });
+  }, { permissionLevel: 'full', scheduler: true });
 });
 
 test('create-and-send admits one attributed turn and scopes reporting to its command', async () => {

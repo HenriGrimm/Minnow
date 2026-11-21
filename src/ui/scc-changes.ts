@@ -24,6 +24,7 @@ import { renderSideBySidePatchDiff } from './side-by-side-patch-diff';
 import { paintGraphiteFileDiff } from './graphite-file-diff';
 import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
+import { isMacComposerPlatform } from './composer-shortcuts';
 import { createFileTypeIconElement } from './file-type-icons';
 import {
   button,
@@ -182,12 +183,24 @@ export function createChangesView(ctx: SccContext): SccView {
 
   const commitHint = el('span', 'scc-commit__hint');
 
+  const shortcut = isMacComposerPlatform() ? '⌘↵' : 'Ctrl+↵';
+  commitBtn.title = `Commit (${shortcut})`;
+  const shortcutHint = el('kbd', 'scc-commit__shortcut');
+  shortcutHint.setAttribute('aria-hidden', 'true');
+  shortcutHint.textContent = shortcut;
   const commitActions = el('div', 'scc-commit__actions');
-  commitActions.append(commitHint, commitBtn, commitPushBtn);
+  commitActions.append(generateBtn, commitHint, shortcutHint, commitPushBtn, commitBtn);
   const generationStatus = createCommitGenerationStatus();
+  // One field: message on top, its controls along the bottom edge (matches the issue launcher).
   const messageField = el('div', 'scc-commit__field');
-  messageField.append(messageInput, generateBtn);
-  commitBox.append(messageField, generationStatus, commitActions, mergeBtn);
+  messageField.append(messageInput, commitActions);
+  messageField.addEventListener('mousedown', (event) => {
+    if (event.target !== messageField && event.target !== commitActions && event.target !== commitHint) return;
+    if (messageInput.disabled) return;
+    event.preventDefault();
+    messageInput.focus();
+  });
+  commitBox.append(messageField, generationStatus, mergeBtn);
   commitBox.addEventListener('submit', (event) => event.preventDefault());
 
   const stageAllBtn = button({

@@ -148,12 +148,32 @@ describe('scheduler runner', () => {
     assert.ok(persistIndex >= 0);
     assert.ok(chatIdIndex >= 0);
     assert.ok(schedulerRunIndex >= 0);
+    assert.equal(capturedArgs?.includes('--allow-chat-create'), false);
     assert.equal(capturedArgs?.[chatIdIndex + 1], runs[0].id);
 
     const after = await getStoredJobById(created.id);
     assert.equal(after?.running, false);
     assert.ok(after?.lastRunAt);
     assert.ok(after?.nextRunAt);
+  });
+
+  test('passes --allow-chat-create only for automations that opted in', async () => {
+    /** @type {string[] | undefined} */
+    let capturedArgs;
+    const fakeSpawn = (_execPath, args) => {
+      capturedArgs = args;
+      return {
+        stdout: { on: () => undefined }, stderr: { on: () => undefined },
+        on: (event, fn) => { if (event === 'close') queueMicrotask(() => fn(0)); },
+        kill: () => undefined,
+      };
+    };
+    const job = await createJob({
+      label: 'Opens chats', schedule: { kind: 'interval', value: '60s' },
+      prompt: 'Open a chat per failing test', modeId: 'build', channels: ['in_app'], allowChatCreation: true,
+    });
+    await runStoredJob(await getStoredJobById(job.id), { spawn: fakeSpawn });
+    assert.equal(capturedArgs?.includes('--allow-chat-create'), true);
   });
 
   test('sets ELECTRON_RUN_AS_NODE when the server is Electron', async () => {

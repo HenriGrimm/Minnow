@@ -54,7 +54,7 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
     ordinaryChatConsentHash(repository, caller, null);
     const replayed = previous(); if (replayed) return replayed;
     enabled(caller);
-    if (!ordinaryFeature()?.admissionEnabled || typeof captureProfile !== 'function' || typeof confirm !== 'function') {
+    if (!ordinaryFeature()?.admissionEnabled || typeof captureProfile !== 'function') {
       fail('capability_unavailable', 'This execution cannot request creation of an ordinary chat');
     }
     const source = await context.resolveTarget(caller.chatId);
@@ -65,6 +65,12 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
     const ceiling = intersectChatPolicies(caller.policy, source.policy);
     if (!ceiling.capabilities.includes('chat.send') || !ceiling.workspaceIds.includes(source.scope.workspaceId)) {
       fail('policy_denied', 'The calling turn cannot create a chat in this checkout');
+    }
+    // Full access (on both the turn and the live source policy) creates without
+    // asking; Manual and Auto keep the exact one-time confirmation.
+    const fullAccess = ceiling.permissionLevel === 'full';
+    if (!fullAccess && typeof confirm !== 'function') {
+      fail('capability_unavailable', 'This execution cannot request creation of an ordinary chat');
     }
     const destination = await checkoutFor(source, input.workspaceId, ceiling);
     const chat = { id: chatId, name: input.name, workspacePath: source.chat.workspacePath, modeId: ceiling.modeId };
@@ -89,7 +95,7 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
     if (policy.modeId !== chat.modeId || !policy.workspaceIds.includes(destination.scope.workspaceId)) fail('policy_denied', 'The resulting chat policy does not match the requested scope');
     const profile = { ...captured, snapshot: { ...captured.snapshot, policy, modelSelection: selection } };
     const action = { operation: 'create', intentHash, chat, selection, checkoutIdentity: destination.checkoutIdentity, policyHash: hashChatPayload(policy) };
-    const proof = await confirm(action, { title: chat.name, model: selection, checkout: destination.scope.canonicalKey,
+    const proof = fullAccess ? null : await confirm(action, { title: chat.name, model: selection, checkout: destination.scope.canonicalKey,
       ...(input.message !== undefined ? { firstMessage: input.message } : {}), reportBack: input.reportBack === true });
     signal?.throwIfAborted();
     const current = await context.resolveTarget(caller.chatId);
@@ -105,7 +111,7 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
         fail('policy_denied', 'The originating chat policy or checkout changed while awaiting confirmation');
       }
       const replayed = previous(); if (replayed) return replayed;
-      assertOrdinaryChatConsent(repository, caller, action, proof, now());
+      if (!fullAccess) assertOrdinaryChatConsent(repository, caller, action, proof, now());
       const created = repository.createOrdinaryRoot(chat, { projectId: source.scope.projectId, profile });
       let commandId;
       if (input.message !== undefined) {

@@ -1337,38 +1337,88 @@
   opacity: 0.7;
 }
 
+/* One field: the message on top, its controls along the bottom edge. */
+.scc-commit__field {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+  cursor: text;
+  transition: border-color 150ms var(--ease-out, ease-out);
+}
+
+.scc-commit__field:focus-within {
+  border-color: color-mix(in oklch, var(--mn-accent) 60%, var(--mn-graphite-line-2, var(--mn-border-strong)));
+}
+
 .scc-commit__input {
+  display: block;
   box-sizing: border-box;
   width: 100%;
-  resize: vertical;
-  min-height: 46px;
+  min-height: 44px;
   max-height: 220px;
   field-sizing: content;
   overflow-y: auto;
-  padding: 7px 9px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-bg);
-  color: var(--mn-fg);
-  font-family: inherit;
-  font-size: var(--scc-text);
-  line-height: 1.45;
+  margin: 0;
+  padding: var(--mn-space-2-5) var(--mn-space-3) var(--mn-space-1);
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font: var(--mn-type-md) / var(--mn-leading-normal) var(--font-ui);
 }
 
-.scc-commit__input:focus {
-  outline: none;
-  border-color: var(--mn-accent);
+.scc-commit__input::placeholder {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
 }
 
 .scc-commit__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--mn-space-1-5);
+  gap: var(--mn-space-0-5);
+  min-width: 0;
+  padding: var(--mn-space-1) var(--mn-space-1-5) var(--mn-space-1-5);
 }
 
 .scc-commit__actions > .scc-btn {
   flex: none;
+  height: var(--mn-control-h-sm);
+  border-radius: var(--mn-radius-sm);
+  font-size: var(--mn-type-sm);
+}
+
+.scc-commit__actions > .scc-btn--icon-only {
+  width: var(--mn-control-h-sm);
+}
+
+/* Push is a setting-weight companion to Commit, not a second boxed button. */
+.scc-commit__actions > .scc-btn:not(.scc-btn--primary) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+}
+
+.scc-commit__actions > .scc-btn--primary {
+  font-weight: var(--mn-weight-semibold);
+}
+
+.scc-commit__shortcut {
+  flex: none;
+  margin-inline-start: auto;
+  padding-inline: var(--mn-space-1);
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font: var(--mn-type-2xs) / var(--mn-leading-none) var(--font-mono);
+  white-space: nowrap;
+}
+
+.scc-commit__field:not(:focus-within) .scc-commit__shortcut {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scc-commit__field { transition: none; }
 }
 
 @media (pointer: coarse) {
@@ -1399,7 +1449,8 @@
 }
 
 .scc-commit__hint {
-  margin-inline-end: auto;
+  min-width: 0;
+  padding-inline: var(--mn-space-1);
   font-family: var(--font-mono);
   font-size: var(--scc-text-xs);
   color: var(--mn-fg-subtle);

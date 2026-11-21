@@ -189,7 +189,7 @@ test('managed native Manual approval uses the same durable approval without a du
   assert.equal(f.repository.getCommand(accepted.body.receipt.commandId).state, 'settled');
 });
 
-test('confirmed creation runs a separate ordinary chat and the user can continue it', { timeout: 20000 }, async t => {
+for (const level of ['auto', 'full']) test(`${level === 'full' ? 'Full access' : 'confirmed'} creation runs a separate ordinary chat and the user can continue it`, { timeout: 20000 }, async t => {
   const f = await environment.fixture(t, { install, toolNames: ['chat_create', 'chat_wait'], respond: body => {
     if (lastUser(body) === 'Open a new chat for review and tell me what it finds') {
       const outputs = body.messages.filter(row => row.role === 'tool');
@@ -202,7 +202,7 @@ test('confirmed creation runs a separate ordinary chat and the user can continue
     }
     return String(lastUser(body)).includes('Review the changelog') ? 'Changelog checked.' : 'I can continue.';
   } });
-  f.settings.meta.toolSecurity.permissionLevel = 'full';
+  f.settings.meta.toolSecurity.permissionLevel = level;
   const { scope } = await f.runtime.context.resolveTarget('coordinator');
   const views = [[], []];
   const subscriptions = views.map(events => f.runtime.presentation.subscribe({
@@ -212,12 +212,14 @@ test('confirmed creation runs a separate ordinary chat and the user can continue
   const sent = await f.request('/api/chats/coordinator/commands', { action: 'send',
     text: 'Open a new chat for review and tell me what it finds', clientRequestId: 'review-source' });
   assert.equal(sent.status, 202);
-  const pending = await pendingRequest(f, 'coordinator');
-  assert.equal(pending.presentation.arguments.firstMessage, 'Review the changelog');
-  assert.equal(f.repository.listChats().some(chat => chat.name === 'Release review'), false);
-  const response = await f.request('/api/chats/coordinator/requests/' + pending.requestId + '/respond',
-    { answer: { decision: 'allow_once' }, clientRequestId: 'allow-create' });
-  assert.equal(response.status, 200);
+  if (level !== 'full') {
+    const pending = await pendingRequest(f, 'coordinator');
+    assert.equal(pending.presentation.arguments.firstMessage, 'Review the changelog');
+    assert.equal(f.repository.listChats().some(chat => chat.name === 'Release review'), false);
+    const response = await f.request('/api/chats/coordinator/requests/' + pending.requestId + '/respond',
+      { answer: { decision: 'allow_once' }, clientRequestId: 'allow-create' });
+    assert.equal(response.status, 200);
+  }
   await f.runtime.service.idle();
   const results = f.repository.readTranscript('coordinator').messages.filter(row => row.role === 'tool');
   assert.equal(results.length, 2, JSON.stringify(results));

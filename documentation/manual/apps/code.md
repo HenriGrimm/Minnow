@@ -6,7 +6,7 @@ Drop a file, editor selection, editor or preview tab, or an existing thread onto
 
 ### Ask the agent to open another thread
 
-In a supported server-run thread, ask Minnow to open a separate thread. For example: “Open a new thread called Release review, ask it to review the changelog, and tell me what it finds.” Review the model, checkout and exact first message in the confirmation. Minnow requires your one-time confirmation even in **Full access**.
+In a supported server-run thread, ask Minnow to open a separate thread. For example: “Open a new thread called Release review, ask it to review the changelog, and tell me what it finds.” Under **Manual** and **Auto**, review the model, checkout and exact first message in the one-time confirmation. In **Full access**, Minnow opens the thread without asking.
 
 The new top-level thread appears in the sidebar without switching your view. It uses the originating thread's verified checkout unless you choose another authorized checkout in the same project. It does not copy the originating transcript or attachments. If you did not ask for a first message, it stays empty. You can open it and continue it yourself. The agent can report the authorized first reply; later actions in another ordinary thread require their own confirmation.
 

@@ -31,6 +31,7 @@ export interface HeadlessRunCliOptions {
   chatName: string | null;
   /** Scheduled job subprocess — adds guidance to avoid routine memory_save calls. */
   schedulerRun: boolean;
+  allowChatCreate: boolean;
   /** Session token override; falls back to MINNOW_TOKEN env, then ~/.minnow/session-token. */
   token: string | null;
   /** Existing server-owned conversation controls; never creates a new chat. */
@@ -82,6 +83,7 @@ Session:
   --wait-timeout <s>      Managed command wait deadline; expiry keeps accepted work running
   --chat-name <label>     Sidebar title for the persisted chat (default: Headless run)
   --scheduler-run         Scheduled-job context (suppress routine memory_save)
+  --allow-chat-create     Let the agent open new top-level chats without asking (automations)
 
 Env:
   BROWSER=none                             Use with npm start in CI
@@ -141,6 +143,7 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       'chat-id': { type: 'string' },
       'chat-name': { type: 'string' },
       'scheduler-run': { type: 'boolean', default: false },
+      'allow-chat-create': { type: 'boolean', default: false },
       'chat-action': { type: 'string' },
       'client-request-id': { type: 'string' },
       'wait-timeout': { type: 'string' },
@@ -215,6 +218,7 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       chatId,
       chatName,
       schedulerRun: Boolean(values['scheduler-run']),
+      allowChatCreate: Boolean(values['allow-chat-create']),
       token: values.token ? String(values.token).trim() : null,
       ...(chatAction ? { chatAction: chatAction as 'send' | 'queue' | 'steer' } : {}),
       clientRequestId, waitTimeoutSec,

@@ -51,6 +51,16 @@ describe('scheduler store', () => {
     assert.equal(parsed.jobs[0].promptEnc.encrypted, true);
   });
 
+  test('stores the start-chats-without-asking option only when explicitly true', async () => {
+    const base = { label: 'Chats', schedule: { kind: 'interval', value: '5m' }, prompt: 'Open chats', modeId: 'build', channels: ['in_app'] };
+    assert.equal((await createJob(base)).allowChatCreation, undefined);
+    assert.equal((await createJob({ ...base, allowChatCreation: 'yes' })).allowChatCreation, undefined);
+    const allowed = await createJob({ ...base, allowChatCreation: true });
+    assert.equal(allowed.allowChatCreation, true);
+    assert.equal((await updateJob(allowed.id, { label: 'Renamed' })).allowChatCreation, true);
+    assert.equal((await updateJob(allowed.id, { allowChatCreation: false })).allowChatCreation, undefined);
+  });
+
   test('rejects interval below 60 seconds', async () => {
     await assert.rejects(
       () =>
