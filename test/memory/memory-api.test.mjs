@@ -95,90 +95,9 @@ describe('memory API', () => {
     assert.equal(res.json.ok, true);
   });
 
-  test('create list get update delete lifecycle', async () => {
-    const create = await httpRequest(baseUrl, 'POST', '/api/memory/entries', {
-      id: FIXTURE_ID,
-      title: 'Preferred test command',
-      body: 'Always run npm start before API smoke tests.',
-      tags: ['testing', 'npm'],
-    });
-    assert.equal(create.status, 201);
-    assert.equal(create.json.entry.id, FIXTURE_ID);
-
-    const list = await httpRequest(baseUrl, 'GET', '/api/memory/entries');
-    assert.ok(list.json.entries.some((e) => e.id === FIXTURE_ID));
-
-    const listWithBody = await httpRequest(
-      baseUrl,
-      'GET',
-      '/api/memory/entries?includeBody=1',
-    );
-    assert.equal(listWithBody.status, 200);
-    const withBody = listWithBody.json.entries.find((e) => e.id === FIXTURE_ID);
-    assert.equal(withBody.title, 'Preferred test command');
-    assert.match(withBody.body, /npm start/);
-
-    const get = await httpRequest(baseUrl, 'GET', `/api/memory/entries/${FIXTURE_ID}`);
-    assert.equal(get.status, 200);
-    assert.equal(get.json.entry.title, 'Preferred test command');
-    assert.match(get.json.body, /npm start/);
-
-    const update = await httpRequest(
-      baseUrl,
-      'PUT',
-      `/api/memory/entries/${FIXTURE_ID}`,
-      { title: 'Updated title' },
-    );
-    assert.equal(update.json.entry.title, 'Updated title');
-
-    const del = await httpRequest(baseUrl, 'DELETE', `/api/memory/entries/${FIXTURE_ID}`);
-    assert.equal(del.json.ok, true);
-
-    const gone = await httpRequest(baseUrl, 'GET', `/api/memory/entries/${FIXTURE_ID}`);
-    assert.equal(gone.status, 404);
-  });
-
-  test('retrieve query matches npm entry', async () => {
-    await httpRequest(baseUrl, 'POST', '/api/memory/entries', {
-      id: FIXTURE_ID,
-      title: 'npm workflow',
-      body: 'Use npm start for integration tests.',
-      tags: ['npm'],
-    });
-    await httpRequest(baseUrl, 'POST', '/api/memory/entries', {
-      id: FIXTURE_ID_B,
-      title: 'Python only',
-      body: 'Use poetry for Python projects.',
-      tags: ['python'],
-    });
-
-    const res = await httpRequest(baseUrl, 'POST', '/api/memory/retrieve', {
-      query: 'npm',
-      // Hybrid retrieval can rank unrelated entries when embeddings are healthy;
-      // limit to the top hit so keyword relevance is what we assert.
-      limit: 1,
-    });
-    assert.match(res.json.block, /npm workflow/);
-    assert.doesNotMatch(res.json.block, /Python only/);
-    assert.equal(res.json.ids[0], FIXTURE_ID);
-  });
-
-  test('reject oversize body', async () => {
-    const big = 'x'.repeat(33 * 1024);
-    const res = await httpRequest(baseUrl, 'POST', '/api/memory/entries', {
-      title: 'big',
-      body: big,
-    });
-    assert.equal(res.status, 413);
-  });
-
-  test('invalid entry id rejected', async () => {
-    const res = await httpRequest(
-      baseUrl,
-      'GET',
-      '/api/memory/entries/../../../etc/passwd',
-    );
-    assert.ok(res.status === 400 || res.status === 404);
+  test('old entry write endpoints are retired', async () => {
+    const response = await httpRequest(baseUrl, 'POST', '/api/memory/entries', { title: 'Old entry', body: 'Not written' });
+    assert.equal(response.status, 404);
   });
 
   test('embeddings status returns defaults when enabled', async () => {

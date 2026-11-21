@@ -165,7 +165,6 @@ export function listAvailableApps(): AppDefinition[] {
 const RAIL_PRIMARY_APP_IDS: AppId[] = [
   'code',
   'source-control',
-  'research',
   'issues',
   'brain',
   'scheduler',

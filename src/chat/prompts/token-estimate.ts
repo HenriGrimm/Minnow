@@ -35,7 +35,6 @@ import { resolveChatContextBudget } from '../context/chat-context-budget';
 import { latestCompactionCheckpoint } from '../../../server/runner/compaction/index.js';
 import { isUiOnlyTranscriptMessage } from '../context/injection-notice';
 import {
-  resolveExpertContextForSend,
   type BuildComposeContextOptions,
   buildComposeContext,
 } from './compose-context';
@@ -239,7 +238,6 @@ async function resolveOutboundComposeForEstimate(
     options?.composeOptions?.userMessagePreview ??
     lastUserRouteText(chat);
 
-  const expertCtx = await resolveExpertContextForSend(chat, routeUserText);
   const activeWorkAgent = resolveActiveWorkAgent(chat);
   const workAgentId = resolveActiveWorkAgentId(chat);
 
@@ -251,8 +249,6 @@ async function resolveOutboundComposeForEstimate(
       options?.composeOptions?.modelContextLimit ??
       resolveModelLimitForEstimate(options?.modelId, chat),
     overrides: {
-      expertId: expertCtx.routeSource === 'orphaned' ? null : expertCtx.expertId,
-      expertLabel: expertCtx.expertLabel,
       workAgentId,
       workAgentLabel: activeWorkAgent?.label ?? null,
       ...options?.composeOptions?.overrides,

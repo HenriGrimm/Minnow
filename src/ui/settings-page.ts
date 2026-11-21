@@ -1,3 +1,4 @@
+import { isMinnowDebugEnabled } from '../config/dev-surfaces';
 import '../styles/settings-page.css';
 import '../styles/settings-agent-center.css';
 import '../styles/settings-graphite.css';
@@ -139,7 +140,7 @@ function parseHashRoute(): {
   if (slug === 'experts') {
     return { category: 'agents', scrollArea: 'agent-center' };
   }
-  if (slug === 'board-testing' || slug === 'capability-matrix') {
+  if (slug === 'board-testing' || (slug === 'capability-matrix' && !isMinnowDebugEnabled())) {
     return { category: 'advanced', scrollArea: 'diagnostics' };
   }
   if (isSettingsCategoryId(slug)) {
@@ -306,11 +307,8 @@ export function setActiveSection(section: SettingsSectionId): void {
 }
 
 function syncDevOnlySettingsNav(): void {
-  document
-    .querySelectorAll<HTMLElement>('[data-settings-nav-area="board-testing"], [data-settings-nav-area="capability-matrix"], #settingsSection-board-testing, #settingsSection-capability-matrix')
-    .forEach((el) => {
-      el.hidden = true;
-    });
+  const matrix = document.getElementById('settingsSection-capability-matrix');
+  if (matrix) matrix.hidden = !isMinnowDebugEnabled();
 }
 
 function bindStaticSections(): void {
@@ -434,9 +432,6 @@ export function openSettings(
   const shell = getChatShell();
   if (!root || !shell) return;
 
-  void import('./experts/experts-hub').then((m) => {
-    if (m.isExpertsPageOpen()) m.closeExpertLab();
-  });
   void import('./welcome-page').then((m) => {
     if (m.isWelcomePageOpen()) m.closeWelcome({ skipHash: true });
   });

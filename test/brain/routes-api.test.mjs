@@ -14,7 +14,6 @@ import { closeCodeDbForTests } from '../../server/brain/code/schema.js';
 import { handleBrainRequest, initBrainApi } from '../../server/brain/routes.js';
 import { shutdownAllLsp } from '../../server/lsp/manager.js';
 
-const PAGE_ID = '11111111-1111-1111-1111-111111111111';
 
 function httpRequest(baseUrl, method, pathname, body) {
   return new Promise((resolve, reject) => {
@@ -95,157 +94,15 @@ describe('brain API', () => {
     assert.equal(res.json.ok, true);
   });
 
-  test('page CRUD via HTTP enforces sandbox paths', async () => {
-    const put = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: 'facts/api-note.md',
-      id: PAGE_ID,
-      title: 'API note',
-      body: 'Brain route test body.',
-      tags: ['test'],
-      source: 'user',
-    });
-    assert.equal(put.status, 201);
-
-    const get = await httpRequest(
-      baseUrl,
-      'GET',
-      `/api/brain/page?path=${encodeURIComponent('facts/api-note.md')}`,
-    );
-    assert.equal(get.status, 200);
-    assert.equal(get.json.meta.id, PAGE_ID);
-    assert.equal(get.json.revision, put.json.revision);
-
-    const current = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: 'facts/api-note.md', body: 'Current body', expectedRevision: get.json.revision,
-    });
-    assert.equal(current.status, 200);
-    assert.notEqual(current.json.revision, get.json.revision);
-    const stale = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: 'facts/api-note.md', body: 'Stale body', expectedRevision: get.json.revision,
-    });
-    assert.equal(stale.status, 409);
-    assert.equal((await httpRequest(baseUrl, 'GET', `/api/brain/page?path=${encodeURIComponent('facts/api-note.md')}`)).json.body, 'Current body');
-
-    const bad = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: '../../../etc/passwd.md',
-      title: 'Nope',
-      body: 'x',
-    });
-    assert.equal(bad.status, 400);
-
-    const del = await httpRequest(
-      baseUrl,
-      'DELETE',
-      `/api/brain/page?path=${encodeURIComponent('facts/api-note.md')}`,
-    );
-    assert.equal(del.status, 200);
-    const deleted = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: 'facts/api-note.md', body: 'Resurrected body', expectedRevision: current.json.revision,
-    });
-    assert.equal(deleted.status, 409);
+  test('legacy wiki mutations are no longer exposed', async () => {
+    for (const [method, endpoint] of [['PUT', 'page'], ['POST', 'archive'], ['POST', 'ingest'], ['POST', 'clear'], ['POST', 'proposals/clear']]) {
+      const response = await httpRequest(baseUrl, method, '/api/brain/' + endpoint, { confirmed: true });
+      assert.equal(response.status, 404, endpoint);
+    }
   });
 
-  test('retrieve respects workspaceKey scoping', async () => {
-    await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: 'facts/global-fact.md',
-      id: PAGE_ID,
-      title: 'Global npm command',
-      body: 'Run npm start for the dev server.',
-      source: 'user',
-    });
-    await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: 'workspaces/ws-a/secret.md',
-      id: '22222222-2222-2222-2222-222222222222',
-      title: 'Workspace secret',
-      body: 'Only for workspace A.',
-      source: 'user',
-    });
-    await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
-      path: 'workspaces/ws-b/other.md',
-      id: '33333333-3333-3333-3333-333333333333',
-      title: 'Workspace B note',
-      body: 'Only for workspace B.',
-      source: 'user',
-    });
-
-    const scopedA = await httpRequest(baseUrl, 'POST', '/api/brain/retrieve', {
-      query: 'workspace',
-      workspaceKey: 'ws-a',
-      limit: 10,
-    });
-    assert.equal(scopedA.status, 200);
-    assert.ok(scopedA.json.ids.includes('22222222-2222-2222-2222-222222222222'));
-    assert.ok(!scopedA.json.ids.includes('33333333-3333-3333-3333-333333333333'));
-
-    const scopedGlobal = await httpRequest(baseUrl, 'POST', '/api/brain/retrieve', {
-      query: 'npm',
-      workspaceKey: 'ws-a',
-      limit: 10,
-    });
-    assert.ok(scopedGlobal.json.ids.includes(PAGE_ID));
-    assert.ok(!scopedGlobal.json.ids.includes('33333333-3333-3333-3333-333333333333'));
-  });
-
-  test('clear routes require confirmed', async () => {
-    const proposals = await httpRequest(baseUrl, 'POST', '/api/brain/proposals/clear', {
-      scope: 'pending',
-    });
-    assert.equal(proposals.status, 400);
-
-    const code = await httpRequest(baseUrl, 'POST', '/api/brain/code/clear', {});
-    assert.equal(code.status, 400);
-
-    const sources = await httpRequest(baseUrl, 'POST', '/api/brain/sources/clear', {});
-    assert.equal(sources.status, 400);
-  });
-
-  test('proposals and sources clear round-trip', async () => {
-    const { addMemoryProposal } = await import('../../server/brain/proposals.js');
-    await addMemoryProposal({
-      title: 'Pending fact',
-      body: 'Proposal body',
-      category: 'fact',
-    });
-
-    const clearedProposals = await httpRequest(baseUrl, 'POST', '/api/brain/proposals/clear', {
-      scope: 'pending',
-      confirmed: true,
-    });
-    assert.equal(clearedProposals.status, 200);
-    assert.ok(clearedProposals.json.removed >= 1);
-    assert.ok(clearedProposals.json.removedMemory >= 1);
-
-    const pendingAfter = await httpRequest(
-      baseUrl,
-      'GET',
-      '/api/brain/proposals?status=pending',
-    );
-    assert.equal(pendingAfter.json.proposals.length, 0);
-
-    const { addSkillProposal } = await import('../../server/skills/proposals.js');
-    await addSkillProposal({
-      title: 'Pending skill',
-      skillMdDraft: '# Skill draft',
-    });
-
-    const clearedSkills = await httpRequest(baseUrl, 'POST', '/api/brain/proposals/clear', {
-      scope: 'pending',
-      confirmed: true,
-    });
-    assert.equal(clearedSkills.status, 200);
-    assert.ok(clearedSkills.json.removed >= 1);
-    assert.ok(clearedSkills.json.removedSkill >= 1);
-
-    const sourcesDir = path.join(homeDir, 'brain', 'sources');
-    await fs.mkdir(sourcesDir, { recursive: true });
-    await fs.writeFile(path.join(sourcesDir, 'abc-test.txt'), 'raw source', 'utf8');
-
-    const clearedSources = await httpRequest(baseUrl, 'POST', '/api/brain/sources/clear', {
-      confirmed: true,
-    });
-    assert.equal(clearedSources.status, 200);
-    assert.ok(clearedSources.json.removed >= 1);
-    const remaining = await fs.readdir(sourcesDir).catch(() => []);
-    assert.equal(remaining.length, 0);
+  test('code index reset still requires confirmation', async () => {
+    const response = await httpRequest(baseUrl, 'POST', '/api/brain/code/clear', {});
+    assert.equal(response.status, 400);
   });
 });

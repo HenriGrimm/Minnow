@@ -66,6 +66,29 @@ test('nested repo wins over the root repo for its paths, even below several fold
   assert.equal(findRepoForPath(path.join(root, 'README.md'), repos)?.id, '.');
 });
 
+test('does not discover GitHub remotes for embedded gitlinks or ignored clones', async (t) => {
+  const root = await tempDir();
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const datasets = path.join(root, 'evals', 'datasets');
+  const gitlink = path.join(datasets, 'tracked dataset');
+  const ignored = path.join(datasets, 'local');
+  await makeRepo(root, 'https://github.com/acme/workspace.git');
+  await makeRepo(gitlink, 'https://github.com/external/tracked.git');
+  git(gitlink, '-c', 'user.name=Test', '-c', 'user.email=test@example.net', 'commit', '--allow-empty', '-qm', 'Initial commit');
+  git(root, 'add', '--', 'evals/datasets/tracked dataset');
+  await makeRepo(ignored, 'https://github.com/external/local.git');
+  await fs.writeFile(path.join(root, '.gitignore'), '/evals/datasets/local/\n');
+  await makeRepo(path.join(root, 'apps', 'api'), 'https://github.com/acme/api.git');
+
+  for (const workspace of [root, path.join(root, 'evals')]) {
+    const repos = await discoverWorkspaceRepos(workspace, { refresh: true });
+    assert.deepEqual(repos.map(repoRemoteSlug), workspace === root ? ['acme/workspace', 'acme/api'] : ['acme/workspace']);
+  }
+  // Opening the dependency itself as a workspace is explicit and still works.
+  const direct = await discoverWorkspaceRepos(gitlink, { refresh: true });
+  assert.deepEqual(direct.map(repoRemoteSlug), ['external/tracked']);
+});
+
 test('a plain folder has no repos', async () => {
   const root = await tempDir();
   assert.deepEqual(await discoverWorkspaceRepos(root, { refresh: true }), []);

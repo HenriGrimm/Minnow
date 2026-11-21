@@ -1325,7 +1325,6 @@
 /* Commit box: the primary action, pinned where the eye ends up. */
 .scc-commit {
   flex-shrink: 0;
-  container-type: inline-size;
   border-top: 1px solid var(--mn-border);
   padding: 10px var(--scc-gutter) 12px;
   background: var(--mn-surface-0);
@@ -1362,46 +1361,45 @@
 }
 
 .scc-commit__actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mn-space-1-5);
 }
 
 .scc-commit__actions > .scc-btn {
-  justify-content: center;
-  min-width: 0;
+  flex: none;
 }
 
-.scc-commit__actions .scc-btn__label {
-  overflow: hidden;
-  text-overflow: ellipsis;
+@media (pointer: coarse) {
+  .scc-commit__actions > .scc-btn {
+    min-height: var(--touch-min);
+  }
+
+  .scc-commit__actions > .scc-btn--icon-only {
+    min-width: var(--touch-min);
+  }
 }
 
 /* Worktree merge is a separate, less frequent step: its own full-width row. */
-.scc-commit__actions > .scc-commit__merge {
-  grid-column: 1 / -1;
+.scc-commit > .scc-commit__merge {
+  justify-content: center;
   border-color: var(--scc-line-strong);
   color: var(--scc-muted);
 }
 
-.scc-commit__actions > .scc-commit__merge[hidden] {
+.scc-commit > .scc-commit__merge[hidden] {
   display: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .scc-commit__actions > .scc-commit__merge:hover:not(:disabled) {
+  .scc-commit > .scc-commit__merge:hover:not(:disabled) {
     border-color: var(--scc-line-strong);
   }
 }
 
-@container (max-width: 320px) {
-  .scc-commit__actions {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .scc-commit__hint {
-  margin-block: -2px;
+  margin-inline-end: auto;
   font-family: var(--font-mono);
   font-size: var(--scc-text-xs);
   color: var(--mn-fg-subtle);

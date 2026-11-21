@@ -8,8 +8,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
-import { retrieveMemoryBlockHybrid } from '../../server/memory/retrieve.js';
-import { upsertEntryVector } from '../../server/memory/vector-store.js';
+import { bindRetrieveVectorStore, retrieveMemoryBlockHybrid } from '../../server/engine/retrieve.js';
+import * as vectorStore from '../../server/memory/vector-store.js';
+
+const { upsertEntryVector } = vectorStore;
+bindRetrieveVectorStore(vectorStore);
 
 const ENTRY_A = '11111111-1111-1111-1111-111111111111';
 const ENTRY_B = '22222222-2222-2222-2222-222222222222';

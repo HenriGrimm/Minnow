@@ -37,11 +37,6 @@ export interface ForceGraphStats {
   nodeCount: number;
   edgeCount: number;
   kinds: Record<GraphNodeKind, number>;
-  orphanCount: number;
-  /** Mean edges per node — how densely woven the wiki is. */
-  density: number;
-  /** Highest-degree nodes, most connected first. */
-  hubs: Array<{ id: string; label: string; path?: string; degree: number }>;
 }
 
 export interface ForceGraphApi {
@@ -87,43 +82,45 @@ type SimNode = GraphNode &
 type SimEdge = SimulationLinkDatum<SimNode> & { kind: GraphEdge['kind']; id: string };
 
 /** Base world-space radius before degree weighting. */
-const KIND_BASE_RADIUS: Record<GraphNodeKind, number> = { page: 5.5, tag: 4 };
+const KIND_BASE_RADIUS: Record<GraphNodeKind, number> = { hub: 13, cluster: 7, memory: 4.5 };
+/** Degree growth cap per kind, so a busy cluster swells but a memory stays a dot. */
+const KIND_MAX_GROWTH: Record<GraphNodeKind, number> = { hub: 6, cluster: 7, memory: 2.5 };
+/** Label priority: hubs, then clusters, then memories. */
+const KIND_LABEL_RANK: Record<GraphNodeKind, number> = { hub: 0, cluster: 1, memory: 2 };
+/** Memory titles appear once the camera is this close. */
+const MEMORY_LABEL_ZOOM = 0.5;
 
 /** Emphasis floor for nodes outside the active neighborhood. */
 const DIM_EMPHASIS_HOVER = 0.18;
 const DIM_EMPHASIS_SELECTED = 0.42;
 /** Emphasis floor for node classes muted from the legend. */
 const MUTED_EMPHASIS = 0.08;
-/** A node needs this many edges before it earns a permanent label. */
-const HUB_LABEL_DEGREE = 3;
 
 /** Read Brain graph theme tokens from the document root. */
 export function readForceGraphTheme(root: HTMLElement = document.documentElement): ForceGraphTheme {
   const style = getComputedStyle(root);
   const pick = (name: string, fallback: string) =>
     style.getPropertyValue(name).trim() || fallback;
-  const nodePage = pick('--brain-node-page', 'oklch(55% 0.08 250)');
-  const nodeTag = pick('--brain-node-tag', 'oklch(62% 0.1 155)');
-  const nodeOrphan = pick('--brain-node-orphan', 'oklch(62% 0.16 25)');
   const edge = pick('--brain-edge', 'oklch(70% 0.02 250 / 0.45)');
   const stageBg = pick('--brain-stage-bg', pick('--mn-bg', 'oklch(97% 0 0)'));
+  const nodeMemory = pick('--brain-node-memory', 'oklch(60% 0.04 250)');
+  const tones: Record<string, string> = {};
+  for (const kind of ['decision', 'constraint', 'gotcha', 'preference', 'reference']) {
+    tones[kind] = pick(`--brain-kind-${kind}`, nodeMemory);
+  }
   return {
     stageBg,
     surface: pick('--mn-surface-1', stageBg),
     border: pick('--mn-border-strong', edge),
     shadow: pick('--mn-shadow', 'transparent'),
-    nodePage,
-    nodePageMuted: pick('--brain-node-page-muted', nodePage),
-    nodeTag,
-    nodeTagMuted: pick('--brain-node-tag-muted', nodeTag),
+    nodeHub: pick('--brain-node-hub', pick('--mn-fg', 'oklch(32% 0.02 250)')),
+    tones,
+    nodeMemory,
     nodeActive: pick('--brain-node-active', 'oklch(45% 0.14 250)'),
-    nodeOrphan,
-    nodeOrphanMuted: pick('--brain-node-orphan-muted', nodeOrphan),
     nodeCore: pick('--brain-node-core', stageBg),
     edge,
     edgeHighlight: pick('--brain-edge-hi', 'oklch(50% 0.06 250 / 0.85)'),
-    edgeSimilar: pick('--brain-edge-similar', edge),
-    edgeTag: pick('--brain-edge-tag', edge),
+    edgeRelated: pick('--brain-edge-related', edge),
     label: pick('--mn-fg', 'oklch(32% 0.02 250)'),
     labelMuted: pick('--mn-fg-muted', 'oklch(52% 0.02 250)'),
     glow: pick('--brain-glow', 'oklch(55% 0.12 250 / 0.35)'),
@@ -171,20 +168,17 @@ export function createForceGraph(
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   };
 
-  const emphasisKey = (node: GraphNode): GraphEmphasisKey =>
-    node.orphan ? 'orphan' : node.kind;
+  const emphasisKey = (node: GraphNode): GraphEmphasisKey => node.tone ?? node.kind;
 
   const nodeColor = (node: SimNode): string => {
     if (node.id === selectedId) return theme.nodeActive;
-    if (node.orphan) return theme.nodeOrphan;
-    if (node.kind === 'tag') return theme.nodeTag;
-    return theme.nodePage;
+    if (node.kind === 'hub') return theme.nodeHub;
+    return (node.tone && theme.tones[node.tone]) || theme.nodeMemory;
   };
 
   const edgeColor = (edge: SimEdge, highlighted: boolean): string => {
     if (highlighted) return theme.edgeHighlight;
-    if (edge.kind === 'similar') return theme.edgeSimilar;
-    if (edge.kind === 'tag') return theme.edgeTag;
+    if (edge.kind === 'related') return theme.edgeRelated;
     return theme.edge;
   };
 
@@ -347,17 +341,17 @@ export function createForceGraph(
       const stroke = edgeColor(edge, highlighted);
 
       ctx.save();
-      ctx.globalAlpha = (edge.kind === 'tag' ? 0.55 : 0.85) * emphasis;
+      ctx.globalAlpha = (edge.kind === 'related' ? 0.6 : 0.85) * emphasis;
       ctx.strokeStyle = stroke;
-      ctx.lineWidth = (highlighted ? 1.7 : edge.kind === 'tag' ? 0.7 : 1.05) * px;
-      if (edge.kind === 'similar') ctx.setLineDash([5 * px, 5 * px]);
+      ctx.lineWidth = (highlighted ? 1.7 : edge.kind === 'related' ? 0.8 : 1.05) * px;
+      if (edge.kind === 'related') ctx.setLineDash([4 * px, 4 * px]);
       ctx.beginPath();
       ctx.moveTo(s.x, s.y);
       ctx.quadraticCurveTo(cx, cy, t.x, t.y);
       ctx.stroke();
       ctx.restore();
 
-      const directed = edge.kind === 'wikilink';
+      const directed = edge.kind === 'supersedes';
       if (directed && transform.k > 0.45 && emphasis > 0.35) {
         drawArrowhead(t, cx, cy, stroke, emphasis, px, highlighted);
       }
@@ -407,7 +401,7 @@ export function createForceGraph(
       const hovered = node.id === hoverId;
       const color = nodeColor(node);
 
-      if (active || hovered || node.degree >= HUB_LABEL_DEGREE) {
+      if (active || hovered || node.kind !== 'memory') {
         ctx.save();
         ctx.globalAlpha = (active ? 0.5 : hovered ? 0.34 : 0.18) * emphasis;
         ctx.shadowColor = active ? theme.glow : color;
@@ -426,7 +420,7 @@ export function createForceGraph(
       ctx.fillStyle = color;
       ctx.fill();
 
-      if (node.degree >= HUB_LABEL_DEGREE && r > 6) {
+      if (node.kind !== 'memory' && r > 6) {
         ctx.beginPath();
         ctx.arc(node.x, node.y, r * 0.42, 0, Math.PI * 2);
         ctx.fillStyle = theme.nodeCore;
@@ -437,7 +431,6 @@ export function createForceGraph(
 
       ctx.strokeStyle = active ? theme.nodeActive : theme.stageBg;
       ctx.lineWidth = (active ? 1.6 : 1.2) * px;
-      if (node.orphan) ctx.setLineDash([2.5 * px, 2.5 * px]);
       ctx.beginPath();
       ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
       ctx.stroke();
@@ -472,15 +465,17 @@ export function createForceGraph(
     const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
     const ranked = [...nodes]
       .filter((n) => n.x != null && n.emphasis > 0.5 && n.id !== skipId)
-      .sort((a, b) => b.degree - a.degree)
-      .slice(0, 40);
+      .sort((a, b) => KIND_LABEL_RANK[a.kind] - KIND_LABEL_RANK[b.kind] || b.degree - a.degree)
+      .slice(0, 60);
 
     ctx.save();
-    ctx.font = '500 11px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     for (const node of ranked) {
-      if (node.degree < HUB_LABEL_DEGREE && transform.k < 1.2) continue;
+      if (node.kind === 'memory' && transform.k < MEMORY_LABEL_ZOOM) continue;
+      ctx.font = node.kind === 'hub'
+        ? '600 12.5px system-ui, sans-serif'
+        : node.kind === 'cluster' ? '600 11px system-ui, sans-serif' : '500 11px system-ui, sans-serif';
       const sx = transform.applyX(node.x!);
       const sy = transform.applyY(node.y!);
       if (sx < -80 || sy < -40 || sx > w + 80 || sy > h + 40) continue;
@@ -496,11 +491,11 @@ export function createForceGraph(
       if (collides) continue;
       placed.push(box);
 
-      ctx.globalAlpha = Math.min(1, node.emphasis) * (node.degree >= HUB_LABEL_DEGREE ? 0.95 : 0.7);
+      ctx.globalAlpha = Math.min(1, node.emphasis) * (node.kind === 'memory' ? 0.8 : 0.95);
       ctx.lineWidth = 3;
       ctx.strokeStyle = theme.stageBg;
       ctx.strokeText(text, sx, top);
-      ctx.fillStyle = node.degree >= HUB_LABEL_DEGREE ? theme.label : theme.labelMuted;
+      ctx.fillStyle = node.kind === 'memory' ? theme.labelMuted : theme.label;
       ctx.fillText(text, sx, top);
     }
     ctx.restore();
@@ -642,8 +637,9 @@ export function createForceGraph(
       maxY = Math.max(maxY, n.y + n.radius);
     }
     if (!isFinite(minX)) return;
-    const availW = w - Math.min(80, w * 0.24);
-    const availH = h - Math.min(80, h * 0.24);
+    // Room for the labels that hang below and beside nodes.
+    const availW = w - Math.min(200, w * 0.3);
+    const availH = h - Math.min(120, h * 0.26);
     const gw = Math.max(1, maxX - minX);
     const gh = Math.max(1, maxY - minY);
     const k = Math.min(availW / gw, availH / gh, 2.5);
@@ -676,12 +672,17 @@ export function createForceGraph(
           .distance((l) => {
             const s = l.source as SimNode;
             const t = l.target as SimNode;
-            const base = l.kind === 'tag' ? 52 : 72;
-            return base + (s.radius + t.radius) * 1.4;
+            if (l.kind === 'related') return 110;
+            if (l.kind === 'supersedes') return 56;
+            const hubLink = s.kind === 'hub' || t.kind === 'hub';
+            return (hubLink ? 92 : 40) + (s.radius + t.radius) * 1.2;
           })
-          .strength((l) => (l.kind === 'tag' ? 0.35 : l.kind === 'similar' ? 0.4 : 0.6)),
+          .strength((l) => (l.kind === 'related' ? 0.05 : l.kind === 'supersedes' ? 0.35 : 0.7)),
       )
-      .force('charge', forceManyBody<SimNode>().strength((d) => -150 - d.degree * 14))
+      .force(
+        'charge',
+        forceManyBody<SimNode>().strength((d) => (d.kind === 'hub' ? -700 : d.kind === 'cluster' ? -260 : -90)),
+      )
       .force('center', forceCenter(0, 0))
       // Disconnected groups still need to stay near the catalog when zooming to fit.
       .force('x', forceX<SimNode>(0).strength(0.025))
@@ -745,7 +746,6 @@ export function createForceGraph(
     .on('end', () => {
       if (nodeMoved) {
         simulation?.alphaTarget(0);
-        callbacks.onNodeActionsChange?.();
       }
       draggingNode = null;
     });
@@ -771,7 +771,6 @@ export function createForceGraph(
     selectedId = node?.id ?? null;
     highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
     requestDraw();
-    callbacks.onNodeActionsChange?.();
     callbacks.onSelect?.(node);
   };
 
@@ -840,7 +839,7 @@ export function createForceGraph(
           fx: previous?.fx,
           fy: previous?.fy,
           degree,
-          radius: KIND_BASE_RADIUS[n.kind] + Math.min(9, Math.sqrt(degree) * 2.4),
+          radius: KIND_BASE_RADIUS[n.kind] + Math.min(KIND_MAX_GROWTH[n.kind], Math.sqrt(degree) * 1.6),
           emphasis: previous?.emphasis ?? (reducedMotion ? 1 : 0),
           appear: previous?.appear ?? (reducedMotion ? 1 : 0),
         };
@@ -859,7 +858,6 @@ export function createForceGraph(
       focusId = null;
       highlightIds = id ? computeNeighborSet(id) : null;
       requestDraw();
-      callbacks.onNodeActionsChange?.();
     },
     setHoverNode(id) {
       if (hoverId === id) return;
@@ -885,13 +883,11 @@ export function createForceGraph(
       cameraFit = highlightIds;
       reframeCamera();
       requestDraw();
-      callbacks.onNodeActionsChange?.();
     },
     clearFocus() {
       focusId = null;
       highlightIds = selectedId ? computeNeighborSet(selectedId) : null;
       requestDraw();
-      callbacks.onNodeActionsChange?.();
     },
     hasNode(id) {
       return nodeById.has(id);
@@ -915,7 +911,6 @@ export function createForceGraph(
         } else simulation.restart();
       }
       requestDraw();
-      callbacks.onNodeActionsChange?.();
     },
     setMutedKinds(keys) {
       mutedKinds = new Set(keys);
@@ -929,25 +924,9 @@ export function createForceGraph(
       reframeCamera();
     },
     getStats() {
-      const kinds: Record<GraphNodeKind, number> = { page: 0, tag: 0 };
-      let orphanCount = 0;
-      for (const node of nodes) {
-        kinds[node.kind] += 1;
-        if (node.orphan) orphanCount += 1;
-      }
-      const hubs = [...nodes]
-        .filter((n) => n.degree > 0)
-        .sort((a, b) => b.degree - a.degree)
-        .slice(0, 5)
-        .map((n) => ({ id: n.id, label: n.label, path: n.path, degree: n.degree }));
-      return {
-        nodeCount: nodes.length,
-        edgeCount: edges.length,
-        kinds,
-        orphanCount,
-        density: nodes.length ? (edges.length * 2) / nodes.length : 0,
-        hubs,
-      };
+      const kinds: Record<GraphNodeKind, number> = { hub: 0, cluster: 0, memory: 0 };
+      for (const node of nodes) kinds[node.kind] += 1;
+      return { nodeCount: nodes.length, edgeCount: edges.length, kinds };
     },
     zoomBy(factor) {
       const viewport = visibleViewport();

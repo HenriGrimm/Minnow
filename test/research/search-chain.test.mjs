@@ -13,8 +13,8 @@ import {
   getLastSearchError,
   getLastSearchProvider,
   searchStructured,
-} from '../../server/research/search.js';
-import { RESEARCH_CACHE_TTL_MS, getSearch, setSearch } from '../../server/research/cache.js';
+} from '../../server/tools/search-settings.js';
+import { RESEARCH_CACHE_TTL_MS, getSearch, setSearch } from '../../server/tools/search-cache.js';
 
 describe('buildProviderChain', () => {
   it('deduplicates primary and fallback entries', () => {

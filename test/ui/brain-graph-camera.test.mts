@@ -24,12 +24,12 @@ test('Brain fits a graph rebuilt out of view and preserves manual zoom across a 
   Object.defineProperty(canvas, 'getContext', { value: () => ({ setTransform() {} }) });
   const graph = createForceGraph(canvas, { reducedMotion: true });
   const nodes: GraphNode[] = [
-    { id: 'page:first', kind: 'page', label: 'First' },
-    { id: 'tag:shared', kind: 'tag', label: 'Shared' },
+    { id: 'mem:first', kind: 'memory', label: 'First', tone: 'decision' },
+    { id: 'kind:project:decision', kind: 'cluster', label: 'Decisions', tone: 'decision' },
   ];
 
   try {
-    graph.setData(nodes, [{ id: 'edge', kind: 'tag', source: nodes[0].id, target: nodes[1].id }]);
+    graph.setData(nodes, [{ id: 'edge', kind: 'member', source: nodes[0].id, target: nodes[1].id }]);
     assert.equal(graph.getTransform().k, 1);
 
     width = 900;
@@ -94,15 +94,11 @@ test('Brain redraws for graph controls and goes idle again after the graph settl
     pending.clear();
     for (const callback of callbacks) callback(0);
   };
-  let actionUpdates = 0;
-  const graph = createForceGraph(canvas, {
-    reducedMotion: true,
-    onNodeActionsChange: () => { actionUpdates++; },
-  });
-  const id = 'page:project.md';
+  const graph = createForceGraph(canvas, { reducedMotion: true });
+  const id = 'hub:project';
 
   try {
-    graph.setData([{ id, kind: 'page', label: 'Project' }], []);
+    graph.setData([{ id, kind: 'hub', label: 'Project' }], []);
     flushFrame();
     assert.equal(paints, 1);
     assert.equal(pending.size, 0, 'settled graph schedules no idle frame');
@@ -112,7 +108,6 @@ test('Brain redraws for graph controls and goes idle again after the graph settl
     graph.setNodePinned(id, true);
     assert.equal(graph.isNodeFocused(id), true);
     assert.equal(graph.isNodePinned(id), true);
-    assert.equal(actionUpdates, 3);
     assert.equal(pending.size, 1, 'changes before a frame are coalesced');
     flushFrame();
     assert.equal(paints, 2);

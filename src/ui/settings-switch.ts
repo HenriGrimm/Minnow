@@ -213,7 +213,6 @@ export function upgradeSettingsCheckboxes(root: ParentNode = document): void {
       'input[type="checkbox"]:not(.settings-switch__input)',
     )
     .forEach((input) => {
-      if (input.closest('#benchmarkView')) return;
       wrapCheckboxAsSwitch(input);
     });
 }

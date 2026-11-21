@@ -1,7 +1,3 @@
-import {
-  loadBuiltinExpertsFromPromptRaw,
-  syncExpertRegistryFromServer,
-} from '../experts/registry';
 import { BUILTIN_RAW } from './builtin-globs';
 import { initBuiltinPromptRegistry, setUserPromptRegistry } from './prompt-loader';
 import type { ParsedPrompt } from './types';
@@ -9,7 +5,6 @@ import type { ParsedPrompt } from './types';
 /** Fetch user prompt overrides when config server is up. */
 export async function initPromptSystem(): Promise<void> {
   initBuiltinPromptRegistry(BUILTIN_RAW);
-  loadBuiltinExpertsFromPromptRaw(BUILTIN_RAW);
 
   try {
     const res = await fetch('/api/prompts/registry', { cache: 'no-store' });
@@ -19,6 +14,5 @@ export async function initPromptSystem(): Promise<void> {
     if (userOnly.length > 0) {
       setUserPromptRegistry(userOnly);
     }
-    await syncExpertRegistryFromServer();
   } catch {}
 }

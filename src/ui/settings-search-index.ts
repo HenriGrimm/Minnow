@@ -1,9 +1,7 @@
 import DEFAULT_SUB_AGENTS from '../agents/defaults/sub-agents.json';
 import { listWorkAgents } from '../agents/work-agent-registry';
-import { listExperts } from '../chat/experts/registry';
 import { listModes } from '../chat/modes/registry';
 import { isModeVisibleInSettingsSearch } from '../chat/modes/settings-visibility';
-import { isDeveloperReleased } from '../os/app-registry';
 import {
   SETTINGS_CATEGORY_LABELS,
   SETTINGS_NAV_GROUPS,
@@ -182,21 +180,6 @@ function modeEntries(): SettingsSearchEntry[] {
   }));
 }
 
-function expertEntries(): SettingsSearchEntry[] {
-  if (!isDeveloperReleased('experts')) {
-    return [];
-  }
-  return listExperts().map((expert) => ({
-    id: `expert:${expert.meta.id}`,
-    label: expert.meta.label,
-    sectionId: 'agent-center' as const,
-    kind: 'expert' as const,
-    searchKey: `experts.${expert.meta.id}`,
-    keywords: [expert.meta.id, 'expert', 'persona'],
-    hint: 'Agents',
-  }));
-}
-
 // ── Agents ───────────────────────────────────────────────────────────────────
 
 function workAgentEntries(): SettingsSearchEntry[] {
@@ -263,7 +246,6 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
     ...navGroupEntries(),
     ...catalogFieldEntries(),
     ...modeEntries(),
-    ...expertEntries(),
     ...workAgentEntries(),
     ...subAgentEntries(),
   ].map((entry) => {

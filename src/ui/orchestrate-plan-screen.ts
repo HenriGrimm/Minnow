@@ -58,8 +58,6 @@ import {
   prefersReducedMotion,
   regularPlanWorkingStepFromChat,
 } from './plan-progress-screen';
-import { isSuperPlanPageMounted, teardownSuperPlanPage } from './super-plan-page';
-import { isSuperPlanChromeActive, syncSuperPlanChrome } from './super-plan-chrome';
 
 import { isReusableEmptyPlanChat } from '../chat/super-plan/spare-chat';
 import { isChatInCurrentWorkspace } from '../chat/super-plan/plan-library';
@@ -86,7 +84,6 @@ export const ORCHESTRATE_PLAN_SCREEN_STATUS_LINES = [
 export const ORCHESTRATE_PLAN_SCREEN_FISH_STATUS = ORCHESTRATE_PLAN_SCREEN_STATUS_LINES;
 
 const CHAT_AREA_PLAN_SCREEN_CLASS = 'chat-area--plan-screen';
-const CHAT_AREA_SUPER_PLAN_CLASS = 'chat-area--super-plan';
 const MAIN_COLUMN_PLAN_SCREEN_CLASS = 'main-column--plan-screen';
 
 /** Regular Plan mode only; Super Plan has its own surface (`super-plan-entry.ts`). */
@@ -263,13 +260,10 @@ export function teardownOrchestratePlanScreenDom(
   removeOrchestratePlanScreenSuspendedBanner();
   document.getElementById(ORCHESTRATE_PLAN_SCREEN_ROOT_ID)?.remove();
   document.querySelector('#chatArea > .orchestrate-plan-stage-header')?.remove();
-  // Callers use this to clear #chatArea of every planning surface, Super Plan included.
-  teardownSuperPlanPage();
   document
     .getElementById('chatArea')
-    ?.classList.remove(CHAT_AREA_PLAN_SCREEN_CLASS, CHAT_AREA_SUPER_PLAN_CLASS);
+    ?.classList.remove(CHAT_AREA_PLAN_SCREEN_CLASS);
   document.getElementById('mainColumn')?.classList.remove(MAIN_COLUMN_PLAN_SCREEN_CLASS);
-  if (isSuperPlanChromeActive()) syncSuperPlanChrome(false);
   notifyAskQuestionDisplayContextChanged();
 }
 
@@ -919,12 +913,6 @@ export function renderOrchestratePlanScreen(
 
   const area = document.getElementById('chatArea');
   if (!area) return;
-  // Plan mode and the Super Plan surface both live in #chatArea; only one at a time.
-  if (isSuperPlanPageMounted()) {
-    teardownSuperPlanPage();
-    area.classList.remove(CHAT_AREA_SUPER_PLAN_CLASS);
-    syncSuperPlanChrome(false);
-  }
 
   area.replaceChildren();
   const header = document.createElement('header');

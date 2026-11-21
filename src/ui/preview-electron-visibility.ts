@@ -20,14 +20,12 @@ import { isGraphiteIndependentBrowser } from './surfaces/surface-bridge';
 const FULLSCREEN_OVERLAY_IDS = [
   'issuesView',
   'settingsView',
-  'benchmarkView',
   'expertsView',
   'researchView',
   'chatView',
   'modelsView',
   'brainView',
   'schedulerView',
-  'compareView',
 ] as const;
 
 const MAX_LAYOUT_STABLE_FRAMES = 6;

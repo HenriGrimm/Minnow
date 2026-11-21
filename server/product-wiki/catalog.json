@@ -138,6 +138,7 @@
       "title": "Edit, run, and review in Code",
       "summary": "Start in an open workspace and choose a thread or New thread . The thread header opens the side and bottom panels. Use + in an open panel to add another surface. See Workspace navigation for the launcher and thread card. Drop a file, editor selection, editor or preview tab, or an",
       "headings": [
+        "Ask the agent to open another thread",
         "Find and edit a file",
         "Local environments in worktrees",
         "Terminal",
@@ -149,7 +150,7 @@
         "Code map"
       ],
       "section": "Apps",
-      "hash": "91ab1d3d30d3e3be9e8a8f6cce0d8531c47b3157faffc924dbed5cb3b59514e8"
+      "hash": "f2b8814dd64b84441c37e968f1b82b0385cfd3d6454b98e8d0c2748eaa5adfc2"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -183,11 +184,13 @@
       "summary": "Open Brain from the command palette. Memories shows what agents can recall for the open project, and the preferences you apply to every project. How project memory works Each project has its own memory. A repository and all its worktrees share one memory, so a chat in a worktree ",
       "headings": [
         "How project memory works",
+        "Explore memories in the graph",
         "Review and correct memories",
-        "Legacy notes and other tools"
+        "Upgrading from the Brain wiki",
+        "Other Brain tools"
       ],
       "section": "Apps",
-      "hash": "0865a862703e260224abb081a389b7724113cfc181357061f6812ce50c3e4184"
+      "hash": "d5c345e03c7b98d5ccec27559f8297bdb14208360878181fe032c027b02a999e"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -376,11 +379,10 @@
       "headings": [
         "Shipped",
         "Active direction",
-        "Behind the release gate",
         "How priorities are chosen"
       ],
       "section": "Roadmap",
-      "hash": "e2ede5ebe5a7fb00b2833719e94f3c02a654f95f9d29913a414bc8882a6d6430"
+      "hash": "f2db2f93b0fcb8c35637a8abe352d00128e4f217141c0e03bbe3231223247bb7"
     },
     {
       "path": "documentation/THIRD_PARTY_NOTICES.md",
@@ -418,7 +420,7 @@
         "Limits"
       ],
       "section": "Core concepts",
-      "hash": "f0899a8d5d28fa355b4d1844b32af9cecc4cda5e906d4f7eb86129353044b0cc"
+      "hash": "303b3533154f33cde3c33c864b08188ac91613ac62a8357ec47d9f036a14fd88"
     }
   ]
 }

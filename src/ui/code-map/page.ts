@@ -11,7 +11,6 @@ import { createPollingTask } from '../../lib/polling-task';
 import {
   clearBrainCodeIndex,
   fetchBrainCodeCallsOf,
-  fetchBrainCodeExplain,
   fetchBrainCodeReadSymbol,
   fetchBrainCodeStatus,
   fetchBrainCodeWhoCalls,
@@ -671,9 +670,6 @@ function inspectorActions(): InspectorActions {
     expandLayer,
     ask: (subject, q) => void askInChat(subject, q),
     copy: (text, what) => void copyText(text, what),
-    openWikiPage: (path) => {
-      void import('../brain/graph-section').then((m) => m.navigateBrainGraphPage(path));
-    },
     close: () => select(null),
     canAsk,
   };
@@ -801,7 +797,6 @@ async function renderInspector(): Promise<void> {
     {
       symbol,
       source,
-      pages: fetchBrainCodeExplain(symbolId, ctx()).then((r) => r?.pages ?? null),
       isCurrent,
     },
     actions,

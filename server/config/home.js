@@ -85,19 +85,10 @@ const SCAFFOLD_DIRS = [
   'servers',
   'screenshots',
   'benchmarks',
-  'evals',
-  'evals/packs',
-  'evals/runs',
   'runs/shell',
   'scheduler-runs',
   'brain',
-  'brain/pages',
-  'brain/pages/facts',
-  'brain/pages/workspaces',
-  'brain/sources',
   'brain/code',
-  'research',
-  'research/cache',
   'tts-cache',
 ];
 
@@ -433,18 +424,6 @@ export async function ensureMinnowLayout() {
     { rel: 'system-prompt.json', data: DEFAULT_SYSTEM_PROMPT },
     { rel: 'rules.json', data: DEFAULT_RULES },
     { rel: 'bugs/state.json', data: { version: 1, bugs: [] } },
-    {
-      rel: 'evals/config.json',
-      data: {
-        version: 1,
-        maxConcurrency: 2,
-        graderProviderId: '',
-        graderModelId: '',
-        graderTimeoutMs: 30_000,
-        saveFullTranscripts: false,
-        skipApprovalDuringEval: false,
-      },
-    },
   ];
 
   for (const { rel, data } of defaults) {
@@ -459,9 +438,6 @@ export async function ensureMinnowLayout() {
       }
     }
   }
-
-  const { ensureBrainStore } = await import('../brain/store.js');
-  await ensureBrainStore();
 
   return home;
 }

@@ -64,7 +64,6 @@ mock.module('../../src/ui/code-views-chats-toggle.ts', {
   namedExports: stub('initCodeViewsChatsToggle'),
 });
 mock.module('../../src/ui/orchestrate-hub.ts', { namedExports: stub('initOrchestrateHub') });
-mock.module('../../src/ui/super-plan-entry.ts', { namedExports: stub('initSuperPlanEntry') });
 mock.module('../../src/ui/code-change-strip.ts', { namedExports: stub('initCodeChangeStrip') });
 
 const { ensureCodeWorkspaceModules, resetCodeWorkspaceModulesForTests } = await import(

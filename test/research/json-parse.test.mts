@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { parseJsonArray, parseJsonObject, stripCodeBlock } from '../../server/research/json-parse.js';
+import { parseJsonArray, parseJsonObject, stripCodeBlock } from '../../server/lib/json-parse.js';
 
 describe('stripCodeBlock', () => {
   test('removes ```json fences', () => {

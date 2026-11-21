@@ -75,8 +75,6 @@ import {
 } from './settings-controls';
 import { renderAboutSettingsSection } from './settings-about';
 import { renderDiagnosticsSettingsSection } from './settings-diagnostics';
-import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
-import { renderBoardTestingSettingsSection } from './settings-board-testing';
 import { renderCapabilityMatrixSettingsSection } from './settings-capability-matrix';
 import {
   beginAsyncSectionRender,
@@ -93,7 +91,6 @@ import {
 import { renderModelRoutingSection } from './settings-model-routing';
 import { renderSearchSettingsSection } from './settings-search-section';
 import { renderServersSettingsSection } from './settings-servers-section';
-import { renderDeepResearchSettingsSection } from './settings-research-section';
 import { renderSamplerSettingsSection } from './settings-sampler';
 import { renderThinkingSettingsSection } from './settings-thinking';
 import { renderWebhooksSettingsSection } from './settings-webhooks';
@@ -636,14 +633,6 @@ async function renderSearchSettingsSectionWrapper(): Promise<void> {
   const generation = beginAsyncSectionRender('search');
   await renderSearchSettingsSection(mount);
   if (isAsyncSectionRenderStale('search', generation)) return;
-}
-
-async function renderDeepResearchSettingsSectionWrapper(): Promise<void> {
-  const mount = clearMount('settingsDeepResearchBody');
-  if (!mount) return;
-  const generation = beginAsyncSectionRender('deep-research');
-  await renderDeepResearchSettingsSection(mount);
-  if (isAsyncSectionRenderStale('deep-research', generation)) return;
 }
 
 async function renderServersSettingsSectionWrapper(): Promise<void> {
@@ -1622,12 +1611,6 @@ export async function refreshSettingsSection(
     case 'diagnostics':
       await renderDiagnosticsSettingsSection();
       break;
-    case 'board-testing':
-      if (!isBoardTestingSettingsVisible()) {
-        break;
-      }
-      await renderBoardTestingSettingsSection();
-      break;
     case 'capability-matrix':
       await renderCapabilityMatrixSettingsSection();
       break;
@@ -1674,9 +1657,6 @@ export async function refreshSettingsSection(
       break;
     case 'search':
       await renderSearchSettingsSectionWrapper();
-      break;
-    case 'deep-research':
-      await renderDeepResearchSettingsSectionWrapper();
       break;
     case 'servers':
       await renderServersSettingsSectionWrapper();

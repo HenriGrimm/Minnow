@@ -19,10 +19,6 @@ function campaignsDir() {
   return path.join(benchmarksDir(), 'campaigns');
 }
 
-function datasetsDir() {
-  return path.join(benchmarksDir(), 'datasets');
-}
-
 function capabilityMatrixDir() {
   return path.join(benchmarksDir(), 'capability-matrix');
 }
@@ -300,47 +296,6 @@ async function handleGetModels(_req, res) {
   sendJson(res, 200, { models });
 }
 
-async function handleGetDatasets(res) {
-  const dir = datasetsDir();
-  let entries = [];
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    sendJson(res, 200, { datasets: [] });
-    return;
-  }
-
-  const datasets = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
-    const packId = safeRunId(entry.name.replace(/\.json$/, ''));
-    if (!packId) continue;
-    try {
-      const raw = await fs.readFile(path.join(dir, entry.name), 'utf8');
-      datasets.push(JSON.parse(raw));
-    } catch {
-      /* skip corrupt file */
-    }
-  }
-  sendJson(res, 200, { datasets });
-}
-
-async function handlePostDataset(body, res) {
-  await ensureMinnowLayout();
-  const packId = typeof body?.id === 'string' ? body.id.trim() : '';
-  if (!packId || !safeRunId(packId)) {
-    sendJson(res, 400, { error: 'Invalid pack id' });
-    return;
-  }
-  await fs.mkdir(datasetsDir(), { recursive: true });
-  await fs.writeFile(
-    path.join(datasetsDir(), `${packId}.json`),
-    JSON.stringify(body, null, 2),
-    'utf8',
-  );
-  sendJson(res, 201, { ok: true, id: packId });
-}
-
 async function readCapabilityMatrixJson(fileName, fallback) {
   const filePath = path.join(capabilityMatrixDir(), fileName);
   try {
@@ -496,17 +451,6 @@ export function createBenchmarksMiddleware() {
       const campaignMatch = url.match(/^\/api\/benchmarks\/campaigns\/([^/]+)$/);
       if (campaignMatch && req.method === 'GET') {
         await handleGetCampaign(decodeURIComponent(campaignMatch[1]), res);
-        return;
-      }
-
-      if (url === '/api/benchmarks/datasets' && req.method === 'GET') {
-        await handleGetDatasets(res);
-        return;
-      }
-
-      if (url === '/api/benchmarks/datasets' && req.method === 'POST') {
-        const body = await readJsonBody(req, MAX_DATASET_BYTES);
-        await handlePostDataset(body, res);
         return;
       }
 

@@ -4,7 +4,6 @@ import { closeMobileSidebar } from './layout';
 import { closeModelSelectMenu } from './model-select-picker';
 import { closeSubAgentDrawer } from './sub-agent-drawer';
 import { closeGoalEvalDrawer } from './goal-eval-drawer';
-import { closeResearchPanel, isResearchPanelOpen } from './research-panel';
 import { closeIssuesFileDrawer, isIssuesFileDrawerOpen } from './issues-file-drawer';
 import { showToast } from './toast';
 
@@ -51,10 +50,6 @@ export function dismissOpenLayers(): void {
   closeModelSelectMenu();
   closeSubAgentDrawer();
   closeGoalEvalDrawer();
-  if (isResearchPanelOpen()) {
-    closeResearchPanel();
-    return;
-  }
   void import('./code-brain-map').then((m) => {
     if (m.isCodeBrainMapOpen()) m.closeCodeBrainMap();
   });

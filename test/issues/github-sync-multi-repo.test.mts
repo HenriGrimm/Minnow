@@ -134,6 +134,34 @@ describe('multi-repo GitHub sync', () => {
     assert.equal(issue.gitLinks?.find((l) => l.kind === 'github-issue')?.repo, 'backend');
   });
 
+  test('stopping during a create keeps its identity but never publishes to the next repo', async () => {
+    const controller = new AbortController();
+    const fetchDefault = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const result = await fetchDefault(input, init);
+      if (JSON.parse(String(init?.body ?? '{}')).op === 'issueCreate') controller.abort();
+      return result;
+    };
+    setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ repos: ['backend', 'frontend'] })], workspaces: {} });
+    await syncIssueWithGithub('ISS-1', undefined, controller.signal);
+    assert.deepEqual(calls.filter((c) => c.op === 'issueCreate').map((c) => c.repo), ['backend']);
+    assert.equal(findIssueById('ISS-1')?.github?.number, 7);
+  });
+
+  test('stopping bulk sync during a page read does not import the page or start another request', async () => {
+    const controller = new AbortController();
+    const fetchDefault = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const result = await fetchDefault(input, init);
+      if (JSON.parse(String(init?.body ?? '{}')).op === 'issueList') controller.abort();
+      return result;
+    };
+    setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ repos: ['backend'] })], workspaces: {} });
+    const result = await syncAllIssuesWithGithub({ workspacePath: WS, signal: controller.signal });
+    assert.equal(result.imported, 0);
+    assert.deepEqual(calls.map((c) => c.op), ['issueList']);
+  });
+
   test('a new issue publishes only to the workspace repo without an explicit assignment', async () => {
     const fetchDefault = globalThis.fetch;
     globalThis.fetch = async (input, init) => {

@@ -20,15 +20,10 @@ import {
 } from './config';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
 import {
-  filterToolsByMode,
-  isToolAllowedForMode,
-} from '../chat/modes/tool-policy';
-import {
   GIT_SETUP_SKILL_ID,
   injectGitSetupSkillTools,
 } from '../skills/git-setup-client';
 import { normalizeModeId, type ModeId } from '../chat/modes/types';
-import { filterToolsByExpertSnapshot } from '../chat/experts/expert-tool-policy';
 import type { Chat } from '../types';
 import { resolveChatToolWorkspaceRoot } from '../state/chat-worktree';
 import type { CodeChangeStats, ToolExecutionResult } from '../types';
@@ -655,18 +650,11 @@ export function getEnabledToolDefinitions(): OpenAIFunctionDefinition[] {
  * Enabled tools after operating mode policy (Step 05).
  */
 export function getEnabledToolDefinitionsForMode(
-  modeId: ModeId | string | null | undefined,
+  _modeId: ModeId | string | null | undefined,
   options?: { includeRecoveryTools?: boolean },
 ): OpenAIFunctionDefinition[] {
-  const normalized = normalizeModeId(
-    typeof modeId === 'string' ? modeId : modeId ?? undefined,
-  );
-  const builtins = filterToolsByMode(getEnabledToolCatalogEntries(), normalized).map(
-    (tool) => tool.definition,
-  );
-  const dynamic = getEnabledDynamicToolDefinitions().filter((def) =>
-    isToolAllowedForMode(normalized, def.function.name),
-  );
+  const builtins = getEnabledToolCatalogEntries().map(tool => tool.definition);
+  const dynamic = getEnabledDynamicToolDefinitions();
   return projectAgentConversationTools([...builtins, ...dynamic], {
     creationEnabled: getAgentConversationsCapabilitySync()?.creationEnabled === true,
     includeRecoveryTools: options?.includeRecoveryTools,
@@ -682,7 +670,6 @@ export function getEnabledToolDefinitionsForChat(
 ): OpenAIFunctionDefinition[] {
   const normalized = normalizeModeId(chat.modeId);
   let defs = getEnabledToolDefinitionsForMode(normalized, { includeRecoveryTools: chat.chatCommandVersion === 1 });
-  defs = filterToolsByExpertSnapshot(chat, defs);
   if (options?.skillId === GIT_SETUP_SKILL_ID) {
     defs = injectGitSetupSkillTools(defs);
   }

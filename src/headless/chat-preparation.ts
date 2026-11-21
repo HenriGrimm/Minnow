@@ -8,7 +8,6 @@ import { parseSamplerGlobalBlock } from '../config/sampler-meta';
 import { clampThinkingBudgetTokens, normalizeThinkingGlobalDefault } from '../agents/thinking-types';
 import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
 import { normalizeModeId } from '../chat/modes/types';
-import { isToolAllowedForMode } from '../chat/modes/tool-policy';
 import { TOOL_GROUP_IDS } from '../chat/modes/tool-groups';
 import { getUserRulesPayloadForSend } from '../config/user-rules-compose';
 import { resolveInjectionReplay, shouldReplayStoredInjection } from '../chat/context/injection-replay';
@@ -67,8 +66,7 @@ export function resolveChatModeTools(input: RegistryInput & { toolNames: string[
   return {
     modeId,
     workAgent,
-    allowedToolNames: input.toolNames.filter(name =>
-      isToolAllowedForMode(modeId, name) && (!allow || allow.has(name))),
+    allowedToolNames: input.toolNames.filter(name => !allow || allow.has(name)),
   };
 }
 

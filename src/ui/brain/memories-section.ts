@@ -1,7 +1,8 @@
 /**
- * Brain app — Memories: the project and user memories agents can search, with
- * revision-checked edit and forget. Other Brain pages are legacy notes that
- * agents never see.
+ * Brain app — Memories. The graph is the home view: one hub for this project and one
+ * for you across projects, a cluster per memory kind, and each memory hanging off its
+ * cluster. A list view shows the same memories grouped. Both share one inspector for
+ * reading, adding, editing and forgetting.
  */
 
 import {
@@ -9,6 +10,7 @@ import {
   writeConfigFile,
 } from '../../config/config-file-cache';
 import {
+  createMemoryRecord,
   fetchMemories,
   forgetMemoryRecord,
   updateMemoryRecord,
@@ -16,18 +18,38 @@ import {
 import type { MemoryKind, MemoryListing, MemoryRecord, MemoryScope } from '../../brain/types';
 import { fetchMemoryEnabled } from '../../memory/client';
 import { appConfirm } from '../app-dialog';
+import { createForceGraph, type ForceGraphApi } from './graph/force-graph';
+import {
+  MEMORY_KIND_ORDER,
+  MEMORY_KIND_PLURAL,
+  buildMemoryGraph,
+  clusterId,
+  filterMemories,
+  hubId,
+  memoryNodeId,
+} from './graph/graph-data';
+import type { GraphData, GraphNode } from './graph/types';
 
-type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
+type StatusKind = 'idle' | 'ok' | 'err' | 'spin';
+type ViewMode = 'graph' | 'list';
 
-export const MEMORY_KIND_LABELS: Record<MemoryKind, string> = {
-  decision: 'Decisions',
-  constraint: 'Constraints',
-  gotcha: 'Gotchas',
-  preference: 'Preferences',
-  reference: 'References',
+export const MEMORY_KIND_LABELS: Record<MemoryKind, string> = MEMORY_KIND_PLURAL;
+
+const KIND_SINGULAR: Record<MemoryKind, string> = {
+  decision: 'Decision',
+  constraint: 'Constraint',
+  gotcha: 'Gotcha',
+  preference: 'Preference',
+  reference: 'Reference',
 };
 
-const KIND_ORDER: MemoryKind[] = ['decision', 'constraint', 'gotcha', 'preference', 'reference'];
+const KIND_HINT: Record<MemoryKind, string> = {
+  decision: 'A choice that was made and why.',
+  constraint: 'A rule the code or product must keep.',
+  gotcha: 'A verified trap and how to avoid it.',
+  preference: 'How you like things done.',
+  reference: 'Where to find something.',
+};
 
 export interface MemoryGroup {
   scope: MemoryScope;
@@ -38,20 +60,20 @@ export interface MemoryGroup {
 }
 
 /** Group a listing by scope (project first), then by kind in a stable order. */
-export function groupMemories(listing: MemoryListing): MemoryGroup[] {
+export function groupMemories(listing: MemoryListing, memories: MemoryRecord[] = listing.memories): MemoryGroup[] {
   const scopes: { scope: MemoryScope; title: string; cap: number }[] = [];
   if (listing.project) {
     scopes.push({ scope: 'project', title: `Project · ${listing.project.label}`, cap: listing.limits.projectCap });
   }
   scopes.push({ scope: 'user', title: 'Your preferences · all projects', cap: listing.limits.userCap });
   return scopes.map(({ scope, title, cap }) => {
-    const rows = listing.memories.filter((memory) => memory.scope === scope);
+    const rows = memories.filter((memory) => memory.scope === scope);
     return {
       scope,
       title,
       cap,
-      count: rows.length,
-      kinds: KIND_ORDER
+      count: listing.memories.filter((memory) => memory.scope === scope).length,
+      kinds: MEMORY_KIND_ORDER
         .map((kind) => ({
           kind,
           label: MEMORY_KIND_LABELS[kind],
@@ -62,37 +84,72 @@ export function groupMemories(listing: MemoryListing): MemoryGroup[] {
   });
 }
 
+// ── State ────────────────────────────────────────────────────────────────────
+
 let bindingsDone = false;
 let refreshGen = 0;
 let listing: MemoryListing | null = null;
-let selectedId: string | null = null;
+let view: ViewMode = 'graph';
+let query = '';
+const hiddenScopes = new Set<MemoryScope>();
+const hiddenKinds = new Set<MemoryKind>();
+/** Selected graph node id (hub, cluster or memory). */
+let selectedNode: string | null = null;
 let editingId: string | null = null;
+let composing = false;
+let graph: ForceGraphApi | null = null;
+let graphUnavailable = false;
+let graphData: GraphData = { nodes: [], edges: [] };
 
-const setStatus: StatusFn = (kind, message) => {
-  const el = document.getElementById('brainMemoriesStatus');
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
+
+let statusTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Short-lived toast over the stage; progress stays until the next status replaces it. */
+function setStatus(kind: StatusKind, message: string): void {
+  const el = $('brainMemoriesStatus');
   if (!el) return;
+  clearTimeout(statusTimer);
   el.textContent = message;
   el.dataset.kind = kind;
-};
+  if (kind !== 'spin' && message) {
+    statusTimer = setTimeout(() => {
+      if (el.textContent === message) el.textContent = '';
+    }, kind === 'err' ? 6000 : 3000);
+  }
+}
 
 function findMemory(id: string | null): MemoryRecord | undefined {
   return id ? listing?.memories.find((memory) => memory.id === id) : undefined;
 }
 
-function setPaneVisible(
-  id: 'brainMemoryEmptyState' | 'brainMemoryDetail' | 'brainMemoryAddPanel',
-  visible: boolean,
-): void {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.toggle('hidden', !visible);
-  el.toggleAttribute('hidden', !visible);
+function selectedMemoryId(): string | null {
+  return selectedNode?.startsWith('mem:') ? selectedNode.slice(4) : null;
 }
 
-function showPane(pane: 'empty' | 'detail' | 'edit'): void {
-  setPaneVisible('brainMemoryEmptyState', pane === 'empty');
-  setPaneVisible('brainMemoryDetail', pane === 'detail');
-  setPaneVisible('brainMemoryAddPanel', pane === 'edit');
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function button(label: string, className: string, data?: Record<string, string>): HTMLButtonElement {
+  const btn = el('button', className, label);
+  btn.type = 'button';
+  for (const [key, value] of Object.entries(data ?? {})) btn.dataset[key] = value;
+  return btn;
+}
+
+function kindDot(kind: MemoryKind | undefined, extra = ''): HTMLSpanElement {
+  const dot = el('span', `bm-dot${extra ? ` ${extra}` : ''}`);
+  dot.dataset.kind = kind ?? 'hub';
+  dot.setAttribute('aria-hidden', 'true');
+  return dot;
 }
 
 function formatTimestamp(iso: string): string {
@@ -101,136 +158,276 @@ function formatTimestamp(iso: string): string {
   return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function chip(text: string, extra = 'brain-memory-chip--plain'): HTMLSpanElement {
-  const el = document.createElement('span');
-  el.className = `brain-memory-chip${extra ? ` ${extra}` : ''}`;
-  el.textContent = text;
-  return el;
+function scopeLabel(scope: MemoryScope): string {
+  return scope === 'user' ? 'All projects' : listing?.project?.label ?? 'This project';
 }
 
-// ── Detail ───────────────────────────────────────────────────────────────────
+function visibleMemories(): MemoryRecord[] {
+  return listing ? filterMemories(listing, { query, hiddenScopes, hiddenKinds }) : [];
+}
 
-function renderDetail(memory: MemoryRecord): void {
-  const mount = document.getElementById('brainMemoryDetail');
+// ── Inspector ────────────────────────────────────────────────────────────────
+
+type Pane = 'overview' | 'detail' | 'edit';
+
+function showPane(pane: Pane): void {
+  const toggle = (id: string, visible: boolean) => {
+    const node = $(id);
+    if (!node) return;
+    node.classList.toggle('hidden', !visible);
+    node.toggleAttribute('hidden', !visible);
+  };
+  toggle('brainMemoryEmptyState', pane === 'overview');
+  toggle('brainMemoryDetail', pane === 'detail');
+  toggle('brainMemoryAddPanel', pane === 'edit');
+  $('brainMemoryDetailPane')?.classList.toggle('is-engaged', pane !== 'overview');
+}
+
+function memoryRow(memory: MemoryRecord): HTMLElement {
+  const row = el('article', 'bm-row');
+  row.setAttribute('role', 'listitem');
+  const btn = button('', 'bm-row__btn', { memorySelect: memory.id });
+  btn.setAttribute('aria-selected', selectedMemoryId() === memory.id ? 'true' : 'false');
+  btn.append(kindDot(memory.kind), el('span', 'bm-row__title', memory.title || 'Untitled'),
+    el('span', 'bm-row__meta', String(memory.updatedAt ?? '').slice(0, 10)));
+  row.append(btn);
+  return row;
+}
+
+/** Nothing selected: what is in memory, and how it is used. */
+function renderOverview(): void {
+  const mount = $('brainMemoryEmptyState');
+  if (!mount) return;
+  mount.replaceChildren();
+  if (!listing) {
+    mount.append(el('p', 'bm-inspector__lead', 'Start Minnow with npm start to review memories.'));
+    return;
+  }
+  mount.append(el('p', 'bm-eyebrow', 'Overview'));
+  const scopes = el('div', 'bm-meters');
+  const meters: Array<{ scope: MemoryScope; label: string; cap: number }> = [];
+  if (listing.project) meters.push({ scope: 'project', label: listing.project.label, cap: listing.limits.projectCap });
+  meters.push({ scope: 'user', label: 'You · all projects', cap: listing.limits.userCap });
+  for (const meter of meters) {
+    const count = listing.memories.filter((m) => m.scope === meter.scope).length;
+    const item = button('', 'bm-meter', { memoryNode: hubId(meter.scope) });
+    const head = el('span', 'bm-meter__head');
+    head.append(el('span', 'bm-meter__label', meter.label), el('span', 'bm-meter__count', `${count} / ${meter.cap}`));
+    const bar = el('span', 'bm-meter__bar');
+    const fill = el('span', 'bm-meter__fill');
+    fill.style.inlineSize = `${Math.min(100, (count / Math.max(1, meter.cap)) * 100)}%`;
+    bar.append(fill);
+    item.append(head, bar);
+    scopes.append(item);
+  }
+  mount.append(scopes);
+
+  const kinds = el('ul', 'bm-kind-list');
+  for (const kind of MEMORY_KIND_ORDER) {
+    const count = listing.memories.filter((m) => m.kind === kind).length;
+    const li = el('li', 'bm-kind-list__item');
+    const name = el('span', 'bm-kind-list__name');
+    name.append(kindDot(kind), el('span', '', MEMORY_KIND_PLURAL[kind]));
+    li.append(name, el('span', 'bm-kind-list__hint', KIND_HINT[kind]), el('span', 'bm-kind-list__count', String(count)));
+    kinds.append(li);
+  }
+  mount.append(kinds);
+
+  if (!listing.memories.length) {
+    mount.append(el('p', 'bm-inspector__lead',
+      'No memories yet. Agents save decisions, constraints, your preferences and verified gotchas as they work, and search them when a task calls for it. You can add one yourself too.'));
+  } else {
+    mount.append(el('p', 'bm-inspector__note',
+      'Select a node to read it. Agents search these when a task needs them — nothing is added to prompts automatically.'));
+  }
+}
+
+function renderMemoryDetail(memory: MemoryRecord): void {
+  const mount = $('brainMemoryDetail');
   if (!mount) return;
   mount.replaceChildren();
 
-  const head = document.createElement('div');
-  head.className = 'brain-memory-detail__head';
-  const titleWrap = document.createElement('div');
-  const title = document.createElement('h2');
-  title.className = 'brain-memory-detail__title';
-  title.textContent = memory.title || 'Untitled';
-  const meta = document.createElement('div');
-  meta.className = 'brain-memory-detail__meta';
-  meta.append(
-    chip(memory.kind, ''),
-    chip(memory.scope === 'user' ? 'All projects' : listing?.project?.label ?? 'Project'),
-    chip(memory.source === 'user' ? 'Edited by you' : 'Saved by an agent'),
-  );
-  const updated = document.createElement('span');
-  updated.textContent = `Updated ${formatTimestamp(memory.updatedAt)}`;
-  meta.append(updated);
-  titleWrap.append(title, meta);
+  const head = el('header', 'bm-detail__head');
+  const kind = el('p', 'bm-detail__kind');
+  kind.append(kindDot(memory.kind), el('span', '', KIND_SINGULAR[memory.kind] ?? memory.kind));
+  kind.append(el('span', 'bm-detail__scope', scopeLabel(memory.scope)));
+  head.append(kind, el('h2', 'bm-detail__title', memory.title || 'Untitled'));
 
-  const actions = document.createElement('div');
-  actions.className = 'brain-memory-detail__actions';
-  const editBtn = document.createElement('button');
-  editBtn.type = 'button';
-  editBtn.className = 'brain-action-btn';
-  editBtn.textContent = 'Edit';
-  editBtn.dataset.memoryEdit = memory.id;
+  const body = el('pre', 'brain-memory-detail__body bm-detail__body', memory.body?.trim() ? memory.body : '(empty)');
+
+  const facts = el('dl', 'bm-facts');
+  const fact = (label: string, value: string) => {
+    facts.append(el('dt', '', label), el('dd', '', value));
+  };
+  if (memory.evidence) fact('Evidence', memory.evidence);
+  fact('Saved by', memory.source === 'user' ? 'You' : 'An agent');
+  fact('Updated', formatTimestamp(memory.updatedAt));
+  const replaced = (memory.supersedes ?? []).map((id) => findMemory(id)?.title).filter(Boolean) as string[];
+  if (replaced.length) fact('Replaces', replaced.join(', '));
+  const replacedBy = listing?.memories.filter((m) => m.supersedes?.includes(memory.id)).map((m) => m.title) ?? [];
+  if (replacedBy.length) fact('Replaced by', replacedBy.join(', '));
+
+  const actions = el('div', 'bm-detail__actions');
+  const editBtn = button('Edit', 'bm-btn', { memoryEdit: memory.id });
   editBtn.setAttribute('aria-label', `Edit memory ${memory.title}`);
-  const forgetBtn = document.createElement('button');
-  forgetBtn.type = 'button';
-  forgetBtn.className = 'brain-action-btn brain-action-btn--danger';
-  forgetBtn.textContent = 'Forget';
-  forgetBtn.dataset.memoryForget = memory.id;
+  const forgetBtn = button('Forget', 'bm-btn bm-btn--danger', { memoryForget: memory.id });
   forgetBtn.setAttribute('aria-label', `Forget memory ${memory.title}`);
   actions.append(editBtn, forgetBtn);
-  head.append(titleWrap, actions);
 
-  const body = document.createElement('pre');
-  body.className = 'brain-memory-detail__body';
-  body.textContent = memory.body?.trim() ? memory.body : '(empty)';
-  mount.append(head, body);
+  const close = button('', 'bm-icon-btn bm-detail__close', { memoryClose: '' });
+  close.setAttribute('aria-label', 'Close');
+  close.innerHTML = '<i class="fi fi-rr-cross-small icon-svg" aria-hidden="true"></i>';
 
-  if (memory.evidence) {
-    const evidence = document.createElement('p');
-    evidence.className = 'brain-memory-detail__evidence';
-    evidence.textContent = `Evidence: ${memory.evidence}`;
-    mount.append(evidence);
-  }
+  mount.append(close, head, body, facts, actions);
   showPane('detail');
 }
 
-function select(id: string | null): void {
-  selectedId = id;
-  editingId = null;
-  document.querySelectorAll<HTMLButtonElement>('#brainMemoryList [data-memory-select]').forEach((btn) => {
-    btn.setAttribute('aria-selected', btn.dataset.memorySelect === id ? 'true' : 'false');
-  });
-  const memory = findMemory(id);
-  if (memory) renderDetail(memory);
-  else showPane('empty');
+/** A hub or cluster: the memories inside it. */
+function renderGroupDetail(nodeId: string): void {
+  const mount = $('brainMemoryDetail');
+  if (!mount || !listing) return;
+  mount.replaceChildren();
+  const [type, scope, kind] = nodeId.split(':') as ['hub' | 'kind', MemoryScope, MemoryKind | undefined];
+  const scopeId = type === 'hub' ? (scope as MemoryScope) : scope;
+  const rows = visibleMemories().filter((m) => m.scope === scopeId && (!kind || m.kind === kind));
+
+  const head = el('header', 'bm-detail__head');
+  const eyebrow = el('p', 'bm-detail__kind');
+  eyebrow.append(kindDot(kind), el('span', '', kind ? scopeLabel(scopeId) : scopeId === 'user' ? 'Across all projects' : 'This project'));
+  head.append(eyebrow, el('h2', 'bm-detail__title', kind ? MEMORY_KIND_PLURAL[kind] : scopeId === 'user' ? 'Your preferences' : listing.project?.label ?? 'Project'));
+  if (kind) head.append(el('p', 'bm-detail__lead', KIND_HINT[kind]));
+
+  const list = el('div', 'bm-detail__list');
+  list.setAttribute('role', 'list');
+  for (const memory of rows) list.append(memoryRow(memory));
+  if (!rows.length) list.append(el('p', 'bm-inspector__note', query ? 'No memories here match the search.' : 'Nothing here yet.'));
+
+  const close = button('', 'bm-icon-btn bm-detail__close', { memoryClose: '' });
+  close.setAttribute('aria-label', 'Close');
+  close.innerHTML = '<i class="fi fi-rr-cross-small icon-svg" aria-hidden="true"></i>';
+  const actions = el('div', 'bm-detail__actions');
+  actions.append(button(`Add ${kind ? KIND_SINGULAR[kind].toLowerCase() : 'memory'}`, 'bm-btn', {
+    memoryCompose: `${scopeId}:${kind ?? ''}`,
+  }));
+  mount.append(close, head, list, actions);
+  showPane('detail');
 }
 
-// ── Edit ─────────────────────────────────────────────────────────────────────
+/** Select a graph node (or nothing) and sync graph, list and inspector. */
+function selectNode(id: string | null, options: { fromGraph?: boolean; reveal?: boolean } = {}): void {
+  selectedNode = id && (graphData.nodes.some((n) => n.id === id) || id.startsWith('mem:')) ? id : null;
+  editingId = null;
+  composing = false;
+  const memId = selectedMemoryId();
+  document.querySelectorAll<HTMLButtonElement>('#brainMemoryDetailPane [data-memory-select], #brainMemoryList [data-memory-select]')
+    .forEach((btn) => btn.setAttribute('aria-selected', btn.dataset.memorySelect === memId ? 'true' : 'false'));
+  if (graph && !options.fromGraph) {
+    const present = selectedNode && graph.hasNode(selectedNode) ? selectedNode : null;
+    graph.selectNode(present);
+    if (present && options.reveal) graph.centerOnNode(present);
+  }
+  const memory = findMemory(memId);
+  if (memory) renderMemoryDetail(memory);
+  else if (selectedNode) renderGroupDetail(selectedNode);
+  else {
+    renderOverview();
+    showPane('overview');
+  }
+}
 
-function showEdit(memory: MemoryRecord): void {
-  editingId = memory.id;
-  const value = (id: string, text: string) => {
-    const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
-    if (el) el.value = text;
-  };
-  value('brainMemoryAddTitle', memory.title);
-  value('brainMemoryAddKind', memory.kind);
-  value('brainMemoryAddBody', memory.body);
-  value('brainMemoryAddEvidence', memory.evidence ?? '');
-  showFormError('');
-  showPane('edit');
-  (document.getElementById('brainMemoryAddTitle') as HTMLInputElement | null)?.focus();
+// ── Edit / add ───────────────────────────────────────────────────────────────
+
+function setField(id: string, text: string): void {
+  const node = $<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(id);
+  if (node) node.value = text;
+}
+
+function readField(id: string): string {
+  return ($<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(id)?.value ?? '').trim();
 }
 
 function showFormError(message: string): void {
-  const err = document.getElementById('brainMemoryAddError');
+  const err = $('brainMemoryAddError');
   if (!err) return;
   err.textContent = message;
   err.classList.toggle('hidden', !message);
 }
 
-async function submitEdit(): Promise<void> {
-  const memory = findMemory(editingId);
-  if (!memory) return;
-  const read = (id: string) =>
-    ((document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? '').trim();
-  const title = read('brainMemoryAddTitle');
-  const body = read('brainMemoryAddBody');
+function updateBodyCount(): void {
+  const count = $('brainMemoryBodyCount');
+  const limit = listing?.limits.body ?? 1200;
+  if (count) count.textContent = `${readField('brainMemoryAddBody').length} / ${limit}`;
+}
+
+function openForm(mode: 'edit' | 'add', memory?: MemoryRecord, preset?: { scope?: MemoryScope; kind?: MemoryKind }): void {
+  editingId = mode === 'edit' ? memory?.id ?? null : null;
+  composing = mode === 'add';
+  const heading = $('brainMemoryFormTitle');
+  if (heading) heading.textContent = mode === 'edit' ? 'Edit memory' : 'Add a memory';
+  setField('brainMemoryAddTitle', memory?.title ?? '');
+  setField('brainMemoryAddKind', memory?.kind ?? preset?.kind ?? 'decision');
+  setField('brainMemoryAddBody', memory?.body ?? '');
+  setField('brainMemoryAddEvidence', memory?.evidence ?? '');
+  const scopeField = $('brainMemoryScopeField');
+  scopeField?.classList.toggle('hidden', mode === 'edit');
+  scopeField?.toggleAttribute('hidden', mode === 'edit');
+  const projectOption = document.querySelector<HTMLOptionElement>('#brainMemoryAddScope option[value="project"]');
+  if (projectOption) {
+    projectOption.disabled = !listing?.project;
+    projectOption.textContent = listing?.project ? `This project · ${listing.project.label}` : 'This project (none open)';
+  }
+  setField('brainMemoryAddScope', preset?.scope ?? (listing?.project ? 'project' : 'user'));
+  const submit = $('brainMemoryAddSubmit');
+  if (submit) submit.textContent = mode === 'edit' ? 'Save changes' : 'Add memory';
+  showFormError('');
+  updateBodyCount();
+  showPane('edit');
+  $<HTMLInputElement>('brainMemoryAddTitle')?.focus();
+}
+
+async function submitForm(): Promise<void> {
+  const title = readField('brainMemoryAddTitle');
+  const body = readField('brainMemoryAddBody');
   if (!title || !body) {
     showFormError('Title and body are required.');
     return;
   }
-  const submit = document.getElementById('brainMemoryAddSubmit') as HTMLButtonElement | null;
+  const submit = $<HTMLButtonElement>('brainMemoryAddSubmit');
   if (submit?.disabled) return;
   if (submit) submit.disabled = true;
-  setStatus('spin', 'Saving memory…');
-  const result = await updateMemoryRecord(memory.id, {
-    expectedRevision: memory.revision,
-    title,
-    body,
-    kind: read('brainMemoryAddKind') as MemoryKind,
-    evidence: read('brainMemoryAddEvidence'),
-  });
+  const kind = readField('brainMemoryAddKind') as MemoryKind;
+  const evidence = readField('brainMemoryAddEvidence');
+  let result;
+  if (editingId) {
+    const memory = findMemory(editingId);
+    if (!memory) {
+      if (submit) submit.disabled = false;
+      return;
+    }
+    setStatus('spin', 'Saving…');
+    result = await updateMemoryRecord(memory.id, { expectedRevision: memory.revision, title, body, kind, evidence });
+  } else {
+    setStatus('spin', 'Adding…');
+    const scope = readField('brainMemoryAddScope') === 'user' ? 'user' : 'project';
+    result = await createMemoryRecord({ scope, title, body, kind, evidence });
+  }
   if (submit) submit.disabled = false;
   if (!result.ok) {
-    showFormError(result.code === 'stale'
-      ? 'An agent changed this memory while you were editing. Reload it and apply your change again.'
-      : result.error);
-    setStatus('err', 'Memory not saved');
+    const conflict = result.conflictId ? findMemory(result.conflictId) : undefined;
+    showFormError(
+      result.code === 'stale'
+        ? 'An agent changed this memory while you were editing. Close the editor to load the new version, then apply your change again.'
+        : result.code === 'duplicate' && conflict
+          ? `This overlaps “${conflict.title}”. Open that memory and edit it instead of adding a second one.`
+          : result.error,
+    );
+    setStatus('err', 'Not saved');
     return;
   }
-  setStatus('ok', `Updated “${result.memory.title}”`);
-  selectedId = result.memory.id;
+  setStatus('ok', editingId ? `Saved “${result.memory.title}”` : `Added “${result.memory.title}”`);
+  editingId = null;
+  composing = false;
+  selectedNode = memoryNodeId(result.memory.id);
   await refreshMemories();
 }
 
@@ -247,137 +444,291 @@ async function forget(id: string): Promise<void> {
     setStatus('err', result.error ?? 'Could not forget this memory');
     return;
   }
-  if (selectedId === id) selectedId = null;
+  if (selectedMemoryId() === id) selectedNode = clusterId(memory.scope, memory.kind);
   setStatus('ok', `Forgot “${memory.title}”`);
   await refreshMemories();
 }
 
-// ── List ─────────────────────────────────────────────────────────────────────
+// ── Toolbar: scopes and legend ───────────────────────────────────────────────
 
-function renderList(groups: MemoryGroup[]): void {
-  const listEl = document.getElementById('brainMemoryList');
-  if (!listEl) return;
+function renderScopeChips(): void {
+  const mount = $('brainMemoryScopes');
+  if (!mount) return;
+  mount.replaceChildren();
+  if (!listing) return;
+  const scopes: Array<{ scope: MemoryScope; label: string; cap: number }> = [];
+  if (listing.project) scopes.push({ scope: 'project', label: listing.project.label, cap: listing.limits.projectCap });
+  scopes.push({ scope: 'user', label: 'You', cap: listing.limits.userCap });
+  for (const { scope, label, cap } of scopes) {
+    const count = listing.memories.filter((m) => m.scope === scope).length;
+    const chip = button('', 'bm-chip', { memoryScope: scope });
+    chip.setAttribute('aria-pressed', hiddenScopes.has(scope) ? 'false' : 'true');
+    chip.title = scope === 'user' ? 'Your preferences across all projects' : 'Memories for this project';
+    chip.append(el('span', 'bm-chip__label', label), el('span', 'bm-chip__count', `${count}/${cap}`));
+    mount.append(chip);
+  }
+}
+
+function renderLegend(): void {
+  const mount = $('brainMemoryLegend');
+  if (!mount) return;
+  mount.replaceChildren();
+  for (const kind of MEMORY_KIND_ORDER) {
+    const chip = button('', 'bm-legend__item', { memoryKind: kind });
+    chip.setAttribute('aria-pressed', hiddenKinds.has(kind) ? 'false' : 'true');
+    chip.title = `${hiddenKinds.has(kind) ? 'Show' : 'Hide'} ${MEMORY_KIND_PLURAL[kind].toLowerCase()}`;
+    chip.append(kindDot(kind), el('span', '', MEMORY_KIND_PLURAL[kind]));
+    mount.append(chip);
+  }
+}
+
+// ── Views ────────────────────────────────────────────────────────────────────
+
+function renderList(): void {
+  const listEl = $('brainMemoryList');
+  if (!listEl || !listing) {
+    listEl?.replaceChildren();
+    return;
+  }
   listEl.replaceChildren();
+  const groups = groupMemories(listing, visibleMemories()).filter((g) => !hiddenScopes.has(g.scope));
   for (const group of groups) {
-    const section = document.createElement('section');
-    section.className = 'brain-memory-group';
+    const section = el('section', 'bm-group');
     section.setAttribute('aria-label', group.title);
-    const head = document.createElement('p');
-    head.className = 'brain-memory-group__head';
-    const label = document.createElement('span');
-    label.textContent = group.title;
-    const count = document.createElement('span');
-    count.className = 'brain-memory-group__count';
-    count.textContent = `${group.count} / ${group.cap}`;
-    count.title = `${group.count} of ${group.cap} memories used`;
-    head.append(label, count);
+    const head = el('header', 'bm-group__head');
+    head.append(el('h3', 'bm-group__title', group.title), el('span', 'bm-group__count', `${group.count} / ${group.cap}`));
     section.append(head);
-
     if (!group.kinds.length) {
-      const empty = document.createElement('p');
-      empty.className = 'brain-memory-list__note';
-      empty.textContent = group.scope === 'user'
-        ? 'No cross-project preferences yet.'
-        : 'No memories for this project yet.';
-      section.append(empty);
+      section.append(el('p', 'bm-group__empty', query
+        ? 'No matches.'
+        : group.scope === 'user' ? 'No cross-project preferences yet.' : 'No memories for this project yet.'));
     }
     for (const kindGroup of group.kinds) {
-      const kindHead = document.createElement('p');
-      kindHead.className = 'brain-memory-group__kind';
-      kindHead.textContent = kindGroup.label;
+      const kindHead = el('p', 'bm-group__kind');
+      kindHead.append(kindDot(kindGroup.kind), el('span', '', kindGroup.label), el('span', 'bm-group__kind-count', String(kindGroup.items.length)));
       section.append(kindHead);
-      for (const memory of kindGroup.items) {
-        const row = document.createElement('article');
-        row.className = 'brain-memory-list-item';
-        row.setAttribute('role', 'listitem');
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'brain-memory-list-item__btn';
-        btn.dataset.memorySelect = memory.id;
-        btn.setAttribute('aria-selected', memory.id === selectedId ? 'true' : 'false');
-        const title = document.createElement('span');
-        title.className = 'brain-memory-list-item__title';
-        title.textContent = memory.title || 'Untitled';
-        const meta = document.createElement('span');
-        meta.className = 'brain-memory-list-item__meta';
-        meta.textContent = String(memory.updatedAt ?? '').slice(0, 10);
-        btn.append(title, meta);
-        row.append(btn);
-        section.append(row);
-      }
+      const rows = el('div', 'bm-group__rows');
+      for (const memory of kindGroup.items) rows.append(memoryRow(memory));
+      section.append(rows);
     }
     listEl.append(section);
   }
 }
 
+function ensureGraph(): void {
+  if (graph || graphUnavailable) return;
+  const canvas = $<HTMLCanvasElement>('brainMemoryCanvas');
+  if (!canvas) return;
+  try {
+    graph = createForceGraph(canvas, {
+      onSelect: (node: GraphNode | null) => selectNode(node?.id ?? null, { fromGraph: true }),
+      onDoubleClick: (node: GraphNode) => {
+        if (node.kind === 'memory') {
+          const memory = findMemory(node.memoryId ?? null);
+          if (memory) openForm('edit', memory);
+        } else graph?.focusNode(node.id);
+      },
+    });
+  } catch {
+    // No 2D canvas (tests, very old WebViews): the list view still works.
+    graphUnavailable = true;
+    setView('list');
+  }
+}
+
+function renderGraph(): void {
+  if (!listing) return;
+  graphData = buildMemoryGraph(listing, { query, hiddenScopes, hiddenKinds });
+  if (view !== 'graph') return;
+  ensureGraph();
+  if (!graph) return;
+  graph.setData(graphData.nodes, graphData.edges);
+  if (selectedNode && graph.hasNode(selectedNode)) graph.selectNode(selectedNode);
+}
+
+function setView(next: ViewMode): void {
+  view = graphUnavailable ? 'list' : next;
+  const root = $('brainSection-memories');
+  root?.setAttribute('data-view', view);
+  document.querySelectorAll<HTMLButtonElement>('[data-memory-view]').forEach((btn) => {
+    const on = btn.dataset.memoryView === view;
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    btn.tabIndex = on ? 0 : -1;
+  });
+  const graphView = $('brainMemoryGraphView');
+  const listView = $('brainMemoryListView');
+  graphView?.toggleAttribute('hidden', view !== 'graph');
+  listView?.toggleAttribute('hidden', view !== 'list');
+  if (view === 'graph' && listing) renderGraph();
+}
+
+function renderAll(): void {
+  renderScopeChips();
+  renderLegend();
+  renderList();
+  renderGraph();
+  const total = visibleMemories().length;
+  const empty = $('brainMemoryStageEmpty');
+  if (empty) {
+    const nothing = Boolean(listing) && !listing!.memories.length;
+    empty.toggleAttribute('hidden', !(nothing || (listing && !total)));
+    const title = empty.querySelector('.bm-stage-empty__title');
+    const text = empty.querySelector('.bm-stage-empty__text');
+    if (title) title.textContent = nothing ? 'No memories yet' : 'Nothing matches';
+    if (text) {
+      text.textContent = nothing
+        ? 'Agents save decisions, constraints, your preferences and verified gotchas here as they work.'
+        : 'Clear the search or turn a hidden kind back on.';
+    }
+    empty.querySelector('[data-memory-compose]')?.toggleAttribute('hidden', !nothing);
+  }
+}
+
 async function refreshMemories(): Promise<void> {
   const gen = ++refreshGen;
-  const countEl = document.getElementById('brainMemoryEntryCount');
-  const hintEl = document.getElementById('brainMemoryServerHint');
-  const offlineEl = document.getElementById('brainMemoryOffline');
   const next = await fetchMemories();
   if (gen !== refreshGen) return;
-  offlineEl?.classList.toggle('hidden', next !== null);
+  $('brainMemoryOffline')?.toggleAttribute('hidden', next !== null);
+  $('brainMemoryOffline')?.classList.toggle('hidden', next !== null);
   listing = next;
   if (!next) {
-    if (countEl) countEl.textContent = '— memories';
-    if (hintEl) hintEl.textContent = 'Open Minnow to review memories';
-    document.getElementById('brainMemoryList')?.replaceChildren();
-    showPane('empty');
+    $('brainMemoryList')?.replaceChildren();
+    renderScopeChips();
+    selectNode(null);
     return;
   }
-  const total = next.memories.length;
-  if (countEl) countEl.textContent = `${total} ${total === 1 ? 'memory' : 'memories'}`;
-  if (hintEl) hintEl.textContent = next.project ? `Project: ${next.project.label}` : 'No project open';
-  renderList(groupMemories(next));
-  if (selectedId && !findMemory(selectedId)) selectedId = null;
-  select(selectedId ?? next.memories[0]?.id ?? null);
+  renderAll();
+  if (editingId || composing) return;
+  if (selectedNode?.startsWith('mem:') && !findMemory(selectedMemoryId())) selectedNode = null;
+  selectNode(selectedNode, { reveal: false });
 }
+
+// ── Bindings ─────────────────────────────────────────────────────────────────
 
 function bindMemoriesSection(): void {
   if (bindingsDone) return;
   bindingsDone = true;
+  const root = $('brainSection-memories');
 
-  const onClick = (event: Event) => {
+  root?.addEventListener('click', (event) => {
     const target = event.target as HTMLElement;
-    const selectBtn = target.closest<HTMLElement>('[data-memory-select]');
+    const pick = (attr: string) => target.closest<HTMLElement>(`[data-${attr}]`);
+    const selectBtn = pick('memory-select');
     if (selectBtn?.dataset.memorySelect) {
-      select(selectBtn.dataset.memorySelect);
+      selectNode(memoryNodeId(selectBtn.dataset.memorySelect), { reveal: true });
       return;
     }
-    const editBtn = target.closest<HTMLElement>('[data-memory-edit]');
+    const nodeBtn = pick('memory-node');
+    if (nodeBtn?.dataset.memoryNode) {
+      selectNode(nodeBtn.dataset.memoryNode, { reveal: true });
+      return;
+    }
+    const editBtn = pick('memory-edit');
     if (editBtn?.dataset.memoryEdit) {
       const memory = findMemory(editBtn.dataset.memoryEdit);
-      if (memory) showEdit(memory);
+      if (memory) openForm('edit', memory);
       return;
     }
-    const forgetBtn = target.closest<HTMLElement>('[data-memory-forget]');
-    if (forgetBtn?.dataset.memoryForget) void forget(forgetBtn.dataset.memoryForget);
-  };
-  document.getElementById('brainMemoryList')?.addEventListener('click', onClick);
-  document.getElementById('brainMemoryDetailPane')?.addEventListener('click', onClick);
-
-  document.getElementById('brainMemoryAddForm')?.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void submitEdit();
+    const forgetBtn = pick('memory-forget');
+    if (forgetBtn?.dataset.memoryForget) {
+      void forget(forgetBtn.dataset.memoryForget);
+      return;
+    }
+    const compose = pick('memory-compose');
+    if (compose) {
+      const [scope, kind] = (compose.dataset.memoryCompose ?? '').split(':');
+      openForm('add', undefined, {
+        scope: scope === 'user' || scope === 'project' ? scope : undefined,
+        kind: (MEMORY_KIND_ORDER as string[]).includes(kind) ? (kind as MemoryKind) : undefined,
+      });
+      return;
+    }
+    if (pick('memory-close')) {
+      selectNode(null);
+      return;
+    }
+    const viewBtn = pick('memory-view');
+    if (viewBtn?.dataset.memoryView) {
+      setView(viewBtn.dataset.memoryView as ViewMode);
+      return;
+    }
+    const scopeChip = pick('memory-scope');
+    if (scopeChip?.dataset.memoryScope) {
+      const scope = scopeChip.dataset.memoryScope as MemoryScope;
+      if (hiddenScopes.has(scope)) hiddenScopes.delete(scope);
+      else hiddenScopes.add(scope);
+      renderAll();
+      return;
+    }
+    const kindChip = pick('memory-kind');
+    if (kindChip?.dataset.memoryKind) {
+      const kind = kindChip.dataset.memoryKind as MemoryKind;
+      if (hiddenKinds.has(kind)) hiddenKinds.delete(kind);
+      else hiddenKinds.add(kind);
+      renderAll();
+      return;
+    }
+    const zoom = pick('memory-zoom');
+    if (zoom && graph) {
+      const action = zoom.dataset.memoryZoom;
+      if (action === 'in') graph.zoomBy(1.3);
+      else if (action === 'out') graph.zoomBy(1 / 1.3);
+      else graph.fitToView();
+    }
   });
-  document.getElementById('brainMemoryAddCancel')?.addEventListener('click', () => select(editingId ?? selectedId));
-  document.getElementById('brainMemoryRefresh')?.addEventListener('click', () => {
+
+  $('brainMemoryAdd')?.addEventListener('click', () => openForm('add'));
+  $('brainMemoryAddForm')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void submitForm();
+  });
+  $('brainMemoryAddBody')?.addEventListener('input', updateBodyCount);
+  $('brainMemoryAddCancel')?.addEventListener('click', () => {
+    const wasEditing = editingId;
+    editingId = null;
+    composing = false;
+    // Reload after an edit so a stale draft never hides an agent's newer version.
+    if (wasEditing) void refreshMemories();
+    else selectNode(selectedNode);
+  });
+  $('brainMemoryRefresh')?.addEventListener('click', () => {
     void refreshMemories();
   });
+
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  $<HTMLInputElement>('brainMemorySearch')?.addEventListener('input', (event) => {
+    clearTimeout(searchTimer);
+    const value = (event.target as HTMLInputElement).value;
+    searchTimer = setTimeout(() => {
+      query = value;
+      renderAll();
+    }, 120);
+  });
+
+  root?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const inForm = (event.target as HTMLElement).closest('#brainMemoryAddForm');
+    if (inForm) {
+      $('brainMemoryAddCancel')?.click();
+      event.stopPropagation();
+    } else if (selectedNode) {
+      selectNode(null);
+    }
+  });
+
   window.addEventListener('minnow:memory-changed', () => {
     // Don't replace a draft being edited. Opening the section or Refresh reads
     // the latest revision, and a stale save is rejected by the store.
-    if (!editingId && document.getElementById('brainSection-memories')?.classList.contains('is-active')) {
+    if (!editingId && !composing && $('brainSection-memories')?.classList.contains('is-active')) {
       void refreshMemories();
     }
   });
 
-  const enableEl = document.getElementById('brainMemoryEnabled') as HTMLInputElement | null;
+  const enableEl = $<HTMLInputElement>('brainMemoryEnabled');
   enableEl?.addEventListener('change', async () => {
     const config = await readConfigFile({ fresh: true });
     if (!config) {
-      setStatus('err', 'Memory settings require Minnow running locally');
+      setStatus('err', 'Memory settings need Minnow running locally');
       return;
     }
     const memory = config.memory;
@@ -386,17 +737,40 @@ function bindMemoriesSection(): void {
       enabled: enableEl.checked,
     };
     if (await writeConfigFile(config)) {
-      setStatus('idle', enableEl.checked ? 'Agent memory on' : 'Agent memory off');
+      setStatus('idle', enableEl.checked ? 'Agents can use memory' : 'Agents won’t read or save memories');
     } else {
-      setStatus('err', 'Memory settings require Minnow running locally');
+      setStatus('err', 'Memory settings need Minnow running locally');
     }
   });
 }
 
-/** Load the Memories section: toggle, grouped memories, edit and forget. */
+/** Load Memories: graph (or list), scopes, legend and the inspector. */
 export async function renderMemoriesSection(): Promise<void> {
   bindMemoriesSection();
-  const enableEl = document.getElementById('brainMemoryEnabled') as HTMLInputElement | null;
+  setView(view);
+  const enableEl = $<HTMLInputElement>('brainMemoryEnabled');
   if (enableEl) enableEl.checked = await fetchMemoryEnabled();
   await refreshMemories();
+}
+
+/** Stop the graph simulation when Brain closes; the next open rebuilds it. */
+export function teardownMemoriesSection(): void {
+  graph?.destroy();
+  graph = null;
+}
+
+/** Reset module state between tests. */
+export function resetMemoriesSectionForTests(): void {
+  teardownMemoriesSection();
+  bindingsDone = false;
+  listing = null;
+  view = 'graph';
+  query = '';
+  hiddenScopes.clear();
+  hiddenKinds.clear();
+  selectedNode = null;
+  editingId = null;
+  composing = false;
+  graphUnavailable = false;
+  graphData = { nodes: [], edges: [] };
 }

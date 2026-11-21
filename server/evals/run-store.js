@@ -39,44 +39,6 @@ function runDir(suiteRunId) {
   return path.join(runsRoot(), suiteRunId);
 }
 
-/** @param {object} manifest */
-export async function saveManifest(manifest) {
-  const id = safeSuiteRunId(manifest?.suiteRunId);
-  if (!id) throw new Error('Invalid suite run id');
-  const dir = runDir(id);
-  await fs.mkdir(path.join(dir, 'cells'), { recursive: true });
-  await fs.writeFile(
-    path.join(dir, 'manifest.json'),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    'utf8',
-  );
-}
-
-/** @param {string} suiteRunId @param {object[]} leaderboard */
-export async function saveLeaderboard(suiteRunId, leaderboard) {
-  const id = safeSuiteRunId(suiteRunId);
-  if (!id) throw new Error('Invalid suite run id');
-  await fs.writeFile(
-    path.join(runDir(id), 'leaderboard.json'),
-    `${JSON.stringify(leaderboard, null, 2)}\n`,
-    'utf8',
-  );
-}
-
-/** @param {string} suiteRunId @param {object} cell */
-export async function saveCell(suiteRunId, cell) {
-  const id = safeSuiteRunId(suiteRunId);
-  const cellId = safeCellId(cell?.cellId);
-  if (!id || !cellId) throw new Error('Invalid run or cell id');
-  const dir = path.join(runDir(id), 'cells');
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(
-    path.join(dir, `${cellId}.json`),
-    `${JSON.stringify(cell, null, 2)}\n`,
-    'utf8',
-  );
-}
-
 export async function listRunSummaries() {
   const root = runsRoot();
   let entries = [];

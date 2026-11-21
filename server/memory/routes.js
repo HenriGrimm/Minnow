@@ -5,23 +5,14 @@
  */
 
 import {
-  listEntries,
-  getEntry,
-  createEntry,
-  updateEntry,
-  deleteEntry,
-  clearEntries,
   loadMemoryConfig,
   saveMemoryConfig,
   getEntryCount,
-  loadAllEntriesWithBodies,
   ensureMemoryStore,
 } from './store.js';
-import { retrieveMemoryBlockHybrid } from './retrieve.js';
 import { loadAllPagesWithBodies } from '../brain/retrieve.js';
 import { listPages } from '../brain/store.js';
-import { backupMemory, restoreMemory } from './backup.js';
-import { isValidEntryId } from './paths.js';
+import { memoryScopeOfPath } from '../brain/memory/scope.js';
 import { getMinnowHome } from '../config/home.js';
 import { getEmbedder, embedTexts, EMBEDDINGS_WARMUP_TIMEOUT_MS } from './embeddings.js';
 import {
@@ -88,85 +79,6 @@ export async function handleMemoryRequest(req, res, pathname) {
         entryCount,
         home: getMinnowHome(),
       });
-      return true;
-    }
-
-    if (pathname === '/api/memory/entries' && req.method === 'GET') {
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-      if (url.searchParams.get('includeBody') === '1') {
-        const rows = await loadAllEntriesWithBodies();
-        const entries = rows.map(({ meta, body }) => ({ ...meta, body }));
-        sendJson(res, 200, { entries });
-        return true;
-      }
-      const entries = await listEntries();
-      sendJson(res, 200, { entries });
-      return true;
-    }
-
-    const entryMatch = pathname.match(/^\/api\/memory\/entries\/([^/]+)$/);
-    if (entryMatch) {
-      const id = decodeURIComponent(entryMatch[1]);
-      if (!isValidEntryId(id)) {
-        sendJson(res, 400, { error: 'Invalid entry id' });
-        return true;
-      }
-
-      if (req.method === 'GET') {
-        const row = await getEntry(id);
-        if (!row) {
-          sendJson(res, 404, { error: 'Not found' });
-          return true;
-        }
-        sendJson(res, 200, row);
-        return true;
-      }
-
-      if (req.method === 'PUT') {
-        const body = await readJsonBody(req);
-        const entry = await updateEntry(id, body);
-        if (!entry) {
-          sendJson(res, 404, { error: 'Not found' });
-          return true;
-        }
-        sendJson(res, 200, { entry });
-        return true;
-      }
-
-      if (req.method === 'DELETE') {
-        const ok = await deleteEntry(id);
-        if (!ok) {
-          sendJson(res, 404, { error: 'Not found' });
-          return true;
-        }
-        sendJson(res, 200, { ok: true });
-        return true;
-      }
-    }
-
-    if (pathname === '/api/memory/entries' && req.method === 'POST') {
-      const body = await readJsonBody(req);
-      const entry = await createEntry(body);
-      sendJson(res, 201, { entry });
-      return true;
-    }
-
-    if (pathname === '/api/memory/retrieve' && req.method === 'POST') {
-      const body = await readJsonBody(req);
-      const memory = await loadMemoryConfig();
-      if (memory.enabled === false) {
-        sendJson(res, 200, { block: '', ids: [] });
-        return true;
-      }
-      const maxChars = memory.maxInjectCharsFull ?? 8000;
-      const all = await loadAllEntriesWithBodies();
-      const { block, ids } = await retrieveMemoryBlockHybrid(all, {
-        query: body.query,
-        limit: body.limit ?? 12,
-        tags: body.tags,
-        maxChars,
-      }, memory);
-      sendJson(res, 200, { block, ids });
       return true;
     }
 
@@ -258,7 +170,7 @@ export async function handleMemoryRequest(req, res, pathname) {
       }
 
       const embedder = await getEmbedder(memory);
-      const pages = await loadAllPagesWithBodies();
+      const pages = await loadAllPagesWithBodies((await listPages()).filter(page => memoryScopeOfPath(page.path)));
       const embedTimeoutMs = Math.max(
         Number(emb.queryTimeoutMs) || 0,
         EMBEDDINGS_WARMUP_TIMEOUT_MS,
@@ -302,30 +214,6 @@ export async function handleMemoryRequest(req, res, pathname) {
         },
       });
       sendJson(res, 200, { embeddings: memory.embeddings });
-      return true;
-    }
-
-    if (pathname === '/api/memory/clear' && req.method === 'POST') {
-      const body = await readJsonBody(req);
-      const result = await clearEntries(body.archive === true);
-      sendJson(res, 200, result);
-      return true;
-    }
-
-    if (pathname === '/api/memory/backup' && req.method === 'POST') {
-      const result = await backupMemory();
-      sendJson(res, 200, result);
-      return true;
-    }
-
-    if (pathname === '/api/memory/restore' && req.method === 'POST') {
-      const body = await readJsonBody(req);
-      if (!body.backupId) {
-        sendJson(res, 400, { error: 'backupId required' });
-        return true;
-      }
-      const result = await restoreMemory(String(body.backupId));
-      sendJson(res, 200, { ok: true, ...result });
       return true;
     }
 

@@ -4,7 +4,6 @@
 
 import { loadToolSecurityMeta } from '../config/tool-security-meta';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
-import { isToolAllowedForMode, filterToolsByMode } from '../chat/modes/tool-policy';
 import { normalizeModeId, type ModeId } from '../chat/modes/types';
 import {
   ensureToolConfigReady,
@@ -73,7 +72,7 @@ export function getHeadlessToolDefinitions(modeId: ModeId): OpenAIFunctionDefini
     if (!tool.serverRequired) return false;
     return true;
   });
-  return filterToolsByMode(catalog, modeId).map((t) => t.definition);
+  return catalog.map((t) => t.definition);
 }
 
 export async function getHeadlessToolsWithMcp(modeId: ModeId): Promise<OpenAIFunctionDefinition[]> {
@@ -148,12 +147,6 @@ export async function executeHeadlessTool(
   if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
 
   const modeId = normalizeModeId(options.modeId);
-  if (!isToolAllowedForMode(modeId, name)) {
-    return {
-      content: `Error: tool "${name}" is not allowed in mode "${modeId}"`,
-    };
-  }
-
   const tool = BUILT_IN_TOOLS.find((t) => t.definition.function.name === name) as
     | ToolDefinition
     | undefined;

@@ -22,7 +22,7 @@ describe('index.html static shell (MIN-387)', () => {
   });
 
   test('topbar app buttons exist without inline handlers', () => {
-    for (const id of ['btnResearch', 'btnBenchmark', 'btnExpertLab', 'btnSettings']) {
+    for (const id of ['btnSettings']) {
       assert.match(html, new RegExp(`id="${id}"`));
       const tag = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`))?.[0] ?? '';
       assert.doesNotMatch(tag, /\bon[a-z]+="/i);

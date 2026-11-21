@@ -53,6 +53,44 @@ describe('git activity overlay', () => {
     assert.equal(card.classList.contains('mn-git-activity--error'), false);
   });
 
+  it('hides only the selected progress card without stopping its operation', async () => {
+    setupDom();
+    const { beginGitActivity, finishGitActivitySuccess, updateGitActivity } = await import('../../src/ui/git-activity-overlay.ts');
+    let stopped = false;
+    const handle = beginGitActivity('Syncing with GitHub…', {
+      delayMs: 0,
+      stop: { label: 'Stop GitHub sync', pendingLabel: 'Stopping…', run: () => { stopped = true; } },
+    });
+    const [hide] = document.querySelectorAll<HTMLButtonElement>('.mn-git-activity button');
+    assert.equal(hide.textContent, 'Hide');
+    hide.click();
+    updateGitActivity(handle, 'Still syncing…');
+    const next = beginGitActivity('Fetching…', { delayMs: 0 });
+    finishGitActivitySuccess(next);
+    assert.equal(document.querySelector('.mn-git-activity--visible'), null);
+    assert.equal(stopped, false);
+    finishGitActivitySuccess(handle, 'Synced with GitHub');
+    assert.match(document.querySelector('.mn-toast')?.textContent ?? '', /Synced with GitHub/);
+  });
+
+  it('requests stop once and shows pending cancellation until settlement', async () => {
+    setupDom();
+    const { beginGitActivity, finishGitActivitySuccess } = await import('../../src/ui/git-activity-overlay.ts');
+    let stopped = 0;
+    const handle = beginGitActivity('Syncing with GitHub…', {
+      delayMs: 0,
+      stop: { label: 'Stop GitHub sync', pendingLabel: 'Stopping GitHub sync…', run: () => { stopped++; } },
+    });
+    const stop = () => document.querySelector<HTMLButtonElement>('[aria-label="Stop GitHub sync"]')!;
+    stop().click();
+    assert.equal(stop().disabled, true);
+    stop().click();
+    assert.equal(stopped, 1);
+    assert.equal(document.querySelector('.mn-git-activity__label')?.textContent, 'Stopping GitHub sync…');
+    finishGitActivitySuccess(handle);
+    assert.equal(document.querySelector('.mn-git-activity--visible'), null);
+  });
+
   it('shows a parsed error card with Send to chat and details', async () => {
     setupDom();
     const { showGitErrorPopover } = await import('../../src/ui/git-activity-overlay.ts');

@@ -91,9 +91,7 @@ describe('resolveLegacyHash', () => {
 
   test('redirects legacy full-page routes to OS apps', () => {
     assert.deepEqual(resolveLegacyHash('#/benchmark'), { hash: '#/workspaces' });
-    assert.deepEqual(resolveLegacyHash('#/research/run'), {
-      hash: '#/app/research',
-    });
+    assert.deepEqual(resolveLegacyHash('#/research/run'), { hash: '#/workspaces' });
     assert.deepEqual(resolveLegacyHash('#/experts/gallery'), {
       hash: '#/workspaces',
     });

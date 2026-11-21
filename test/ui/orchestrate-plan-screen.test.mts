@@ -21,19 +21,11 @@ import {
   resolveOrchestratePlanScreenQuestionHost,
   suspendOrchestratePlanScreenOnLeave,
 } from '../../src/ui/orchestrate-plan-screen.ts';
-import { SUPER_PLAN_PAGE_ROOT_ID } from '../../src/ui/super-plan-page.ts';
 import { switchChat } from '../../src/ui/sidebar.ts';
-import { attachSuperPlanRun } from '../helpers/super-plan-fixture.ts';
-import { resetSuperPlanEntryForTests } from '../../src/ui/super-plan-entry.ts';
-import { resetSuperPlanStoreForTests } from '../../src/chat/super-plan/store.ts';
 import { showQuestionCardsModal } from '../../src/ui/question-cards-modal.ts';
 import { appendStreamingAssistantRow, renderChatFromHistory } from '../../src/ui/messages.ts';
 import { isStreamDomVisible } from '../../src/chat/streaming-state.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
-import { SUPER_PLAN_ENABLED } from '../../src/config/super-plan-enabled.ts';
-
-/** Super Plan is disabled for release; these re-arm when SUPER_PLAN_ENABLED flips back. */
-const superPlanOff = !SUPER_PLAN_ENABLED && 'Super Plan is disabled for release';
 
 /** Test DOM matching Code chat: `.chat-viewport` > `#chatArea`. */
 function mountCodeChatAreaForTests(): HTMLElement {
@@ -64,8 +56,6 @@ describe('orchestrate plan screen', () => {
     const { resetQuestionCardsModalForTests } = await import('../../src/ui/question-cards-modal.ts');
     resetQuestionCardsModalForTests();
     resetOrchestratePlanScreenForTests();
-    resetSuperPlanEntryForTests();
-    resetSuperPlanStoreForTests();
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
     activeWindow?.close();
@@ -272,53 +262,6 @@ describe('orchestrate plan screen', () => {
     assert.equal(result.status, 'cancelled');
   });
 
-  test('switching away from a super-plan chat drops its surface and paints the next chat', { skip: superPlanOff }, () => {
-    installTestWindow();
-
-    mountCodeChatAreaForTests();
-    document.body.appendChild(
-      Object.assign(document.createElement('div'), { id: 'mainColumn' }),
-    );
-
-    const chat = createEmptyChatObject('sp-switch-away');
-    attachSuperPlanRun(chat, 'researching');
-    const otherChat = createEmptyChatObject('other-switch-away');
-    otherChat.id = 'other-switch-away-chat';
-    otherChat.history.push({ role: 'user', content: 'Hello from another chat' });
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat, otherChat],
-    });
-
-    renderChatFromHistory(chat);
-    assert.ok(
-      document.getElementById(SUPER_PLAN_PAGE_ROOT_ID),
-      'a super-plan chat paints its planning surface, never a transcript',
-    );
-    assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
-
-    setSessionStateForTests({
-      version: 5,
-      activeId: otherChat.id,
-      sidebarCollapsed: false,
-      chats: [chat, otherChat],
-    });
-    renderChatFromHistory(otherChat);
-
-    assert.equal(
-      document.getElementById(SUPER_PLAN_PAGE_ROOT_ID),
-      null,
-      'the surface should not follow other chats',
-    );
-    assert.equal(document.documentElement.classList.contains('mn-super-plan-open'), false);
-    assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
-    assert.match(
-      document.getElementById('chatArea')?.textContent ?? '',
-      /Hello from another chat/,
-    );
-  });
   test('sidebar switch during planner questions migrates strip to composer without cancelling', async () => {
     installTestWindow();
     globalThis.requestAnimationFrame = (cb: () => void) => {
@@ -482,57 +425,5 @@ describe('orchestrate plan screen', () => {
     assert.equal(settled, true);
   });
 
-  test('clicking the active super-plan chat in the sidebar keeps the surface up', { skip: superPlanOff }, async () => {
-    installTestWindow();
 
-    const area = mountCodeChatAreaForTests();
-    document.body.appendChild(
-      Object.assign(document.createElement('div'), { id: 'mainColumn' }),
-    );
-
-    const chat = createEmptyChatObject('sp-sidebar-same');
-    attachSuperPlanRun(chat, 'researching');
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    renderChatFromHistory(chat);
-    const page = area.querySelector('#' + SUPER_PLAN_PAGE_ROOT_ID);
-    assert.ok(page);
-
-    await switchChat(chat.id);
-
-    assert.equal(
-      area.querySelector('#' + SUPER_PLAN_PAGE_ROOT_ID),
-      page,
-      'the surface survives a click on the chat that owns it, without a rebuild',
-    );
-    assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
-  });
-
-  test('a Plan-mode screen replaces a mounted Super Plan surface', { skip: superPlanOff }, () => {
-    installTestWindow();
-
-    mountCodeChatAreaForTests();
-    document.body.appendChild(
-      Object.assign(document.createElement('div'), { id: 'mainColumn' }),
-    );
-    const sp = createEmptyChatObject('sp-replaced');
-    attachSuperPlanRun(sp, 'drafting');
-    const plan = createEmptyChatObject('plan-chat');
-    plan.modeId = 'plan';
-    setSessionStateForTests({ version: 5, activeId: sp.id, sidebarCollapsed: false, chats: [sp, plan] });
-    renderChatFromHistory(sp);
-    assert.ok(document.getElementById(SUPER_PLAN_PAGE_ROOT_ID));
-
-    renderOrchestratePlanScreen({ phase: 'prompt', chatId: plan.id });
-
-    assert.equal(document.getElementById(SUPER_PLAN_PAGE_ROOT_ID), null);
-    assert.ok(document.getElementById(ORCHESTRATE_PLAN_SCREEN_ROOT_ID));
-    assert.equal(document.documentElement.classList.contains('mn-super-plan-open'), false);
-    assert.equal(document.getElementById('chatArea')?.classList.contains('chat-area--super-plan'), false);
-  });
 });

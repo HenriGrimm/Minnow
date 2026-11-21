@@ -1,3 +1,4 @@
+import { isMinnowDebugEnabled } from '../config/dev-surfaces';
 import type { SettingsSectionId } from './settings-page-types';
 
 /** Resolved target for opening or scrolling to a settings area. */
@@ -31,7 +32,7 @@ export function resolveSettingsSectionNavigation(
   sectionId: SettingsSectionId,
   searchKey?: string,
 ): SettingsSectionNavigation {
-  if (sectionId === 'board-testing' || sectionId === 'capability-matrix') {
+  if (sectionId === 'board-testing' || (sectionId === 'capability-matrix' && !isMinnowDebugEnabled())) {
     return { sectionId: 'diagnostics' };
   }
   if (sectionId === 'data') {

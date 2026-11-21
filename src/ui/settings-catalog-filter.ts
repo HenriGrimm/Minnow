@@ -1,3 +1,4 @@
+import { isMinnowDebugEnabled } from '../config/dev-surfaces';
 import { isDeveloperReleased, isAppId } from '../os/app-registry';
 import type { AppId } from '../os/types';
 import type { SettingsFieldEntry } from './settings-catalog';
@@ -9,10 +10,7 @@ export function filterSettingsCatalogEntries(
   entries: readonly SettingsFieldEntry[],
 ): SettingsFieldEntry[] {
   return entries.filter((entry) => {
-    if (entry.area === 'board-testing' || entry.area === 'capability-matrix') {
-      return false;
-    }
-    if (entry.key === 'agents.experts' && !isDeveloperReleased('experts')) {
+    if (entry.area === 'capability-matrix' && !isMinnowDebugEnabled()) {
       return false;
     }
     if (!entry.key.startsWith(OPTIONAL_APP_KEY_PREFIX)) {

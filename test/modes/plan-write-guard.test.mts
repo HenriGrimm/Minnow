@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   isPlanMarkdownPath,
-  isSuperPlanReferenceArtifactPath,
   isUnderDocumentationPlans,
 } from '../../src/chat/modes/plan-write-guard.ts';
 import { classifyToolCall, decidePermission } from '../../src/lib/permissions.mjs';
@@ -59,28 +58,4 @@ describe('/plan dispatch scope', () => {
       assert.equal(decide(tool, { source: path, destination: 'documentation/plans/y.md' }), 'deny');
     }
   });
-});
-
-describe('super-plan references write guard', () => {
-  test('isSuperPlanReferenceArtifactPath accepts research-artifact and build-spec', () => {
-    assert.equal(
-      isSuperPlanReferenceArtifactPath(
-        'documentation/plans/references/my-plan/research-artifact.md',
-      ),
-      true,
-    );
-    assert.equal(
-      isSuperPlanReferenceArtifactPath(
-        'documentation/plans/references/my-plan/build-spec.md',
-      ),
-      true,
-    );
-    assert.equal(
-      isSuperPlanReferenceArtifactPath(
-        'documentation/plans/references/my-plan/notes.md',
-      ),
-      false,
-    );
-  });
-
 });

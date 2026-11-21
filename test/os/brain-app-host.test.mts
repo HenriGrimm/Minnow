@@ -44,23 +44,14 @@ function setupBrainAppHostDom(doc: Document): void {
         ${navButtons}
       </nav>
       <div class="brain-content">${sectionPanels}</div>
-      <div id="brainGraphStage" class="brain-graph-stage">
-        <input type="search" id="brainGraphSearch">
-        <canvas id="brainGraphCanvas" width="100" height="100"></canvas>
-      </div>
-      <aside id="brainInspector"></aside>
-      <div id="brainInspectorResize"></div>
     </main>
   `;
 }
 
 function brainApiFetchResponse(url: string): Response {
   const path = String(url);
-  if (path.includes('/api/brain/tree')) {
-    return new Response(JSON.stringify({ tree: { name: 'root', children: [] } }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (path.includes('/api/brain/memories')) {
+    return Response.json({ project: null, memories: [], limits: { projectCap: 150, userCap: 40 } });
   }
   if (path.includes('/api/brain/usage')) {
     return new Response(JSON.stringify({ thisWeek: {}, weeks: {} }), {
@@ -145,7 +136,7 @@ describe('brain app host layer reveal', () => {
     assert.equal(getForegroundAppId(), 'brain');
     assert.ok(root?.classList.contains('is-open'));
     assert.ok(root?.classList.contains('is-active'));
-    assert.equal(window.location.hash, '#/app/brain/graph');
+    assert.equal(window.location.hash, '#/app/brain/memories');
 
     const back = root?.querySelector<HTMLButtonElement>('.brain-rail__heading > .back-to-chat');
     assert.ok(back);
@@ -175,72 +166,4 @@ describe('brain app host layer reveal', () => {
     assert.ok(root?.classList.contains('is-active'));
   });
 
-  test('restores the graph layout when returning to an open Brain app', async () => {
-    const launchApp = (happyDomWindow as unknown as { __launchApp: (id: string) => void }).__launchApp;
-    const root = document.getElementById('brainView');
-    assert.ok(root);
-
-    launchApp('brain');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.ok(root.classList.contains('is-graph-canvas-bg'));
-
-    launchApp('code');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.ok(root.classList.contains('is-open'));
-    assert.ok(!root.classList.contains('is-graph-canvas-bg'));
-
-    launchApp('brain');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.ok(root.classList.contains('is-active'));
-    assert.ok(root.classList.contains('is-graph-canvas-bg'));
-  });
-
-  test('opens the graph without restoring a page from storage or the last visit', async (t) => {
-    const { launchApp } = await import('../../src/os/router.ts');
-    const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
-    setLocalServerAvailableForTests(true);
-    t.after(() => setLocalServerAvailableForTests(false));
-
-    const page = { type: 'page', title: 'Index', path: 'index.md' };
-    const inspector = document.getElementById('brainInspector')!;
-    const stage = document.getElementById('brainGraphStage')!;
-    stage.insertAdjacentHTML('beforeend', '<div id="brainGraphTree"></div>');
-    // Exercise the tree and reader without requiring a canvas renderer in happy-dom.
-    document.getElementById('brainGraphCanvas')?.remove();
-    t.mock.method(globalThis, 'fetch', async (input: string) => {
-      if (input === '/api/brain/tree') return Response.json({ tree: { 'index.md': page } });
-      if (input.startsWith('/api/brain/page?')) {
-        return Response.json({ path: page.path, meta: page, body: '' });
-      }
-      return brainApiFetchResponse(input);
-    });
-    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-    launchApp('brain');
-    await settle();
-    const row = document.querySelector<HTMLButtonElement>('.brain-tree__page')!;
-    assert.equal(row.getAttribute('aria-current'), 'false');
-    assert.equal(inspector.getAttribute('aria-hidden'), 'true');
-
-    row.click();
-    await settle();
-    assert.equal(inspector.querySelector('h2')?.textContent, 'Index');
-
-    launchApp('code');
-    await settle();
-    launchApp('brain');
-    await settle();
-    assert.equal(document.querySelector('.brain-tree__page')?.getAttribute('aria-current'), 'false');
-    assert.equal(inspector.getAttribute('aria-hidden'), 'true');
-
-    launchApp('brain', { brainSection: 'edit' });
-    await settle();
-    assert.ok(document.getElementById('brainSection-edit')?.classList.contains('is-active'));
-    launchApp('code');
-    await settle();
-    launchApp('brain');
-    await settle();
-    assert.equal(window.location.hash, '#/app/brain/graph');
-    assert.equal(inspector.getAttribute('aria-hidden'), 'true');
-  });
 });

@@ -19,14 +19,12 @@ import { loadState as loadAgentState } from '../sub-agents/journal.js';
 import { createBenchmarkWorkspaceMiddleware } from '../benchmark-workspace/middleware.js';
 import { createChatsWorkspaceMiddleware } from '../chats-workspace/middleware.js';
 import { createBenchmarksMiddleware } from '../benchmarks/middleware.js';
-import { createCompareMiddleware } from '../compare/middleware.js';
+import { createLegacyEvalResultsMiddleware } from '../evals/middleware.js';
 import { createBrowserAllowlistMiddleware } from '../browser-allowlist-middleware.js';
 import { createBrowserScreenshotMiddleware } from '../browser-screenshot-middleware.js';
 import { createSettingsMiddleware } from '../settings/middleware.js';
 import { createConfigMiddleware } from '../config/middleware.js';
-import { createEvalsMiddleware } from '../evals/middleware.js';
 import { createGenerationsMiddleware } from '../generations/routes.js';
-import { createResearchMiddleware } from '../research/routes.js';
 import { createLspMiddleware } from '../lsp/middleware.js';
 import { createGodotMiddleware } from '../godot/middleware.js';
 import { createMcpMiddleware } from '../mcp/middleware.js';
@@ -34,6 +32,7 @@ import { createMcpHubMiddleware } from '../mcp-hub/middleware.js';
 import { createServersMiddleware } from '../servers/index.js';
 import { createMemoryMiddleware } from '../memory/middleware.js';
 import { createBrainMiddleware } from '../brain/middleware.js';
+import { createLegacyBrainUpgradeMiddleware } from '../brain/legacy-upgrade.js';
 import { createProductWikiMiddleware } from '../product-wiki/middleware.js';
 import { createPreviewMiddleware } from '../preview/middleware.js';
 import { createPreviewAccessMiddleware } from '../preview/isolated-host.js';
@@ -57,17 +56,10 @@ import { createWorkspaceMiddleware } from '../workspace/middleware.js';
 import { createGitMiddleware } from '../git/middleware.js';
 import { createWorktreeMiddleware } from '../worktree/middleware.js';
 import { createWorkAgentsMiddleware } from '../work-agents/routes.js';
-import { createOrchestrateMiddleware } from '../orchestrate/middleware.js';
 import {
   createBoardsMiddleware,
   setEffectorFactory,
 } from '../orchestrator/middleware.js';
-import {
-  bootSuperPlanRuntime,
-  createSuperPlanMiddleware,
-  setSuperPlanEffectorFactory,
-  createProductionSuperPlanEffector,
-} from '../super-plan/middleware.js';
 import { armBoardResumeGate } from '../orchestrator/resume-gate.js';
 import {
   cancelOrphanedRunnerGenerations,
@@ -116,12 +108,6 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   });
   configureAgentRecoveryGate(useJsonSessionsStore() ? null : () => getProductionChatRuntime());
   if (useJsonSessionsStore()) void bootAgentsRuntime();
-  // Super Plan: the headless stages (research/review/polish) run in-process;
-  // interview/draft are delegated to the renderer through a lease
-  // (`effector-delegated.js`) that the claim route hands out. Boot re-arms
-  // every non-terminal run so an open stage replans itself after a restart.
-  setSuperPlanEffectorFactory(createProductionSuperPlanEffector);
-  void bootSuperPlanRuntime();
   connectApp.use(createRemoteResponseHeadersMiddleware());
   connectApp.use(createAuthMiddleware());
   // Authenticate first, then scope: every downstream handler runs inside the
@@ -209,15 +195,12 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createIssueAttachmentsMiddleware());
   connectApp.use(createSettingsMiddleware());
   connectApp.use(createBenchmarksMiddleware());
-  connectApp.use(createCompareMiddleware());
-  connectApp.use(createEvalsMiddleware());
+  connectApp.use(createLegacyEvalResultsMiddleware());
   connectApp.use(createWorkspaceMiddleware());
   connectApp.use(createGodotMiddleware());
   connectApp.use(createGitMiddleware());
   connectApp.use(createWorktreeMiddleware());
-  connectApp.use(createOrchestrateMiddleware());
   connectApp.use(createBoardsMiddleware());
-  connectApp.use(createSuperPlanMiddleware());
   connectApp.use(createAgentsMiddleware());
   connectApp.use(createBoardTestingMiddleware());
   connectApp.use(createChatsWorkspaceMiddleware());
@@ -245,6 +228,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
     }),
   );
   connectApp.use(createMemoryMiddleware());
+  connectApp.use(createLegacyBrainUpgradeMiddleware());
   connectApp.use(createBrainMiddleware());
   connectApp.use(createProductWikiMiddleware());
   connectApp.use(createWebhooksMiddleware());
@@ -259,7 +243,6 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createTtsMiddleware());
   connectApp.use(createVoiceRuntimeMiddleware());
   connectApp.use(createGenerationsMiddleware());
-  connectApp.use(createResearchMiddleware());
   connectApp.use(createWorkAgentsMiddleware());
   connectApp.use(createAgentPacksMiddleware());
   connectApp.use(createBrowserScreenshotMiddleware());

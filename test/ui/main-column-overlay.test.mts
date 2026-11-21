@@ -76,16 +76,6 @@ describe('main-column-overlay', () => {
     assert.equal(isMainColumnOverlaySuppressingChatDom(), true);
   });
 
-  test('isMainColumnOverlaySuppressingChatDom is true when super plan page root is mounted', () => {
-    setupDom();
-    stripMainColumnOverlayClasses();
-    const root = document.createElement('div');
-    root.id = 'superPlanPage';
-    document.getElementById('chatArea')!.appendChild(root);
-    assert.equal(isMainColumnOverlaySuppressingChatDom(), true);
-    assert.equal(isCodeStageOverlayMounted(), true);
-  });
-
   test('isCodeStageOverlayMounted is true when overview root is mounted even without classes', () => {
     setupDom();
     stripMainColumnOverlayClasses();

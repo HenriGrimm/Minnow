@@ -5,15 +5,14 @@ import { Window } from 'happy-dom';
 
 describe('Code stage chrome', () => {
   test('stage views hide the legacy drawer and keep the shared desktop sidebar available', async () => {
-    const css = ['code-chrome', 'super-plan-page'].map(name =>
+    const css = ['code-chrome'].map(name =>
       readFileSync(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8'),
     ).join('\n');
     const stages = [
       { id: 'devServerScreenRoot' },
       { id: 'orchestratorBoardsRoot' },
       { id: 'codeBrainMapRoot' },
-      { id: 'superPlanPage', htmlClass: 'mn-super-plan-open' },
-    ];
+    ] as Array<{ id: string; htmlClass?: string }>;
     for (const { id, htmlClass } of stages) {
       for (const desktop of [false, true]) {
         const window = new Window();

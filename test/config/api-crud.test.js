@@ -181,33 +181,9 @@ describe('config API CRUD', () => {
     assert.equal(put.json.data.searxng.port, 65535);
   });
 
-  test('PUT research round-trip normalizes', async () => {
-    const payload = {
-      model: { providerId: 'lm-studio', model: 'test-model' },
-      searchProvider: '',
-      maxRounds: 99,
-      minRounds: 2,
-      maxTimeSeconds: 10,
-      runTimeoutSeconds: 999999,
-      maxReportTokens: 500,
-      extractionTimeoutSeconds: 5,
-      extractionConcurrency: 0,
-      maxUrlsPerRound: 100,
-      maxContentChars: 500,
-      synthesisWindow: 0,
-      maxEmptyRounds: 0,
-    };
-    const put = await httpRequest(baseUrl, 'PUT', '/api/config/research', payload);
-    assert.equal(put.status, 200);
-    assert.equal(put.json.data.maxRounds, 20);
-    assert.equal(put.json.data.minRounds, 2);
-    assert.equal(put.json.data.maxTimeSeconds, 30);
-    assert.equal(put.json.data.runTimeoutSeconds, 86400);
-    assert.equal(put.json.data.extractionConcurrency, 1);
-
-    const get = await httpRequest(baseUrl, 'GET', '/api/config/research');
-    assert.equal(get.json.model.providerId, 'lm-studio');
-    assert.equal(get.json.maxRounds, 20);
+  test('the retired research resource is no longer served', async () => {
+    const put = await httpRequest(baseUrl, 'PUT', '/api/config/research', { maxRounds: 3 });
+    assert.notEqual(put.status, 200);
   });
 
   test('GET file API rejects traversal key', async () => {

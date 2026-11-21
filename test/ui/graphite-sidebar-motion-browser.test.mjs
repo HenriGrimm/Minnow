@@ -10,7 +10,7 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   const browser = await discoverBrowser();
   if (!browser.available) return t.skip(browser.detail);
   const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'sidebar', 'graphite-workspace', 'thread-card',
-    'settings-page', 'source-control-center', 'models-page', 'brain-page', 'brain-graph', 'scheduler-page',
+    'settings-page', 'source-control-center', 'models-page', 'brain-page', 'brain-memories', 'scheduler-page',
     'issues', 'dev-server-screen', 'orchestrator-boards', 'product-wiki', 'graphite-apps', 'surfaces'].map(name =>
     readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-sidebar-'));
@@ -102,20 +102,19 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
                   <div class="issues-header__brand">Issues</div><button>New issue</button>
                 </header></div>
               </div>
-              <div class="mn-os-app-layer brain-page is-graph-canvas-bg" id="brain">
-                <div class="brain-page-chrome"><div class="brain-page-body">
-                  <nav class="brain-rail brain-overlay-surface">Brain</nav>
-                  <div class="brain-stage">
-                    <div class="brain-content"><section class="brain-section brain-section--graph is-active">
-                      <div class="brain-graph-stage brain-graph-overlays">
-                        <div class="brain-graph-toolbar brain-overlay-card" data-app-titlebar>
-                          <div class="brain-graph-toolbar__group brain-graph-toolbar__search">Search</div><button>New page</button>
-                        </div>
-                      </div>
-                    </section></div>
-                    <div class="brain-inspector is-open">Inspector</div>
+              <div class="mn-os-app-layer brain-page" id="brain">
+                <div class="brain-page-chrome">
+                  <header class="brain-page-header brain-overlay-surface" data-app-titlebar>
+                    <div class="brain-page-header__main"><h1 class="brain-page-header__title">Memories</h1></div>
+                    <div class="brain-page-header__actions"><button>Add memory</button></div>
+                  </header>
+                  <div class="brain-page-body">
+                    <nav class="brain-rail brain-overlay-surface">Brain</nav>
+                    <div class="brain-stage">
+                      <div class="brain-content"><section class="brain-section brain-section--memories is-active">Memories</section></div>
+                    </div>
                   </div>
-                </div></div>
+                </div>
               </div>
               <div class="mn-os-app-layer" id="devServers">
                 <div class="dev-server-screen"><header class="dev-server-screen__toolbar" data-app-titlebar>

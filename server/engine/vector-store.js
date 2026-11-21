@@ -190,6 +190,21 @@ export function createVectorStore(getPaths, opts = {}) {
     });
   }
 
+  /** Drop unreferenced vectors without overwriting concurrent vector updates. */
+  async function keepEntryVectors(ids) {
+    const storePath = getVectorStorePath();
+    await enqueueWrite(storePath, async () => {
+      const store = await readStore(storePath);
+      let changed = false;
+      for (const id of Object.keys(store.vectors)) {
+        if (ids.has(id)) continue;
+        delete store.vectors[id];
+        changed = true;
+      }
+      if (changed) await writeStore(storePath, store);
+    });
+  }
+
   /** Clear all vectors while preserving metadata fields. */
   async function clearVectorStore() {
     const storePath = getVectorStorePath();
@@ -270,6 +285,7 @@ export function createVectorStore(getPaths, opts = {}) {
     isVectorStoreCompatible,
     upsertEntryVector,
     deleteEntryVector,
+    keepEntryVectors,
     clearVectorStore,
     getVectorCount,
     reindexAllMemoryEntries,

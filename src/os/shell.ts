@@ -1,8 +1,6 @@
 import '../styles/minnowos-rail.css';
 import '../styles/minnowos-shell.css';
 import '../styles/git-panel.css';
-import '../styles/research-page.css';
-import '../styles/research-panel.css';
 
 import { initAppHost } from './app-host';
 import { initAppRail } from './app-rail';

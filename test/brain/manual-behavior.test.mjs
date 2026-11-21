@@ -13,7 +13,8 @@ test('the Brain manual matches shipped memory limits and on-demand recall', asyn
   for (const tool of ['memory_search', 'memory_read', 'memory_save', 'memory_forget']) assert.ok(manual.includes(tool), tool);
   assert.match(manual, /Nothing from memory is added to your messages/);
   assert.match(manual, /worktrees share one memory/);
-  assert.match(manual, /Legacy notes/);
+  assert.match(manual, /Clean up old Brain data/);
+  assert.match(manual, /Skip.*leaves those files on disk/);
 });
 
 test('manual pages no longer describe injected Brain notes or retired wiki tools', async () => {

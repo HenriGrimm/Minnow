@@ -107,7 +107,7 @@ import {
   searchSearxngStructured,
 } from '../tools/web-search-searxng.js';
 import { appendResultExcerpts } from '../tools/search-enrich.js';
-import { loadSearchSettings } from '../research/search.js';
+import { loadSearchSettings } from '../tools/search-settings.js';
 import { runTavilyMap, runTavilyExtract } from '../tools/tavily-tools.js';
 import { unsupportedSearchOptions } from '../tools/tavily-options.js';
 import { getFilesystemAccessFromConfig } from '../config/tool-security.js';

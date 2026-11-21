@@ -90,7 +90,7 @@ export function openPhoneApp(id: PhoneAppId, options: PhoneAppOptions = {}): voi
         const { openBrain, closeBrain } = await import('../ui/brain-page');
         if (generation !== request) return;
         closePage = () => closeBrain({ skipNavigate: true });
-        openBrain('graph');
+        openBrain('memories');
       } else if (id === 'scheduler') {
         const { openScheduler, closeScheduler, initSchedulerPage } = await import('../ui/scheduler-page');
         if (generation !== request) return;

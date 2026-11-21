@@ -55,9 +55,7 @@ describe('chat app HTML', () => {
     assert.ok(chat > 0 && app > chat);
   });
 
-  test('chat view is after research view', () => {
-    const research = html.indexOf('id="researchView"');
-    const chat = html.indexOf('id="chatView"');
-    assert.ok(research > 0 && chat > research);
+  test('the retired research view is gone from the shell', () => {
+    assert.equal(html.indexOf('id="researchView"'), -1);
   });
 });

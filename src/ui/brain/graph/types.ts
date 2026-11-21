@@ -1,7 +1,12 @@
-export type GraphNodeKind = 'page' | 'tag';
+/**
+ * Brain memory graph — node/edge model shared by the data builder and the canvas renderer.
+ */
 
-/** Edge relationship between graph vertices. */
-export type GraphEdgeKind = 'wikilink' | 'tag' | 'similar';
+/** hub = a scope (this project, or you across projects); cluster = one kind inside a scope. */
+export type GraphNodeKind = 'hub' | 'cluster' | 'memory';
+
+/** member = belongs to its cluster/hub; related = shared vocabulary; supersedes = replaced an older memory. */
+export type GraphEdgeKind = 'member' | 'related' | 'supersedes';
 
 /** One node in the force-directed graph (simulation mutates x/y/vx/vy). */
 export interface GraphNode {
@@ -9,10 +14,10 @@ export interface GraphNode {
   kind: GraphNodeKind;
   label: string;
   sublabel?: string;
-  /** Wiki page path when kind === 'page'. */
-  path?: string;
-  /** Lint orphan highlight flag. */
-  orphan?: boolean;
+  /** Memory kind (decision, gotcha, …) — drives the node color. Hubs leave it unset. */
+  tone?: string;
+  /** Memory id when kind === 'memory'. */
+  memoryId?: string;
   x?: number;
   y?: number;
   vx?: number;
@@ -21,7 +26,7 @@ export interface GraphNode {
   fy?: number | null;
 }
 
-/** Directed edge between two node ids. */
+/** Edge between two node ids. `supersedes` points from the newer memory to the one it replaced. */
 export interface GraphEdge {
   id: string;
   source: string;
@@ -32,25 +37,20 @@ export interface GraphEdge {
 /** Theme colors resolved from CSS custom properties. */
 export interface ForceGraphTheme {
   stageBg: string;
-  /** Callout card / label bubble fill. */
+  /** Callout card fill. */
   surface: string;
   border: string;
   shadow: string;
-  nodePage: string;
-  nodePageMuted: string;
-  nodeTag: string;
-  nodeTagMuted: string;
+  nodeHub: string;
+  /** Per memory kind color; unknown tones fall back to `nodeMemory`. */
+  tones: Record<string, string>;
+  nodeMemory: string;
   nodeActive: string;
-  nodeOrphan: string;
-  nodeOrphanMuted: string;
   /** Node core fill — reads as the hollow center of a hub ring. */
   nodeCore: string;
   edge: string;
   edgeHighlight: string;
-  /** Dashed `similarTo` relations. */
-  edgeSimilar: string;
-  /** Faint page→tag membership relations. */
-  edgeTag: string;
+  edgeRelated: string;
   label: string;
   labelMuted: string;
   glow: string;
@@ -58,16 +58,14 @@ export interface ForceGraphTheme {
   grid: string;
 }
 
-/** Node classes the legend can mute. */
-export type GraphEmphasisKey = 'page' | 'tag' | 'orphan';
+/** Legend keys that can fade a group of nodes: a memory kind. */
+export type GraphEmphasisKey = string;
 
 /** User interaction callbacks from the canvas renderer. */
 export interface ForceGraphCallbacks {
   onSelect?: (node: GraphNode | null) => void;
   onDoubleClick?: (node: GraphNode) => void;
   onHover?: (node: GraphNode | null) => void;
-  /** Refresh controls that reflect neighborhood focus or pin state. */
-  onNodeActionsChange?: () => void;
 }
 
 /** Options passed when creating a force graph instance. */

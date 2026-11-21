@@ -24,12 +24,6 @@ This is the one page that talks about work not yet shipped. The manual describes
 | Extensibility | Deepen skills, prompt packs, native tools, MCP, themes, and agent packs without closed services. |
 | Accessibility | Maintain keyboard coverage, reduced motion, readable themes, and WCAG 2.1 AA contrast. |
 
-## Behind the release gate
-
-Compare, Benchmarking, Experts, and Research remain in the codebase with tests but do not appear on the shipped app rail; Super Plan is likewise gated off. They move to released only when their workflows, reliability, accessibility, documentation, and support burden meet the same bar as the core apps. A half-finished surface on the rail costs more than a missing one.
-
-See [Apps overview](manual/apps/overview.md) for what users see today.
-
 ## How priorities are chosen
 
 1. Reliability and data safety in shipped workflows.

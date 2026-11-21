@@ -20,7 +20,7 @@ describe('isAppWindowAllowed', () => {
   test('allows released apps except Code', () => {
     assert.equal(isAppWindowAllowed('source-control'), true);
     assert.equal(isAppWindowAllowed('issues'), true);
-    assert.equal(isAppWindowAllowed('research'), true);
+    assert.equal(isAppWindowAllowed('research'), false);
     assert.equal(isAppWindowAllowed('settings'), true);
     assert.equal(isAppWindowAllowed('code'), false);
     assert.equal(isAppWindowAllowed('experts'), false);

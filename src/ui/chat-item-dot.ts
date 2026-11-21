@@ -80,11 +80,6 @@ export function resolveChatItemDotState(chat: Chat, ctx: ChatItemDotContext): Ch
   if (isChatInputPending(chat.id, ctx)) {
     return 'needs-input';
   }
-  // A Super Plan run waiting on the user: a question, a checkpoint, or a stage that stopped.
-  // A running plan gets no spinner; runs last long and animation costs local tokens/s.
-  if (chat.superPlanView?.needsInput && !chat.superPlanView.finished) {
-    return 'needs-input';
-  }
   if (!chat.chatCommandVersion && !chat.agentConversation && chatAwaitingUserInputTool(chat)) {
     return 'needs-input';
   }

@@ -63,7 +63,7 @@ describe('app registry availability invariants', () => {
       'settings',
       'source-control',
     ]);
-    assert.equal(isCoreApp('research'), true);
+    assert.equal(isCoreApp('research'), false);
     assert.equal(isDeveloperReleased('research'), false);
     for (const id of coreIds) {
       assert.equal(isCoreApp(id), true);
@@ -75,8 +75,8 @@ describe('app registry availability invariants', () => {
     assert.deepEqual(listOptionalReleasedApps(), []);
   });
 
-  test('every app has availability + releaseState; four apps are hidden', () => {
-    assert.equal(APPS.length, 11);
+  test('every app has availability + releaseState; retired apps are absent', () => {
+    assert.equal(APPS.length, 7);
     assert.equal(listReleasedApps().length, 7);
     for (const app of APPS) {
       assert.ok(app.availability === 'core' || app.availability === 'optional');
@@ -163,7 +163,7 @@ describe('app preferences', () => {
   test('developer-hidden apps cannot be toggled or persisted as disabled', () => {
     setAppEnabled('experts', false);
     assert.equal(isAppEnabled('experts'), false);
-    assert.equal(getAppUnavailableReason('experts'), 'developer-hidden');
+    assert.equal(getAppUnavailableReason('experts'), 'unknown');
     assert.equal(loadDisabledAppIds().size, 0);
   });
 

@@ -1,4 +1,4 @@
-import { llmCall } from '../research/llm.js';
+import { llmCall } from '../lib/llm.js';
 import { parseSkillFrontmatter } from '../skills/parse-frontmatter.js';
 import { listMergedSkills } from '../skills/scan.js';
 import { getAppRoot } from '../workspace/root.js';

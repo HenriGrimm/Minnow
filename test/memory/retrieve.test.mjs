@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { formatMemoryBlock, retrieveMemoryBlock } from '../../server/memory/retrieve.js';
+import { formatMemoryBlock, retrieveMemoryBlock } from '../../server/engine/retrieve.js';
 
 const META_A = {
   id: '11111111-1111-1111-1111-111111111111',

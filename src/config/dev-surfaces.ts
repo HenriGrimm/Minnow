@@ -14,8 +14,3 @@ export function isMinnowDebugEnabled(): boolean {
     typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : undefined;
   return isTruthyFlag(env?.MINNOW_DEBUG);
 }
-
-/** Settings → Advanced → Board testing (requires MINNOW_DEBUG at build/runtime). */
-export function isBoardTestingSettingsVisible(): boolean {
-  return isMinnowDebugEnabled();
-}

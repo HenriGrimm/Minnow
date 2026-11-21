@@ -211,7 +211,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     'integrations.search.fallback',
     { emphasis: true },
   );
-  chainGroup.parentElement!.hidden = !isDeveloperReleased('research');
+  chainGroup.parentElement!.hidden = true;
   const chainList = el('div', 'settings-checklist');
   chainList.setAttribute('role', 'group');
   chainList.setAttribute('aria-label', 'Research fallback providers');

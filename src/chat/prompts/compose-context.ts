@@ -2,17 +2,15 @@ import {
   resolveActiveWorkAgent,
   resolveActiveWorkAgentId,
 } from '../../agents/resolve-work-agent';
-import { listExperts } from '../experts/registry';
 import { normalizeModeId } from '../modes/types';
-import { loadExpertsConfig } from '../../config/experts-config';
 import { loadPromptMetaSettings } from '../../config/prompt-meta';
 import {
   getUserRulesPayloadForSend,
   loadUserRules,
 } from '../../config/user-rules';
-import { getExpertSelection, sessionState } from '../../state/sessions';
+import { sessionState } from '../../state/sessions';
 import { resolveChatToolWorkspaceRoot } from '../../state/chat-worktree';
-import { getExpertAwareToolNamesForChat } from '../experts/expert-tool-policy';
+import { getEnabledToolDefinitionsForChat } from '../../tools/client';
 import { loadToolConfig } from '../../tools/config';
 import type { Chat } from '../../types';
 import { formatChatLinksPromptBlock } from '../links';
@@ -68,7 +66,7 @@ export function resolveComposeCwd(): string {
 
 function getEnabledToolIdsForChat(chat: Chat): string[] {
   loadToolConfig();
-  return getExpertAwareToolNamesForChat(chat);
+  return getEnabledToolDefinitionsForChat(chat).map(def => def.function.name);
 }
 
 export interface BuildComposeContextOptions {
@@ -85,12 +83,6 @@ export interface BuildComposeContextOptions {
   /** Model context window (callers still pass it; injection replay is uncapped). */
   modelContextLimit?: number | null;
   overrides?: Partial<ComposeContext>;
-}
-
-export interface ResolvedExpertContext {
-  expertId: string | null;
-  expertLabel: string | null;
-  routeSource: string;
 }
 
 // ── Context ──────────────────────────────────────────────────────────────────
@@ -241,68 +233,18 @@ export async function buildComposeContext(
 }
 
 /**
- * Resolve expert for send: manual selection or expert-thread chat only (no auto-routing).
- */
-export async function resolveExpertContextForSend(
-  chat: Chat,
-  _userText: string,
-): Promise<ResolvedExpertContext> {
-  const expertsConfig = await loadExpertsConfig();
-  if (!expertsConfig.enabled) {
-    return { expertId: null, expertLabel: null, routeSource: 'none' };
-  }
-
-  const threadExpertId =
-    chat.kind === 'expert' && chat.expertId?.trim() ? chat.expertId.trim() : null;
-  const selection = getExpertSelection(chat);
-  const manualId =
-    selection.mode === 'manual' && selection.expertId?.trim()
-      ? selection.expertId.trim()
-      : null;
-  const expertId = threadExpertId ?? manualId;
-  if (!expertId) {
-    return { expertId: null, expertLabel: null, routeSource: 'none' };
-  }
-
-  const expert = listExperts().find((r) => r.meta.id === expertId);
-  if (!expert) {
-    return {
-      expertId,
-      expertLabel: null,
-      routeSource: 'orphaned',
-    };
-  }
-
-  return {
-    expertId: expert.meta.id,
-    expertLabel: expert.meta.label,
-    routeSource: 'manual',
-  };
-}
-
-/**
- * Single compose-context build for send (expert + work-agent overrides).
+ * Single compose-context build for send (work-agent overrides).
  */
 export async function resolveComposeContextForSend(
   chat: Chat,
   options?: BuildComposeContextOptions,
 ): Promise<ComposeContext> {
-  const routeText =
-    options?.routeUserText ??
-    options?.userMessagePreview ??
-    '';
-
-  const expertCtx = await resolveExpertContextForSend(chat, routeText);
-
   const activeWorkAgent = resolveActiveWorkAgent(chat);
   const workAgentId = resolveActiveWorkAgentId(chat);
 
   return buildComposeContext(chat, {
     ...options,
     overrides: {
-      expertId:
-        expertCtx.routeSource === 'orphaned' ? null : expertCtx.expertId,
-      expertLabel: expertCtx.expertLabel,
       workAgentId,
       workAgentLabel: activeWorkAgent?.label ?? null,
       ...options?.overrides,

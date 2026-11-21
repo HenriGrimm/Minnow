@@ -62,3 +62,13 @@ server/voice/python/__pycache__/
 
 # Built-in Tailscale helper binaries (npm run tailnet:build)
 resources/bin/
+
+# Local benchmark dataset checkouts
+/evals/harness/datasets/
+
+# Local compiler caches, temporary test homes and print artifacts
+/tsx-Henri/
+/node-compile-cache/
+/minnow-issues-backup-*/
+/output/pdf/
+/tmp/pdfs/

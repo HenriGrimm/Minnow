@@ -14,9 +14,9 @@ import type { Chat, SessionState } from '../types';
 
 // ── Visibility ───────────────────────────────────────────────────────────────
 
-/** Side conversations and legacy Expert Lab sessions stay out of the main thread lists. */
+/** Side conversations stay out of the main thread lists; historical Expert chats remain readable. */
 export function isSidebarVisibleChat(chat: Chat): boolean {
-  return chat.kind !== 'expert-lab' && !isGraphiteSideChat(chat);
+  return !isGraphiteSideChat(chat);
 }
 
 /** True when the chat has unsent composer text persisted on the session row. */

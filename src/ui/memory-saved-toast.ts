@@ -104,12 +104,8 @@ export function memorySavedPayloadFromTool(
   return null;
 }
 
-async function openSavedMemory(payload: MemorySavedPayload): Promise<void> {
-  const { openBrain, openBrainEditForPath } = await import('./brain-page');
-  if (payload.target.kind === 'page') {
-    openBrainEditForPath(payload.target.relPath);
-    return;
-  }
+async function openSavedMemory(): Promise<void> {
+  const { openBrain } = await import('./brain-page');
   openBrain('memories');
 }
 
@@ -140,7 +136,7 @@ export function showMemorySavedToast(
   };
   const open = (): void => {
     if (options.onOpen) void options.onOpen(snapshot);
-    else void openSavedMemory(snapshot);
+    else void openSavedMemory();
   };
   const targetKey = snapshot.target.kind === 'page' ? snapshot.target.relPath : snapshot.target.id;
   const handle = notify({

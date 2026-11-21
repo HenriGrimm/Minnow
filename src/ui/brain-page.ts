@@ -1,100 +1,57 @@
 import '../styles/brain-page.css';
-import '../styles/brain-graph.css';
+import '../styles/brain-memories.css';
 
 import { isOsAppHash, isOsEmbedded } from '../os/page-bridge';
 import { requestCloseWindowApp, registerWindowTeardown } from '../os/window-mounted-apps';
-import { launchApp, navigateToDesktop } from '../os/router';
-import { closeBrainInspector } from './brain/inspector';
-import { initBrainGraphSidebarResize } from './brain/graph-sidebar-resize';
-import { initBrainInspectorResize } from './brain/inspector-resize';
-import { teardownGraphSection } from './brain/graph-section';
+import { navigateToDesktop } from '../os/router';
 import { renderBrainSection } from './brain/sections';
+import { teardownMemoriesSection } from './brain/memories-section';
 import { revealInTabStrip } from './mobile-layout';
 import { fetchBrainUsage } from '../brain/client';
 
 export type BrainSectionId =
-  | 'graph'
-  | 'edit'
-  | 'log'
-  | 'schema'
-  | 'proposals'
   | 'memories'
-  | 'ingest'
-  | 'lint'
+  | 'proposals'
   | 'code'
   | 'settings';
 
-/** Legacy hash segment still routed to graph home. */
-const LEGACY_SECTION_ALIASES: Record<string, BrainSectionId> = {
-  wiki: 'graph',
-};
-
 const SECTIONS: BrainSectionId[] = [
-  'graph',
-  'proposals',
   'memories',
-  'ingest',
-  'lint',
+  'proposals',
   'code',
-  'log',
-  'schema',
-  'edit',
   'settings',
 ];
 
 const SECTION_LABELS: Record<BrainSectionId, string> = {
-  graph: 'Graph',
-  edit: 'Edit',
-  log: 'Log',
-  schema: 'Schema',
   proposals: 'Proposals',
   memories: 'Memories',
-  ingest: 'Ingest',
-  lint: 'Lint',
-  code: 'Code',
+  code: 'Code map',
   settings: 'Settings',
 };
 
 /** Section titles shown in the consolidated page header. */
 const SECTION_TITLES: Record<BrainSectionId, string> = {
-  graph: 'Knowledge graph',
-  edit: 'Edit',
-  log: 'Log',
-  schema: 'Schema',
-  proposals: 'Proposals',
+  proposals: 'Skill proposals',
   memories: 'Memories',
-  ingest: 'Ingest',
-  lint: 'Lint',
-  code: 'Code',
+  code: 'Code map',
   settings: 'Settings',
 };
 
 /** One-line descriptions for the page header lead line. */
 const SECTION_LEADS: Record<BrainSectionId, string> = {
-  graph: 'Explore legacy wiki pages, tags, and wikilinks. Agents use Memories instead.',
-  edit: 'Draft markdown with a full-page preview that matches how the wiki reads.',
-  log: 'Read-only changelog from log.md.',
-  schema: 'View and edit the wiki taxonomy in schema.md.',
   proposals: 'Review skills suggested from completed conversations.',
-  memories: 'Review, edit or forget what agents remember for this project and across projects.',
-  ingest: 'Submit a raw source; the utility model synthesizes wiki pages.',
-  lint: 'Health report: orphans, stale pages, broken links, contradictions.',
+  memories: 'What agents remember for this project and across all your projects.',
   code: 'Browse the indexed repo map, search symbols, and inspect call graphs.',
   settings: 'Skill suggestions, semantic embeddings, and code index settings.',
 };
 
 const BRAIN_WORKSPACE_SECTIONS: BrainSectionId[] = [
-  'edit',
   'memories',
-  'schema',
-  'log',
   'proposals',
-  'ingest',
-  'lint',
   'code',
 ];
 
-let activeSection: BrainSectionId = 'graph';
+let activeSection: BrainSectionId = 'memories';
 let staticBindingsDone = false;
 
 // ── DOM helpers ──────────────────────────────────────────────────────────────
@@ -108,9 +65,9 @@ function getChatShell(): HTMLElement | null {
 }
 
 function resolveSectionId(raw: string | undefined): BrainSectionId {
-  if (!raw) return 'graph';
+  if (!raw) return 'memories';
   if (SECTIONS.includes(raw as BrainSectionId)) return raw as BrainSectionId;
-  return LEGACY_SECTION_ALIASES[raw] ?? 'graph';
+  return 'memories';
 }
 
 function parseHashSection(): BrainSectionId {
@@ -230,12 +187,10 @@ export function clearBrainHeaderActions(): void {
 
 // ── Sections ─────────────────────────────────────────────────────────────────
 
-function setActiveSection(section: BrainSectionId, options?: { editPath?: string }): void {
-  const prevSection = activeSection;
+function setActiveSection(section: BrainSectionId): void {
   activeSection = section;
   updatePageHeader(section);
   clearBrainHeaderActions();
-  getBrainRoot()?.classList.toggle('is-graph-canvas-bg', section === 'graph');
   for (const id of SECTIONS) {
     const panel = document.getElementById(`brainSection-${id}`);
     const nav = document.querySelector(
@@ -250,20 +205,12 @@ function setActiveSection(section: BrainSectionId, options?: { editPath?: string
     .querySelector('.brain-content')
     ?.classList.toggle('is-brain-workspace', BRAIN_WORKSPACE_SECTIONS.includes(section));
 
-  if (prevSection !== section) {
-    const inspector = document.getElementById('brainInspector');
-    if (inspector) closeBrainInspector(inspector);
-    if (prevSection === 'graph' && section !== 'graph') {
-      teardownGraphSection();
-    }
-  }
-
   const nextHash = `#/app/brain/${section}`;
   if (!getBrainRoot()?.closest('.m-native-app-host') && window.location.hash !== nextHash) {
     window.location.hash = nextHash;
   }
 
-  void renderBrainSection(section, options);
+  void renderBrainSection(section);
 }
 
 function bindStaticSections(): void {
@@ -295,21 +242,8 @@ function closeOtherFullPages(): void {
   void import('./models-page').then((m) => {
     if (m.isModelsPageOpen()) m.closeModels({ skipNavigate: true });
   });
-  void import('./experts/experts-hub').then((m) => {
-    if (m.isExpertsPageOpen()) m.closeExpertsHub({ skipNavigate: true });
-  });
   void import('./welcome-page').then((m) => {
     if (m.isWelcomePageOpen()) m.closeWelcome({ skipHash: true });
-  });
-  void import('../research/panel').then((m) => {
-    if (m.isResearchPageOpen()) m.closeResearch({ skipNavigate: true });
-  });
-  void import('./compare-page').then((m) => {
-    if (m.isComparePageOpen()) m.closeCompare({ skipNavigate: true });
-  });
-  void import('./benchmark-page').then((m) => {
-    const root = document.getElementById('benchmarkView');
-    if (root?.classList.contains('is-open')) m.closeBenchmark({ skipNavigate: true });
   });
   void import('./settings-page').then((m) => {
     const settingsRoot = document.getElementById('settingsView');
@@ -318,7 +252,7 @@ function closeOtherFullPages(): void {
 }
 
 /** Open the Brain app (optional section deep link). */
-export function openBrain(section?: BrainSectionId, options?: { editPath?: string }): void {
+export function openBrain(section?: BrainSectionId): void {
   const root = getBrainRoot();
   const shell = getChatShell();
   if (!root || !shell) return;
@@ -340,36 +274,18 @@ export function openBrain(section?: BrainSectionId, options?: { editPath?: strin
 
   bindStaticSections();
 
-  const target = section ?? parseHashSection();
-  if (wasAlreadyOpen && target === activeSection && !options?.editPath) {
-    // Suspending Brain hides the graph canvas while leaving the section open.
-    root.classList.toggle('is-graph-canvas-bg', target === 'graph');
+  const target = section ? resolveSectionId(section) : parseHashSection();
+  if (wasAlreadyOpen && target === activeSection) {
     updatePageHeader(target);
-    void renderBrainSection(target, options);
+    void renderBrainSection(target);
     return;
   }
-  setActiveSection(target, options);
-}
-
-/** Jump to Edit with a pre-filled wiki path. */
-export function openBrainEditForPath(relPath: string): void {
-  if (isOsEmbedded() && !getBrainRoot()?.closest('.m-native-app-host')) {
-    launchApp('brain', { brainSection: 'edit', brainEditPath: relPath });
-  }
-  openBrain('edit', { editPath: relPath });
-}
-
-/** Open Edit for a new wiki page (manual creation entry point). */
-export function openBrainNewPage(): void {
-  openBrain('edit', { editPath: 'facts/' });
-  const pathEl = document.getElementById('brainEditPath') as HTMLInputElement | null;
-  pathEl?.focus();
+  setActiveSection(target);
 }
 
 /** Brain stayed open in the OS layer stack (e.g. user opened Settings from the menubar). */
 export function suspendBrainAppSurface(): void {
-  getBrainRoot()?.classList.remove('is-graph-canvas-bg');
-  teardownGraphSection({ clearSelection: true });
+  teardownMemoriesSection();
   document.body.style.removeProperty('cursor');
 }
 
@@ -380,8 +296,7 @@ export function closeBrain(options?: { skipNavigate?: boolean }): void {
   if (!root || !shell) return;
 
   root.classList.remove('is-open');
-
-  teardownGraphSection({ clearSelection: true });
+  teardownMemoriesSection();
 
   if (!isOsEmbedded()) {
     shell.classList.remove('hidden');
@@ -401,7 +316,7 @@ export function closeBrain(options?: { skipNavigate?: boolean }): void {
 }
 
 export function openBrainFromTopbar(): void {
-  openBrain('graph');
+  openBrain('memories');
 }
 
 export function isBrainPageOpen(): boolean {
@@ -429,8 +344,6 @@ function onHashChange(): void {
 export function initBrainPage(): void {
   registerWindowTeardown('brain', () => closeBrain({ skipNavigate: true }));
   bindStaticSections();
-  initBrainInspectorResize();
-  initBrainGraphSidebarResize();
   window.addEventListener('hashchange', onHashChange);
   if (window.location.hash.includes('/brain')) {
     openBrain(parseHashSection());
@@ -439,7 +352,7 @@ export function initBrainPage(): void {
 
 /** Reset module-local section state before mounting a fresh test document. */
 export function resetBrainPageForTests(): void {
-  activeSection = 'graph';
+  activeSection = 'memories';
   staticBindingsDone = false;
 }
 

@@ -189,21 +189,8 @@ function bindStaticSections(): void {
 // ── Page lifecycle ───────────────────────────────────────────────────────────
 
 function closeOtherFullPages(): void {
-  void import('./experts/experts-hub').then((m) => {
-    if (m.isExpertsPageOpen()) m.closeExpertsHub({ skipNavigate: true });
-  });
   void import('./welcome-page').then((m) => {
     if (m.isWelcomePageOpen()) m.closeWelcome({ skipHash: true });
-  });
-  void import('../research/panel').then((m) => {
-    if (m.isResearchPageOpen()) m.closeResearch({ skipNavigate: true });
-  });
-  void import('./compare-page').then((m) => {
-    if (m.isComparePageOpen()) m.closeCompare({ skipNavigate: true });
-  });
-  void import('./benchmark-page').then((m) => {
-    const root = document.getElementById('benchmarkView');
-    if (root?.classList.contains('is-open')) m.closeBenchmark({ skipNavigate: true });
   });
   void import('./brain-page').then((m) => {
     if (m.isBrainPageOpen()) m.closeBrain({ skipNavigate: true });

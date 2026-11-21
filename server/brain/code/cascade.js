@@ -9,9 +9,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { getEffectiveWorkspaceRoot, runWithToolContext } from '../../runtime/path-access.js';
-import { brainWorkspaceKeyFromPath, getBrainSourcesDir, getBrainStatePath } from '../paths.js';
-import { loadCatalog, updatePage } from '../store.js';
+import { getEffectiveWorkspaceRoot } from '../../runtime/path-access.js';
+import { brainWorkspaceKeyFromPath, getBrainStatePath } from '../paths.js';
 import { loadBrainConfig } from '../store.js';
 import { detectAndApplyAnchorDrift } from './anchors.js';
 import { normalizeBrainCodeConfig } from './config.js';
@@ -48,7 +47,6 @@ const GIT_HOOK_SCRIPT = path.resolve(
  * got A's answer. Key both per repo.
  */
 /** @type {Map<string, ReturnType<typeof setTimeout>>} */
-const wikiResynthesisTimerByRepo = new Map();
 
 /** @type {Map<string, Promise<unknown>>} */
 const lazyRefreshInFlightByRepo = new Map();
@@ -290,52 +288,6 @@ export async function detectStaleFiles(opts = {}) {
 }
 
 /**
- * Mark ingest-derived wiki pages stale when their raw source hash drifts.
- * @returns {Promise<Array<{ path: string, title: string }>>}
- */
-export async function detectRawSourceDrift() {
-  const catalog = await loadCatalog();
-  const sourcesDir = getBrainSourcesDir();
-  const drifted = [];
-
-  for (const page of catalog.pages) {
-    if (page.source !== 'ingest') continue;
-    const inputHash = String(page.input_hash ?? '').trim();
-    if (!inputHash) continue;
-
-    let sourceHash = inputHash;
-    try {
-      const names = await fs.readdir(sourcesDir);
-      const match = names.find((name) => name.startsWith(`${inputHash}-`));
-      if (!match) {
-        drifted.push({ path: page.path, title: page.title });
-        if (page.status !== 'stale') {
-          await updatePage(page.path, { status: 'stale', skipAnchorSync: true });
-        }
-        continue;
-      }
-      const raw = await fs.readFile(path.join(sourcesDir, match), 'utf8');
-      sourceHash = createHash('sha256').update(raw).digest('hex').slice(0, 16);
-    } catch {
-      drifted.push({ path: page.path, title: page.title });
-      if (page.status !== 'stale') {
-        await updatePage(page.path, { status: 'stale', skipAnchorSync: true });
-      }
-      continue;
-    }
-
-    if (sourceHash !== inputHash) {
-      drifted.push({ path: page.path, title: page.title });
-      if (page.status !== 'stale') {
-        await updatePage(page.path, { status: 'stale', skipAnchorSync: true });
-      }
-    }
-  }
-
-  return drifted;
-}
-
-/**
  * Reindex changed files, re-rank, and propagate anchor drift (deterministic path).
  * @param {{ files?: string[] | null, focusFiles?: string[], force?: boolean, codeConfig?: ReturnType<typeof normalizeBrainCodeConfig>, trigger?: CascadeTrigger }} opts
  */
@@ -353,7 +305,6 @@ export async function propagateCodeChanges(opts = {}) {
   });
 
   const anchorDrift = await detectAndApplyAnchorDrift();
-  const rawSourceDrift = await detectRawSourceDrift();
 
   const db = getCodeDb(repo);
   const rows = db
@@ -368,43 +319,8 @@ export async function propagateCodeChanges(opts = {}) {
     repo,
     merkleRoot,
     anchorDrift,
-    rawSourceDrift,
     ...reindexResult,
   };
-}
-
-/**
- * Drain queued wiki pages on a background timer (LLM regen never blocks requests).
- */
-export function scheduleWikiResynthesis() {
-  const repo = currentBrainRepoKey();
-  if (wikiResynthesisTimerByRepo.has(repo)) return;
-  const workspaceRoot = getEffectiveWorkspaceRoot();
-  const timer = setTimeout(() => {
-    wikiResynthesisTimerByRepo.delete(repo);
-    // The timer fires outside any request, so re-enter this repo's scope.
-    void runWithToolContext(() => processWikiResynthesisQueue(), { workspaceRoot });
-  }, 250);
-  wikiResynthesisTimerByRepo.set(repo, timer);
-}
-
-/** Batch lint pass for queued wiki pages — marks issues, does not call the LLM inline. */
-export async function processWikiResynthesisQueue() {
-  const state = await readBrainState();
-  const queue = Array.isArray(state.resynthesisQueue)
-    ? state.resynthesisQueue.map(String).filter(Boolean)
-    : [];
-  if (!queue.length) return { processed: 0 };
-
-  const { lintBrainWiki } = await import('../lint.js');
-  await lintBrainWiki({ includeLlm: false });
-
-  await writeBrainState({
-    resynthesisQueue: [],
-    lastResynthesisPassAt: new Date().toISOString(),
-  });
-
-  return { processed: queue.length, queued: 0 };
 }
 
 /**
@@ -461,7 +377,6 @@ export async function ensureIndexFreshForQuery() {
       codeConfig: code,
       trigger: 'lazy-query',
     });
-    scheduleWikiResynthesis();
     return { refreshed: true, ...result };
   })();
 
@@ -528,7 +443,6 @@ export async function runCascade(opts = {}) {
       trigger,
     });
 
-    scheduleWikiResynthesis();
     return { ok: true, skipped: false, ...result };
   })();
 

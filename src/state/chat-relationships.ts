@@ -49,6 +49,7 @@ export function projectChatRelationships(chats: readonly Chat[]): ChatRelationsh
 }
 
 export function chatReadOnlyReason(chat: Chat): string | null {
+  if (chat.kind === 'expert' || chat.kind === 'expert-lab') return 'Experts has been retired. This saved transcript is read-only.';
   const relation = chat.agentConversation;
   if (!relation) return null;
   if (relation.origin === 'native') return 'This native agent conversation is available for inspection. Continue it in its original host.';
@@ -58,7 +59,7 @@ export function chatReadOnlyReason(chat: Chat): string | null {
 
 /** Canonical and imported agent transcripts cannot be rewritten by legacy local branch helpers. */
 export function supportsLocalHistoryMutation(chat: Chat): boolean {
-  return chat.chatCommandVersion !== 1 && !chat.agentConversation && !isGraphiteSideChat(chat);
+  return chat.chatCommandVersion !== 1 && !chatReadOnlyReason(chat) && !isGraphiteSideChat(chat);
 }
 
 export function supportsManagedHistoryMutation(chat: Chat): boolean {

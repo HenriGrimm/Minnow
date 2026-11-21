@@ -46,24 +46,10 @@ export function initShellHandlers(): void {
   }
 
   wireClick('btnSidebarToggle', toggleSidebarLayout);
-  wireClick('btnResearch', () => {
-    void import('../research/panel').then((m) => m.openResearchFromTopbar());
-  });
-  wireClick('btnBenchmark', () => {
-    if (!isAppAvailable('bench')) return;
-    void import('../ui/benchmark-page').then((m) => m.openBenchmarkFromTopbar());
-  });
-  wireClick('btnExpertLab', () => {
-    if (!isAppAvailable('experts')) return;
-    void import('../ui/experts/experts-hub').then((m) => m.openExpertLabFromTopbar());
-  });
   wireClick('btnSettings', () => {
     void import('./settings-page').then((m) => m.openSettingsFromTopbar());
   });
 
-  wireClick('drawerExpertsLink', () => {
-    void import('../ui/experts/experts-hub').then((m) => m.openExpertLabFromTopbar());
-  });
 
   wireClick('drawerOverlay', closeDrawer);
   const drawer = document.getElementById('drawer');

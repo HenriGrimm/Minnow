@@ -10,8 +10,6 @@ import type {
   ModelScoreIndexRow,
 } from './campaign-types.ts';
 import { prepareCampaignForPersistence } from './campaign-persist-prep.ts';
-import { registerImportedStandardPack } from './standard/pack-loader.ts';
-import type { StandardBenchmarkPack } from './standard/types.ts';
 
 const LOCAL_CAMPAIGNS_KEY = 'minnow.benchmarks.campaigns';
 const LOCAL_CAP = 10;
@@ -127,43 +125,4 @@ export async function fetchModelScoreIndex(): Promise<ModelScoreIndexRow[]> {
     } catch {}
   }
   return buildModelScoreIndex(readLocalCampaigns());
-}
-
-/** Import a full-tier standard dataset pack. */
-export async function importStandardDataset(
-  pack: StandardBenchmarkPack,
-): Promise<void> {
-  const serverUp = await detectLocalServer();
-  if (serverUp) {
-    const res = await fetch('/api/benchmarks/datasets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pack),
-    });
-    if (res.ok) {
-      registerImportedStandardPack(pack);
-      return;
-    }
-  }
-  registerImportedStandardPack(pack);
-}
-
-/** Load user-imported full-tier packs from the tool server into memory. */
-export async function loadImportedStandardDatasets(): Promise<number> {
-  const serverUp = await detectLocalServer();
-  if (!serverUp) return 0;
-  try {
-    const res = await fetch('/api/benchmarks/datasets', { cache: 'no-store' });
-    if (!res.ok) return 0;
-    const data = (await res.json()) as { datasets?: StandardBenchmarkPack[] };
-    const datasets = Array.isArray(data.datasets) ? data.datasets : [];
-    for (const pack of datasets) {
-      if (pack?.id && Array.isArray(pack.items)) {
-        registerImportedStandardPack(pack);
-      }
-    }
-    return datasets.length;
-  } catch {
-    return 0;
-  }
 }

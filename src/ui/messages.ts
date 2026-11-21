@@ -28,12 +28,6 @@ import {
   teardownOrchestratePlanScreen,
   teardownOrchestratePlanScreenDom,
 } from './orchestrate-plan-screen';
-import {
-  isSuperPlanScreenMountedForOtherChat,
-  isSuperPlanScreenShowingChat,
-  reopenSuperPlanScreenForChat,
-  teardownSuperPlanScreen,
-} from './super-plan-entry';
 import { extractInlineThinkingFromContent } from '../api/inline-thinking';
 import { apiMessageContentToText } from '../api/message-content';
 import { normalizeModeId } from '../chat/modes/types';
@@ -780,9 +774,6 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   // A newer paint owns the transcript; the previous chat's chunks must not land in it.
   if (appendStart === undefined) cancelChatHistoryBackfill();
 
-  if (codeMount && isSuperPlanScreenMountedForOtherChat(chat.id)) {
-    teardownSuperPlanScreen();
-  }
 
   if (codeMount && !embeddedHost && isMainColumnOverlaySuppressingChatDom()) {
     return;
@@ -800,13 +791,6 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   updateCodeChangeStrip(chat);
   if (codeMount && isOrchestrateHubMounted()) {
     teardownOrchestrateHub();
-  }
-  if (codeMount && normalizeModeId(chat.modeId) === 'super-plan') {
-    if (isSuperPlanScreenShowingChat(chat.id)) return;
-    teardownHub();
-    removeOrchestratePlanScreenSuspendedBanner();
-    reopenSuperPlanScreenForChat(chat);
-    return;
   }
   const suspendedPlanChat = codeMount && isOrchestratePlanScreenSuspendedForChat(chat);
   if (suspendedPlanChat) {

@@ -26,7 +26,7 @@ describe('loadModePromptBody', () => {
     registerPromptFilesFromRaw(await loadBuiltinModePromptMap());
     for (const id of MODE_IDS) {
       const body = loadModePromptBody(id);
-      const markerId = id === 'desktop' || id === 'email' ? 'general' : id;
+      const markerId = id === 'desktop' || id === 'email' ? 'general' : id === 'super-plan' ? 'plan' : id;
       assert.ok(body.length > 0, `${id} full empty`);
       assert.match(body, new RegExp(`MINNOW_MODE_MARKER: ${markerId} full`));
     }

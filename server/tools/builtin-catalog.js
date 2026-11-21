@@ -302,7 +302,7 @@ export const BUILT_IN_TOOLS = [
       {
         app_id: {
           type: 'string',
-          enum: ['code', 'chat', 'research', 'experts', 'bench', 'issues', 'settings'],
+          enum: ['code', 'chat', 'issues', 'settings'],
           description: 'Minnow app to open',
         },
         seed: {
@@ -2019,33 +2019,19 @@ export const BUILT_IN_TOOLS = [
     id: 'manage_brain',
     label: 'Manage brain',
     description:
-      'Delete or clear Brain wiki data (pages, archives, proposals, code index, sources). Requires Minnow running locally.',
+      'Clear the derived Brain code index. Requires Minnow running locally.',
     category: 'utility',
     serverRequired: true,
     definition: toolSchema(
       'manage_brain',
-      'Destructive Brain ops. Requires user approval; confirmed: true.',
+      'Clear the derived code index. Requires user approval; confirmed: true.',
       {
         action: {
           type: 'string',
-          enum: [
-            'delete_page',
-            'clear_wiki',
-            'delete_archive',
-            'clear_proposals',
-            'clear_code_index',
-            'clear_sources',
-          ],
+          enum: ['clear_code_index'],
         },
-        path: { type: 'string' },
-        chatId: { type: 'string' },
         workspaceKey: { type: 'string' },
-        scope: {
-          type: 'string',
-          enum: ['pending', 'all'],
-        },
         all: { type: 'boolean' },
-        archive: { type: 'boolean' },
         confirmed: { type: 'boolean' },
       },
       ['action'],

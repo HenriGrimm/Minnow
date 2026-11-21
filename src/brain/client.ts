@@ -32,6 +32,7 @@ import type {
   MemoryKind,
   MemoryListing,
   MemoryRecord,
+  MemoryScope,
 } from './types';
 
 const API_BASE = '';
@@ -558,7 +559,33 @@ export async function fetchMemories(workspaceRoot?: string): Promise<MemoryListi
 
 export type MemoryWriteResult =
   | { ok: true; memory: MemoryRecord }
-  | { ok: false; error: string; code?: string };
+  | { ok: false; error: string; code?: string; conflictId?: string };
+
+/** Add a memory yourself, in this project or across all projects. */
+export async function createMemoryRecord(input: {
+  scope: MemoryScope;
+  title: string;
+  body: string;
+  kind: MemoryKind;
+  evidence?: string;
+  workspaceRoot?: string;
+}): Promise<MemoryWriteResult> {
+  if (!isLocalServerAvailable()) return { ok: false, error: 'Offline — open Minnow.' };
+  try {
+    const res = await fetch(`${API_BASE}/api/brain/memories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const data = (await res.json().catch(() => ({}))) as MemoryRecord & { error?: string; code?: string; conflictId?: string };
+    if (!res.ok) {
+      return { ok: false, error: data.error ?? `Request failed (${res.status})`, code: data.code, conflictId: data.conflictId };
+    }
+    return { ok: true, memory: data };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 /** Revision-checked edit of one memory. */
 export async function updateMemoryRecord(id: string, input: {

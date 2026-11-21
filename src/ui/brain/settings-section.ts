@@ -7,13 +7,9 @@ import { appAlert, appConfirm, appPrompt } from '../app-dialog';
 
 import {
   clearBrainCodeIndex,
-  clearBrainProposals,
-  clearBrainSources,
-  clearBrainWiki,
   fetchBrainCodeConfig,
   fetchBrainCodeStatus,
   fetchBrainGitHookStatus,
-  fetchBrainStatus,
   installBrainGitHook,
   saveBrainCodeConfig,
   uninstallBrainGitHook,
@@ -328,58 +324,6 @@ function bindSettingsSection(): void {
     })();
   });
 
-  document.getElementById('brainDangerClearWiki')?.addEventListener('click', () => {
-    void runSettingsAction(document.getElementById('brainDangerClearWiki'), 'Clearing wiki…', async () => {
-      const backupEl = document.getElementById(
-        'brainDangerWikiBackup',
-      ) as HTMLInputElement | null;
-      const archive = backupEl?.checked === true;
-      const ok = await appConfirm(
-        `Clear every wiki page${archive ? ' (after backup)' : ''}? This cannot be undone.`,
-      );
-      if (!ok) return;
-      const result = await clearBrainWiki(archive);
-      if (!result.ok) {
-        setStatus('err', result.error ?? 'Clear failed');
-        return;
-      }
-      const backupNote = result.archivePath ? ` Backup: ${result.archivePath}` : '';
-      showToast(`Cleared ${result.removed ?? 0} page(s).${backupNote}`);
-      await Promise.all([refreshBrainStatusLine(), refreshCodeSettingsFields()]);
-    });
-  });
-
-  document.getElementById('brainDangerClearProposals')?.addEventListener('click', () => {
-    void runSettingsAction(document.getElementById('brainDangerClearProposals'), 'Clearing proposals…', async () => {
-      const ok = await appConfirm('Clear all pending memory and skill proposals?');
-      if (!ok) return;
-      const result = await clearBrainProposals('pending');
-      showToast(result.ok
-          ? `Cleared ${result.removed ?? 0} proposal(s).`
-          : (result.error ?? 'Clear failed'), result.ok ? 'success' : 'error');
-    });
-  });
-
-  document.getElementById('brainDangerClearSources')?.addEventListener('click', () => {
-    void runSettingsAction(document.getElementById('brainDangerClearSources'), 'Clearing sources…', async () => {
-      const backupEl = document.getElementById(
-        'brainDangerSourcesBackup',
-      ) as HTMLInputElement | null;
-      const archive = backupEl?.checked === true;
-      const ok = await appConfirm(
-        `Delete all raw ingest source files${archive ? ' (after backup)' : ''}? Wiki pages are kept.`,
-      );
-      if (!ok) return;
-      const result = await clearBrainSources(archive);
-      if (!result.ok) {
-        setStatus('err', result.error ?? 'Clear failed');
-        return;
-      }
-      const backupNote = result.archivePath ? ` Backup: ${result.archivePath}` : '';
-      showToast(`Cleared ${result.removed ?? 0} source file(s).${backupNote}`);
-    });
-  });
-
   document.getElementById('brainDangerClearCode')?.addEventListener('click', () => {
     void runSettingsAction(document.getElementById('brainDangerClearCode'), 'Resetting code index…', async () => {
       const ok = await appConfirm('Reset the code index for this workspace?');
@@ -626,22 +570,10 @@ async function refreshCodeSettingsFields(): Promise<void> {
   await refreshGitHookStatus();
 }
 
-async function refreshBrainStatusLine(): Promise<void> {
-  const line = document.getElementById('brainSettingsStatusLine');
-  if (!line) return;
-  const status = await fetchBrainStatus();
-  if (!status) {
-    line.textContent = 'Offline — open Minnow.';
-    return;
-  }
-  line.textContent = `${status.enabled ? 'Wiki enabled' : 'Wiki disabled'} · ${status.pageCount} pages`;
-}
-
 /** Load Brain settings fields from the server. */
 export async function renderSettingsSection(): Promise<void> {
   bindSettingsSection();
   await Promise.all([
-    refreshBrainStatusLine(),
     refreshSynthesisFields(),
     refreshEmbeddingsFields(),
     refreshCodeSettingsFields(),

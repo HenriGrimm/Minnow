@@ -3,7 +3,6 @@
  */
 
 import type { ApiMessage } from '../types.ts';
-import type { EvalCellResult } from '../evals/types.ts';
 import type {
   BenchmarkPreset,
   BenchmarkRun,
@@ -67,7 +66,6 @@ export interface BenchmarkCellResult {
   transcript?: ApiMessage[];
   transcriptMeta?: TestResult['transcriptMeta'];
   integrationResult?: TestResult;
-  evalResult?: EvalCellResult;
 }
 
 /** Target omitted from aggregates because model load failed (not a scored zero). */
@@ -130,9 +128,6 @@ export interface RunCampaignOptions {
   /** Reuse an existing campaign id when resuming a partial sweep. */
   campaignId?: string;
   integrationSuites?: SuiteId[];
-  standardPackIds?: string[];
-  standardTier?: BenchmarkTier;
-  customPackIds?: string[];
   preset?: BenchmarkPreset;
   signal?: AbortSignal;
   maxConcurrency?: number;

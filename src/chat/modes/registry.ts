@@ -34,14 +34,6 @@ const MODE_DEFINITIONS: ModeDefinition[] = [
     toolPolicy: allowGroupsToolPolicy('plan', MODE_ALLOWED_GROUPS.plan),
   },
   {
-    id: 'super-plan',
-    label: 'Super Plan',
-    description:
-      'Extended planning with sub-agent research; write plans and reference artifacts only.',
-    promptId: 'super-plan',
-    toolPolicy: allowGroupsToolPolicy('super-plan', MODE_ALLOWED_GROUPS['super-plan']),
-  },
-  {
     id: 'orchestrate',
     label: 'Orchestrate',
     description: 'Open a multi-agent board from a plan. Not a chat — parsePlan is intake.',
@@ -68,13 +60,9 @@ const MODE_DEFINITIONS: ModeDefinition[] = [
 
 /**
  * Fixed modes in display order (General first).
- *
- * Super Plan is kept in {@link MODE_DEFINITIONS} so `getMode` still resolves
- * persisted records, but it is filtered out of every picker while the surface
- * is disabled for release.
  */
 export function listModes(): ModeDefinition[] {
-  return MODE_DEFINITIONS.filter((m) => m.id !== 'super-plan');
+  return MODE_DEFINITIONS.slice();
 }
 
 /**
@@ -86,7 +74,7 @@ export function listComposerModes(): ModeDefinition[] {
 }
 
 export function getMode(id: ModeId): ModeDefinition {
-  const resolvedId = id === 'desktop' || id === 'email' ? 'general' : id;
+  const resolvedId = id === 'super-plan' ? 'plan' : id === 'desktop' || id === 'email' ? 'general' : id;
   const mode = MODE_DEFINITIONS.find((m) => m.id === resolvedId);
   if (!mode) {
     throw new Error(`Unknown mode id: ${id}`);
@@ -98,7 +86,7 @@ export function getMode(id: ModeId): ModeDefinition {
  * Logical relative path for built-in mode prompt files (used in tests).
  */
 export function resolveModePromptPath(id: ModeId): string {
-  const resolvedId = id === 'desktop' || id === 'email' ? 'general' : id;
+  const resolvedId = id === 'super-plan' ? 'plan' : id === 'desktop' || id === 'email' ? 'general' : id;
   return `modes/${resolvedId}.full.md`;
 }
 
@@ -106,7 +94,7 @@ export function resolveModePromptPath(id: ModeId): string {
  * Load mode prompt body for compose / tests.
  */
 export function loadModePromptBody(id: ModeId): string {
-  const resolvedId = id === 'desktop' || id === 'email' ? 'general' : id;
+  const resolvedId = id === 'super-plan' ? 'plan' : id === 'desktop' || id === 'email' ? 'general' : id;
   const loaded = loadPromptById('mode', resolvedId);
   return loaded?.body?.trim() ?? '';
 }

@@ -45,7 +45,7 @@ import { runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
 import { updateOnboarding } from './onboarding.js';
 import { getTavilyUsage } from '../tools/tavily-usage.js';
-import { loadSearchSettings } from '../research/search.js';
+import { loadSearchSettings } from '../tools/search-settings.js';
 
 const MAX_MIGRATE_BYTES = 10 * 1024 * 1024;
 // Polls and bulk issue sync can encounter the same damaged file repeatedly.
@@ -554,7 +554,7 @@ export async function handleConfigRequest(req, res, pathname) {
     }
 
     const resourceMatch = pathname.match(
-      /^\/api\/config\/(sessions|tools|search|servers|research|skills|system-prompt|rules|sub-agents|bugs|issues|issues-taxonomy|reviews|appearance|meta)$/,
+      /^\/api\/config\/(sessions|tools|search|servers|skills|system-prompt|rules|sub-agents|bugs|issues|issues-taxonomy|reviews|appearance|meta)$/,
     );
     if (resourceMatch) {
       const resource = resourceMatch[1];

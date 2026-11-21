@@ -17,6 +17,7 @@ export const {
   isVectorStoreCompatible,
   upsertEntryVector,
   deleteEntryVector,
+  keepEntryVectors,
   clearVectorStore,
   getVectorCount,
   reindexAllMemoryEntries,

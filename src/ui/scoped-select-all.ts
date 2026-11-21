@@ -12,7 +12,6 @@ export const SELECTION_SCOPE_SELECTOR = [
   '#researchView',
   '#modelsView',
   '#brainView',
-  '#benchmarkView',
   '#issuesView',
   '#schedulerView',
   '#welcomeView',

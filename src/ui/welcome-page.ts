@@ -801,17 +801,6 @@ function closePeerFullPageViews(): void {
       m.closeSettings();
     }
   });
-  void import('./benchmark-page').then((m) => {
-    const benchmarkRoot = document.getElementById('benchmarkView');
-    if (benchmarkRoot?.classList.contains('is-open')) {
-      m.closeBenchmark();
-    }
-  });
-  void import('./experts/experts-hub').then((m) => {
-    if (m.isExpertsPageOpen()) {
-      m.closeExpertLab();
-    }
-  });
 }
 
 /** Show welcome and hide the main chat shell. */

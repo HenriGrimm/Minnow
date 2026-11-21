@@ -21,14 +21,10 @@ const APP_LAYER_IDS: Record<BuiltinAppId, string> = {
   'source-control': 'sourceControlView',
   code: 'osAppLayer-code',
   settings: 'settingsView',
-  research: 'researchView',
-  bench: 'benchmarkView',
-  compare: 'compareView',
   models: 'modelsView',
   brain: 'brainView',
   scheduler: 'schedulerView',
   issues: 'issuesView',
-  experts: 'expertsView',
 };
 
 let initialized = false;
@@ -106,11 +102,7 @@ const PAGE_OPEN_LAYER_APPS = new Set<AppId>([
   'settings',
   'models',
   'brain',
-  'bench',
-  'compare',
   'issues',
-  'research',
-  'experts',
   'scheduler',
 ]);
 
@@ -171,23 +163,12 @@ function hideAllLayers(): void {
 function closeAllAppPages(): void {
   for (const id of [
     'settingsView',
-    'benchmarkView',
-    'compareView',
     'modelsView',
     'brainView',
     'schedulerView',
     'issuesView',
-    'researchView',
-    'expertsView',
     'chatView',
   ]) {
-    if (id === 'expertsView') {
-      const view = document.getElementById('expertsView');
-      const desktopMount = document.getElementById('desktopExpertsMount');
-      if (view && desktopMount?.contains(view)) {
-        continue;
-      }
-    }
     if (id === 'issuesView') {
       const view = document.getElementById('issuesView');
       const chatArea = document.getElementById('chatArea');
@@ -246,24 +227,6 @@ async function openAppPage(
       }
       break;
     }
-    case 'research': {
-      const { showResearchPage } = await import('../research/panel');
-      showResearchPage({
-        seed: options?.seed,
-        autoRun: options?.autoRun ?? Boolean(options?.seed?.trim()),
-      });
-      break;
-    }
-    case 'bench': {
-      const { openBenchmark } = await import('../ui/benchmark-page');
-      openBenchmark();
-      break;
-    }
-    case 'compare': {
-      const { openCompare } = await import('../ui/compare-page');
-      openCompare();
-      break;
-    }
     case 'models': {
       const { openModels, DEFAULT_MODELS_SECTION } = await import('../ui/models-page');
       openModels(
@@ -278,11 +241,9 @@ async function openAppPage(
       const section = (
         options?.brainSection ??
         route.brainSection ??
-        'graph'
+        'memories'
       ) as import('../ui/brain-page').BrainSectionId;
-      openBrain(section, {
-        editPath: section === 'edit' ? options?.brainEditPath : undefined,
-      });
+      openBrain(section);
       lastAppliedBrainNavigation = brainNavigationKey(options);
       break;
     }
@@ -300,11 +261,6 @@ async function openAppPage(
       const { openIssues } = await import('../ui/issues-page');
       const route = getCurrentRoute();
       await openIssues({ issueId: route.issueId, screen: route.issuesSection });
-      break;
-    }
-    case 'experts': {
-      const { openExperts } = await import('../ui/experts/experts-hub');
-      openExperts();
       break;
     }
     case 'code': {
@@ -460,7 +416,7 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
       openAppPageInBackground(appId, options, generation);
     }
     lastForegroundApp = appId;
-  } else if (options && (appId === 'code' || appId === 'research' ||
+  } else if (options && (appId === 'code' ||
     appId === 'settings' && options !== lastAppliedSettingsOptions)) {
     // A repeated launch can supersede the first deferred reveal before it runs.
     // The replacement must reveal the layer too, not leave the previous app on top.

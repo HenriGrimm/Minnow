@@ -1,7 +1,6 @@
 import { loadDefaultModelValue } from '../models/selection';
 import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
-import { runSettingsAction } from './settings-controls';
 ﻿import { reportBackgroundError } from '../boot/report-background-error';
 import { isChatsWorkspacePath } from '../lib/chats-workspace';
 import { clearAttachments } from '../attachments/store';
@@ -69,12 +68,6 @@ import {
   scheduleSaveSessions,
   type RemoveChatResult,
 } from '../state/sessions';
-import {
-  getExpertScopeId,
-  isExpertScopeActive,
-  renderExpertScopeChatList,
-  renderExpertScopeHeader,
-} from './experts/experts-scope';
 import { getWorkspacePath } from '../state/workspace';
 import { getCurrentRoute } from '../os/router';
 import { getChatLastMessageAt } from '../state/session-workspace-scope';
@@ -1513,15 +1506,6 @@ export function renderSidebar(): void {
       console.error('[sidebar] render listener threw', error);
     }
   }
-  if (isExpertScopeActive() && sessionState) {
-    const expertId = getExpertScopeId();
-    if (expertId) {
-      renderExpertScopeHeader(expertId);
-      renderExpertScopeChatList(expertId, getActiveChat().id);
-    }
-    return;
-  }
-
   const list = document.getElementById('chatList');
   if (!list || !sessionState) return;
 
@@ -1777,22 +1761,6 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
     menu.appendChild(archiveItem);
   }
 
-  const eligible = chats.filter((c) => !isChatStreaming(c.id) && getChatMessageCount(c) > 0);
-  const brainItem = document.createElement('button');
-  brainItem.type = 'button';
-  brainItem.textContent = `Add ${eligible.length} to Brain`;
-  brainItem.disabled = eligible.length === 0;
-  if (eligible.length === 0) {
-    brainItem.title = 'No eligible chats (must have messages and not be streaming)';
-  }
-  brainItem.addEventListener('click', () => {
-    void runSettingsAction(brainItem, 'Adding to Brain…', async () => {
-      const m = await import('./chat-brain-capture');
-      for (const chat of eligible) await m.runChatBrainCapture(chat);
-      menu.remove();
-      clearChatSelection();
-    });
-  });
 
   const sep = document.createElement('div');
   sep.className = 'chat-context-menu__sep';
@@ -1836,7 +1804,6 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
     })();
   });
 
-  menu.appendChild(brainItem);
   menu.appendChild(sep);
   menu.appendChild(deleteItem);
   document.body.appendChild(menu);
@@ -1853,18 +1820,6 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
     document.addEventListener('click', close);
     document.addEventListener('keydown', onKey);
   }, 0);
-}
-
-function chatBrainCaptureState(chat: Chat): { disabled: boolean; title: string } {
-  const streaming = isChatStreaming(chat.id);
-  const empty = getChatMessageCount(chat) === 0;
-  if (streaming) {
-    return { disabled: true, title: 'Wait for reply to finish' };
-  }
-  if (empty) {
-    return { disabled: true, title: 'Chat has no messages' };
-  }
-  return { disabled: false, title: 'Add to Brain' };
 }
 
 /** Extra behaviour for callers outside the sidebar (Orchestrate's chat rail). */
@@ -1937,22 +1892,6 @@ export function showChatItemContextMenu(
     });
   }
 
-  const brainState = chatBrainCaptureState(chat);
-  const brainItem = document.createElement('button');
-  brainItem.type = 'button';
-  brainItem.textContent = 'Add to Brain';
-  brainItem.title = brainState.title;
-  brainItem.disabled = brainState.disabled;
-  brainItem.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (brainState.disabled) return;
-    void runSettingsAction(brainItem, 'Adding to Brain…', async () => {
-      const m = await import('./chat-brain-capture');
-      await m.runChatBrainCapture(chat);
-      closeMenu();
-    });
-  });
 
   const isPlannerChat = normalizeModeId(chat.modeId) === 'orchestrate';
   let orchestrateItem: HTMLButtonElement | null = null;
@@ -2040,7 +1979,6 @@ export function showChatItemContextMenu(
     });
     menu.appendChild(item);
   }
-  menu.appendChild(brainItem);
   if (orchestrateItem) menu.appendChild(orchestrateItem);
   menu.appendChild(deleteItem);
   document.body.appendChild(menu);

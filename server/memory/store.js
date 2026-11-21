@@ -9,7 +9,6 @@ import { DEFAULT_EMBEDDINGS_CONFIG } from '../engine/embeddings.js';
 import {
   createPage,
   deletePage,
-  ensureBrainStore,
   listPages,
   loadBrainConfig,
   readPage,
@@ -299,7 +298,6 @@ export async function loadAllEntriesWithBodies() {
 
 /** Ensure brain wiki (memory adapter bootstrap). */
 export async function ensureMemoryStore() {
-  await ensureBrainStore();
   const config = (await readConfigJson('config.json')) ?? {};
   if (!config.memory) {
     await saveMemoryConfig(DEFAULT_MEMORY_CONFIG);

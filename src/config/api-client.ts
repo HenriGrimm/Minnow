@@ -15,7 +15,6 @@ import type { IssuesTaxonomy } from '../issues/taxonomy';
 import type { SkillConfig } from '../skills/config';
 import type { ToolConfig } from '../tools/tool-settings-types';
 import type { SearchConfig } from './search-config';
-import type { ResearchConfig } from './research-config';
 import type { UserRulesSettings } from './user-rules';
 import {
   defaultSessionState,
@@ -640,22 +639,7 @@ export async function putSearch(config: SearchConfig): Promise<SearchConfig> {
 }
 
 /** GET /api/config/research */
-export async function getResearch(): Promise<ResearchConfig> {
-  const res = await fetch('/api/config/research', { cache: 'no-store' });
-  return parseJsonResponse<ResearchConfig>(res);
-}
-
 /** PUT /api/config/research */
-export async function putResearch(config: ResearchConfig): Promise<ResearchConfig> {
-  const res = await fetch('/api/config/research', {
-    method: 'PUT',
-    headers: JSON_HEADERS,
-    body: JSON.stringify(config),
-  });
-  const body = await parseJsonResponse<{ ok: boolean; data: ResearchConfig }>(res);
-  return body.data;
-}
-
 /** GET /api/config/skills */
 export async function getSkills(): Promise<SkillConfig> {
   const res = await fetch('/api/config/skills', { cache: 'no-store' });

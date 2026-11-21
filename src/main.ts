@@ -43,7 +43,6 @@ import './styles/skill-chip.css';
 import './styles/composer-overflow.css';
 import './styles/workspace-menu.css';
 import './styles/workspace-folder-picker.css';
-import './styles/research-panel.css';
 import './styles/git-help-lightbox.css';
 import './styles/tool-approval.css';
 import './styles/permissions.css';
@@ -165,7 +164,6 @@ import {
 } from './ui/sidebar';
 import { bootstrapActiveChatOpenedTimestamp } from './ui/chat-item-dot';
 import { initStatsStrip, updateStatsExpandPreview } from './ui/stats';
-import { bindExpertsSettingsCheckbox } from './ui/experts-settings';
 import { syncComposerPinnedSkillFromActiveChat } from './ui/composer-pinned-skill';
 import { syncChatLinkChipsFromActiveChat } from './ui/chat-link-chips';
 import { syncGoalActiveHint } from './ui/goal-active-hint';
@@ -363,7 +361,6 @@ export async function initApp(): Promise<void> {
     initComposerModelTriggers();
     initComposerCompact();
   }
-  await bindExpertsSettingsCheckbox();
   startSchedulerNotificationPoll();
   initNotificationProducers();
   initNotificationCards();
@@ -416,6 +413,11 @@ export async function initApp(): Promise<void> {
     }
   } finally {
     releaseFirstRunReveal();
+  }
+
+  if (!isAppWindowRenderer()) {
+    void import('./boot/legacy-brain-upgrade').then(({ offerLegacyBrainUpgrade }) => offerLegacyBrainUpgrade())
+      .catch(error => console.error('[brain] Could not show the upgrade notice:', error));
   }
 
   if (workspaceGatePending) {

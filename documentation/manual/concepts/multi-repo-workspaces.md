@@ -2,7 +2,7 @@
 
 Some projects live in more than one git repository — a `frontend/` and a `backend/`, say, each with its own GitHub remote. You can open the folder that holds them as one Minnow workspace. The editor, file tree, terminal and chat see the whole folder, so one agent can change both sides of a feature, while git work stays per repository.
 
-Minnow searches the workspace folder and its subfolders for repositories. Folders such as `node_modules`, `dist` and hidden folders are skipped.
+Minnow searches the workspace folder and its subfolders for repositories. Folders such as `node_modules`, `dist` and hidden folders are skipped. Inside a Git repository, nested checkouts that it ignores or tracks as submodules are not treated as separate workspace repositories, so their GitHub issues are not imported.
 
 ## Source Control
 

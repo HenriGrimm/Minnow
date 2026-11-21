@@ -3,7 +3,6 @@
  */
 
 import { listRailApps } from './app-preferences';
-import { isResearchPanelOpen } from '../ui/research-panel';
 import { getForegroundAppId } from './instances';
 import { launchApp } from './router';
 import type { AppId } from './types';
@@ -14,7 +13,6 @@ const MAX_MRU = 24;
 
 let mruStack: AppId[] = ['code'];
 let keyboardBound = false;
-let researchSubscribed = false;
 
 function listRailCycleAppIds(): AppId[] {
   const ids = listRailApps().map((app) => app.id);
@@ -29,7 +27,6 @@ function isRailSurfaceAvailable(id: AppId): boolean {
 
 /** Current surface for MRU indexing (Research embed, else foreground app). */
 export function getCurrentAppSurfaceId(): AppId {
-  if (isResearchPanelOpen()) return 'research';
   const foreground = getForegroundAppId();
   if (foreground && isRailSurfaceAvailable(foreground)) return foreground;
   return mruStack.find((id) => isRailSurfaceAvailable(id)) ?? 'code';
@@ -91,14 +88,6 @@ export function initAppFocusCycleKeyboard(): void {
   if (keyboardBound) return;
   keyboardBound = true;
 
-  if (!researchSubscribed) {
-    researchSubscribed = true;
-    void import('../ui/research-panel').then((m) => {
-      m.subscribeResearchPanel(() => {
-        if (m.isResearchPanelOpen()) recordAppSurfaceFocus('research');
-      });
-    });
-  }
 
   document.addEventListener(
     'keydown',
@@ -131,5 +120,4 @@ export function getAppSurfaceMruForTests(): readonly AppId[] {
 export function resetAppFocusCycleForTests(): void {
   mruStack = ['code'];
   keyboardBound = false;
-  researchSubscribed = false;
 }

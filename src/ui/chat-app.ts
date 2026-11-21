@@ -30,8 +30,6 @@ import { acknowledgeChatViewed } from '../notifications/acknowledge';
 import { refreshChatJumpChipVisibility } from './chat-scroll';
 import { closeContextUsageBreakdown } from './context-usage-breakdown';
 import { refreshContextUsageRing } from './context-usage-ring';
-import { closeBenchmark } from './benchmark-page';
-import { closeCompare } from './compare-page';
 import { syncChatItemDotsInDom } from './chat-item-dot';
 import { syncChatItemLoopIconsInDom } from './chat-item-loop-icon';
 import {
@@ -75,16 +73,8 @@ function getChatShell(): HTMLElement | null {
 /** Close other full-page overlays before opening Chat. */
 function closeOtherOverlays(): void {
   closeSettings({ skipNavigate: true });
-  closeBenchmark({ skipNavigate: true });
-  closeCompare({ skipNavigate: true });
-  void import('../research/panel').then((m) => {
-    if (m.isResearchPageOpen()) m.closeResearch({ skipNavigate: true });
-  });
   void import('./welcome-page').then((m) => {
     if (m.isWelcomePageOpen()) m.closeWelcome({ skipHash: true });
-  });
-  void import('./experts/experts-hub').then((m) => {
-    if (m.isExpertsPageOpen()) m.closeExpertsHub({ skipNavigate: true });
   });
 }
 

@@ -28,10 +28,10 @@ describe('brain app registry', () => {
 });
 
 describe('brain router', () => {
-  test('legacy #/brain/edit redirects to app route', () => {
+  test('legacy #/brain/edit redirects to Memories', () => {
     const legacy = resolveLegacyHash('#/brain/edit');
-    assert.equal(legacy.hash, '#/app/brain/edit');
-    assert.equal(legacy.brainSection, 'edit');
+    assert.equal(legacy.hash, '#/app/brain/memories');
+    assert.equal(legacy.brainSection, 'memories');
   });
 
   test('legacy #/settings/memory redirects to Brain memories', () => {
@@ -44,13 +44,13 @@ describe('brain router', () => {
     const route = parseOsHash('#/app/brain/wiki');
     assert.equal(route.view, 'app');
     assert.equal(route.appId, 'brain');
-    assert.equal(route.brainSection, 'wiki');
+    assert.equal(route.brainSection, 'memories');
   });
 
   test('parseOsHash resolves brain graph home', () => {
     const route = parseOsHash('#/app/brain/graph');
     assert.equal(route.appId, 'brain');
-    assert.equal(route.brainSection, 'graph');
+    assert.equal(route.brainSection, 'memories');
   });
 
   test('parseOsHash resolves brain code deep link', () => {
@@ -78,13 +78,8 @@ describe('brain markup contract', () => {
   test('index.html defines brainView shell', () => {
     const html = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
     assert.match(html, /id="brainView"/);
+    assert.doesNotMatch(html, /id="brainSection-(?:graph|edit|lint|ingest)"/);
     assert.match(html, /<div class="brain-rail__heading" data-back-to-chat-header>\s*<span class="brain-rail__title"[^>]*>Brain<\/span>/);
-    assert.match(html, /id="brainSection-graph"/);
-    assert.match(html, /id="brainGraphCanvas"/);
-    assert.match(html, /id="brainInspector"/);
-    assert.match(html, /id="brainInspectorResize"/);
-    assert.match(html, /id="brainGraphSidebarResize"/);
-    assert.match(html, /data-brain-nav="graph"/);
     assert.match(html, /data-brain-nav="proposals"/);
     assert.match(html, /id="brainProposalsList"/);
     assert.match(html, /id="brainSection-settings"/);
@@ -97,10 +92,6 @@ describe('brain markup contract', () => {
     assert.match(html, /id="brainSection-code"/);
     assert.match(html, /id="brainCodeReindex"/);
     assert.match(html, /id="brainCodeSettingsSave"/);
-    assert.match(html, /id="brainGraphOrphanToggle"/);
-    assert.match(html, /id="brainEditWorkspace"/);
-    assert.match(html, /id="brainLintRun"/);
     assert.match(html, /brain-section--code/);
-    assert.match(html, /brain-section--schema/);
   });
 });

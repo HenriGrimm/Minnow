@@ -4,7 +4,6 @@
  */
 
 import type {
-  BrainCodeExplainPage,
   BrainCodeSymbolMatch,
   CodeMapFileDetail,
   CodeMapFolder,
@@ -25,7 +24,6 @@ export interface InspectorActions {
   expandLayer(groupId: string): void;
   ask(subject: string, question: string): void;
   copy(text: string, what: string): void;
-  openWikiPage(path: string): void;
   close(): void;
   /** Whether the Ask box can reach a chat composer here. */
   canAsk: boolean;
@@ -415,7 +413,6 @@ export async function renderSymbolInspector(
   input: {
     symbol: BrainCodeSymbolMatch;
     source: Promise<string>;
-    pages: Promise<BrainCodeExplainPage[] | null>;
     isCurrent(): boolean;
   },
   actions: InspectorActions,
@@ -439,8 +436,6 @@ export async function renderSymbolInspector(
   src.querySelector('.code-map-insp__section-head')?.append(open);
   const srcLoading = loading(src);
 
-  const wiki = section(body, 'Wiki pages');
-  const wikiLoading = loading(wiki);
 
   buttons(footer, [
     { label: 'Open in editor', icon: 'fi-rr-code-simple', primary: true, onClick: () => actions.openInEditor(sym.file, sym.line_start, sym.line_end) },
@@ -448,7 +443,7 @@ export async function renderSymbolInspector(
   ]);
   askBox(footer, sym.name, actions);
 
-  const [source, pages] = await Promise.all([input.source, input.pages]);
+  const source = await input.source;
   if (!input.isCurrent()) return;
   srcLoading.remove();
   if (source) {
@@ -463,31 +458,6 @@ export async function renderSymbolInspector(
     src.append(el('p', 'code-map-insp__muted', 'Source not available. The file may have moved since the last index.'));
   }
 
-  wikiLoading.remove();
-  if (pages?.length) {
-    const list = el('div', 'code-map-insp__rows');
-    for (const page of pages) {
-      row(list, {
-        icon: 'fi-rr-book-alt',
-        label: page.title,
-        trailing: page.status === 'stale' ? 'stale' : undefined,
-        onClick: () => actions.openWikiPage(page.path),
-      });
-    }
-    wiki.append(list);
-  } else {
-    const empty = el('div', 'code-map-insp__empty');
-    empty.append(el('p', 'code-map-insp__muted', 'No Brain pages are anchored to this symbol yet.'));
-    if (actions.canAsk) {
-      const explain = el('button', 'code-map-btn code-map-ask-only', 'Explain');
-      explain.type = 'button';
-      explain.addEventListener('click', () =>
-        actions.ask(sym.name, `Explain what \`${sym.name}\` in ${where} does and how it is used.`),
-      );
-      empty.append(explain);
-    }
-    wiki.append(empty);
-  }
 }
 
 /** Placeholder shown before anything is selected. */

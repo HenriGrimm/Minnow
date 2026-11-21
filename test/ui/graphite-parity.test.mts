@@ -27,12 +27,12 @@ test('Graphite keeps the stable Code control and live surface mount IDs unique',
   }
 });
 
-test('Graphite keeps the launcher key order and excludes release-gated apps', () => {
+test('Graphite keeps the launcher key order and excludes retired apps', () => {
   assert.deepEqual(SURFACES.map(({ id, key }) => [id, key]), [
     ['changes', 'D'], ['terminal', 'T'], ['files', 'F'], ['preview', 'B'],
     ['agents', 'A'], ['pr', 'P'], ['issue', 'I'], ['side', 'S'],
   ]);
   for (const id of ['compare', 'bench', 'experts', 'research']) {
-    assert.equal(APPS.find(app => app.id === id)?.releaseState, 'hidden', id);
+    assert.equal(APPS.find(app => app.id === id), undefined, id);
   }
 });

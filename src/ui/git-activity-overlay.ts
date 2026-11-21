@@ -10,6 +10,8 @@ import {
   type GitErrorChatKind,
 } from './git-error-to-chat';
 import { notify, showToast, type NotifyAction, type NotifyHandle } from './toast';
+import { iconHtml } from './icon';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 /** Wait this long before showing progress so instant ops do not flash. */
 export const GIT_ACTIVITY_SHOW_DELAY_MS = 180;
@@ -20,6 +22,7 @@ export interface GitActivityHandle {
 
 export interface BeginGitActivityOptions {
   delayMs?: number;
+  stop?: { label: string; pendingLabel: string; run: () => void };
 }
 
 export interface GitActivityErrorOptions {
@@ -37,6 +40,9 @@ const ROOT_CLASS = 'mn-git-activity';
 interface StackItem {
   id: number;
   label: string;
+  stop?: BeginGitActivityOptions['stop'];
+  hidden?: boolean;
+  stopping?: boolean;
 }
 
 let nextId = 1;
@@ -76,7 +82,8 @@ function setVisible(el: HTMLElement, on: boolean): void {
   }
 }
 
-function paintProgress(label: string): void {
+function paintProgress(item: StackItem): void {
+  clearHideTimer();
   const el = ensureOverlay();
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
@@ -86,8 +93,38 @@ function paintProgress(label: string): void {
   body.className = 'mn-git-activity__body';
   const labelEl = document.createElement('p');
   labelEl.className = 'mn-git-activity__label';
-  labelEl.textContent = label;
+  labelEl.textContent = (item.stopping && item.stop?.pendingLabel) || item.label;
   body.appendChild(labelEl);
+  if (item.stop) {
+    markPreviewOccluder(el, 'notification');
+    const stop = item.stop;
+    const actions = document.createElement('div');
+    actions.className = 'mn-git-activity__actions';
+    const hideButton = document.createElement('button');
+    hideButton.type = 'button';
+    hideButton.textContent = 'Hide';
+    hideButton.title = 'Hide progress without stopping';
+    hideButton.onclick = () => {
+      item.hidden = true;
+      showProgressIfNeeded();
+    };
+    const stopButton = document.createElement('button');
+    stopButton.type = 'button';
+    stopButton.title = stop.label;
+    stopButton.setAttribute('aria-label', stop.label);
+    stopButton.innerHTML = iconHtml('close');
+    stopButton.disabled = !!item.stopping;
+    stopButton.onclick = () => {
+      item.stopping = true;
+      stop.run();
+      showProgressIfNeeded();
+      el.querySelector<HTMLButtonElement>('.mn-git-activity__actions button')?.focus();
+    };
+    actions.append(hideButton, stopButton);
+    body.appendChild(actions);
+  } else {
+    unmarkPreviewOccluder(el);
+  }
 
   const bar = document.createElement('div');
   bar.className = 'mn-git-activity__bar';
@@ -97,17 +134,22 @@ function paintProgress(label: string): void {
   bar.appendChild(fill);
 
   el.replaceChildren(body, bar);
+  el.inert = false;
   visible = true;
   setVisible(el, true);
 }
 
-function topLabel(): string {
-  return stack[stack.length - 1]?.label ?? 'Working…';
+function topActivity(): StackItem | undefined {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    if (!stack[i].hidden) return stack[i];
+  }
+  return undefined;
 }
 
 function showProgressIfNeeded(): void {
-  if (stack.length === 0) return;
-  paintProgress(topLabel());
+  const item = topActivity();
+  if (item) paintProgress(item);
+  else dismissProgress();
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -182,12 +224,12 @@ export function beginGitActivity(
   label: string,
   options?: BeginGitActivityOptions,
 ): GitActivityHandle {
-  clearHideTimer();
   const id = nextId++;
-  stack.push({ id, label: label.trim() || 'Working…' });
+  const hadProgress = !!topActivity();
+  stack.push({ id, label: label.trim() || 'Working…', stop: options?.stop });
 
   const delay = options?.delayMs ?? GIT_ACTIVITY_SHOW_DELAY_MS;
-  if (stack.length === 1) {
+  if (!hadProgress) {
     clearShowTimer();
     if (delay <= 0) {
       showProgressIfNeeded();
@@ -198,7 +240,7 @@ export function beginGitActivity(
       }, delay);
     }
   } else if (visible) {
-    paintProgress(topLabel());
+    showProgressIfNeeded();
   }
 
   return { id };
@@ -209,8 +251,8 @@ export function updateGitActivity(handle: GitActivityHandle, label: string): voi
   const item = stack.find((row) => row.id === handle.id);
   if (!item) return;
   item.label = label.trim() || item.label;
-  if (visible && stack[stack.length - 1]?.id === handle.id) {
-    paintProgress(item.label);
+  if (visible && topActivity()?.id === handle.id) {
+    paintProgress(item);
   }
 }
 
@@ -227,11 +269,11 @@ export function finishGitActivitySuccess(
   successMessage?: string,
 ): void {
   finishHandle(handle);
-  if (stack.length > 0) {
-    if (visible) paintProgress(topLabel());
+  if (topActivity()) {
+    if (visible) showProgressIfNeeded();
     return;
   }
-  hideGitActivityOverlay();
+  dismissProgress();
   const text = successMessage?.trim();
   if (text) showToast(text, 'success');
 }
@@ -242,9 +284,9 @@ export function finishGitActivityError(
   options: GitActivityErrorOptions,
 ): void {
   finishHandle(handle);
-  clearShowTimer();
-  stack.length = 0;
-  showGitErrorPopover(options);
+  if (visible) showProgressIfNeeded();
+  const error = options.error.trim();
+  if (error && error.toLowerCase() !== 'cancelled') showErrorCard(options);
 }
 
 /** Show the parsed git error card without a matching begin handle (Issues sync, etc.). */
@@ -257,11 +299,17 @@ export function showGitErrorPopover(options: GitActivityErrorOptions): void {
 
 /** Dismiss the progress card. */
 export function hideGitActivityOverlay(): void {
+  stack.length = 0;
+  dismissProgress();
+}
+
+function dismissProgress(): void {
   clearShowTimer();
   visible = false;
-  stack.length = 0;
   const el = overlayEl;
   if (!el) return;
+  unmarkPreviewOccluder(el);
+  el.inert = true;
   el.classList.remove('mn-git-activity--visible');
   clearHideTimer();
   hideTimer = window.setTimeout(() => {

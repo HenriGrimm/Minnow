@@ -1,13 +1,11 @@
 import type { CodeSectionId } from '../os/types';
 import { getActiveBoardGroup } from '../state/chat-groups';
 import { emitChatSidebarChanged } from './layout-events';
-import { isSuperPlanChromeActive } from './super-plan-chrome';
 
 /** View-bar / embed destinations that compete for #chatArea. */
 export type CodeStageViewKeep =
   | 'overview'
   | 'dev-server'
-  | 'super-plan'
   | 'orchestrate'
   | 'boards'
   | 'map'
@@ -67,23 +65,15 @@ function isCodeStageRootHidingChatSidebar(): boolean {
   if (document.getElementById('orchestrateHub')) return true;
   if (document.getElementById('orchestratorBoardsRoot')) return true;
   if (document.getElementById('orchestratePlanScreen')) return true;
-  if (document.getElementById('superPlanPage')) return true;
   if (document.getElementById('devServerScreenRoot')) return true;
 
   const area = document.getElementById('chatArea');
   if (area?.contains(document.getElementById('issuesView'))) return true;
-  if (
-    document.getElementById('researchView') &&
-    area?.contains(document.getElementById('researchView'))
-  ) {
-    return true;
-  }
   return false;
 }
 
 /** True while a Code view-bar destination owns the stage and the session list is hidden in CSS (same behaviour as Super Plan). */
 export function isCodeStageViewHidingChatSidebar(): boolean {
-  if (isSuperPlanChromeActive()) return true;
   if (isCodeStageRootHidingChatSidebar()) return true;
   if (document.getElementById('orchestrateBoardPage')) return true;
   const boardGroup = getActiveBoardGroup();
@@ -94,7 +84,6 @@ export function isCodeStageViewHidingChatSidebar(): boolean {
 
 /** True when a Code view-bar overlay owns the stage, including Super Plan chrome. */
 export function isCodeStageOverlayMounted(): boolean {
-  if (isSuperPlanChromeActive()) return true;
   return isCodeStageRootHidingChatSidebar();
 }
 
@@ -110,12 +99,7 @@ export function notifyCodeStageViewChanged(): void {
 export async function closeOtherCodeStageViews(keep?: CodeStageViewKeep): Promise<void> {
   const area = document.getElementById('chatArea');
 
-  if (
-    keep !== 'super-plan' &&
-    (isSuperPlanChromeActive() ||
-      document.getElementById('superPlanPage') ||
-      document.getElementById('orchestratePlanScreen'))
-  ) {
+  if (document.getElementById('orchestratePlanScreen')) {
     const { teardownOrchestratePlanScreen } = await import('./orchestrate-plan-screen');
     teardownOrchestratePlanScreen();
   }
@@ -152,14 +136,6 @@ export async function closeOtherCodeStageViews(keep?: CodeStageViewKeep): Promis
     teardownIssuesEmbedBeforeChatPaint();
   }
 
-  if (
-    keep !== 'research' &&
-    document.getElementById('researchView') &&
-    area?.contains(document.getElementById('researchView'))
-  ) {
-    const { teardownResearchPanelBeforeChatPaint } = await import('./research-panel');
-    teardownResearchPanelBeforeChatPaint();
-  }
 
   if (area?.classList.contains('chat-area--hub')) {
     const { teardownHub } = await import('./hub');
@@ -194,12 +170,6 @@ export async function showCodeStageSection(section: CodeSectionId): Promise<void
 
 /** Leave whichever Code stage view is active and restore the chat transcript. */
 export async function closeActiveCodeStageView(): Promise<void> {
-  const superPlan = await import('./super-plan-entry');
-  if (superPlan.isSuperPlanScreenOpen()) {
-    await superPlan.closeSuperPlanScreen();
-    return;
-  }
-
   if (document.getElementById('orchestratePlanScreen')) {
     const plan = await import('./orchestrate-plan-screen');
     const { sessionState } = await import('../state/sessions');

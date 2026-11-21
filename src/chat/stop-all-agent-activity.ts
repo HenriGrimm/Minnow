@@ -1,7 +1,6 @@
 import { abortByChatId, streamingChatIds } from '../app-state';
 import { cancelSubAgent, listActiveSubAgentRuns } from '../agents/orchestrator';
 import { listMainTurnActivity } from './main-turn-activity';
-import { isSuperPlanRunning, pauseSuperPlan } from './super-plan/client';
 import { flushStoppedChatPresentation } from './flush-stopped-chat-presentation';
 import { stopGeneration } from './stop-generation';
 import {
@@ -12,10 +11,6 @@ import { getPlannerChatForGroup, isLeftoverBoardRunning } from '../state/chat-gr
 import { buildAgentActivitySnapshot } from '../state/agent-activity-registry';
 import { getChatItemDotContext } from '../ui/chat-item-dot';
 import { sessionState } from '../state/sessions';
-import {
-  cancelResearchRunForShell,
-  isResearchRunningForShell,
-} from '../research/panel';
 import type { ChatGroup, LeftoverBoardTask } from '../types';
 import { forceCloseAskQuestionModal } from '../ui/question-cards-modal';
 import { sendManagedChatAction } from './managed-chat-client';
@@ -41,11 +36,6 @@ function hasRunningBoardWork(): boolean {
   return false;
 }
 
-function hasActiveSuperPlanWork(): boolean {
-  if (!sessionState) return false;
-  return sessionState.chats.some((chat) => isSuperPlanRunning(chat));
-}
-
 function hasAgentActivityPanelRows(): boolean {
   if (!sessionState) return false;
   const rows = buildAgentActivitySnapshot({
@@ -64,11 +54,9 @@ function hasAgentActivityPanelRows(): boolean {
 
 /** True when global stop-all would affect any in-flight agent work. */
 export function hasStopAllAgentActivityTargets(): boolean {
-  if (isResearchRunningForShell()) return true;
   if (!sessionState) return false;
   if (hasAgentActivityPanelRows()) return true;
   if (hasRunningBoardWork()) return true;
-  if (hasActiveSuperPlanWork()) return true;
   if (streamingChatIds.size > 0) return true;
   if (abortByChatId.size > 0) return true;
   return false;
@@ -125,14 +113,6 @@ export function stopAllAgentActivity(): void {
       }
     }
 
-    // A run that is waiting on the user uses no model, so only working runs pause.
-    for (const chat of sessionState.chats) {
-      if (!isSuperPlanRunning(chat)) continue;
-      void pauseSuperPlan(chat).catch((error) => {
-        console.error('[super-plan] Could not pause run:', error);
-      });
-      handledChatIds.add(chat.id);
-    }
   }
 
   for (const chatId of streamingChatIds) {
@@ -157,7 +137,6 @@ export function stopAllAgentActivity(): void {
     abortChatTitleGeneration(chatId);
   }
 
-  void cancelResearchRunForShell();
 
   flushStoppedAgentPresentation(handledChatIds);
 }

@@ -330,15 +330,6 @@
         </button>
       </div>
     </div>
-    <button class="icon-btn" type="button" id="btnResearch" aria-label="Deep Research" title="Deep Research">
-      <i class="fi fi-rr-search icon-svg" aria-hidden="true"></i>
-    </button>
-    <button class="icon-btn" type="button" id="btnBenchmark" aria-label="Benchmark" title="Compare model speed and quality">
-      <i class="fi fi-rr-chart-simple icon-svg" aria-hidden="true"></i>
-    </button>
-    <button class="icon-btn" type="button" id="btnExpertLab" aria-label="Experts" title="Experts">
-      <i class="fi fi-rr-flask icon-svg" aria-hidden="true"></i>
-    </button>
     <button class="icon-btn" type="button" id="btnSettings" aria-label="Settings">
       <i class="fi fi-rr-settings icon-svg" aria-hidden="true"></i>
     </button>
@@ -367,16 +358,6 @@
         <p class="field-hint">Upper bound for a single assistant message.</p>
       </div>
     </div>
-    <section class="tools-section" id="expertsSection" aria-labelledby="expertsSectionTitle">
-      <h2 class="tools-section-title" id="expertsSectionTitle">Experts</h2>
-      <div class="field-row">
-        <label class="tool-toggle-label">
-          <input type="checkbox" id="expertsEnabled" checked>
-          Enable experts
-        </label>
-      </div>
-      <p class="field-hint">When enabled, summon specialists from <button type="button" class="settings-inline-link" id="drawerExpertsLink">Experts</button> (top bar flask icon).</p>
-    </section>
     <section class="tools-section" id="toolsSection" aria-labelledby="toolsSectionTitle">
       <h2 class="tools-section-title" id="toolsSectionTitle">Tools</h2>
       <p class="field-hint tools-section-hint">Enable function calling for the model. Server tools require <code>npm start</code> (local tool server).</p>
@@ -716,10 +697,6 @@
         <h2>Capability matrix</h2>
         <div id="settingsCapabilityMatrixBody" class="settings-section-body"></div>
       </section>
-      <section id="settingsSection-board-testing" hidden class="settings-section settings-area settings-area--title-suppressed" data-area="board-testing" hidden>
-        <h2>Board testing</h2>
-        <div id="settingsBoardTestingBody" class="settings-section-body"></div>
-      </section>
       </div>
     </div>
   </div>
@@ -790,287 +767,6 @@
       <h2 id="welcomeRecentsTitle" class="welcome-page__recents-title">Recent workspaces</h2>
       <ul id="welcomeRecentsList" class="welcome-page__recents-list" role="list"></ul>
       <p id="welcomeRecentsEmpty" class="welcome-page__recents-empty hidden">Open a folder to see it here.</p>
-    </section>
-  </div>
-</main>
-
-<main id="researchView" class="research-page" aria-label="Research">
-  <div class="rs-shell">
-    <aside class="rs-rail" id="researchRail" aria-label="Research runs">
-      <div class="rs-rail__head">
-        <button type="button" class="rs-new" id="btnResearchNew">
-          <i class="fi fi-rr-plus-small icon-svg" aria-hidden="true" style="--mn-icon-size:15px"></i>
-          New research
-        </button>
-        <button
-          type="button"
-          class="rs-rail__collapse"
-          id="btnResearchRailCollapse"
-          aria-label="Hide run list"
-          aria-expanded="true"
-          aria-controls="researchRail"
-        >
-          <i class="fi fi-rr-sidebar-flip icon-svg" aria-hidden="true" style="--mn-icon-size:16px"></i>
-        </button>
-      </div>
-      <div class="rs-rail__filter">
-        <i class="fi fi-rr-search icon-svg rs-rail__filter-icon" aria-hidden="true" style="--mn-icon-size:13px"></i>
-        <label class="visually-hidden" for="researchRailFilter">Filter runs</label>
-        <input
-          type="search"
-          id="researchRailFilter"
-          class="rs-rail__filter-input"
-          placeholder="Filter runs"
-          autocomplete="off"
-        />
-      </div>
-      <div id="researchRailList" class="rs-rail__list" role="listbox" aria-label="Saved research runs"></div>
-      <div class="rs-rail__foot">
-        <label class="rs-toggle" for="researchRailArchived">
-          <input type="checkbox" id="researchRailArchived" class="rs-toggle__input" />
-          <span class="rs-toggle__box" aria-hidden="true"></span>
-          <span class="rs-toggle__label">Archived</span>
-        </label>
-        <button type="button" class="rs-foot-link" id="btnResearchSettingsLink">Engine</button>
-      </div>
-    </aside>
-
-    <section class="rs-main" id="researchMain">
-      <div class="rs-pane rs-pane--ask" id="researchAskPane">
-        <div class="rs-ask">
-          <h2 class="rs-ask__title">What should we look into?</h2>
-          <p class="rs-ask__sub">
-            Minnow reads the web, or your codebase, and writes back a brief with its sources.
-          </p>
-
-          <div class="rs-composer" id="researchComposer">
-            <label class="visually-hidden" for="researchQuery">Research question</label>
-            <textarea
-              id="researchQuery"
-              class="rs-composer__field"
-              rows="3"
-              placeholder="Ask a question worth an hour of reading…"
-            ></textarea>
-            <div class="rs-composer__bar">
-              <div class="rs-opts" id="researchOptions">
-                <div class="rs-opt" data-opt="scope">
-                  <button
-                    type="button"
-                    class="rs-chip"
-                    id="chipResearchScope"
-                    aria-expanded="false"
-                    aria-controls="popResearchScope"
-                  >
-                    <i class="fi fi-rr-globe icon-svg" aria-hidden="true" style="--mn-icon-size:13px"></i>
-                    <span class="rs-chip__value" data-chip-value>Web</span>
-                    <i class="fi fi-rr-angle-small-down icon-svg rs-chip__caret" aria-hidden="true" style="--mn-icon-size:13px"></i>
-                  </button>
-                  <div class="rs-pop" id="popResearchScope" hidden>
-                    <label class="rs-field">
-                      <span class="rs-field__label">Where to look</span>
-                      <div class="rs-select">
-                        <select id="researchScope">
-                          <option value="web">Web</option>
-                          <option value="codebase">Codebase</option>
-                          <option value="both">Web and codebase</option>
-                        </select>
-                      </div>
-                    </label>
-                    <div class="rs-field" id="researchWorkspaceField" hidden>
-                      <label class="rs-field__label" for="researchWorkspace">Workspace</label>
-                      <div class="rs-field__row">
-                        <div class="rs-select">
-                          <select id="researchWorkspace" aria-label="Research workspace"></select>
-                        </div>
-                        <button
-                          type="button"
-                          id="btnResearchWorkspaceBrowse"
-                          class="rs-field__btn"
-                        >
-                          Browse
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="rs-opt" data-opt="rounds">
-                  <button
-                    type="button"
-                    class="rs-chip"
-                    id="chipResearchRounds"
-                    aria-expanded="false"
-                    aria-controls="popResearchRounds"
-                  >
-                    <span class="rs-chip__value" data-chip-value>Auto depth</span>
-                    <i class="fi fi-rr-angle-small-down icon-svg rs-chip__caret" aria-hidden="true" style="--mn-icon-size:13px"></i>
-                  </button>
-                  <div class="rs-pop" id="popResearchRounds" hidden>
-                    <label class="rs-field">
-                      <span class="rs-field__label">Search rounds</span>
-                      <div class="rs-select">
-                        <select id="researchMaxRounds">
-                          <option value="auto">Auto</option>
-                          <option value="1">1 round</option>
-                          <option value="2">2 rounds</option>
-                          <option value="3">3 rounds</option>
-                          <option value="4">4 rounds</option>
-                          <option value="5">5 rounds</option>
-                        </select>
-                      </div>
-                      <span class="rs-field__hint">More rounds means deeper follow-up questions and a longer run.</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="rs-opt" data-opt="category">
-                  <button
-                    type="button"
-                    class="rs-chip"
-                    id="chipResearchCategory"
-                    aria-expanded="false"
-                    aria-controls="popResearchCategory"
-                  >
-                    <span class="rs-chip__value" data-chip-value>Auto topic</span>
-                    <i class="fi fi-rr-angle-small-down icon-svg rs-chip__caret" aria-hidden="true" style="--mn-icon-size:13px"></i>
-                  </button>
-                  <div class="rs-pop" id="popResearchCategory" hidden>
-                    <label class="rs-field">
-                      <span class="rs-field__label">Report shape</span>
-                      <div class="rs-select">
-                        <select id="researchCategory">
-                          <option value="">Auto</option>
-                          <option value="technical">Technical</option>
-                          <option value="academic">Academic</option>
-                          <option value="news">News</option>
-                          <option value="market">Market</option>
-                          <option value="general">General</option>
-                        </select>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="rs-opt" data-opt="engine">
-                  <button
-                    type="button"
-                    class="rs-chip rs-chip--icon"
-                    id="chipResearchEngine"
-                    aria-expanded="false"
-                    aria-controls="popResearchEngine"
-                    aria-label="Search overrides"
-                    title="Search overrides"
-                  >
-                    <i class="fi fi-rr-settings-sliders icon-svg" aria-hidden="true" style="--mn-icon-size:14px"></i>
-                    <span class="rs-chip__dot" id="researchEngineDot" hidden aria-hidden="true"></span>
-                  </button>
-                  <div class="rs-pop rs-pop--wide" id="popResearchEngine" hidden>
-                    <label class="rs-field">
-                      <span class="rs-field__label">Search provider</span>
-                      <div class="rs-select">
-                        <select id="researchSearchProvider">
-                          <option value="">From settings</option>
-                          <option value="searxng">SearXNG</option>
-                          <option value="tavily">Tavily</option>
-                          <option value="brave">Brave</option>
-                          <option value="duckduckgo">DuckDuckGo</option>
-                        </select>
-                      </div>
-                      <span class="rs-field__hint">Override search backend for this run only.</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                id="researchComposerModelAnchor"
-                class="rs-model-anchor rs-composer__model composer-model-trigger-anchor"
-              ></div>
-
-              <span class="rs-composer__spacer" aria-hidden="true"></span>
-              <button type="button" class="rs-cancel" id="btnResearchCancel" hidden>Stop</button>
-              <button
-                type="button"
-                class="composer-expand-btn composer-expand-btn--bar"
-                id="btnResearchExpand"
-                aria-label="Expand prompt"
-                aria-busy="false"
-                title="Expand prompt into a fuller version"
-                disabled
-              ></button>
-              <button type="button" class="rs-send" id="btnResearchStart" aria-label="Start research">
-                <i class="fi fi-rr-arrow-small-up icon-svg" aria-hidden="true" style="--mn-icon-size:20px"></i>
-              </button>
-            </div>
-          </div>
-
-          <div class="rs-seeds">
-            <span class="rs-seeds__label">Try</span>
-            <button type="button" class="rs-seed" data-research-prompt="Compare the leading options for … Include benchmarks, pricing, and the tradeoffs between them.">comparing options</button>
-            <button type="button" class="rs-seed" data-research-prompt="Summarize the latest news and credible takes on …">scanning the news</button>
-            <button type="button" class="rs-seed" data-research-prompt="Map the market landscape for … Key players, positioning, and the gaps nobody is filling.">mapping a market</button>
-            <button type="button" class="rs-seed" data-research-prompt="In this codebase, how does … work? Cite the files and patterns involved.">reading this codebase</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="rs-pane rs-pane--run" id="researchRunPane" hidden>
-        <div class="rs-runbody" id="researchRunBody">
-          <header class="rs-runhead">
-            <div class="rs-runhead__top">
-              <div class="rs-runhead__ask">
-                <h2 class="rs-runhead__title" id="researchRunTitle"></h2>
-                <button
-                  type="button"
-                  class="rs-runhead__more"
-                  id="btnResearchRunTitleMore"
-                  aria-controls="researchRunTitle"
-                  aria-expanded="false"
-                  hidden
-                >
-                  Show full question
-                </button>
-              </div>
-              <div class="rs-runhead__actions" id="researchRunActions"></div>
-            </div>
-            <div class="rs-runhead__meta">
-              <span class="rs-state" id="researchRunState"></span>
-              <span class="rs-runhead__stats" id="researchRunStats"></span>
-            </div>
-            <div class="rs-segments" role="tablist" aria-label="Run views">
-              <button
-                type="button"
-                class="rs-segment is-on"
-                id="researchViewBrief"
-                role="tab"
-                aria-selected="true"
-                aria-controls="researchResultMount"
-              >
-                Brief
-              </button>
-              <button
-                type="button"
-                class="rs-segment"
-                id="researchViewEvidence"
-                role="tab"
-                aria-selected="false"
-                aria-controls="researchProgressMount"
-              >
-                Evidence
-              </button>
-            </div>
-          </header>
-          <div id="researchResultMount" class="rs-brief" role="tabpanel" aria-labelledby="researchViewBrief"></div>
-          <div
-            id="researchProgressMount"
-            class="rs-ledger"
-            role="tabpanel"
-            aria-labelledby="researchViewEvidence"
-            aria-live="polite"
-            hidden
-          ></div>
-        </div>
-      </div>
     </section>
   </div>
 </main>
@@ -1252,13 +948,13 @@
   </div>
 </main>
 
-<main id="brainView" class="brain-page is-graph-canvas-bg" aria-label="Brain">
+<main id="brainView" class="brain-page" aria-label="Brain">
   <div class="brain-page-chrome">
   <header class="brain-page-header brain-overlay-surface" data-app-titlebar>
     <div class="brain-page-header__navigation" data-back-to-chat-header></div>
     <div class="brain-page-header__main">
       <div class="brain-page-header__title-row">
-        <h1 class="brain-page-header__title" id="brainPageHeaderTitle">Knowledge graph</h1>
+        <h1 class="brain-page-header__title" id="brainPageHeaderTitle">Memories</h1>
         <span
           class="brain-page-header__usage hidden"
           id="brainPageHeaderUsage"
@@ -1266,7 +962,7 @@
           aria-live="polite"
         ></span>
       </div>
-      <p class="brain-page-header__lead" id="brainPageHeaderLead">Explore wiki pages, tags, and wikilinks on an interactive canvas.</p>
+      <p class="brain-page-header__lead" id="brainPageHeaderLead">What agents remember for this project and across all your projects.</p>
     </div>
     <div class="brain-page-header__actions" id="brainPageHeaderActions"></div>
   </header>
@@ -1275,41 +971,17 @@
       <div class="brain-rail__heading" data-back-to-chat-header>
         <span class="brain-rail__title" aria-hidden="true">Brain</span>
       </div>
-      <button type="button" class="brain-rail__btn" data-brain-nav="graph" aria-current="page" title="Graph">
-        <i class="fi fi-rr-chart-network icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Graph</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="edit" title="Edit">
-        <i class="fi fi-rr-edit icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Edit</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="log" title="Log">
-        <i class="fi fi-rr-list icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Log</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="schema" title="Schema">
-        <i class="fi fi-rr-table-layout icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Schema</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="proposals" title="Proposals">
-        <i class="fi fi-rr-layers icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Proposals</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="memories" title="Memories">
+      <button type="button" class="brain-rail__btn" data-brain-nav="memories" aria-current="page" title="Memories">
         <i class="fi fi-rr-brain icon-svg" aria-hidden="true"></i>
         <span class="brain-rail__label">Memories</span>
       </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="ingest" title="Ingest">
-        <i class="fi fi-rr-inbox-in icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Ingest</span>
+      <button type="button" class="brain-rail__btn" data-brain-nav="proposals" title="Skill proposals">
+        <i class="fi fi-rr-layers icon-svg" aria-hidden="true"></i>
+        <span class="brain-rail__label">Proposals</span>
       </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="lint" title="Lint">
-        <i class="fi fi-rr-triangle-warning icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Lint</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="code" title="Code">
+      <button type="button" class="brain-rail__btn" data-brain-nav="code" title="Code map">
         <i class="fi fi-rr-code-simple icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Code</span>
+        <span class="brain-rail__label">Code map</span>
       </button>
       <button type="button" class="brain-rail__btn" data-brain-nav="settings" title="Settings">
         <i class="fi fi-rr-settings icon-svg" aria-hidden="true"></i>
@@ -1318,152 +990,6 @@
     </nav>
     <div class="brain-stage">
     <div class="brain-content">
-      <section id="brainSection-graph" class="brain-section brain-section--graph is-active">
-        <p id="brainGraphOffline" class="brain-state-banner brain-card hidden">Start npm start to load the brain.</p>
-        <p id="brainGraphEmpty" class="brain-state-banner brain-card hidden">No pages yet. Create one or run Ingest.</p>
-        <div id="brainGraphStage" class="brain-graph-stage brain-graph-overlays">
-          <div class="brain-graph-toolbar brain-overlay-card" data-app-titlebar data-back-to-chat-header role="toolbar" aria-label="Graph controls">
-            <div class="brain-graph-toolbar__group brain-graph-toolbar__search">
-              <label class="brain-graph-search">
-                <span class="visually-hidden">Search nodes</span>
-                <i class="fi fi-rr-search icon-svg brain-graph-search__icon" aria-hidden="true"></i>
-                <input type="search" id="brainGraphSearch" placeholder="Search pages…" autocomplete="off">
-              </label>
-              <span id="brainGraphStats" class="brain-graph-stats hidden" aria-live="polite"></span>
-            </div>
-            <div class="brain-graph-toolbar__group brain-graph-toolbar__toggles brain-graph-seg" role="group" aria-label="View options">
-              <button type="button" class="brain-action-btn" id="brainGraphLayoutToggle" aria-pressed="false" title="Switch between the force graph and a plain page tree">Tree</button>
-              <button type="button" class="brain-action-btn" id="brainGraphTagToggle" aria-pressed="true" title="Draw tag vertices and page→tag relations">Tags</button>
-              <button type="button" class="brain-action-btn" id="brainGraphOrphanToggle" aria-pressed="false" title="Highlight pages nothing links to">Orphans</button>
-              <button type="button" class="brain-action-btn" id="brainGraphArchiveToggle" aria-pressed="false" title="Show per-chat archive pages in graph and tree">Archives</button>
-            </div>
-            <div class="brain-graph-toolbar__group brain-graph-toolbar__zoom brain-graph-seg" role="group" aria-label="Zoom">
-              <button type="button" class="brain-action-btn brain-action-btn--icon" id="brainGraphZoomOut" aria-label="Zoom out">−</button>
-              <button type="button" class="brain-action-btn" id="brainGraphFit">Fit</button>
-              <button type="button" class="brain-action-btn brain-action-btn--icon" id="brainGraphZoomIn" aria-label="Zoom in">+</button>
-            </div>
-            <div class="brain-graph-toolbar__group brain-graph-toolbar__primary">
-              <button type="button" class="brain-action-btn is-primary" id="brainGraphNewPage">New page</button>
-            </div>
-          </div>
-          <div class="brain-graph-sidebar">
-            <div
-              class="brain-graph-sidebar__resize"
-              id="brainGraphSidebarResize"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize pages panel"
-              aria-valuemin="200"
-              tabindex="-1"
-            ></div>
-            <aside id="brainGraphTreePanel" class="brain-graph-tree-panel brain-overlay-card">
-              <div class="brain-graph-tree-head">
-                <h2 class="brain-section-subtitle">Legacy notes</h2>
-                <button type="button" class="brain-action-btn brain-graph-tree-toggle icon-btn" id="brainGraphTreeToggle" aria-expanded="true" aria-label="Collapse page tree">
-                  <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
-                </button>
-              </div>
-              <p class="brain-graph-tree-note" id="brainGraphLegacyNote">Not used by agents. Agent memories are under <strong>Memories</strong>.</p>
-              <div id="brainGraphTree" class="brain-graph-tree-mount" role="region" aria-label="Page tree"></div>
-            </aside>
-            <aside id="brainGraphLegend" class="brain-graph-readout brain-overlay-card" aria-label="Graph readout">
-              <div class="brain-graph-readout__head">
-                <h2 class="brain-section-subtitle">Structure</h2>
-                <button type="button" class="brain-action-btn brain-graph-readout__toggle icon-btn" id="brainGraphReadoutToggle" aria-expanded="true" aria-label="Collapse structure panel">
-                  <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
-                </button>
-              </div>
-              <div class="brain-graph-readout__body" id="brainGraphReadoutBody"></div>
-            </aside>
-          </div>
-          <div id="brainGraphFirstRun" class="brain-graph-hint brain-overlay-card hidden">
-            <p>Hover a node to trace its relations. Click to inspect, double-click to focus the neighborhood, drag to pin. Bigger nodes have more connections.</p>
-            <button type="button" class="brain-action-btn" id="brainGraphDismissHint">Got it</button>
-          </div>
-        </div>
-      </section>
-      <section id="brainSection-edit" class="brain-section brain-section--edit" aria-label="Wiki page editor">
-        <div class="brain-edit-shell">
-          <div class="brain-edit-toolbar" role="toolbar" aria-label="Page metadata and actions">
-            <div class="brain-edit-toolbar__fields">
-              <label class="brain-edit-field brain-edit-field--path">
-                <span class="brain-edit-field__label">Path</span>
-                <input type="text" id="brainEditPath" class="brain-edit-input brain-edit-input--mono" placeholder="facts/my-note.md" autocomplete="off" spellcheck="false">
-              </label>
-              <label class="brain-edit-field brain-edit-field--title">
-                <span class="brain-edit-field__label">Title</span>
-                <input type="text" id="brainEditTitle" class="brain-edit-input" maxlength="200" placeholder="Page title">
-              </label>
-              <label class="brain-edit-field brain-edit-field--tags">
-                <span class="brain-edit-field__label">Tags</span>
-                <input type="text" id="brainEditTags" class="brain-edit-input" placeholder="comma-separated" autocomplete="off">
-              </label>
-            </div>
-            <div class="brain-edit-toolbar__actions">
-              <div class="brain-edit-view-modes brain-graph-seg" role="group" aria-label="Editor layout">
-                <button type="button" class="brain-action-btn" data-brain-edit-view="source" aria-pressed="false">Source</button>
-                <button type="button" class="brain-action-btn" data-brain-edit-view="split" aria-pressed="true">Split</button>
-                <button type="button" class="brain-action-btn" data-brain-edit-view="preview" aria-pressed="false">Preview</button>
-              </div>
-              <button type="button" class="brain-action-btn" id="brainEditNew">New page</button>
-              <button type="button" class="brain-action-btn" id="brainEditLoad">Load</button>
-              <button type="button" class="brain-action-btn is-primary" id="brainEditSave">Save</button>
-            </div>
-            <p id="brainEditStatus" class="brain-edit-status brain-status" aria-live="polite"></p>
-          </div>
-          <div id="brainEditWorkspace" class="brain-edit-workspace is-view-split">
-            <div class="brain-edit-pane brain-edit-pane--source">
-              <p class="brain-edit-pane__eyebrow">Markdown source</p>
-              <textarea id="brainEditBody" class="brain-edit-source" placeholder="Write markdown here. Wikilinks and headings render in the preview pane." spellcheck="true"></textarea>
-            </div>
-            <div class="brain-edit-pane brain-edit-pane--preview" aria-label="Rendered page preview">
-              <p class="brain-edit-pane__eyebrow">Rendered page</p>
-              <div class="brain-edit-preview-scroll">
-                <header class="brain-wiki-viewer__head">
-                  <h2 id="brainEditPreviewTitle" class="brain-wiki-viewer__title">Untitled page</h2>
-                  <p id="brainEditPreviewPath" class="brain-wiki-viewer__path">—</p>
-                  <p id="brainEditPreviewTags" class="brain-wiki-viewer__tags hidden" hidden></p>
-                </header>
-                <div id="brainEditPreview" class="brain-markdown brain-wiki-viewer__body brain-muted">Start typing in the source pane to see a live preview.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section id="brainSection-log" class="brain-section brain-section--log" aria-label="Wiki changelog">
-        <div class="brain-workbench-shell">
-          <header class="brain-workbench-toolbar">
-            <p class="brain-workbench-toolbar__lead">Read-only history from <code>log.md</code>.</p>
-            <p id="brainLogOffline" class="brain-workbench-toolbar__note brain-muted hidden">Start Minnow to load the changelog.</p>
-          </header>
-          <div id="brainLogBody" class="brain-workbench-pane brain-workbench-pane--scroll brain-markdown"></div>
-        </div>
-      </section>
-      <section id="brainSection-schema" class="brain-section brain-section--schema" aria-label="Wiki schema editor">
-        <div class="brain-workbench-shell">
-          <header class="brain-workbench-toolbar">
-            <p class="brain-workbench-toolbar__lead">Edit <code>schema.md</code> taxonomy for tags and frontmatter fields.</p>
-            <div class="brain-workbench-toolbar__actions">
-              <button type="button" class="brain-action-btn" id="brainSchemaReload">Reload</button>
-              <button type="button" class="brain-action-btn is-primary" id="brainSchemaSave">Save</button>
-            </div>
-            <p id="brainSchemaStatus" class="brain-workbench-status brain-status" aria-live="polite"></p>
-            <p id="brainSchemaOffline" class="brain-workbench-toolbar__note brain-muted hidden">Offline — open Minnow to edit schema.</p>
-          </header>
-          <div class="brain-workbench-split">
-            <div class="brain-edit-pane brain-edit-pane--source">
-              <p class="brain-edit-pane__eyebrow">schema.md</p>
-              <textarea id="brainSchemaEditor" class="brain-edit-source" spellcheck="false" placeholder="Define wiki taxonomy…"></textarea>
-            </div>
-            <div class="brain-edit-pane brain-edit-pane--preview">
-              <p class="brain-edit-pane__eyebrow">Live reference</p>
-              <div class="brain-edit-preview-scroll">
-                <div id="brainSchemaPreview" class="brain-schema-preview">Edit schema.md to define wiki taxonomy fields and tags.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
       <section id="brainSection-proposals" class="brain-section brain-section--proposals" aria-label="Synthesis proposals">
         <div class="brain-workbench-shell">
           <header class="brain-workbench-toolbar">
@@ -1479,128 +1005,106 @@
           </div>
         </div>
       </section>
-      <section id="brainSection-memories" class="brain-section brain-section--memories" aria-label="Agent memory">
-        <div class="brain-memory-shell">
-          <header class="brain-memory-toolbar">
-            <div class="brain-memory-toolbar__controls">
-              <label class="brain-memory-toggle">
-                <span class="brain-memory-toggle__label">Agent memory</span>
-                <input type="checkbox" id="brainMemoryEnabled" role="switch">
-              </label>
-              <p class="brain-memory-toolbar__hint">Agents search these memories when a task calls for it. Nothing is added to prompts automatically.</p>
+      <section id="brainSection-memories" class="brain-section brain-section--memories is-active" aria-label="Memories" data-view="graph">
+        <div class="bm">
+          <header class="bm-bar">
+            <label class="bm-search">
+              <i class="fi fi-rr-search icon-svg" aria-hidden="true"></i>
+              <input type="search" id="brainMemorySearch" class="bm-search__input" placeholder="Search memories" autocomplete="off" spellcheck="false" aria-label="Search memories">
+            </label>
+            <div class="bm-scopes" id="brainMemoryScopes" role="group" aria-label="Show memories from"></div>
+            <span class="bm-bar__spacer" aria-hidden="true"></span>
+            <div class="bm-seg" role="tablist" aria-label="View">
+              <button type="button" class="bm-seg__btn" role="tab" data-memory-view="graph" aria-selected="true" aria-label="Graph">
+                <i class="fi fi-rr-chart-network icon-svg" aria-hidden="true"></i><span>Graph</span>
+              </button>
+              <button type="button" class="bm-seg__btn" role="tab" data-memory-view="list" aria-selected="false" tabindex="-1" aria-label="List">
+                <i class="fi fi-rr-list icon-svg" aria-hidden="true"></i><span>List</span>
+              </button>
             </div>
-            <div id="brainMemoryStats" class="brain-memory-stats" aria-live="polite">
-              <span class="brain-memory-stat" id="brainMemoryEntryCount">— memories</span>
-              <span class="brain-memory-stat brain-memory-stat--muted" id="brainMemoryServerHint">Checking server…</span>
-            </div>
-            <div class="brain-memory-toolbar__actions">
-              <button type="button" class="brain-action-btn" id="brainMemoryRefresh">Refresh</button>
-            </div>
-            <p id="brainMemoriesStatus" class="brain-memory-status brain-status" aria-live="polite"></p>
-            <p id="brainMemoryOffline" class="brain-memory-offline brain-muted hidden">
-              Start Minnow with <code>npm start</code> to review memories.
-            </p>
+            <button type="button" class="bm-icon-btn" id="brainMemoryRefresh" aria-label="Refresh memories" title="Refresh">
+              <i class="fi fi-rr-refresh icon-svg" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="bm-btn bm-btn--primary" id="brainMemoryAdd" aria-label="Add memory">
+              <i class="fi fi-rr-plus-small icon-svg" aria-hidden="true"></i><span>Add memory</span>
+            </button>
           </header>
-          <div class="brain-memory-workspace">
-            <aside class="brain-memory-list-pane" aria-label="Memories">
-              <div id="brainMemoryList" class="brain-memory-list" role="list"></div>
-            </aside>
-            <div class="brain-memory-detail-pane" id="brainMemoryDetailPane">
-              <p id="brainMemoryEmptyState" class="brain-memory-empty brain-muted">Select a memory to read it. Agents save decisions, constraints, your preferences and verified gotchas here.</p>
-              <div id="brainMemoryDetail" class="brain-memory-detail hidden" hidden></div>
-              <div id="brainMemoryAddPanel" class="brain-memory-compose hidden" hidden>
-                <p class="brain-memory-compose__eyebrow">Edit memory</p>
-                <form id="brainMemoryAddForm" class="brain-memory-form" novalidate>
-                  <label class="brain-memory-form__field">
-                    <span class="brain-edit-field__label">Title</span>
-                    <input type="text" id="brainMemoryAddTitle" name="title" required maxlength="100" class="brain-edit-input" autocomplete="off">
+          <div class="bm-body">
+            <div class="bm-stage">
+              <div class="bm-graph" id="brainMemoryGraphView">
+                <canvas id="brainMemoryCanvas" class="bm-graph__canvas" role="img" aria-label="Memory graph. Select a node to read it; the list view has the same memories."></canvas>
+                <div class="bm-legend" id="brainMemoryLegend" role="group" aria-label="Memory kinds"></div>
+                <div class="bm-zoom" role="group" aria-label="Zoom">
+                  <button type="button" class="bm-icon-btn" data-memory-zoom="out" aria-label="Zoom out"><i class="fi fi-rr-minus-small icon-svg" aria-hidden="true"></i></button>
+                  <button type="button" class="bm-icon-btn" data-memory-zoom="in" aria-label="Zoom in"><i class="fi fi-rr-plus-small icon-svg" aria-hidden="true"></i></button>
+                  <button type="button" class="bm-icon-btn" data-memory-zoom="fit" aria-label="Fit graph to view"><i class="fi fi-rr-expand icon-svg" aria-hidden="true"></i></button>
+                </div>
+              </div>
+              <div class="bm-list" id="brainMemoryListView" hidden>
+                <div id="brainMemoryList" class="bm-list__inner" role="list" aria-label="Memories"></div>
+              </div>
+              <div class="bm-stage-empty" id="brainMemoryStageEmpty" hidden>
+                <p class="bm-stage-empty__title">No memories yet</p>
+                <p class="bm-stage-empty__text"></p>
+                <button type="button" class="bm-btn" data-memory-compose=":">Add a memory</button>
+              </div>
+              <p id="brainMemoriesStatus" class="bm-status" role="status" aria-live="polite"></p>
+              <p id="brainMemoryOffline" class="bm-offline hidden" hidden>Start Minnow with <code>npm start</code> to review memories.</p>
+            </div>
+            <aside class="bm-inspector" id="brainMemoryDetailPane" aria-label="Memory details">
+              <div id="brainMemoryEmptyState" class="bm-inspector__overview"></div>
+              <div id="brainMemoryDetail" class="bm-detail hidden" hidden></div>
+              <div id="brainMemoryAddPanel" class="bm-compose hidden" hidden>
+                <form id="brainMemoryAddForm" class="bm-form" novalidate>
+                  <h2 class="bm-form__title" id="brainMemoryFormTitle">Edit memory</h2>
+                  <label class="bm-field">
+                    <span class="bm-field__label">Title</span>
+                    <input type="text" id="brainMemoryAddTitle" name="title" required maxlength="100" class="bm-input" autocomplete="off" placeholder="One line agents can search for">
                   </label>
-                  <label class="brain-memory-form__field">
-                    <span class="brain-edit-field__label">Kind</span>
-                    <select id="brainMemoryAddKind" name="kind" class="brain-edit-input">
-                      <option value="decision">Decision</option>
-                      <option value="constraint">Constraint</option>
-                      <option value="gotcha">Gotcha</option>
-                      <option value="preference">Preference</option>
-                      <option value="reference">Reference</option>
-                    </select>
+                  <div class="bm-field-row">
+                    <label class="bm-field">
+                      <span class="bm-field__label">Kind</span>
+                      <select id="brainMemoryAddKind" name="kind" class="bm-input">
+                        <option value="decision">Decision</option>
+                        <option value="constraint">Constraint</option>
+                        <option value="gotcha">Gotcha</option>
+                        <option value="preference">Preference</option>
+                        <option value="reference">Reference</option>
+                      </select>
+                    </label>
+                    <label class="bm-field" id="brainMemoryScopeField">
+                      <span class="bm-field__label">Applies to</span>
+                      <select id="brainMemoryAddScope" name="scope" class="bm-input">
+                        <option value="project">This project</option>
+                        <option value="user">All projects</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="bm-field bm-field--grow">
+                    <span class="bm-field__label">Body <span class="bm-field__count" id="brainMemoryBodyCount"></span></span>
+                    <textarea id="brainMemoryAddBody" name="body" required maxlength="1200" class="bm-input bm-input--area" placeholder="The claim, why it holds and the evidence."></textarea>
                   </label>
-                  <label class="brain-memory-form__field brain-memory-form__field--grow">
-                    <span class="brain-edit-field__label">Body</span>
-                    <textarea id="brainMemoryAddBody" name="body" required maxlength="1200" class="brain-edit-source brain-memory-form__body"></textarea>
-                    <span class="brain-memory-form__hint" id="brainMemoryBodyHint">The claim, why it holds and the evidence. Up to 1,200 characters.</span>
+                  <label class="bm-field">
+                    <span class="bm-field__label">Evidence <span class="bm-field__optional">optional</span></span>
+                    <input type="text" id="brainMemoryAddEvidence" name="evidence" maxlength="300" class="bm-input" autocomplete="off" placeholder="A file, command or issue">
                   </label>
-                  <label class="brain-memory-form__field">
-                    <span class="brain-edit-field__label">Evidence (optional)</span>
-                    <input type="text" id="brainMemoryAddEvidence" name="evidence" maxlength="300" class="brain-edit-input" autocomplete="off" placeholder="A file, command or issue">
-                  </label>
-                  <p id="brainMemoryAddError" class="brain-memory-form-error hidden" role="alert"></p>
-                  <div class="brain-memory-form__actions">
-                    <button type="submit" id="brainMemoryAddSubmit" class="brain-action-btn is-primary">Save changes</button>
-                    <button type="button" id="brainMemoryAddCancel" class="brain-action-btn is-ghost">Cancel</button>
+                  <p id="brainMemoryAddError" class="bm-form__error hidden" role="alert"></p>
+                  <div class="bm-form__actions">
+                    <button type="button" id="brainMemoryAddCancel" class="bm-btn bm-btn--ghost">Cancel</button>
+                    <button type="submit" id="brainMemoryAddSubmit" class="bm-btn bm-btn--primary">Save changes</button>
                   </div>
                 </form>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section id="brainSection-ingest" class="brain-section brain-section--ingest" aria-label="Source ingest">
-        <div class="brain-workbench-shell">
-          <header class="brain-workbench-toolbar">
-            <p class="brain-workbench-toolbar__lead">Paste raw sources; the utility model writes wiki pages under <code>brain/pages/</code>.</p>
-            <p id="brainIngestStatus" class="brain-workbench-status brain-status" aria-live="polite"></p>
-          </header>
-          <div class="brain-workbench-split">
-            <div class="brain-edit-pane brain-edit-pane--source">
-              <p class="brain-edit-pane__eyebrow">Source</p>
-              <div class="brain-ingest-form">
-                <label class="brain-edit-field">
-                  <span class="brain-edit-field__label">Title (optional)</span>
-                  <input type="text" id="brainIngestTitle" class="brain-edit-input" autocomplete="off">
+              <footer class="bm-inspector__foot">
+                <label class="bm-switch">
+                  <input type="checkbox" id="brainMemoryEnabled" role="switch" aria-describedby="brainMemoryEnabledHint">
+                  <span class="bm-switch__track" aria-hidden="true"><span class="bm-switch__thumb"></span></span>
+                  <span class="bm-switch__label">Agent memory</span>
                 </label>
-                <label class="brain-edit-field">
-                  <span class="brain-edit-field__label">Filename hint (optional)</span>
-                  <input type="text" id="brainIngestFilename" class="brain-edit-input brain-edit-input--mono" placeholder="notes.txt" autocomplete="off" spellcheck="false">
-                </label>
-                <label class="brain-edit-field brain-ingest-form__body-field">
-                  <span class="brain-edit-field__label">Content</span>
-                  <textarea id="brainIngestBody" class="brain-edit-source brain-ingest-form__body" placeholder="Paste notes, transcripts, or documents…"></textarea>
-                </label>
-                <div class="brain-ingest-form__actions">
-                  <button type="button" class="brain-action-btn is-primary" id="brainIngestSubmit">Run ingest</button>
-                </div>
-                <div id="brainIngestResult" class="brain-ingest-result-mount"></div>
-              </div>
-            </div>
-            <aside class="brain-edit-pane brain-edit-pane--preview brain-ingest-guide" aria-label="Ingest guide">
-              <h2 class="brain-edit-pane__eyebrow">How it works</h2>
-              <div class="brain-edit-preview-scroll">
-                <p>The utility model extracts facts and drafts wiki pages. Review output in <strong>Proposals</strong> before it lands in the graph.</p>
-                <h3>Workflow</h3>
-                <ol>
-                  <li>Paste source content and optional title hint.</li>
-                  <li>Submit — synthesis runs against your configured utility model.</li>
-                  <li>Review proposals before they merge into the wiki.</li>
-                  <li>Open new pages from the graph or Edit section.</li>
-                </ol>
-                <h3>Tips</h3>
-                <p>Shorter, focused sources produce cleaner pages. Define tags in Schema first.</p>
-              </div>
+                <p class="bm-inspector__foot-hint" id="brainMemoryEnabledHint">When off, agents neither search nor save memories.</p>
+              </footer>
             </aside>
           </div>
-        </div>
-      </section>
-      <section id="brainSection-lint" class="brain-section brain-section--lint" aria-label="Wiki cleanup">
-        <div class="brain-workbench-shell">
-          <header class="brain-workbench-toolbar">
-            <p class="brain-workbench-toolbar__lead">Read-only wiki scan, then an AI markdown plan you review before any writes.</p>
-            <div class="brain-workbench-toolbar__actions">
-              <button type="button" class="brain-action-btn is-primary" id="brainLintRun">Generate plan</button>
-            </div>
-            <p id="brainLintOffline" class="brain-workbench-toolbar__note brain-muted hidden">Start Minnow to generate a wiki cleanup plan.</p>
-          </header>
-          <div id="brainLintBody" class="brain-workbench-pane brain-workbench-pane--scroll brain-lint-body"></div>
         </div>
       </section>
       <section id="brainSection-code" class="brain-section brain-section--code" aria-label="Code map">
@@ -1660,7 +1164,6 @@
       </section>
       <section id="brainSection-settings" class="brain-section brain-section--centered">
         <header class="brain-settings-page-head">
-          <p id="brainSettingsStatusLine" class="brain-settings-page-head__summary">Checking wiki status…</p>
           <p id="brainSettingsStatus" class="brain-status brain-settings-page-head__toast" aria-live="polite"></p>
         </header>
         <div class="brain-settings-stack">
@@ -1800,35 +1303,6 @@
             <h3>Danger zone</h3>
             <p class="brain-danger-lead">Destructive actions cannot be undone. Backup first when offered.</p>
             <div class="brain-danger-blocks">
-              <section class="brain-danger-block" aria-labelledby="brainDangerWikiTitle">
-                <h4 class="brain-danger-block__title" id="brainDangerWikiTitle">Wiki</h4>
-                <p class="brain-danger-block__desc">Remove all wiki pages or pending memory and skill proposals.</p>
-                <label class="brain-danger-check">
-                  <input type="checkbox" id="brainDangerWikiBackup" checked>
-                  <span>Backup before clearing wiki</span>
-                </label>
-                <div class="brain-danger-block__actions">
-                  <button type="button" class="brain-action-btn brain-action-btn--danger" id="brainDangerClearWiki">
-                    Clear all wiki pages
-                  </button>
-                  <button type="button" class="brain-action-btn brain-action-btn--danger" id="brainDangerClearProposals">
-                    Clear pending proposals
-                  </button>
-                </div>
-              </section>
-              <section class="brain-danger-block" aria-labelledby="brainDangerSourcesTitle">
-                <h4 class="brain-danger-block__title" id="brainDangerSourcesTitle">Ingest sources</h4>
-                <p class="brain-danger-block__desc">Delete raw ingest files. Wiki pages are kept.</p>
-                <label class="brain-danger-check">
-                  <input type="checkbox" id="brainDangerSourcesBackup" checked>
-                  <span>Backup before clearing</span>
-                </label>
-                <div class="brain-danger-block__actions">
-                  <button type="button" class="brain-action-btn brain-action-btn--danger" id="brainDangerClearSources">
-                    Clear ingest sources
-                  </button>
-                </div>
-              </section>
               <section class="brain-danger-block" aria-labelledby="brainDangerCodeTitle">
                 <h4 class="brain-danger-block__title" id="brainDangerCodeTitle">Code index</h4>
                 <p class="brain-danger-block__desc">Reset indexed symbols for this workspace or every workspace.</p>
@@ -1866,172 +1340,8 @@
         </div>
       </section>
     </div>
-    <aside id="brainInspector" class="brain-inspector brain-overlay-card" aria-label="Node inspector" aria-hidden="true">
-      <div class="brain-inspector__resize" id="brainInspectorResize" role="separator" aria-orientation="vertical" aria-label="Resize inspector" tabindex="-1"></div>
-      <div class="brain-inspector__content"></div>
-    </aside>
     </div>
   </div>
-  </div>
-  <div id="brainGraphCanvasWrap" class="brain-graph-canvas-wrap brain-graph-page-bg" aria-hidden="false">
-    <canvas id="brainGraphCanvas" class="brain-graph-canvas" aria-label="Knowledge graph"></canvas>
-  </div>
-</main>
-
-<main id="benchmarkView" class="benchmark-page" aria-label="Benchmark">
-  <nav class="benchmark-tabs" role="tablist" aria-label="Benchmark views">
-    <button type="button" class="benchmark-tab is-active" role="tab" data-tab="overview" aria-selected="true" id="benchmarkTabBtnOverview">Overview</button>
-    <button type="button" class="benchmark-tab" role="tab" data-tab="charts" aria-selected="false" id="benchmarkTabBtnCharts">Charts</button>
-    <button type="button" class="benchmark-tab" role="tab" data-tab="tests" aria-selected="false" id="benchmarkTabBtnTests">Tests</button>
-    <button type="button" class="benchmark-tab" role="tab" data-tab="run" aria-selected="false" id="benchmarkTabBtnRun">Run</button>
-  </nav>
-  <div class="benchmark-page-body">
-    <div class="benchmark-page-inner">
-      <section id="benchmarkTabOverview" class="benchmark-tab-panel is-active" data-tab="overview" role="tabpanel" aria-labelledby="benchmarkTabBtnOverview"></section>
-      <section id="benchmarkTabCharts" class="benchmark-tab-panel" data-tab="charts" role="tabpanel" hidden aria-labelledby="benchmarkTabBtnCharts"></section>
-      <section id="benchmarkTabTests" class="benchmark-tab-panel" data-tab="tests" role="tabpanel" hidden aria-labelledby="benchmarkTabBtnTests"></section>
-      <section id="benchmarkTabRun" class="benchmark-tab-panel" data-tab="run" role="tabpanel" hidden aria-labelledby="benchmarkTabBtnRun">
-      <section class="benchmark-run-section benchmark-roster" aria-label="Models to compare">
-        <span class="benchmark-field-label">Models to compare</span>
-        <div id="benchmarkRosterList" class="benchmark-roster-list"></div>
-        <div class="benchmark-roster-add">
-          <div class="benchmark-roster-picker">
-            <select id="benchmarkRosterProvider" aria-label="Provider"></select>
-            <select id="benchmarkRosterModel" aria-label="Model"></select>
-          </div>
-          <button type="button" class="is-primary" id="btnBenchmarkAddTarget" title="Add the selected provider and model">Add model</button>
-          <button type="button" id="btnBenchmarkAddActiveModel" title="Add the model loaded in the top bar">Use top-bar model</button>
-        </div>
-      </section>
-      <section id="benchmarkScheduleSection" class="benchmark-run-section" hidden aria-label="Multi-model run order">
-        <span class="benchmark-field-label">Run order</span>
-        <div id="benchmarkScheduleToggles" class="benchmark-suite-toggles" role="group" aria-label="Run models in parallel or one at a time">
-          <button type="button" class="benchmark-schedule-toggle" data-schedule="parallel" aria-pressed="true" title="Run all models at once">Parallel</button>
-          <button type="button" class="benchmark-schedule-toggle" data-schedule="sequential" aria-pressed="false" title="Run one model, then the next">Sequential</button>
-        </div>
-      </section>
-      <section class="benchmark-run-section benchmark-deck" aria-label="Run configuration">
-        <div class="benchmark-deck-field benchmark-deck-field--presets">
-          <span class="benchmark-field-label" id="benchmarkPresetLabel">Run preset</span>
-          <div class="benchmark-run-actions" role="group" aria-labelledby="benchmarkPresetLabel">
-            <button type="button" id="btnBenchmarkQuick" title="Capability and Speed only">Quick</button>
-            <button type="button" id="btnBenchmarkFull" title="All Minnow test suites">Full</button>
-          </div>
-        </div>
-        <div class="benchmark-test-types" aria-label="Test types">
-          <span class="benchmark-field-label" id="benchmarkTestTypesLabel">Test types</span>
-          <div class="benchmark-test-types-inline" role="group" aria-labelledby="benchmarkTestTypesLabel">
-            <div class="benchmark-test-type-group benchmark-test-type-group--academic">
-              <span class="benchmark-test-type-name" id="benchmarkStandardLabel">Academic</span>
-              <div class="benchmark-academic-controls">
-                <div id="benchmarkStandardToggles" class="benchmark-suite-toggles" role="group" aria-label="Academic benchmarks">
-                  <button type="button" class="benchmark-standard-toggle" data-pack-id="mmlu-mini" aria-pressed="false" title="Multiple-choice knowledge (MMLU)">MMLU</button>
-                  <button type="button" class="benchmark-standard-toggle" data-pack-id="arc-challenge-mini" aria-pressed="false" title="Science reasoning (ARC)">ARC</button>
-                  <button type="button" class="benchmark-standard-toggle" data-pack-id="gsm8k-mini" aria-pressed="false" title="Grade-school math (GSM8K)">GSM8K</button>
-                  <button type="button" class="benchmark-standard-toggle" data-pack-id="humaneval-mini" aria-pressed="false" title="Python coding (HumanEval)">HumanEval</button>
-                  <button type="button" class="benchmark-standard-toggle" data-pack-id="truthfulqa-mini" aria-pressed="false" title="Factual accuracy (TruthfulQA)">TruthfulQA</button>
-                </div>
-                <select id="benchmarkStandardTier" class="benchmark-tier-select" aria-label="Dataset size: Mini sample or Full dataset" title="Mini uses bundled samples; Full uses complete built-in datasets">
-                  <option value="mini" selected>Mini sample</option>
-                  <option value="full">Full dataset</option>
-                </select>
-              </div>
-            </div>
-            <div class="benchmark-test-type-group benchmark-test-type-group--minnow">
-              <span class="benchmark-test-type-name" id="benchmarkSuitesLabel">Minnow</span>
-              <div class="benchmark-suites-row">
-                <div
-                  id="benchmarkSuiteToggles"
-                  class="benchmark-suite-toggles"
-                  role="group"
-                  aria-label="Minnow tests"
-                >
-                  <button type="button" class="benchmark-suite-toggle" data-suite-id="capability" aria-pressed="true" title="Reasoning, JSON, and multimodal probes">Capability</button>
-                  <button type="button" class="benchmark-suite-toggle" data-suite-id="speed" aria-pressed="true" title="Time to first token and tokens per second">Speed</button>
-                  <button type="button" class="benchmark-suite-toggle" data-suite-id="tools" aria-pressed="false" title="Built-in tool calls in an isolated workspace">Tools</button>
-                  <button type="button" class="benchmark-suite-toggle" data-suite-id="skills" aria-pressed="false" title="Slash-command skill behavior">Skills</button>
-                  <button type="button" class="benchmark-suite-toggle" data-suite-id="coding" aria-pressed="false" title="Generate and run small Node scripts">Coding</button>
-                </div>
-              </div>
-            </div>
-            <div class="benchmark-run-actions benchmark-run-actions--test-run">
-              <button type="button" class="is-primary" id="btnBenchmarkRun" title="Run selected tests" aria-label="Run selected tests">Run</button>
-            </div>
-          </div>
-        </div>
-      </section>
-      <div id="benchmarkProgress" class="benchmark-progress" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Benchmark progress">
-        <div class="benchmark-progress-meta">
-          <span id="benchmarkProgressLabel" class="benchmark-progress-label">Starting benchmark…</span>
-          <span id="benchmarkProgressPct" class="benchmark-progress-pct" aria-hidden="true">0%</span>
-        </div>
-        <div class="benchmark-progress-track">
-          <div id="benchmarkProgressFill" class="benchmark-progress-fill"></div>
-        </div>
-      </div>
-      <div id="benchmarkModelCards" class="benchmark-model-cards" hidden aria-label="Per-model progress"></div>
-      <div id="benchmarkSummary" class="benchmark-summary" aria-live="polite">
-        <p class="benchmark-empty">Pick Academic and/or Minnow tests above, then Run. Quick and Full apply Minnow presets.</p>
-      </div>
-      <div class="benchmark-history-bar">
-        <label class="benchmark-history-field" for="benchmarkHistorySelect">
-          <span class="benchmark-field-label">Past runs</span>
-          <select id="benchmarkHistorySelect" aria-label="Open a saved benchmark run"></select>
-        </label>
-        <button type="button" id="btnBenchmarkBackToCurrent" class="benchmark-back-to-current" hidden title="Return to the run in progress">
-          Back to live run
-        </button>
-        <button
-          type="button"
-          id="btnBenchmarkClearHistory"
-          class="benchmark-clear-history"
-          disabled
-          aria-label="Clear all saved benchmark runs"
-        >
-          Clear history
-        </button>
-      </div>
-      <div id="benchmarkSuites" class="benchmark-suites-mount"></div>
-      </section>
-    </div>
-  </div>
-  <aside id="benchmarkCatalogDrawer" class="benchmark-catalog-drawer" hidden aria-label="Test description">
-    <button type="button" class="benchmark-catalog-drawer-close" id="benchmarkCatalogDrawerClose" aria-label="Close">×</button>
-    <div id="benchmarkCatalogDrawerBody" class="benchmark-catalog-drawer-body"></div>
-  </aside>
-  <div id="benchmarkCatalogDrawerBackdrop" class="benchmark-catalog-drawer-backdrop" hidden></div>
-</main>
-
-<main id="compareView" class="compare-page" aria-label="Compare models">
-  <div class="compare-body">
-    <div class="compare-prompt-row">
-      <label for="comparePrompt">Prompt</label>
-      <textarea id="comparePrompt" rows="3" placeholder="Ask every model the same question…" aria-label="Compare prompt"></textarea>
-    </div>
-    <div class="compare-controls-row">
-      <div id="comparePickers" class="compare-pickers" aria-label="Model pickers"></div>
-      <div class="compare-controls-side">
-        <button type="button" id="btnCompareAddModel" class="compare-add-model">Add model</button>
-        <button type="button" id="btnCompareParallelToggle" class="compare-parallel-toggle is-active" title="Run all models at once">Parallel</button>
-      </div>
-    </div>
-    <div class="compare-run-actions">
-      <button type="button" class="is-primary" id="btnCompareRun">Run comparison</button>
-      <button type="button" id="btnCompareStop">Stop all</button>
-    </div>
-    <p id="compareStatus" class="compare-status" role="status" aria-live="polite"></p>
-    <div id="compareColumns" class="compare-columns" aria-label="Response columns"></div>
-    <div id="compareVoteBar" class="compare-vote-bar" aria-label="Vote for the best response"></div>
-    <div class="compare-side-panels">
-      <section class="compare-panel" aria-label="Compare history">
-        <h3>History</h3>
-        <div id="compareHistoryList" class="compare-history-list"></div>
-      </section>
-      <section class="compare-panel" aria-label="Win rates">
-        <h3>Win rates</h3>
-        <div id="compareWinRates" class="compare-win-rates">Win rates appear after your first vote.</div>
-      </section>
-    </div>
   </div>
 </main>
 
@@ -2053,87 +1363,6 @@
 
 <main id="sourceControlView" class="source-control-page" aria-label="Source Control"></main>
 <main id="issuesView" class="issues-page" aria-label="Issues"></main>
-
-<main id="expertsView" class="experts-page" data-step="browse" aria-label="Experts' Lab">
-  <header class="experts-hdr">
-    <span class="experts-hdr-ico" aria-hidden="true">
-      <i class="fi fi-rr-flask icon-svg" aria-hidden="true"></i>
-    </span>
-    <div class="experts-hdr-txt">
-      <h2>Experts' Lab</h2>
-      <span>Compose, tune, and test expert agents</span>
-    </div>
-    <div class="experts-hdr-spacer"></div>
-    <button type="button" class="experts-hdr-btn" id="btnExpertsNew">
-      <i class="fi fi-rr-plus-small icon-svg" aria-hidden="true" style="--mn-icon-size:15px"></i>
-      New expert
-    </button>
-  </header>
-  <div id="expertsDisabled" class="experts-empty hidden" role="status">
-    <p>Experts are turned off. Enable them in Settings → Experts, then return here.</p>
-  </div>
-  <div class="experts-split experts-step experts-step--browse" aria-label="Expert roster">
-    <div id="expertsList" class="experts-list" role="list"></div>
-    <div class="experts-detail">
-      <div id="expertsDetailBrowse" class="experts-detail-browse">
-        <p id="expertsActionError" class="experts-form-error hidden" role="alert"></p>
-        <div id="expertsDetailMount" class="experts-detail-mount"></div>
-      </div>
-      <section class="experts-detail-panel experts-step experts-step--create" aria-label="Make your own expert">
-        <p class="experts-panel-intro">Describe the specialist you want. Minnow will draft a custom expert you can reuse in Experts' Lab.</p>
-        <div class="experts-brief-form">
-          <label class="experts-field-label experts-mono" for="expertsCreateInput">BRIEF</label>
-          <textarea id="expertsCreateInput" class="experts-brief-input" rows="6" placeholder="e.g. A patent attorney who explains claims in plain English…"></textarea>
-          <p id="expertsCreateError" class="experts-form-error hidden" role="alert"></p>
-          <div class="experts-detail-actions">
-            <button type="button" class="experts-btn-ghost" id="btnExpertsCreateCancel">Cancel</button>
-            <button type="button" class="experts-btn-primary" id="btnExpertsCreate">Create expert</button>
-          </div>
-        </div>
-      </section>
-      <section class="experts-detail-panel experts-step experts-step--edit" aria-label="Edit expert">
-        <p class="experts-panel-intro">Update your custom expert's details and prompt.</p>
-        <form id="expertsEditForm" class="experts-edit-form">
-          <div class="experts-edit-row">
-            <label class="experts-field-label experts-mono" for="expertsEditLabel">LABEL</label>
-            <input type="text" id="expertsEditLabel" class="experts-edit-input" autocomplete="off" />
-          </div>
-          <div class="experts-edit-row">
-            <label class="experts-field-label experts-mono" for="expertsEditDescription">ROLE</label>
-            <input type="text" id="expertsEditDescription" class="experts-edit-input" autocomplete="off" />
-          </div>
-          <div class="experts-edit-row experts-edit-row--split">
-            <div>
-              <label class="experts-field-label experts-mono" for="expertsEditIcon">ICON</label>
-              <input type="text" id="expertsEditIcon" class="experts-edit-input experts-edit-input--icon" maxlength="4" autocomplete="off" />
-            </div>
-            <div>
-              <label class="experts-field-label experts-mono" for="expertsEditAccent">ACCENT</label>
-              <select id="expertsEditAccent" class="experts-edit-input"></select>
-            </div>
-          </div>
-          <div class="experts-edit-row">
-            <label class="experts-field-label experts-mono" for="expertsEditTagline">TAGLINE</label>
-            <input type="text" id="expertsEditTagline" class="experts-edit-input" maxlength="60" autocomplete="off" />
-          </div>
-          <div class="experts-edit-row">
-            <label class="experts-field-label experts-mono" for="expertsEditGreeting">GREETING</label>
-            <input type="text" id="expertsEditGreeting" class="experts-edit-input" autocomplete="off" />
-          </div>
-          <div class="experts-edit-row">
-            <label class="experts-field-label experts-mono" for="expertsEditBody">SYSTEM PROMPT</label>
-            <textarea id="expertsEditBody" class="experts-brief-input experts-edit-body" rows="12"></textarea>
-          </div>
-          <p id="expertsEditError" class="experts-form-error hidden" role="alert"></p>
-          <div class="experts-detail-actions">
-            <button type="button" class="experts-btn-ghost" id="btnExpertsEditCancel">Cancel</button>
-            <button type="submit" class="experts-btn-primary" id="btnExpertsEditSave">Save changes</button>
-          </div>
-        </form>
-      </section>
-    </div>
-  </div>
-</main>
 
 <div id="expertsSummon" class="experts-summon hidden" aria-hidden="true" role="status">
   <div class="experts-summon-card expert-accent-sage">

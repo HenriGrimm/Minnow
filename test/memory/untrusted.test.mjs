@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { retrieveMemoryBlock } from '../../server/memory/retrieve.js';
+import { retrieveMemoryBlock } from '../../server/engine/retrieve.js';
 import { GUARD_CLOSE, GUARD_OPEN_PREFIX } from '../../src/lib/untrusted.mjs';
 
 const META_A = {

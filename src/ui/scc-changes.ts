@@ -129,13 +129,14 @@ export function createChangesView(ctx: SccContext): SccView {
 
   const commitBtn = button({
     label: 'Commit',
+    icon: 'gitCommit',
     variant: 'primary',
     onClick: () => void runCommit(false),
   });
 
   const commitPushBtn = button({
-    label: 'Commit & push',
-    className: 'scc-commit__push',
+    icon: 'gitPush',
+    title: 'Commit & push',
     onClick: () => void runCommit(true),
   });
 
@@ -182,12 +183,11 @@ export function createChangesView(ctx: SccContext): SccView {
   const commitHint = el('span', 'scc-commit__hint');
 
   const commitActions = el('div', 'scc-commit__actions');
-  commitBtn.classList.add('scc-commit__primary');
-  commitActions.append(commitBtn, commitPushBtn, mergeBtn);
+  commitActions.append(commitHint, commitBtn, commitPushBtn);
   const generationStatus = createCommitGenerationStatus();
   const messageField = el('div', 'scc-commit__field');
   messageField.append(messageInput, generateBtn);
-  commitBox.append(messageField, generationStatus, commitHint, commitActions);
+  commitBox.append(messageField, generationStatus, commitActions, mergeBtn);
   commitBox.addEventListener('submit', (event) => event.preventDefault());
 
   const stageAllBtn = button({
@@ -604,7 +604,9 @@ export function createChangesView(ctx: SccContext): SccView {
     generateBtn.disabled = !!generateAbort || !hasAny;
     const stageAll = hasAny && !hasStaged;
     commitBtn.querySelector('.scc-btn__label')!.textContent = stageAll ? 'Commit all files' : 'Commit';
-    commitPushBtn.querySelector('.scc-btn__label')!.textContent = stageAll ? 'Commit all and push' : 'Commit & push';
+    const pushLabel = stageAll ? 'Commit all and push' : 'Commit & push';
+    commitPushBtn.title = pushLabel;
+    commitPushBtn.setAttribute('aria-label', pushLabel);
 
     commitHint.textContent = hasStaged ? `${lastCounts.staged} staged` : '';
   }

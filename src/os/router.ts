@@ -21,12 +21,6 @@ import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Legacy `#/app/…` target, or workspace gate when that app is unavailable. */
-function legacyHashForApp(appId: AppId): string {
-  if (!isAppAvailable(appId)) return '#/workspaces';
-  return `#/app/${appId}`;
-}
-
 /** Block unavailable apps: return to desktop. */
 function rejectUnavailableApp(appId: AppId): boolean {
   if (isAppAvailable(appId)) return false;
@@ -91,12 +85,6 @@ export function resolveLegacyHash(hash: string): {
       settingsSection: slug,
     };
   }
-  if (trimmed === '#/benchmark' || trimmed.startsWith('#/benchmark/')) {
-    return { hash: legacyHashForApp('bench') };
-  }
-  if (trimmed === '#/compare' || trimmed.startsWith('#/compare/')) {
-    return { hash: legacyHashForApp('compare') };
-  }
   if (trimmed === '#/scheduler' || trimmed.startsWith('#/scheduler/')) {
     return { hash: '#/app/scheduler' };
   }
@@ -121,23 +109,12 @@ export function resolveLegacyHash(hash: string): {
     const section = match?.[1] ?? DEFAULT_MODELS_SECTION;
     return { hash: `#/app/models/${section}`, modelsSection: section };
   }
-  if (trimmed === '#/brain' || trimmed.startsWith('#/brain/')) {
-    const match = trimmed.replace(/^#\/?/, '').match(/^brain(?:\/([\w-]+))?/);
-    const section = match?.[1] ?? 'graph';
+  const brainMatch = /^#\/(?:app\/)?brain(?:\/([\w-]+))?$/.exec(trimmed);
+  if (brainMatch) {
+    const section = normalizeBrainSection(brainMatch[1]);
     return { hash: `#/app/brain/${section}`, brainSection: section };
   }
-  if (trimmed === '#/research' || trimmed.startsWith('#/research/')) {
-    return { hash: '#/app/research' };
-  }
-  if (trimmed === '#/app/research' || trimmed.startsWith('#/app/research/')) {
-    return { hash: trimmed };
-  }
-  if (trimmed === '#/experts' || trimmed.startsWith('#/experts/')) {
-    return { hash: legacyHashForApp('experts') };
-  }
-  if (trimmed === '#/app/experts' || trimmed.startsWith('#/app/experts/')) {
-    return { hash: trimmed };
-  }
+  if (/^#\/(?:app\/)?(?:research|experts|benchmark|bench|compare)(?:[/?]|$)/.test(trimmed)) return { hash: '#/workspaces' };
   if (trimmed === '#/app/chat' || trimmed.startsWith('#/app/chat/')) {
     return { hash: '#/app/code/chat' };
   }
@@ -147,6 +124,10 @@ export function resolveLegacyHash(hash: string): {
 // ── Parse ────────────────────────────────────────────────────────────────────
 
 /** Parse a normalized hash into an OS route. */
+function normalizeBrainSection(section: string | undefined): string {
+  return section && ['memories', 'proposals', 'code', 'settings'].includes(section) ? section : 'memories';
+}
+
 export function parseOsHash(hash: string): OsRoute {
   const normalized = hash || '#/';
   if (
@@ -167,7 +148,7 @@ export function parseOsHash(hash: string): OsRoute {
       route.modelsSection = appMatch[2] ?? pendingModelsSection ?? DEFAULT_MODELS_SECTION;
     }
     if (route.appId === 'brain') {
-      route.brainSection = appMatch[2] ?? 'graph';
+      route.brainSection = normalizeBrainSection(appMatch[2]);
     }
     if (route.appId === 'code') {
       const seg = appMatch[2];

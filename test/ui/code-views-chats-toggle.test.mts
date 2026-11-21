@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { CHAT_SIDEBAR_CHANGED_EVENT } from '../../src/ui/layout-events.ts';
 import { initCodeViewsChatsToggle } from '../../src/ui/code-views-chats-toggle.ts';
-import { syncSuperPlanChrome } from '../../src/ui/super-plan-chrome.ts';
 import { resetMobileLayoutForTests } from '../../src/ui/mobile-layout.ts';
 import { OB_CHAT_AREA_CLASS } from '../../src/ui/orchestrate-page-shell.ts';
 import {
@@ -55,16 +54,6 @@ describe('code views chats toggle', () => {
     assert.equal(btn.getAttribute('aria-label'), 'Show chats');
   });
 
-  test('shows Show chats while Super Plan hides the session list', () => {
-    const btn = document.getElementById('btnCodeViewsChats');
-    assert.ok(btn);
-    assert.ok(happyDomWindow);
-
-    syncSuperPlanChrome(true);
-
-    assert.equal(btn.getAttribute('aria-expanded'), 'false');
-    assert.equal(btn.getAttribute('aria-label'), 'Show chats');
-  });
 
   test('clicking Chats closes a Code stage view', async () => {
     const area = document.createElement('main');

@@ -78,7 +78,7 @@ Enabled when `MINNOW_DEBUG=1` at build time ([`src/ui/settings-board-testing.ts`
 - Catalog + runner: `GET/POST /api/orchestrate/board-testing/runs/*`
 - In-process fake model: `POST /api/orchestrate/board-testing/fake-model/*`
 - **Seed board** (`POST /api/orchestrate/board-testing/seed`) is **410** — V1 session seed is gone. Create a board with `POST /api/boards`.
-- **Check log** (`POST /api/orchestrate/board-testing/check-log` / `npm run check:board-log`) is **410** — V1 JSONL invariants were deleted in MIN-713. History is the journal under `~/.minnow/boards/`. JSONL **tail** still works.
+- The old **Check log** endpoint (`POST /api/orchestrate/board-testing/check-log`) is **410** — V1 JSONL invariants were deleted in MIN-713. History is the journal under `~/.minnow/boards/`. JSONL **tail** still works.
 
 Catalog and adapters: [`src/dev/orchestrate-scenarios/`](../../src/dev/orchestrate-scenarios/). Unit tests: [`test/dev/`](../../test/dev/). Server tests: [`test/server/orchestrate-board-testing.test.mjs`](../../test/server/orchestrate-board-testing.test.mjs), [`test/server/orchestrate-scenario-runner.test.mjs`](../../test/server/orchestrate-scenario-runner.test.mjs).
 

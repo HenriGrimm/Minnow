@@ -6,17 +6,8 @@ import { createUserSkill, saveUserSkillContent } from '../skills/user-skills.js'
 import { parseSkillFrontmatter } from '../skills/parse-frontmatter.js';
 import { getAppRoot } from '../workspace/root.js';
 import { loadSynthesisConfig, saveSynthesisConfig } from './synthesis-config.js';
-import { writeSynthesisFactPage } from './synthesis.js';
 import { runSkillSynthesis } from './skill-synthesis.js';
 import { incrementMessagePairs, getMessagePairs } from './synthesis-state.js';
-import {
-  listMemoryProposals,
-  getMemoryProposal,
-  updateMemoryProposalStatus,
-  applyMemoryProposalEdits,
-  countPendingMemoryProposals,
-} from './proposals.js';
-import { clearSynthesisProposals } from './clear-synthesis-proposals.js';
 import {
   listSkillProposals,
   getSkillProposal,
@@ -45,19 +36,6 @@ function readJsonBody(req) {
     });
     req.on('error', reject);
   });
-}
-
-/** Map wiki page meta to legacy memory entry shape for API responses. */
-function pageMetaToEntry(meta) {
-  return {
-    id: meta.id,
-    title: meta.title,
-    tags: meta.tags ?? [],
-    source: meta.source === 'agent' || meta.source === 'synthesis' ? meta.source : 'user',
-    createdAt: meta.createdAt,
-    updatedAt: meta.updatedAt,
-    pinned: Boolean(meta.pinned),
-  };
 }
 
 /**
@@ -91,7 +69,7 @@ export async function handleSynthesisRequest(req, res, pathname) {
 
     if (pathname === '/api/memory/synthesis/status' && req.method === 'GET') {
       const [memoryPending, skillPending] = await Promise.all([
-        countPendingMemoryProposals(),
+        Promise.resolve(0),
         countPendingSkillProposals(),
       ]);
       sendJson(res, 200, {
@@ -173,88 +151,6 @@ export async function handleSynthesisRequest(req, res, pathname) {
         skillProposal: skillResult.skillProposal,
         skillSkipped: skillResult.skipped,
       });
-      return true;
-    }
-
-    if (pathname === '/api/memory/proposals' && req.method === 'GET') {
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-      const status = url.searchParams.get('status') ?? undefined;
-      const expertId = url.searchParams.get('expertId') ?? undefined;
-      const proposals = await listMemoryProposals(
-        /** @type {'pending' | 'accepted' | 'rejected' | undefined} */ (status),
-        expertId,
-      );
-      sendJson(res, 200, { proposals });
-      return true;
-    }
-
-    if (pathname === '/api/memory/proposals/clear' && req.method === 'POST') {
-      const body = await readJsonBody(req);
-      if (body.confirmed !== true) {
-        sendJson(res, 400, { error: 'confirmed: true is required' });
-        return true;
-      }
-      const scope = body.scope === 'all' ? 'all' : 'pending';
-      const result = await clearSynthesisProposals(scope);
-      sendJson(res, 200, result);
-      return true;
-    }
-
-    const memoryAcceptMatch = pathname.match(
-      /^\/api\/memory\/proposals\/([^/]+)\/accept$/,
-    );
-    if (memoryAcceptMatch && req.method === 'POST') {
-      const id = decodeURIComponent(memoryAcceptMatch[1]);
-      const body = await readJsonBody(req);
-      const existing = await getMemoryProposal(id);
-      if (!existing) {
-        sendJson(res, 404, { error: 'Proposal not found' });
-        return true;
-      }
-      if (existing.status !== 'pending') {
-        sendJson(res, 409, { error: 'Proposal already resolved' });
-        return true;
-      }
-
-      const edited = await applyMemoryProposalEdits(id, {
-        title: body.title,
-        body: body.body,
-        tags: body.tags,
-      });
-      const row = edited ?? existing;
-      const expertId =
-        typeof row.expertId === 'string' ? row.expertId.trim() : '';
-      const writeOpts = { source: 'agent' };
-      if (expertId && /^[a-z][a-z0-9-]{0,63}$/.test(expertId)) {
-        writeOpts.dir = `experts/${expertId}/facts`;
-      }
-      const { page } = await writeSynthesisFactPage(
-        {
-          title: row.title,
-          body: row.body,
-          tags: row.tags,
-          category: row.category,
-          scope: row.scope,
-        },
-        [],
-        writeOpts,
-      );
-      await updateMemoryProposalStatus(id, 'accepted');
-      sendJson(res, 200, { ok: true, entry: pageMetaToEntry(page.meta), proposalId: id });
-      return true;
-    }
-
-    const memoryRejectMatch = pathname.match(
-      /^\/api\/memory\/proposals\/([^/]+)\/reject$/,
-    );
-    if (memoryRejectMatch && req.method === 'POST') {
-      const id = decodeURIComponent(memoryRejectMatch[1]);
-      const row = await updateMemoryProposalStatus(id, 'rejected');
-      if (!row) {
-        sendJson(res, 404, { error: 'Proposal not found' });
-        return true;
-      }
-      sendJson(res, 200, { ok: true, proposalId: id });
       return true;
     }
 

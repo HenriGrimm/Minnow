@@ -112,7 +112,6 @@ export const DEFAULT_RUNNER_BY_EXT = {
  */
 export const PATH_RUNNER_RULES = [
   { pattern: 'test/headless/api-auth.test.mts', runner: 'tsx-clean-exit' },
-  { pattern: 'test/ui/super-plan-page.test.mts', runner: 'tsx-clean-exit' },
   { pattern: 'test/chats/legacy-result-delivery.test.mjs', runner: 'node-clean-exit' },
   { pattern: 'test/godot/scene-outline.test.mjs', runner: 'node-clean-exit' },
   { pattern: 'test/remote/dev-remote-filter.test.mjs', runner: 'node-clean-exit' },
@@ -133,7 +132,6 @@ export const PATH_RUNNER_RULES = [
   { pattern: 'test/headless/persist-chat.test.mts', runner: 'node-tsx' },
   { pattern: 'test/headless/sampler.test.mts', runner: 'node-tsx' },
   { pattern: 'test/sub-agents/scheduler-drain-reject.test.mts', runner: 'tsx-mocks' },
-  { pattern: 'test/research/*.test.mts', runner: 'tsx-mocks-loader' },
   // Parity imports src/state/sessions.ts (CSS/@xterm via UI); other config tests stay on tsx-mocks.
   { pattern: 'test/config/session-shape-parity.test.js', runner: 'tsx-mocks-loader' },
   { pattern: 'test/config/*.test.js', runner: 'tsx-mocks' },
@@ -248,9 +246,6 @@ export const SCOPED_SUITES = {
   mcp: {
     patterns: ['test/mcp/**/*.test.mjs', 'test/mcp/**/*.test.mts'],
   },
-  research: {
-    patterns: ['test/research/**/*.test.mjs', 'test/research/**/*.test.mts'],
-  },
   servers: {
     patterns: ['test/servers/**/*.test.mjs'],
   },
@@ -293,20 +288,10 @@ export const SCOPED_SUITES = {
     patterns: [
       'test/api/message-content.test.mts',
       'test/benchmark/**/*.test.mts',
-      'test/ui/benchmark-stop.test.mts',
-      'test/ui/benchmark-stopped-card.test.mts',
-      'test/ui/benchmark-history-browse.test.mts',
-      'test/ui/benchmark-nav-persistence.test.mts',
-      'test/ui/benchmark-suite-toggles.test.mts',
-      'test/ui/benchmark-transcript-resolve.test.mts',
       'test/ui/capability-cell-panel.test.mts',
       'test/ui/transcript-view.test.mts',
-      'test/ui/benchmark-page-html.test.mjs',
       'test/benchmark-workspace/**/*.test.mjs',
     ],
-  },
-  evals: {
-    patterns: ['test/evals/**/*.test.mjs', 'test/evals/**/*.test.mts'],
   },
   a11y: {
     patterns: [

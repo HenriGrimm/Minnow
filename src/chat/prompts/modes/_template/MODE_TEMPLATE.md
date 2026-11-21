@@ -38,7 +38,7 @@ One paragraph persona: what the assistant optimizes for in this mode.
 
 ## 4. Tool policy
 
-Document which tools are denied and why. Runtime enforcement: `filterToolsByMode()` in `src/chat/modes/tool-policy.ts` using `getMode(id).toolPolicy`.
+Describe workflow guidance only. Permissions and skill clamps are enforced independently of mode.
 
 | Mode | Typical restriction |
 |------|---------------------|

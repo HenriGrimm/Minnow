@@ -31,20 +31,6 @@ const TARGETS: readonly ExpandTarget[] = [
     inputId: 'desktopInput',
     desktop: true,
   },
-  {
-    btnId: 'btnResearchExpand',
-    anchorIds: [],
-    inputId: 'researchQuery',
-    prebuilt: true,
-    bar: true,
-  },
-  {
-    btnId: 'btnSuperPlanExpand',
-    anchorIds: [],
-    inputId: 'superPlanPrompt',
-    prebuilt: true,
-    bar: true,
-  },
 ];
 
 // ── Targets ──────────────────────────────────────────────────────────────────

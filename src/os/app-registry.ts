@@ -47,44 +47,6 @@ export const APPS: readonly AppDefinition[] = [
     releaseState: 'released',
   },
   {
-    id: 'research',
-    name: 'Research',
-    icon: 'research',
-    tag: 'Send a sub-agent to dig deep',
-    description: 'Multi-step web + source synthesis',
-    availability: 'core',
-    // Disabled for release: the Research app is broken. Hidden keeps it off the
-    // rail, the dock and Settings > Apps, and makes #/app/research redirect.
-    releaseState: 'hidden',
-  },
-  {
-    id: 'experts',
-    name: 'Experts',
-    icon: 'flask',
-    tag: 'Compose & test expert agents',
-    description: 'Personas, tools, eval harness',
-    availability: 'optional',
-    releaseState: 'hidden',
-  },
-  {
-    id: 'bench',
-    name: 'Benchmarking',
-    icon: 'bench',
-    tag: 'Measure models head-to-head',
-    description: 'Throughput, latency, quality',
-    availability: 'optional',
-    releaseState: 'hidden',
-  },
-  {
-    id: 'compare',
-    name: 'Compare',
-    icon: 'compare',
-    tag: 'Blind A/B model preference',
-    description: 'Side-by-side votes, reveal, win rates',
-    availability: 'optional',
-    releaseState: 'hidden',
-  },
-  {
     id: 'models',
     name: 'Models',
     icon: 'chip',
@@ -205,12 +167,8 @@ type AppModuleLoader = () => Promise<{ init: () => void | Promise<void> }>;
 /** Dynamic import entry points for each Minnow app page bundle. */
 export const APP_MODULE_LOADERS: Partial<Record<AppId, AppModuleLoader>> = {
   settings: () => import('../ui/settings-page').then((m) => ({ init: m.initSettingsPage })),
-  bench: () => import('../ui/benchmark-page').then((m) => ({ init: m.initBenchmarkPage })),
-  compare: () => import('../ui/compare-page').then((m) => ({ init: m.initComparePage })),
   models: () => import('../ui/models-page').then((m) => ({ init: m.initModelsPage })),
   brain: () => import('../ui/brain-page').then((m) => ({ init: m.initBrainPage })),
   scheduler: () => import('../ui/scheduler-page').then((m) => ({ init: m.initSchedulerPage })),
   issues: () => import('../ui/issues-page').then((m) => ({ init: m.initIssuesPage })),
-  research: () => import('../research/panel').then((m) => ({ init: m.initResearchPage })),
-  experts: () => import('../ui/experts/experts-hub').then((m) => ({ init: m.initExpertsHub })),
 };

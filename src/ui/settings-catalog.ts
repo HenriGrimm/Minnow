@@ -1,3 +1,4 @@
+import { isMinnowDebugEnabled } from '../config/dev-surfaces';
 import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 import type { SettingsSectionId } from './settings-page-types';
 import { filterSettingsCatalogEntries } from './settings-catalog-filter';
@@ -42,7 +43,7 @@ export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> 
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
   agents: 'The one agent: its prompts, workflow skills, sub-agent limits, rules, and boards.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
-  advanced: 'Local health probes, capability matrix, and diagnostics.',
+  advanced: 'Local health probes and diagnostics.',
 };
 
 /** Category → ordered areas (render units). */
@@ -70,6 +71,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   ],
   advanced: [
     'diagnostics',
+    ...(isMinnowDebugEnabled() ? ['capability-matrix' as const] : []),
   ],
 };
 
@@ -595,21 +597,6 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['reset', 'clear manual', 'danger'],
   }),
 
-  field('advanced.boardTesting', 'Board testing', 'advanced', 'board-testing', {
-    keywords: ['orchestrate', 'fake model', 'seed board', 'board log', 'kanban', 'test board'],
-    description:
-      'Manual orchestrate board workflow: in-process fake model, seed test board, catalog scenarios.',
-  }),
-  field('advanced.boardTesting.fakeModel', 'Fake model', 'advanced', 'board-testing', {
-    keywords: ['fake-board', 'openai stub', 'deterministic model'],
-  }),
-  field('advanced.boardTesting.seed', 'Seed test board', 'advanced', 'board-testing', {
-    keywords: ['quick preset', 'smoke preset', 'planner'],
-  }),
-  field('advanced.boardTesting.log', 'Board log validation', 'advanced', 'board-testing', {
-    keywords: ['jsonl', 'invariants', 'check-board-log', 'orchestrate log', 'retired'],
-    description: 'V1 JSONL invariant checking is retired. Use the journal under ~/.minnow/boards/.',
-  }),
 
   field('about.info', 'Build info', 'general', 'about', {
     keywords: ['version', 'platform', 'node', 'electron'],

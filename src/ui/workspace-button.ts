@@ -104,11 +104,6 @@ export async function applyWorkspaceSwitch(info: WorkspaceInfo): Promise<void> {
   setStatus('ok', `Workspace: ${info.label}`);
   const { refreshHubLiveData } = await import('./hub');
   refreshHubLiveData();
-  const { isSuperPlanPageMounted, refreshSuperPlanLibrary } = await import('./super-plan-page');
-  if (isSuperPlanPageMounted()) {
-    refreshSuperPlanLibrary();
-  }
-
   const { clearPanelCwdUserOverride, refreshGitPanel } = await import('./git-panel');
   clearPanelCwdUserOverride();
   const { resetRegisteredWorktreePathCache } = await import('../lib/worktree-allowlist-client');

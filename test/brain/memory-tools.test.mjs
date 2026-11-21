@@ -169,9 +169,9 @@ describe('memory tools', () => {
 
   it('manage_brain still requires confirmation for destructive actions', async () => {
     await createPage({ relPath: 'facts/confirm-test.md', title: 'Confirm test', body: 'temp', skipVectorSync: true });
-    assert.match(await call('manage_brain', { action: 'delete_page', path: 'facts/confirm-test.md' }), /requires confirmation/);
-    assert.match(await call('manage_brain', { action: 'delete_page', path: 'facts/confirm-test.md', confirmed: 'true' }), /Deleted wiki page/);
-    await assert.rejects(() => readPage('facts/confirm-test.md'));
+    assert.match(await call('manage_brain', { action: 'clear_code_index' }), /requires confirmation/);
+    assert.match(await call('manage_brain', { action: 'delete_page', path: 'facts/confirm-test.md', confirmed: 'true' }), /unknown action/);
+    assert.equal((await readPage('facts/confirm-test.md')).body.trim(), 'temp');
   });
 
   it('Brain app routes list, edit and forget memories with revision checks', async () => {
@@ -211,6 +211,22 @@ describe('memory tools', () => {
       assert.equal(await call('memory_search', { query: 'gh-pages docs deploy' }), 'No matching memories.');
       const missing = await fetch(`${base}/api/brain/memories/${id}?workspaceRoot=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' });
       assert.equal(missing.status, 404);
+
+      const post = (body) => fetch(`${base}/api/brain/memories`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceRoot: workspaceDir, ...body }),
+      });
+      const added = await post({ scope: 'user', title: 'Prefer pnpm in new repos', body: 'Faster installs.', kind: 'preference' });
+      assert.equal(added.status, 201);
+      const addedJson = await added.json();
+      assert.equal(addedJson.scope, 'user');
+      assert.equal(addedJson.source, 'user');
+      const duplicate = await post({ scope: 'user', title: 'Prefer pnpm in new repos', body: 'Faster installs.', kind: 'preference' });
+      assert.equal(duplicate.status, 409);
+      assert.equal((await duplicate.json()).conflictId, addedJson.id);
+      const invalid = await post({ scope: 'project', title: '', body: 'x', kind: 'decision' });
+      assert.equal(invalid.status, 400);
+      await fetch(`${base}/api/brain/memories/${addedJson.id}?workspaceRoot=${encodeURIComponent(workspaceDir)}&expectedRevision=${addedJson.revision}`, { method: 'DELETE' });
     } finally {
       await new Promise(resolve => server.close(resolve));
     }

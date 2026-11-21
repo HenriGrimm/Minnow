@@ -11,7 +11,7 @@
       "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 40243,
+      "ms": 40194,
       "error": "timed out waiting for rel1-8 to finish"
     },
     {
@@ -20,7 +20,7 @@
       "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 41015,
+      "ms": 40232,
       "error": "timed out waiting for rel2-9 to finish"
     },
     {
@@ -29,7 +29,7 @@
       "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 40334,
+      "ms": 40196,
       "error": "timed out waiting for rel3-10 to finish"
     },
     {
@@ -38,7 +38,7 @@
       "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 40246,
+      "ms": 40207,
       "error": "timed out waiting for rel4-11 to finish"
     },
     {
@@ -47,7 +47,7 @@
       "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 18174,
+      "ms": 19186,
       "error": "fetch failed"
     },
     {
@@ -65,7 +65,7 @@
       "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 0,
+      "ms": 1,
       "error": "fetch failed"
     },
     {
@@ -74,7 +74,7 @@
       "merged": 0,
       "retries": 0,
       "abandoned": 0,
-      "ms": 0,
+      "ms": 1,
       "error": "fetch failed"
     },
     {

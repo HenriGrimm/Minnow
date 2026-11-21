@@ -152,6 +152,16 @@ export type IssuesGithubSyncAllScope = {
   workspacePath: string;
 };
 
+function beginGithubActivity(controller: AbortController, mirror = true) {
+  return beginGitActivity(mirror ? 'Syncing with GitHub…' : 'Importing from GitHub…', {
+    stop: {
+      label: mirror ? 'Stop GitHub sync' : 'Stop GitHub import',
+      pendingLabel: mirror ? 'Stopping GitHub sync…' : 'Stopping GitHub import…',
+      run: () => controller.abort(),
+    },
+  });
+}
+
 /** Import remote issues and sync existing cards with GitHub. */
 export async function runIssuesGithubSyncAll(
   syncScope: IssuesGithubSyncAllScope,
@@ -162,10 +172,13 @@ export async function runIssuesGithubSyncAll(
   syncAllInFlight = mirror ? 'sync' : 'import';
   syncIssuesGithubSyncAllButton();
 
-  const activity = beginGitActivity(mirror ? 'Syncing with GitHub…' : 'Importing from GitHub…');
+  const controller = new AbortController();
+  const { signal } = controller;
+  const activity = beginGithubActivity(controller, mirror);
   try {
     if (!mirror) {
-      const result = await importGithubIssues({ workspacePath: syncScope.workspacePath, allPages: true, userInitiated: true });
+      const result = await importGithubIssues({ workspacePath: syncScope.workspacePath, allPages: true, userInitiated: true, signal });
+      signal.throwIfAborted();
       if (result.ok) {
         finishGitActivitySuccess(activity, result.imported
           ? `Imported ${result.imported} ${result.imported === 1 ? 'issue' : 'issues'} from GitHub`
@@ -178,8 +191,11 @@ export async function runIssuesGithubSyncAll(
     const { synced, imported, conflicts, errors } = await syncAllIssuesWithGithub({
       scope: syncScope.scope,
       workspacePath: syncScope.workspacePath,
+      signal,
     });
+    signal.throwIfAborted();
     await surfaceGithubSyncConflicts(conflicts);
+    signal.throwIfAborted();
 
     if (errors.length > 0) {
       const first = userFacingGithubError(errors[0]);
@@ -201,7 +217,8 @@ export async function runIssuesGithubSyncAll(
       finishGitActivitySuccess(activity);
     }
   } catch {
-    finishGitActivityError(activity, {
+    if (signal.aborted) finishGitActivitySuccess(activity, mirror ? 'GitHub sync stopped' : 'GitHub import stopped');
+    else finishGitActivityError(activity, {
       error: mirror ? 'Could not sync with GitHub' : 'Could not import from GitHub',
       chatKind: 'github',
     });
@@ -378,9 +395,11 @@ export function bindGithubSyncButton(
     const idle = options.idleLabel;
     btn.disabled = true;
     setButtonLabel(btn, 'Syncing…');
-    const activity = beginGitActivity('Syncing with GitHub…');
-    void syncIssueWithGithub(issue.id)
+    const controller = new AbortController();
+    const activity = beginGithubActivity(controller);
+    void syncIssueWithGithub(issue.id, undefined, controller.signal)
       .then((outcome) => {
+        controller.signal.throwIfAborted();
         if (outcome.conflict) {
           finishGitActivitySuccess(activity);
           btn.disabled = false;
@@ -414,7 +433,8 @@ export function bindGithubSyncButton(
       .catch(() => {
         btn.disabled = false;
         setButtonLabel(btn, idle);
-        finishGitActivityError(activity, { error: 'Sync failed', chatKind: 'github' });
+        if (controller.signal.aborted) finishGitActivitySuccess(activity, 'GitHub sync stopped');
+        else finishGitActivityError(activity, { error: 'Sync failed', chatKind: 'github' });
       });
   });
 }

@@ -36,12 +36,6 @@ function baseOneShot(overrides: Partial<OneShotResult> = {}): OneShotResult {
   };
 }
 
-mock.module('../../src/providers/fetch-models.ts', {
-  namedExports: {
-    fetchModelsForProvider: async () => [],
-  },
-});
-
 mock.module('../../src/benchmark/llm-driver.ts', {
   namedExports: {
     runOneShot: async () => baseOneShot(),

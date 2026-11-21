@@ -2,8 +2,6 @@
  * Multi-model benchmark campaign orchestration.
  */
 
-import { fetchEvalConfig } from '../evals/config.ts';
-import { runEvalSuite } from '../evals/suite-scheduler.ts';
 import { resolveProvider } from '../providers/store.ts';
 import { getWorkspacePath } from '../state/workspace.ts';
 import { aggregateFromRun, computeCampaignAggregates } from './aggregates.ts';
@@ -25,7 +23,6 @@ import {
 import { runMatrix } from './matrix-scheduler.ts';
 import { buildTargetKey, targetKeyFromTarget, targetLabel } from './model-key.ts';
 import { runBenchmark } from './runner.ts';
-import { runStandardPackForTarget } from './standard/runner.ts';
 import type { SuiteId } from './types.ts';
 import { saveCampaign } from './campaign-persistence.ts';
 
@@ -71,16 +68,6 @@ function buildSelectedSuites(options: RunCampaignOptions): SelectedSuite[] {
   const integration = options.integrationSuites ?? suitesForPreset(options.preset ?? 'quick');
   for (const id of integration) {
     suites.push({ family: 'integration', id });
-  }
-  for (const id of options.standardPackIds ?? []) {
-    suites.push({
-      family: 'standard',
-      id,
-      tier: options.standardTier ?? 'mini',
-    });
-  }
-  for (const id of options.customPackIds ?? []) {
-    suites.push({ family: 'custom', id });
   }
   return suites;
 }
@@ -141,40 +128,6 @@ async function runIntegrationForTarget(
   return { target, runs: [{ ...run, targetKey }], cells: [] };
 }
 
-async function runStandardForTarget(
-  target: BenchmarkTarget,
-  packIds: string[],
-  tier: RunCampaignOptions['standardTier'],
-  signal: AbortSignal,
-  onProgress: RunCampaignOptions['onProgress'],
-  targetKey: string,
-): Promise<TargetWorkResult> {
-  const cells: BenchmarkCellResult[] = [];
-  for (const packId of packIds) {
-    if (signal.aborted) break;
-    const packCells = await runStandardPackForTarget({
-      target,
-      targetKey,
-      packId,
-      tier: tier ?? 'mini',
-      signal,
-      onItemDone: (cell) => {
-        onProgress?.({ type: 'cell-done', cell });
-        if (cell.tokPerSec) {
-          onProgress?.({
-            type: 'metric-sample',
-            targetKey: cell.targetKey,
-            tokPerSec: cell.tokPerSec,
-            ttftMs: cell.ttftMs,
-          });
-        }
-      },
-    });
-    cells.push(...packCells);
-  }
-  return { target, runs: [], cells };
-}
-
 /**
  * Run one target's suites. `target` carries the binding to call (rewritten to the
  * upstream serve for My Models rows); `rosterTarget` stays the roster row every
@@ -187,7 +140,6 @@ async function runTargetSuites(
   rosterTarget: BenchmarkTarget,
 ): Promise<TargetWorkResult> {
   const integrationSuites = options.integrationSuites ?? suitesForPreset(options.preset ?? 'quick');
-  const standardPackIds = options.standardPackIds ?? [];
   const onProgress = options.onProgress;
   const targetKey = targetKeyFromTarget(rosterTarget);
   const parts: TargetWorkResult[] = [];
@@ -201,19 +153,6 @@ async function runTargetSuites(
         workerSignal,
         onProgress,
         resolveCapabilityMatrixOptions(options, rosterTarget),
-        targetKey,
-      ),
-    );
-  }
-
-  if (standardPackIds.length) {
-    parts.push(
-      await runStandardForTarget(
-        target,
-        standardPackIds,
-        options.standardTier,
-        workerSignal,
-        onProgress,
         targetKey,
       ),
     );
@@ -293,22 +232,15 @@ export async function runBenchmarkCampaign(
   const startedAt = new Date().toISOString();
   const t0 = performance.now();
   const integrationSuites = options.integrationSuites ?? suitesForPreset(options.preset ?? 'quick');
-  const standardPackIds = options.standardPackIds ?? [];
-  const customPackIds = options.customPackIds ?? [];
-  if (!integrationSuites.length && !standardPackIds.length && !customPackIds.length) {
-    throw new Error('Select at least one Academic benchmark and/or Minnow test to run.');
+  if (!integrationSuites.length) {
+    throw new Error('Select at least one capability suite to run.');
   }
   const selectedSuites = buildSelectedSuites(options);
   const campaignKind = campaignKindFromOptions(options);
 
-  let configConcurrency = 2;
-  try {
-    const config = await fetchEvalConfig();
-    configConcurrency = config.maxConcurrency;
-  } catch {}
   const concurrency = Math.max(
     1,
-    Math.min(8, options.maxConcurrency ?? configConcurrency),
+    Math.min(8, options.maxConcurrency ?? 2),
   );
   const localConcurrency = Math.max(1, options.localConcurrency ?? 1);
   const manageModelLifecycle = options.manageModelLifecycle === true;
@@ -400,24 +332,6 @@ export async function runBenchmarkCampaign(
         worker: matrixWorker,
         onItemDone: handleItemDone,
       });
-    }
-
-    if (customPackIds.length && !signal.aborted) {
-      for (const packId of customPackIds) {
-        await runEvalSuite({
-          request: {
-            packId,
-            targets: targets.map((t) => ({
-              providerId: t.providerId,
-              modelId: t.modelId,
-              label: t.label,
-            })),
-          },
-          defaultWorkspacePath: getWorkspacePath(),
-          fallbackProviderId: targets[0]!.providerId,
-          fallbackModelId: targets[0]!.modelId,
-        });
-      }
     }
 
     if (signal.aborted) {

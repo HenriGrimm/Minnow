@@ -80,7 +80,7 @@ function skipDir(name) {
   return name.startsWith('.') || SKIP_DIRS.has(name.toLowerCase());
 }
 
-/** Follow folders down to repo roots, leaving their contents and submodules alone. */
+/** Follow folders down to repo roots without scanning inside them. */
 async function scanChildRepos(root) {
   /** @type {string[]} */
   const found = [];
@@ -107,6 +107,18 @@ async function scanChildRepos(root) {
   return found;
 }
 
+/** A nested project is independent only if the enclosing repo does not ignore or own it as a gitlink. */
+async function isIndependentChildRepo(root, child) {
+  const id = repoIdForPath(root, child);
+  // Include gitlinks added as embedded repos (no .gitmodules) and all index stages.
+  const [ignored, index] = await Promise.all([
+    git(['check-ignore', '--no-index', '--quiet', '--', id + '/'], root),
+    git(['--literal-pathspecs', 'ls-files', '--stage', '-z', '--', id], root),
+  ]);
+  if (ignored.code !== 1 || index.code !== 0 || index.accumulationTruncated) return false;
+  return !index.stdout.split('\0').some((entry) => entry.startsWith('160000 ') && entry.slice(entry.indexOf('\t') + 1) === id);
+}
+
 /** Forward-slash, case-folded on Windows. */
 function comparable(fsPath) {
   const norm = normalizePathForComparison(fsPath);
@@ -121,7 +133,10 @@ export function repoIdForPath(root, abs) {
 
 async function scan(root) {
   const [rootRepo, children] = await Promise.all([rootIsInsideRepo(root), scanChildRepos(root)]);
-  const dirs = [...(rootRepo ? [root] : []), ...children];
+  const independent = rootRepo
+    ? (await Promise.all(children.map(async (child) => await isIndependentChildRepo(root, child) ? child : null))).filter(Boolean)
+    : children;
+  const dirs = [...(rootRepo ? [root] : []), ...independent];
   const repos = await Promise.all(dirs.map(async (absPath) => {
     const id = repoIdForPath(root, absPath);
     return { id, relPath: id, absPath, isRoot: id === '.', remote: await readRemote(absPath) };

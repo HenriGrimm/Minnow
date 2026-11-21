@@ -80,7 +80,7 @@ describe('launch_minnow_app', () => {
     const result = toolLaunchMinnowApp({ app_id: 'research' }, (appId) => {
       calls.push(appId);
     });
-    assert.match(result, /not available/i);
+    assert.match(result, /^Error: invalid app_id/);
     assert.deepEqual(calls, []);
   });
 
@@ -89,7 +89,7 @@ describe('launch_minnow_app', () => {
     const result = toolLaunchMinnowApp({ app_id: 'bench' }, (appId) => {
       calls.push(appId);
     });
-    assert.match(result, /not available/i);
+    assert.match(result, /^Error: invalid app_id/);
     assert.deepEqual(calls, []);
   });
 

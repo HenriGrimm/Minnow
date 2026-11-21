@@ -6,9 +6,9 @@ Run `npm run architecture:generate` after changing a registry; CI checks drift w
 
 | Inventory | Current registry |
 | --- | --- |
-| Built-in tools | 121 (0 app-gated) |
+| Built-in tools | 122 (0 app-gated) |
 | Released apps | 7: Code, Source Control, Models, Brain, Automations, Issues, Settings |
-| Hidden apps | 4: Research, Experts, Benchmarking, Compare |
+| Hidden apps | 0:  |
 | Available modes | 6: General, Build, Plan, Orchestrate, Debug, Onboarding |
 | Composer modes | 0:  |
 | Bundled skills | 30: antislop, ask, ask-user, browser-automation, build-plugin, caveman, clerk-cli, code-review, create-pr, debug, debug-error, docs-update, explain-code, fix-ci, fly-cli, frontend-design, git-setup, git-commit, impeccable, kickoff, onboarding, orchestrate-plan, partymode, plan, plan-work, refactor-safe, security-review, supabase-cli, ui-designer, write-tests |

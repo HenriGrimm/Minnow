@@ -182,7 +182,6 @@ async function main() {
   console.log(`Config API: ${localUrl.replace(/\/$/, '')}/api/config/ping`);
   console.log(`Providers API: ${localUrl.replace(/\/$/, '')}/api/providers`);
   console.log(`Generations API: ${localUrl.replace(/\/$/, '')}/api/generations`);
-  console.log(`Research API: ${localUrl.replace(/\/$/, '')}/api/research`);
   console.log(`Work agents API: ${localUrl.replace(/\/$/, '')}/api/work-agents`);
   console.log(`Agent packs API: ${localUrl.replace(/\/$/, '')}/api/agent-packs`);
   console.log(`Tools API: ${localUrl.replace(/\/$/, '')}/api/tools/ping`);

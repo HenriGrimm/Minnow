@@ -27,7 +27,6 @@ import { subscribeIssuesChanges } from '../state/issues-events';
 import { getWorkspacePath } from '../state/workspace';
 import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { isCoarsePointer } from '../ui/mobile-layout';
-import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-panel';
 import { getCurrentRoute, launchApp, navigateToCodeBoards } from './router';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import type { AppId } from './types';
@@ -53,9 +52,6 @@ function isRailAppActive(appId: AppId): boolean {
   return getForegroundAppId() === appId;
 }
 
-function isRailAppHosting(appId: AppId): boolean {
-  return appId === 'code' && isResearchPanelOpen() && getForegroundAppId() === 'code';
-}
 
 let tooltipEl: HTMLDivElement | null = null;
 let tooltipTimer: ReturnType<typeof setTimeout> | null = null;
@@ -382,7 +378,7 @@ let issuesTaxonomyStore: typeof import('../state/issues-taxonomy-store') | null 
 
 function syncRailButtons(tileByAppId: Map<AppId, HTMLButtonElement>): void {
   for (const [appId, btn] of tileByAppId) {
-    const hosting = isRailAppHosting(appId);
+    const hosting = false;
     const active = isRailAppActive(appId);
     btn.classList.toggle('is-active', active);
     btn.classList.toggle('is-hosting', hosting);
@@ -473,7 +469,6 @@ export function initAppRail(root: HTMLElement): () => void {
   const unsubInstances = subscribeInstances(onInstances);
   const unsubPrefs = subscribeAppPreferences(rebuild);
   const unsubRegistry = subscribeAppRegistry(rebuild);
-  const unsubResearch = subscribeResearchPanel(onInstances);
   syncRailVisibility(root);
 
   const onLayoutChange = (): void => {
@@ -494,7 +489,6 @@ export function initAppRail(root: HTMLElement): () => void {
     unsubInstances();
     unsubPrefs();
     unsubRegistry();
-    unsubResearch();
     for (const dispose of tileDisposers) dispose();
     tileDisposers = [];
     hideRailTooltip();

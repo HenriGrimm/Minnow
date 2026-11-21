@@ -36,17 +36,7 @@ const SERVED_BINDING = {
 /** Binding runBenchmark was actually called with (proves completions still hit the serve). */
 let observedBinding: { providerId: string; modelId: string } | null = null;
 
-mock.module('../../src/evals/config.ts', {
-  namedExports: {
-    fetchEvalConfig: async () => ({ maxConcurrency: 1 }),
-  },
-});
 
-mock.module('../../src/evals/suite-scheduler.ts', {
-  namedExports: {
-    runEvalSuite: async () => undefined,
-  },
-});
 
 mock.module('../../src/providers/store.ts', {
   namedExports: {
@@ -69,12 +59,6 @@ mock.module('../../src/benchmark/campaign-persistence.ts', {
   },
 });
 
-mock.module('../../src/benchmark/standard/runner.ts', {
-  namedExports: {
-    runStandardPackForTarget: async () => [],
-    targetDisplayLabel: (target: BenchmarkTarget) => target.modelId,
-  },
-});
 
 mock.module('../../src/benchmark/model-lifecycle.ts', {
   namedExports: {

@@ -1,5 +1,4 @@
 import { getForegroundAppId, getOsView, subscribeInstances } from './instances';
-import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-panel';
 import type { AppId } from './types';
 import { isAppAvailable } from './app-preferences';
 import { isDeveloperReleased } from './app-registry';
@@ -36,7 +35,6 @@ function isCodeForeground(): boolean {
 export function shouldHideAppBody(): boolean {
   if (!isOsShellEnabled()) return false;
   if (isCodeForeground()) return false;
-  if (isResearchPanelOpen()) return false;
   if (getOsView() === 'workspaces') return true;
   return getForegroundAppId() !== 'code';
 }
@@ -51,12 +49,6 @@ export function syncLegacyChromeVisibility(): void {
 
   appBody?.classList.toggle('hidden', hideLegacy);
   topbar?.classList.toggle('hidden', hideLegacy);
-
-  document.getElementById('btnBenchmark')?.toggleAttribute('hidden', !isAppAvailable('bench'));
-  document.getElementById('btnExpertLab')?.toggleAttribute('hidden', !isAppAvailable('experts'));
-  document
-    .getElementById('expertsSection')
-    ?.toggleAttribute('hidden', !isDeveloperReleased('experts'));
 
   const view = getOsView();
   const onWorkspaces = view === 'workspaces';
@@ -124,7 +116,6 @@ export function initOsPageBridge(): void {
   subscribeInstances(() => {
     syncLegacyChromeVisibility();
   });
-  subscribeResearchPanel(() => syncLegacyChromeVisibility());
   syncLegacyChromeVisibility();
 }
 

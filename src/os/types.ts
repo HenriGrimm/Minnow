@@ -2,10 +2,6 @@
 export type BuiltinAppId =
   | 'source-control'
   | 'code'
-  | 'research'
-  | 'experts'
-  | 'bench'
-  | 'compare'
   | 'models'
   | 'brain'
   | 'scheduler'

@@ -11,7 +11,6 @@
 
 export const APP_WINDOW_ALLOWED_IDS = [
   'source-control',
-  'research',
   'models',
   'brain',
   'scheduler',

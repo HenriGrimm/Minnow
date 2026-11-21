@@ -888,16 +888,6 @@ export async function waitForSubAgent(
   });
 }
 
-export function recordToolCallForRun(
-  _runId: string,
-  _name: string,
-  _args: Record<string, unknown>,
-): void {}
-
-export function getRunToolCallFingerprint(_runId: string): string {
-  return '';
-}
-
 export function resetSubAgentOrchestrator(): void {
   for (const client of clients.values()) client.close();
   clients.clear();
@@ -920,16 +910,6 @@ export function resetSubAgentOrchestrator(): void {
 }
 
 export const resetSubAgentController = resetSubAgentOrchestrator;
-
-/** @deprecated Persistence is the journal at ~/.minnow/agents/<parentChatId>/. */
-export function initControllerPersistence(): Promise<void> {
-  return Promise.resolve();
-}
-
-/** @deprecated The SSE store is ready without a registry hydrate. */
-export function ensureControllerReady(): Promise<void> {
-  return Promise.resolve();
-}
 
 // ── Format ───────────────────────────────────────────────────────────────────
 

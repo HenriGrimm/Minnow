@@ -20,9 +20,7 @@ import {
   normalizeSearchConfig,
   defaultSearchConfig,
   normalizeServersConfig,
-  normalizeResearchConfig,
   seedSearchConfigFromTools,
-  defaultResearchConfig,
   normalizeSkillConfig,
   normalizeSubAgentsConfig,
   SESSION_SCHEMA_VERSION,
@@ -350,10 +348,6 @@ export async function readResource(resource) {
     const data = await readConfigJson(key);
     return normalizeServersConfig(data);
   }
-  if (resource === 'research') {
-    const data = await readConfigJson(key);
-    return data ?? defaultResearchConfig();
-  }
   if (resource === 'skills') {
     const data = await readConfigJson(key);
     return data ?? defaultSkillsJson();
@@ -489,11 +483,6 @@ export async function writeResource(resource, body, { sessionReceipt = false } =
   }
   if (resource === 'servers') {
     const normalized = normalizeServersConfig(body);
-    await writeConfigJson(key, normalized);
-    return normalized;
-  }
-  if (resource === 'research') {
-    const normalized = normalizeResearchConfig(body);
     await writeConfigJson(key, normalized);
     return normalized;
   }
