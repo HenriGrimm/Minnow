@@ -115,17 +115,20 @@ export async function branchExistsInAny(repos, branch) {
  * Create one worktree per repo inside `wtPath`, all on `branch`. All or
  * nothing: a failure removes the worktrees already added.
  * Setup failures (`prepare` returning `ok: false`) keep the worktree for retry.
- * @param {{ wtPath: string, workspaceRoot: string, repos: import('../workspace/repos.js').WorkspaceRepo[], branch: string, signal?: AbortSignal, prepare?: (source: string, worktree: string) => Promise<any> }} input
+ * @param {{ wtPath: string, workspaceRoot: string, repos: import('../workspace/repos.js').WorkspaceRepo[], branch: string, signal?: AbortSignal, requireNewBranch?: boolean, prepare?: (source: string, worktree: string) => Promise<any> }} input
  */
-export async function createMirroredWorktree({ wtPath, workspaceRoot, repos, branch, signal, prepare }) {
+export async function createMirroredWorktree({ wtPath, workspaceRoot, repos, branch, signal, requireNewBranch = false, prepare }) {
   signal?.throwIfAborted();
+  if (requireNewBranch && await branchExistsInAny(repos, branch)) {
+    return { ok: false, error: 'The owned worktree branch already exists in a workspace repository.' };
+  }
   /** @type {MirrorRepo[]} */
   const added = [];
   const rollback = async () => {
     for (const repo of added.reverse()) await git(repo.source, ['worktree', 'remove', '--force', repo.worktreePath]);
     await fs.rm(wtPath, { recursive: true, force: true }).catch(() => {});
   };
-  await fs.mkdir(wtPath, { recursive: true });
+  await fs.mkdir(wtPath, { recursive: !requireNewBranch });
   try {
     for (const repo of repos) {
       signal?.throwIfAborted();
@@ -138,7 +141,7 @@ export async function createMirroredWorktree({ wtPath, workspaceRoot, repos, bra
       const baseBranch = await currentBranch(repo.absPath);
       const worktreePath = path.join(wtPath, ...repo.relPath.split('/'));
       await fs.mkdir(path.dirname(worktreePath), { recursive: true });
-      const exists = (await git(repo.absPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0;
+      const exists = !requireNewBranch && (await git(repo.absPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0;
       const result = exists
         ? await git(repo.absPath, ['worktree', 'add', worktreePath, branch])
         : await git(repo.absPath, ['worktree', 'add', '-b', branch, worktreePath, baseSha]);

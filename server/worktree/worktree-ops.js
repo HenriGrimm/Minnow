@@ -1379,7 +1379,7 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
       const stem = `minnow/${slug}-${suffix}`;
       branch = stem;
       for (let i = 2; await branchExistsInAny(sources, branch); i++) branch = `${stem}-${i}`;
-      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', signal, prepareDependencies: !onCheckout });
+      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', requireNewBranch: true, signal, prepareDependencies: !onCheckout });
       if (!created.ok) return { ...created, error: created.error || created.output || 'Could not create worktree' };
     } else if (await pathExists(wtPath)) {
       const registered = await git(['worktree', 'list', '--porcelain'], undefined, { signal });
@@ -1477,7 +1477,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
 
   // A folder of repos gets one worktree per repo, laid out like the workspace.
   // Each repo branches from its own HEAD; git never runs in the parent folder.
-  const sources = await multiRepoSources(depSource);
+  const sources = await multiRepoSources(depSource, { refresh: requireNewBranch });
   if (sources) {
     return createMirroredWorktree({
       wtPath,
@@ -1485,6 +1485,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
       repos: sources,
       branch: branchName,
       signal,
+      requireNewBranch,
       prepare: prepareDependencies ? (source, worktree) => prepareWorktreeDependencies(source, worktree, { signal }) : undefined,
     }).finally(() => invalidateRegisteredWorktreeCache());
   }

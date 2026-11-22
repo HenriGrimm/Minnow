@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { ChatContractError, validateChatId } from './contracts.js';
-import { assertCaller, assertCallerCanTarget, assertExecutionCaller, resolveProjectScope } from './caller.js';
+import { assertCaller, assertCallerCanTarget, assertExecutionCaller, createChatProjectRegistry, resolveProjectScope } from './caller.js';
 import { intersectChatPolicies } from './policy.js';
 import { createChatWorkspaceRepository } from './workspace-repository.js';
 import { getAgentConversationsFeature } from './feature.js';
@@ -11,6 +12,8 @@ import { createChatWorktree } from '../worktree/worktree-ops.js';
 import { prepareWorktreeDependencies } from '../worktree/prepare-dependencies.js';
 import { runWorktreeSetupProcess } from '../worktree/setup-process.js';
 import { pathAccessStore } from '../runtime/path-access.js';
+import { identity } from './checkout-identity.js';
+import { readMirroredBinding, readMirroredSource } from './worktree-binding.js';
 
 const key = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
 const identifier = (value, field) => {
@@ -99,6 +102,19 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
     return { target: sourceTarget, project, scope, policy };
   }
   async function verify(binding, project, signal, initial = false) {
+    if (binding.mirrorSource) {
+      signal?.throwIfAborted();
+      if (!initial && !binding.mirrorBinding) fail('The prepared workspace has no verified checkout binding');
+      const mirror = await readMirroredBinding({ source: binding.mirrorSource, slotPath: binding.targetPath, chatId: binding.slotId },
+        binding.mirrorBinding, { ready: binding.setupState === 'ready' });
+      const canonicalKey = key(mirror.path), workspaceId = identity('workspace', canonicalKey);
+      if (mirror.branch !== binding.branch || (binding.targetWorkspaceId && binding.targetWorkspaceId !== workspaceId) ||
+          (binding.targetCanonicalPath && !same(binding.targetCanonicalPath, mirror.path))) fail('The allocated workspace identity changed');
+      const registry = createChatProjectRegistry([{ projectId: project.projectId, canonicalKey, workspaceId }]);
+      const scope = resolveProjectScope(registry, { projectId: binding.projectId, workspaceKey: canonicalKey });
+      signal?.throwIfAborted();
+      return { scope, destination: mirror, mirror };
+    }
     const destination = await adapters.probeCheckout(binding.targetCanonicalPath ?? binding.targetPath, signal);
     if (binding.targetCanonicalPath && !same(destination.canonicalPath, binding.targetCanonicalPath)) fail('The bound checkout path was replaced');
     const target = project.registry.entries.find(entry => same(entry.canonicalKey, destination.canonicalPath));
@@ -111,6 +127,17 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
     if (binding.strategy === 'new_worktree' && (!same(source.topLevel, source.canonicalPath) || !same(destination.topLevel, destination.canonicalPath))) fail('Isolation requires complete registered repository checkouts');
     if (initial && binding.strategy === 'new_worktree' && destination.head !== binding.baseSha) fail('The allocated checkout did not start at the captured parent commit');
     return { scope, destination };
+  }
+  async function prepareDependencies(binding, signal) {
+    if (!binding.mirrorBinding) return adapters.prepareDependencies(binding.sourceCanonicalPath, binding.targetPath, { signal });
+    const repos = [];
+    for (const original of binding.mirrorSource.repos) {
+      const target = binding.mirrorBinding.repos.find(repo => repo.id === original.id);
+      const result = await adapters.prepareDependencies(original.path, target.path, { signal });
+      repos.push({ id: original.id, result });
+      if (result?.ok === false) return { ok: false, repos };
+    }
+    return { ok: true, repos };
   }
   function output(binding, source, verified) {
     return { binding, project: source.project, scope: verified.scope,
@@ -144,11 +171,19 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
       target = resolveProjectScope(source.project.registry, { projectId: entry.projectId, workspaceKey: entry.canonicalKey });
       if (!probe.commonDir) fail('Existing worktree selection requires a Git project');
     }
+    let mirrorSource = binding?.mirrorSource;
     if (strategy.kind === 'new_worktree') {
       if (typeof refreshSourceTarget !== 'function') throw new ChatContractError('capability_unavailable', 'Owned checkout setup requires a live source authority callback');
-      if (!probe.head || !probe.commonDir || !same(probe.topLevel, probe.canonicalPath)) fail('New worktrees require a repository root with a committed HEAD');
+      if (!binding && !probe.commonDir) mirrorSource = await readMirroredSource(probe.canonicalPath);
+      if (!mirrorSource && (!probe.head || !probe.commonDir || !same(probe.topLevel, probe.canonicalPath))) {
+        fail('New worktrees require a repository root or a workspace folder of repositories, each with a committed HEAD');
+      }
     }
     if (!binding) {
+      let sourceDirty = probe.dirty;
+      for (const repo of mirrorSource?.repos ?? []) {
+        if ((await adapters.probeCheckout(repo.path, signal)).dirty) { sourceDirty = true; break; }
+      }
       const suffix = shortHash(JSON.stringify([input.allocationId, input.childChatId]));
       const slotId = strategy.kind === 'new_worktree' ? `agent-${suffix}` : null;
       const targetPath = slotId ? adapters.slotPath(slotId, source.scope.canonicalKey) : target.canonicalKey;
@@ -158,7 +193,8 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
         projectId: source.scope.projectId, strategy: strategy.kind, sourceWorkspaceId: source.scope.workspaceId,
         sourceCanonicalPath: source.scope.canonicalKey, sourceCommonDir: probe.commonDir,
         targetPath, slotId, branch: slotId ? `minnow/agent-${suffix.slice(0, 20)}` : destination.branch,
-        baseSha: destination.head, sourceHeadSha: probe.head, sourceDirty: probe.dirty });
+        baseSha: destination.head, sourceHeadSha: probe.head, sourceDirty,
+        ...(mirrorSource ? { mirrorSource } : {}) });
     }
     const expectedRevision = binding.revision;
     binding = workspaceRepository.claim(binding.allocationId, { expectedRevision, ownerId, retry: input.retrySetup === true });
@@ -170,9 +206,10 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
           if (input.retrySetup !== true) fail('The reserved checkout slot already exists without a ready binding');
           if (!binding.targetCanonicalPath || !binding.targetWorkspaceId) throw new ChatContractError('recovery_required', 'The partial checkout has no confirmed identity; retain it for explicit recovery');
           await verify(binding, await adapters.loadProject(source.scope.canonicalKey), signal);
-          dependencies = await adapters.prepareDependencies(binding.sourceCanonicalPath, binding.targetPath, { signal });
+          dependencies = await prepareDependencies(binding, signal);
         } else {
-          const created = await adapters.create({ slotId: binding.slotId, source: binding.sourceCanonicalPath,
+          if (mirrorSource && !isDeepStrictEqual(await readMirroredSource(mirrorSource.path), mirrorSource)) fail('The source workspace repositories changed before setup');
+          const created = await adapters.create({ slotId: binding.slotId, source: mirrorSource?.path ?? binding.sourceCanonicalPath,
             branch: binding.branch, baseSha: binding.baseSha, signal });
           if (!created?.ok || created.created === false || !same(created.path, binding.targetPath) || created.branch !== binding.branch) {
             fail(created?.error || created?.output || 'The requested new checkout was not created');
@@ -180,9 +217,10 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
           createdNow = true;
           const verified = await verify(binding, await adapters.loadProject(source.scope.canonicalKey), signal, true);
           binding = workspaceRepository.update(binding.allocationId, { targetWorkspaceId: verified.scope.workspaceId,
-            targetCanonicalPath: verified.scope.canonicalKey, dependencies: created.deps ?? null }, { expectedRevision: binding.revision, ownerId });
+            targetCanonicalPath: verified.scope.canonicalKey, dependencies: created.deps ?? null,
+            ...(verified.mirror ? { mirrorBinding: verified.mirror } : {}) }, { expectedRevision: binding.revision, ownerId });
           // Retain the verified allocation even if environment/dependency setup fails.
-          dependencies = created.deps ?? await adapters.prepareDependencies(binding.sourceCanonicalPath, binding.targetPath, { signal });
+          dependencies = created.deps ?? await prepareDependencies(binding, signal);
         }
         if (dependencies?.ok === false) throw new ChatContractError('capability_unavailable', 'Checkout dependency setup failed; the owned checkout was retained');
       }
@@ -231,7 +269,8 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
           await verify(binding, project, signal);
           output.push({ allocationId: binding.allocationId, childChatId: binding.childChatId, projectId: binding.projectId,
             sourceWorkspaceId: binding.sourceWorkspaceId, targetWorkspaceId: binding.targetWorkspaceId,
-            sourceCanonicalPath: binding.sourceCanonicalPath, targetCanonicalPath: binding.targetCanonicalPath });
+            sourceCanonicalPath: binding.sourceCanonicalPath, targetCanonicalPath: binding.targetCanonicalPath,
+            ...(binding.mirrorBinding ? { mirrored: true, checkoutIdentity: binding.mirrorBinding.checkoutIdentity } : {}) });
         } catch (error) { if (signal?.aborted) throw error; /* Unverified paths confer no authority. */ }
       }
       return output;

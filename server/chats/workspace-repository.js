@@ -5,7 +5,7 @@ import { ChatContractError } from './contracts.js';
 const states = new Set(['reserved', 'allocating', 'ready', 'failed', 'cancelled', 'recovery_required', 'tombstoned']);
 const terminal = new Set(['cancelled', 'recovery_required', 'tombstoned']);
 const strategies = new Set(['shared', 'new_worktree', 'existing_worktree']);
-const mutable = new Set(['setupState', 'ownerId', 'targetCanonicalPath', 'targetWorkspaceId', 'dependencies', 'error', 'cancelledAt', 'deletedAt']);
+const mutable = new Set(['setupState', 'ownerId', 'targetCanonicalPath', 'targetWorkspaceId', 'mirrorBinding', 'dependencies', 'error', 'cancelledAt', 'deletedAt']);
 const id = (value, field) => {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(value)) throw new ChatContractError('invalid_request', `Invalid ${field}`);
   return value;
@@ -58,6 +58,7 @@ export function createChatWorkspaceRepository({ db = getSessionsDb(), now = Date
         slotId: input.slotId == null ? null : id(input.slotId, 'slotId'), branch: text(input.branch, 'branch', true),
         baseSha: text(input.baseSha, 'baseSha', true), sourceHeadSha: text(input.sourceHeadSha, 'sourceHeadSha', true),
         sourceDirty: input.sourceDirty === true, uncommittedParentEditsExcluded: input.strategy === 'new_worktree',
+        ...(input.mirrorSource ? { mirrorSource: clone(input.mirrorSource) } : {}),
       };
       if (!strategies.has(identity.strategy)) throw new ChatContractError('invalid_request', 'Invalid workspace strategy');
       for (const sha of [identity.baseSha, identity.sourceHeadSha]) if (sha !== null && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sha)) throw new ChatContractError('invalid_request', 'Invalid captured commit');
@@ -101,7 +102,8 @@ export function createChatWorkspaceRepository({ db = getSessionsDb(), now = Date
           throw new ChatContractError('ownership_conflict', 'Workspace setup transition requires its allocation owner');
         }
         if ((previous.targetCanonicalPath && patch.targetCanonicalPath !== undefined && patch.targetCanonicalPath !== previous.targetCanonicalPath) ||
-            (previous.targetWorkspaceId && patch.targetWorkspaceId !== undefined && patch.targetWorkspaceId !== previous.targetWorkspaceId)) {
+            (previous.targetWorkspaceId && patch.targetWorkspaceId !== undefined && patch.targetWorkspaceId !== previous.targetWorkspaceId) ||
+            (previous.mirrorBinding && patch.mirrorBinding !== undefined)) {
           throw new ChatContractError('ownership_conflict', 'The confirmed checkout identity is immutable');
         }
         return save(previous, patch);

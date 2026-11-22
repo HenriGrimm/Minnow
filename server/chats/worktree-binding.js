@@ -50,10 +50,15 @@ export async function readGitBinding(cwd, { exactRoot = false, registered = fals
 
 export async function readWorktreeSource(cwd, { mirror } = {}) {
   if (mirror === false) return readGitBinding(cwd);
+  const source = await readMirroredSource(cwd);
+  if (!source && mirror) throw denied('The source workspace repositories changed before setup.');
+  return source ?? readGitBinding(cwd);
+}
+
+export async function readMirroredSource(cwd) {
   const canonical = await directory(cwd);
   const children = await multiRepoSources(canonical, { refresh: true });
-  if (!children && mirror) throw denied('The source workspace repositories changed before setup.');
-  if (!children) return readGitBinding(canonical);
+  if (!children) return null;
   const repos = [];
   for (const child of children) repos.push({ id: child.id, ...await readGitBinding(child.absPath, { exactRoot: true }) });
   return { path: canonical, checkoutIdentity: await readChatCheckoutIdentity(canonical), repos };
@@ -62,6 +67,7 @@ export async function readWorktreeSource(cwd, { mirror } = {}) {
 /** Verify an owned allocation using the admitted roster and Git registrations. */
 export async function readMirroredBinding(intent, expected, { ready = false } = {}) {
   const { source, slotPath, chatId } = intent;
+  if (await readChatCheckoutIdentity(source.path) !== source.checkoutIdentity) throw denied('The source workspace directory was replaced.');
   const canonical = await directory(slotPath);
   if (key(canonical) !== key(getChatWorktreePath(chatId, source.path))) throw denied('The managed worktree storage location changed.');
   const manifest = await readMirrorManifest(canonical);

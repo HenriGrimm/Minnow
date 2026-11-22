@@ -9,7 +9,7 @@ export interface ChatWorkspaceAdapters {
   probeCheckout(cwd: string, signal?: AbortSignal): Promise<ChatCheckoutProbe>;
   slotPath(slotId: string, source: string): string;
   exists(full: string): Promise<boolean>;
-  create(input: { slotId: string; source: string; branch: string; baseSha: string; signal?: AbortSignal }): Promise<any>;
+  create(input: { slotId: string; source: string; branch: string; baseSha: string | null; signal?: AbortSignal }): Promise<any>;
   prepareDependencies(source: string, target: string, options?: { signal?: AbortSignal }): Promise<any>;
 }
 export interface ChatWorkspaceResult {
@@ -19,6 +19,7 @@ export interface ChatWorkspaceResult {
 export interface VerifiedChatWorkspaceEdge {
   allocationId: string; childChatId: string; projectId: string; sourceWorkspaceId: string; targetWorkspaceId: string;
   sourceCanonicalPath: string; targetCanonicalPath: string;
+  mirrored?: boolean; checkoutIdentity?: string;
 }
 export interface ChatWorkspaceResolver {
   resolve(input: { allocationId: string; childChatId: string; strategy?: ChatWorkspaceStrategy | ChatWorkspaceChoice; workspaceId?: string;

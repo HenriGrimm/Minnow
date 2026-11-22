@@ -62,8 +62,8 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     if (!same(current, expected)) fail('workspace_denied', 'The selected checkout or branch changed. Restore the original checkout before retrying, or explicitly choose Local.');
     return current;
   }
-  async function capture(target, choice) {
-    const chat = target.chat, previous = read(chat.id);
+  async function capture(target, choice, { newChat = false } = {}) {
+    const chat = target.chat, previous = newChat ? null : read(chat.id);
     if (choice?.kind === 'local') return null;
     if (choice && choice.kind !== 'automatic') fail('invalid_request', 'Server deferred setup supports automatic worktrees or explicit Local only');
     const requested = choice?.kind === 'automatic' || chat.worktreeSetupRequired === true || chat.worktreeEnabled === true;

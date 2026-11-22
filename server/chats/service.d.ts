@@ -56,7 +56,7 @@ export interface ReservedChatTask {
 export interface DeferredChatTask { deferred: true; reason: string }
 export interface OrdinaryChatConsentProof { requestId: string; toolCallId: string; signal?: AbortSignal }
 export interface OrdinaryChatCreateInput {
-  name: string; message?: string; selection?: ModelSelection; workspaceId?: string; reportBack?: boolean; clientRequestId: string;
+  name: string; message?: string; selection?: ModelSelection; workspaceId?: string; enableWorktree?: boolean; reportBack?: boolean; clientRequestId: string;
 }
 export interface OrdinaryChatCreateReceipt {
   chatId: string; link: string; commandId?: string; disposition: 'created' | 'queued'; replayed: boolean;
@@ -132,7 +132,7 @@ export function createChatCommandService(options: {
   defaultOrdinaryModel?: () => ModelSelection | undefined | Promise<ModelSelection | undefined>;
   captureTurnIntent?: typeof import('./preparation.js').captureChatTurnIntent;
   captureNativeSelection?: (selection: ModelSelection) => Promise<Record<string, unknown>> | Record<string, unknown>;
-  captureWorkspacePreparation?: (target: ChatTargetContext) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
+  captureWorkspacePreparation?: (target: ChatTargetContext, options?: { newChat?: boolean }) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
   admitWorkspacePreparation?: (chatId: string, intent: import('./workspace-preparation.js').ChatWorkspaceIntent) => void;
   applyWorkspaceChoice?: (caller: ChatCaller, input: Parameters<ChatCommandService['chooseWorkspace']>[1]) => Promise<{ chat: import('./repository.js').ChatShell }>;
   detachMissingWorktree?: (observed: import('./repository.js').ChatShell) => boolean;

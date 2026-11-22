@@ -1149,7 +1149,7 @@ export const BUILT_IN_TOOLS = [
         task: { type: 'string', description: 'Self-contained brief: goal, relevant files, constraints, what to return.' },
         title: { type: 'string', minLength: 1, maxLength: 240, description: 'Short assignment title (3–8 words) shown on the card.' },
         wait: { type: 'boolean', description: 'Block until it finishes. Default false.' },
-        workspace_strategy: { type: 'string', enum: ['shared', 'new_worktree', 'existing_worktree'], description: 'Default shared. new_worktree gives it its own checkout at HEAD.' },
+        workspace_strategy: { type: 'string', enum: ['shared', 'new_worktree', 'existing_worktree'], description: 'Default shared. new_worktree gives the child an isolated checkout at HEAD, mirroring each repository in a multi-repo workspace folder.' },
         workspace_id: { type: 'string', description: 'Registered checkout id for existing_worktree.' },
         target: {
           type: 'object', description: 'Optional exact model; list options with agent_capabilities.',

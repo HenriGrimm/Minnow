@@ -160,7 +160,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       return { version: 1, requestedMode: requested ? 'native' : 'minnow', effectiveMode: requested ? 'native' : 'minnow',
         providerId: selection.providerId, modelId: selection.modelId, cliVersion: '0.166.0', networkAccess: 'off' };
     },
-    captureWorkspacePreparation: target => workspacePreparation.capture(target),
+    captureWorkspacePreparation: (target, options) => workspacePreparation.capture(target, undefined, options),
     admitWorkspacePreparation: (chatId, intent) => workspacePreparation.admit(chatId, intent),
     applyWorkspaceChoice: (caller, input) => workspacePreparation.applyChoice(caller, input),
     detachMissingWorktree: workspacePreparation.detachMissingWorktree,

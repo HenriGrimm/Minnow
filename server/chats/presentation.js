@@ -30,6 +30,7 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
       fields: { ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId),
         ...(chat.workspacePreparation ? { workspacePreparation: chat.workspacePreparation, worktreeSetupRequired: chat.worktreeSetupRequired ?? null,
           worktreeEnabled: chat.worktreeEnabled ?? null, gitBranch: chat.gitBranch ?? null, chatWorktreeManaged: chat.chatWorktreeManaged ?? null } : {}),
+        ...(!chat.workspacePreparation && chat.explicitOrdinaryRoot && chat.worktreeEnabled ? { worktreeEnabled: true } : {}),
         ...(chat.historyRewrite ? { historyRewriteRevision: chat.historyRewrite.revision } : {}) },
     };
   }

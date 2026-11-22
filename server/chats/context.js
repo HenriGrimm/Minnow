@@ -155,8 +155,12 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
     }
     const base = await pending;
     if (!loadWorkspaceEdges) return base;
-    const registry = createChatProjectRegistry(base.registry.entries, await loadWorkspaceEdges(base));
-    return { ...base, registry, scope: resolveProjectScope(registry, { projectId: base.projectId, workspaceKey: base.scope.canonicalKey }) };
+    const edges = await loadWorkspaceEdges(base);
+    const delegatedMirrors = edges.filter(edge => edge.mirrored);
+    const registry = createChatProjectRegistry([...base.registry.entries, ...delegatedMirrors.map(edge => ({
+      projectId: edge.projectId, workspaceId: edge.targetWorkspaceId, canonicalKey: edge.targetCanonicalPath,
+    }))], edges);
+    return { ...base, registry, delegatedMirrors, scope: resolveProjectScope(registry, { projectId: base.projectId, workspaceKey: base.scope.canonicalKey }) };
   }
   /** Read-only probe for host-side reconciliation, never used as a send target. */
   async function findMissingWorktree(chatId, workspacePath = getRequestWorkspaceRoot()) {
@@ -216,9 +220,21 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
       }
       const verified = await verifyMirroredSlot(prepared.intent, prepared.binding, { ready: true });
       root = verified.project;
-    } else root = options.project ?? await project(options.workspacePath ?? checkout);
+    } else {
+      const delegated = chat.agentConversation?.origin === 'delegated' && chat.worktreeRoot;
+      root = options.project ?? await project(options.workspacePath ?? (delegated ? chat.workspacePath : checkout));
+      if (delegated && options.project && root.delegatedMirrors?.some(edge => edge.childChatId === chatId)) {
+        root = await project(chat.workspacePath);
+        if (root.projectId !== options.project.projectId) throw new ChatContractError('workspace_denied', 'The worktree is outside the active project.');
+      }
+      if (delegated && chat.projectId && chat.projectId !== root.projectId) {
+        throw new ChatContractError('workspace_denied', 'The child checkout is outside its recorded project.');
+      }
+    }
+    const delegatedMirror = chat.agentConversation?.origin === 'delegated' &&
+      root.delegatedMirrors?.find(edge => edge.childChatId === chatId && edge.targetCanonicalPath === key(canonical));
     const scope = resolveProjectScope(root.registry, { projectId: root.projectId, workspaceKey: key(canonical) });
-    if (!mirrored && (options.project || key(canonical) !== root.scope.canonicalKey)) {
+    if (!mirrored && !delegatedMirror && (options.project || key(canonical) !== root.scope.canonicalKey)) {
       const current = await discoverProject(checkout, runGit ?? git);
       const projectRoot = current.common && path.basename(current.common).toLowerCase() === '.git'
         ? path.dirname(current.common) : current.common ?? current.canonical;
@@ -229,6 +245,9 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
     const profile = repository.getLatestProfile(chatId);
     const currentPolicy = createChatPolicy(await resolvePolicyInput(chat, scope, root.registry));
     const checkoutIdentity = await readChatCheckoutIdentity(canonical);
+    if (delegatedMirror && delegatedMirror.checkoutIdentity !== checkoutIdentity) {
+      throw new ChatContractError('workspace_denied', 'The delegated workspace checkout was replaced');
+    }
     let captured = profile?.snapshot?.policy;
     // An ordinary chat's first profile preserves its role and tools. The
     // global permission setting is sampled at each new turn admission.

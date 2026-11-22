@@ -21,7 +21,7 @@ import { installChatWorkspaces } from '../../server/chats/workspace-runtime.js';
 import { runWorktreeSetupProcess } from '../../server/worktree/setup-process.js';
 
 const exec = promisify(execFile);
-async function fixture(run, { gitRepository = true, committed = true, existing = false, parentInWorktree = false } = {}) {
+async function fixture(run, { gitRepository = true, committed = true, existing = false, parentInWorktree = false, mirrored = false } = {}) {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-child-worktree-')));
   const repo = path.join(root, 'project'), home = path.join(root, 'home');
   const previous = process.env.MINNOW_HOME;
@@ -37,6 +37,15 @@ async function fixture(run, { gitRepository = true, committed = true, existing =
     }
     await fs.writeFile(path.join(repo, 'README.md'), 'committed base');
     if (gitRepository && committed) { await git(['add', 'README.md']); await git(['commit', '-m', 'base']); }
+    if (mirrored) for (const id of ['frontend', 'services/backend']) {
+      const cwd = path.join(repo, id);
+      await fs.mkdir(cwd, { recursive: true });
+      await git(['init'], cwd);
+      await fs.writeFile(path.join(cwd, 'README.md'), 'committed ' + id);
+      await git(['add', 'README.md'], cwd);
+      await git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'base'], cwd);
+      await fs.writeFile(path.join(cwd, 'README.md'), 'uncommitted ' + id);
+    }
     let existingPath;
     if (existing || parentInWorktree) {
       existingPath = path.join(root, 'existing');
@@ -82,7 +91,7 @@ async function fixture(run, { gitRepository = true, committed = true, existing =
     if (previous === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previous;
     resetMinnowHomeCache();
     assert.ok(path.resolve(root).startsWith((await fs.realpath(os.tmpdir())) + path.sep));
-    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
@@ -212,6 +221,50 @@ test('captured Plan parent delegates through real context and admits fresh messa
       await service.idle(); assert.deepEqual(errors, []);
     } finally { await service.dispose(); }
   });
+});
+
+test('isolated delegation registers the whole verified mirror, and loses access if a repo switches branches', async () => {
+  await fixture(async f => {
+    const context = createChatContext({ repository: f.chats, validateRoot: async () => {},
+      resolvePolicyInput: async (_chat, _scope, registry) => ({
+        ...f.base.caller.policy, workspaceIds: registry.entries.map(entry => entry.workspaceId),
+      }) });
+    const active = () => true;
+    const resolver = installChatWorkspaces({ repository: f.chats, context, isExecutionCallerActive: active }, {
+      workspaceRepository: f.allocations, adapters: f.adapters, feature: () => ({ creationEnabled: true }),
+    });
+    const source = await context.executionCaller('source-execution');
+    const service = createChatCommandService({ repository: f.chats, context });
+    try {
+      const delegation = createChatDelegation({ repository: f.chats, context, service, validateSourceCaller: active,
+        feature: () => ({ creationEnabled: true }), getEngine: async () => ({ append: async () => {}, tick: async () => {} }),
+        loadConfig: async () => ({ types: { explore: {} } }),
+        resolveModelSelection: async () => ({ selection: { providerId: 'fixture', modelId: 'fixture' }, source: 'parent', exactModel: false }),
+        captureProfile: async (_chat, _scope, { workspaceIds }) => ({ policy: createChatPolicy({ ...source.caller.policy, workspaceIds }) }),
+        resolveWorkspace: async ({ target, ...input }) => {
+          const result = await resolver.resolve({ ...input, sourceTarget: target });
+          return { ...result.chatPatch, scope: result.scope, binding: result.binding, registry: (await context.project(f.repo)).registry };
+        },
+      });
+      const input = { type: 'explore', task: 'Inspect both repositories', workspace_strategy: 'new_worktree', client_request_id: 'mirror' };
+      const receipt = await delegation.spawn(source.caller, input, { toolCallId: 'mirror-call' });
+      assert.equal((await delegation.spawn(source.caller, input, { toolCallId: 'mirror-call' })).childChatId, receipt.childChatId);
+      assert.equal(f.creates(), 1);
+      const child = await context.resolveTarget(receipt.childChatId);
+      const mirror = child.scope.canonicalKey;
+      assert.notEqual(mirror, source.target.scope.canonicalKey);
+      assert.deepEqual(child.registry.entries.map(row => row.canonicalKey).sort(), [source.target.scope.canonicalKey, mirror].sort());
+      for (const id of ['frontend', 'services/backend']) {
+        assert.equal(await fs.readFile(path.join(mirror, id, 'README.md'), 'utf8'), 'committed ' + id);
+        assert.equal(await fs.readFile(path.join(f.repo, id, 'README.md'), 'utf8'), 'uncommitted ' + id);
+      }
+      const savedProject = child.project;
+      await f.git(['checkout', '-b', 'unexpected-branch'], path.join(mirror, 'frontend'));
+      await assert.rejects(context.resolveTarget(receipt.childChatId, { project: savedProject }), { code: 'workspace_denied' });
+      await assert.rejects(context.resolveTarget(receipt.childChatId, { project: await context.project(mirror) }), { code: 'workspace_denied' });
+      assert.equal((await context.project(f.repo)).registry.entries.length, 1);
+    } finally { await service.dispose(); }
+  }, { gitRepository: false, mirrored: true });
 });
 
 test('existing checkout needs the exact captured workspace grant, even with full filesystem access', async () => {

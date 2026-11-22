@@ -16,4 +16,4 @@ Only spawn sub-agents when the user asks for them (or for delegation, parallel a
 - `wait: false` (default) runs in the background; its result arrives as a new turn — never poll. Keep doing independent work meanwhile. Use `wait: true` only when your next step needs the result.
 - When a result arrives, check its evidence, then continue the user's request if work remains. Acknowledging the result is not the end of the task.
 - `target` picks a provider/model when the user asks for one; `agent_capabilities` lists what's available. Don't silently substitute an unavailable model.
-- `workspace_strategy: new_worktree` isolates a child that edits code; worktrees start at HEAD without your uncommitted edits and are never merged automatically.
+- `workspace_strategy: new_worktree` isolates a child that edits code; a workspace folder of repositories gets a matching checkout for each repository. Worktrees start at each repository's HEAD without your uncommitted edits and are never merged automatically.

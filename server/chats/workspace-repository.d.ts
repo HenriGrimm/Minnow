@@ -5,10 +5,12 @@ export interface ChatWorkspaceReservation {
   allocationId: string; childChatId: string; projectId: string; strategy: ChatWorkspaceStrategy;
   sourceWorkspaceId: string; sourceCanonicalPath: string; sourceCommonDir: string | null;
   targetPath: string; slotId: string | null; branch: string | null; baseSha: string | null; sourceHeadSha: string | null; sourceDirty: boolean;
+  mirrorSource?: import('./workspace-preparation.js').MirrorSource;
 }
 export interface ChatWorkspaceBinding extends ChatWorkspaceReservation {
   version: 1; setupState: ChatWorkspaceSetupState; ownerId: string | null;
   targetCanonicalPath: string | null; targetWorkspaceId: string | null; uncommittedParentEditsExcluded: boolean;
+  mirrorBinding?: import('./workspace-preparation.js').MirrorBinding;
   dependencies: any; error: string | null; cancelledAt: number | null; deletedAt: number | null;
   revision: number; createdAt: number; updatedAt: number;
 }
@@ -17,7 +19,7 @@ export interface ChatWorkspaceRepository {
   getByChild(childChatId: string): ChatWorkspaceBinding | null;
   reserve(input: ChatWorkspaceReservation): ChatWorkspaceBinding & { replayed: boolean };
   claim(allocationId: string, options: { expectedRevision: number; ownerId: string; retry?: boolean }): ChatWorkspaceBinding;
-  update(allocationId: string, patch: Partial<Pick<ChatWorkspaceBinding, 'setupState' | 'ownerId' | 'targetCanonicalPath' | 'targetWorkspaceId' | 'dependencies' | 'error' | 'cancelledAt' | 'deletedAt'>>, options: { expectedRevision: number; ownerId?: string }): ChatWorkspaceBinding;
+  update(allocationId: string, patch: Partial<Pick<ChatWorkspaceBinding, 'setupState' | 'ownerId' | 'targetCanonicalPath' | 'targetWorkspaceId' | 'mirrorBinding' | 'dependencies' | 'error' | 'cancelledAt' | 'deletedAt'>>, options: { expectedRevision: number; ownerId?: string }): ChatWorkspaceBinding;
   tombstone(childChatId: string): ChatWorkspaceBinding | null;
   list(options?: { projectId?: string; setupState?: ChatWorkspaceSetupState; afterAllocationId?: string; limit?: number }): ChatWorkspaceBinding[];
 }

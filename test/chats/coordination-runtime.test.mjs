@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { test, before, after } from 'node:test';
 import { createProductionRuntimeTestEnvironment } from './production-runtime-fixture.mjs';
 
@@ -234,6 +238,78 @@ for (const level of ['auto', 'full']) test(`${level === 'full' ? 'Full access' :
   assert.equal(takeover.status, 202, JSON.stringify(takeover.body));
   await f.runtime.service.idle(receipt.chatId);
   assert.equal(f.repository.readTranscript(receipt.chatId).messages.at(-1).content, 'I can continue.');
+});
+
+for (const firstMessage of [true, false]) test(`chat_create enables a multi-repo worktree ${firstMessage ? 'with a first message and report' : 'before a human sends the first message'}`, { timeout: 30000 }, async t => {
+  const exec = promisify(execFile);
+  const repos = ['frontend', 'services/backend'];
+  const f = await environment.fixture(t, {
+    async install(runtime, { workspace }) {
+      for (const id of repos) {
+        const cwd = path.join(workspace, id);
+        const git = (...args) => exec('git', args, { cwd, windowsHide: true });
+        await fs.mkdir(cwd, { recursive: true });
+        await git('init');
+        await fs.writeFile(path.join(cwd, 'tracked.txt'), 'committed ' + id);
+        await git('add', '.');
+        await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'base');
+        await fs.writeFile(path.join(cwd, 'tracked.txt'), 'uncommitted ' + id);
+      }
+      return install(runtime);
+    },
+    toolNames: ['chat_create', 'chat_wait'],
+    respond(body) {
+      if (lastUser(body) !== 'Open an isolated chat') return 'Isolated work finished.';
+      const outputs = body.messages.filter(row => row.role === 'tool');
+      if (!outputs.length) return [tool('chat_create', { title: 'Isolated chat', enable_worktree: true,
+        ...(firstMessage ? { message: 'Inspect both repos', report_back: true } : {}) }, 'create-isolated')];
+      if (firstMessage && outputs.length === 1) {
+        return [tool('chat_wait', { chat_id: JSON.parse(outputs[0].content).chatId, timeout_ms: 10000 }, 'wait-isolated')];
+      }
+      return 'Done.';
+    },
+  });
+  f.settings.meta.toolSecurity.permissionLevel = firstMessage ? 'auto' : 'full';
+  const sent = await f.request('/api/chats/coordinator/commands', { action: 'send', text: 'Open an isolated chat', clientRequestId: 'source' });
+  assert.equal(sent.status, 202);
+  if (firstMessage) {
+    const pending = await pendingRequest(f, 'coordinator');
+    assert.match(pending.presentation.arguments.checkout, /New isolated worktree from/);
+    assert.equal(f.repository.listChats().some(chat => chat.name === 'Isolated chat'), false);
+    const confirmation = await f.request('/api/chats/coordinator/requests/' + pending.requestId + '/respond',
+      { answer: { decision: 'allow_once' }, clientRequestId: 'allow-isolated' });
+    assert.equal(confirmation.status, 200);
+  }
+  await f.runtime.service.idle();
+  const outputs = f.repository.readTranscript('coordinator').messages.filter(row => row.role === 'tool');
+  const { chatId, commandId } = JSON.parse(outputs[0].content);
+  if (firstMessage) {
+    assert.equal(JSON.parse(outputs[1].content).assistant_final, 'Isolated work finished.');
+  } else {
+    assert.equal(commandId, undefined);
+    const blank = f.repository.getChat(chatId);
+    assert.equal(blank.worktreeEnabled, true);
+    assert.ok(!blank.worktreeSetupRequired && !blank.workspacePreparation && !blank.worktreeRoot);
+    assert.equal(f.calls.length, 2);
+    const cwd = path.join(f.workspace, 'frontend');
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '--allow-empty', '-m', 'new source HEAD'], { cwd, windowsHide: true });
+    const first = await f.request('/api/chats/' + chatId + '/commands', { action: 'send', text: 'Inspect both repos', clientRequestId: 'human-first' });
+    assert.equal(first.status, 202, JSON.stringify(first.body));
+    await f.runtime.service.idle(chatId);
+  }
+  const chat = f.repository.getChat(chatId);
+  assert.equal(chat.workspacePreparation.status, 'ready', JSON.stringify(chat.workspacePreparation));
+  assert.notEqual(path.resolve(chat.worktreeRoot), path.resolve(f.workspace));
+  assert.equal(f.repository.listCommands({ chatId })[0].captured.scope.canonicalKey, (await f.runtime.context.resolveTarget(chatId)).scope.canonicalKey);
+  assert.equal(f.repository.readTranscript(chatId).messages.at(-1).content, 'Isolated work finished.');
+  if (!firstMessage) {
+    const { stdout } = await exec('git', ['log', '-1', '--format=%s'], { cwd: path.join(chat.worktreeRoot, 'frontend'), windowsHide: true });
+    assert.equal(stdout.trim(), 'new source HEAD');
+  }
+  for (const id of repos) {
+    assert.equal(await fs.readFile(path.join(chat.worktreeRoot, id, 'tracked.txt'), 'utf8'), 'committed ' + id);
+    assert.equal(await fs.readFile(path.join(f.workspace, id, 'tracked.txt'), 'utf8'), 'uncommitted ' + id);
+  }
 });
 
 test('an existing ordinary chat uses Full access for shell commands after its first Auto turn', { timeout: 20000 }, async t => {

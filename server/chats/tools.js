@@ -16,7 +16,7 @@ const recoveryTools = new Set(['chat_list', 'chat_read', 'chat_wait', 'chat_stop
 const argumentNames = {
   agent_capabilities: ['search', 'cursor', 'limit'],
   chat_list: ['query', 'status', 'include_subagents', 'cursor', 'limit'],
-  chat_create: ['title', 'message', 'provider_id', 'model_id', 'workspace_id', 'report_back', 'client_request_id'],
+  chat_create: ['title', 'message', 'provider_id', 'model_id', 'workspace_id', 'enable_worktree', 'report_back', 'client_request_id'],
   chat_read: ['chat_id', 'view', 'after_sequence', 'limit'],
   chat_send: ['chat_id', 'message', 'mode', 'client_request_id', 'execution_id'],
   chat_wait: ['chat_id', 'execution_id', 'timeout_ms'],
@@ -58,10 +58,14 @@ export function createChatTools({ repository, context, service, validateCaller, 
     signal?.throwIfAborted(); assertExecutionCaller(caller);
     if (validateCaller(caller) !== true) throw new ChatContractError('caller_not_active', 'The sending execution no longer owns this conversation');
   }
-  async function targetFor(caller, source, chatId, operation = 'read') {
+  async function targetFor(caller, source, chatId, operation = 'read', allowReport = false) {
     const target = await context.resolveTarget(id(chatId), { project: source.project });
-    assertCallerCanTarget(caller, { chatId, scope: target.scope, policy: target.policy }, {
-      operation, currentPolicy: source.currentPolicy, registry: target.registry,
+    // A creation receipt can authorize this one report, not general access to
+    // the isolated checkout. Still require live read authority in the source.
+    const report = allowReport && operation === 'read' && !target.chat.agentConversation && service.ordinaryReport(caller, target);
+    const authorized = report ? source : target;
+    assertCallerCanTarget(caller, { chatId, scope: authorized.scope, policy: authorized.policy }, {
+      operation, currentPolicy: source.currentPolicy, registry: authorized.registry,
     });
     return target;
   }
@@ -105,6 +109,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
         if (args.report_back !== undefined && typeof args.report_back !== 'boolean') fail('report_back must be boolean');
         const input = { name: text(args.title, 240).trim(), clientRequestId: text(args.client_request_id ?? toolCallId, 256),
           reportBack: args.report_back === true,
+          ...(args.enable_worktree !== undefined ? { enableWorktree: args.enable_worktree } : {}),
           ...(args.message !== undefined ? { message: text(args.message, 24_000) } : {}),
           ...(args.workspace_id !== undefined ? { workspaceId: id(args.workspace_id) } : {}),
           ...(args.provider_id !== undefined ? { selection: { providerId: text(args.provider_id, 256), modelId: text(args.model_id, 512) } } : {}),
@@ -165,7 +170,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
         fields(args, ['chat_id', 'view', 'after_sequence', 'limit']);
         const view = args.view ?? 'messages'; if (!['messages', 'activity'].includes(view)) fail('Choose messages or activity');
         const after = integer('after_sequence', args.after_sequence, -1, -1, Number.MAX_SAFE_INTEGER), limit = integer('limit', args.limit, 20, 1, 100);
-        let target = await targetFor(caller, source, args.chat_id); active(caller, signal);
+        let target = await targetFor(caller, source, args.chat_id, 'read', true); active(caller, signal);
         if (!target.chat.agentConversation && target.chat.id !== caller.chatId) {
           const commandId = service.ordinaryReport(caller, target);
           if (commandId) {
@@ -226,7 +231,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
       fields(args, ['chat_id', 'execution_id', 'timeout_ms']);
       const chatId = id(args.chat_id);
       const timeoutMs = integer('timeout_ms', args.timeout_ms, CHAT_WAIT_TIMEOUT_MS.default, CHAT_WAIT_TIMEOUT_MS.minimum, CHAT_WAIT_TIMEOUT_MS.maximum);
-      let target = await targetFor(caller, source, chatId); active(caller, signal);
+      let target = await targetFor(caller, source, chatId, 'read', true); active(caller, signal);
       const requestedId = args.execution_id === undefined ? undefined : id(args.execution_id);
       let selected = reads.execution(chatId, requestedId);
       let readProof, readInput, reportCommandId, deadline;
@@ -248,7 +253,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
             await pause(Math.min(250, Math.max(1, deadline - now())), signal);
             const currentSource = await context.resolveTarget(caller.chatId);
             assertChatToolAllowed(caller.policy, name, args, { currentPolicy: currentSource.policy, approvalGranted });
-            target = await targetFor(caller, currentSource, chatId);
+            target = await targetFor(caller, currentSource, chatId, 'read', true);
             if (service.ordinaryReport(caller, target) !== reportCommandId) throw new ChatContractError('policy_denied', 'Reporting authorization expired');
           }
         } else if (selected && (requestedId || !terminal.has(selected.status))) {
@@ -266,7 +271,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
           active(caller, signal);
           const currentSource = await context.resolveTarget(caller.chatId);
           assertChatToolAllowed(caller.policy, name, args, { currentPolicy: currentSource.policy, approvalGranted });
-          const currentTarget = await targetFor(caller, currentSource, chatId);
+          const currentTarget = await targetFor(caller, currentSource, chatId, 'read', Boolean(reportCommandId));
           if (readInput) service.verifyOrdinaryAction(caller, 'read', readInput, currentTarget, readProof);
           if (reportCommandId && service.ordinaryReport(caller, currentTarget) !== reportCommandId) {
             throw new ChatContractError('policy_denied', 'Reporting authorization expired');

@@ -5,7 +5,8 @@ import { hashChatPayload } from './repository.js';
 import { assertOrdinaryChatConsent, ordinaryChatConsentHash, ORDINARY_CONSENT_MS } from './ordinary-consent.js';
 import { ordinaryChatScopeBlocker } from './ordinary-routing.js';
 import { resolveProjectScope } from './caller.js';
-import { readChatCheckoutIdentity } from './checkout-identity.js';
+import { checkoutKey, readChatCheckoutIdentity } from './checkout-identity.js';
+import { rebindChatWorkspacePolicy } from './workspace-preparation.js';
 
 const id = (prefix, input) => prefix + '-' + createHash('sha256').update(JSON.stringify(input)).digest('hex').slice(0, 40);
 const fail = (code, message) => { throw new ChatContractError(code, message); };
@@ -16,6 +17,7 @@ const checked = result => {
 
 export function createOrdinaryRootAdmission({ repository, context, enabled, ordinaryFeature, now,
   requireCaller, producer, keyFor, provenance, selectionFor, captureProfile, captureNativeSelection, defaultOrdinaryModel,
+  captureWorkspacePreparation, admitWorkspacePreparation,
   admitCausality, emit, announce, schedule }) {
   const reportId = (caller, chatId) => id('root-report', [producer(caller), chatId]);
   function saveReceipt(outboxId, chatId, kind, payload) {
@@ -36,11 +38,13 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
   }
   async function createOrdinary(caller, input, { confirm, signal, settleReceipt } = {}) {
     requireCaller(caller);
-    const allowed = ['name', 'message', 'selection', 'workspaceId', 'reportBack', 'clientRequestId'];
+    const allowed = ['name', 'message', 'selection', 'workspaceId', 'enableWorktree', 'reportBack', 'clientRequestId'];
     if (!input || Object.keys(input).some(key => !allowed.includes(key))
         || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 240
         || input.message !== undefined && (typeof input.message !== 'string' || !input.message.trim() || Buffer.byteLength(input.message) > 24_000)
         || input.reportBack && !input.message) fail('invalid_request', 'Choose a valid title and optional first message (up to 24 KB)');
+    if (input.enableWorktree !== undefined && typeof input.enableWorktree !== 'boolean') fail('invalid_request', 'enable_worktree must be boolean');
+    if (input.enableWorktree && input.workspaceId !== undefined) fail('invalid_request', 'Choose enable_worktree or workspace_id, not both');
     const key = keyFor(input), intentHash = hashChatPayload(input);
     const receiptId = id('root-create', [producer(caller), key]);
     const chatId = id('chat', receiptId);
@@ -74,6 +78,15 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
     }
     const destination = await checkoutFor(source, input.workspaceId, ceiling);
     const chat = { id: chatId, name: input.name, workspacePath: source.chat.workspacePath, modeId: ceiling.modeId };
+    if (input.enableWorktree) {
+      if (source.chat.worktreeRoot || !chat.workspacePath || checkoutKey(chat.workspacePath) !== source.scope.canonicalKey) {
+        fail('workspace_denied', 'Enable a new worktree from a chat running in the Local workspace');
+      }
+      if (typeof captureWorkspacePreparation !== 'function' || typeof admitWorkspacePreparation !== 'function') {
+        fail('capability_unavailable', 'Automatic worktree setup is not available on this host');
+      }
+      chat.worktreeEnabled = true;
+    }
     if (destination !== source) {
       const base = await context.project(source.chat.workspacePath);
       if (base.projectId !== destination.scope.projectId) fail('workspace_denied', 'The originating workspace no longer matches the chosen checkout');
@@ -94,8 +107,16 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
     const policy = intersectChatPolicies(ceiling, createChatPolicy(captured.snapshot.policy));
     if (policy.modeId !== chat.modeId || !policy.workspaceIds.includes(destination.scope.workspaceId)) fail('policy_denied', 'The resulting chat policy does not match the requested scope');
     const profile = { ...captured, snapshot: { ...captured.snapshot, policy, modelSelection: selection } };
-    const action = { operation: 'create', intentHash, chat, selection, checkoutIdentity: destination.checkoutIdentity, policyHash: hashChatPayload(policy) };
-    const proof = fullAccess ? null : await confirm(action, { title: chat.name, model: selection, checkout: destination.scope.canonicalKey,
+    const worktree = input.enableWorktree
+      ? await captureWorkspacePreparation({ ...destination, chat }, { newChat: true }) : null;
+    if (input.enableWorktree && !worktree) fail('capability_unavailable', 'Could not capture automatic worktree setup');
+    // Like the composer toggle, a blank chat captures the eventual source HEAD
+    // on send, not when the user enables the worktree.
+    const workspacePreparation = input.message !== undefined ? worktree : null;
+    const action = { operation: 'create', intentHash, chat, selection, checkoutIdentity: destination.checkoutIdentity, policyHash: hashChatPayload(policy),
+      ...(workspacePreparation ? { worktreeSource: workspacePreparation.source } : {}) };
+    const proof = fullAccess ? null : await confirm(action, { title: chat.name, model: selection,
+      checkout: worktree ? `New isolated worktree from ${destination.scope.canonicalKey}` : destination.scope.canonicalKey,
       ...(input.message !== undefined ? { firstMessage: input.message } : {}), reportBack: input.reportBack === true });
     signal?.throwIfAborted();
     const current = await context.resolveTarget(caller.chatId);
@@ -113,6 +134,7 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
       const replayed = previous(); if (replayed) return replayed;
       if (!fullAccess) assertOrdinaryChatConsent(repository, caller, action, proof, now());
       const created = repository.createOrdinaryRoot(chat, { projectId: source.scope.projectId, profile });
+      if (workspacePreparation) admitWorkspacePreparation(chatId, workspacePreparation);
       let commandId;
       if (input.message !== undefined) {
         commandId = id('command', receiptId);
@@ -123,6 +145,7 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
         repository.admitCommand(command, { producerId: receiptId, requestKey: key, captured: {
           ...causal, policy, scope: currentDestination.scope, projectId: current.scope.projectId, checkoutIdentity: currentDestination.checkoutIdentity,
           cancellationEpoch: 0, profile: created.profile, ...(nativeExecution ? { nativeExecution } : {}),
+          ...(workspacePreparation ? { workspacePreparation } : {}),
         } });
         repository.updateCommand(commandId, { state: 'queued' });
       }
@@ -131,6 +154,7 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
       saveReceipt(receiptId, chatId, 'conversation.created', { intentHash, receipt });
       if (input.reportBack) saveReceipt(reportId(caller, chatId), chatId, 'conversation.report', {
         commandId, expiresAt: now() + ORDINARY_CONSENT_MS, checkoutIdentity: currentDestination.checkoutIdentity, policy,
+        ...(workspacePreparation ? { workspaceIntentId: workspacePreparation.id } : {}),
       });
       settleReceipt?.(receipt);
       return receipt;
@@ -144,9 +168,17 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
   function ordinaryReport(caller, target) {
     requireCaller(caller);
     const grant = repository.getOutbox(reportId(caller, target.chat.id));
-    if (grant?.kind !== 'conversation.report' || grant.payload.expiresAt <= now()
-        || grant.payload.checkoutIdentity !== target.checkoutIdentity) return null;
-    assertChatPolicyWithinCeiling(target.policy, createChatPolicy(grant.payload.policy));
+    if (grant?.kind !== 'conversation.report' || grant.payload.expiresAt <= now() || target.scope.projectId !== caller.scope.projectId) return null;
+    let policy = createChatPolicy(grant.payload.policy);
+    if (grant.payload.workspaceIntentId) {
+      const setup = target.chat.workspacePreparation;
+      if (setup?.intent?.id !== grant.payload.workspaceIntentId || setup.status === 'local') return null;
+      if (setup.status === 'ready') {
+        if (setup.binding?.checkoutIdentity !== target.checkoutIdentity) return null;
+        policy = rebindChatWorkspacePolicy(policy, { sourceWorkspaceId: setup.intent.sourceWorkspaceId, workspaceId: target.scope.workspaceId });
+      } else if (grant.payload.checkoutIdentity !== target.checkoutIdentity) return null;
+    } else if (grant.payload.checkoutIdentity !== target.checkoutIdentity) return null;
+    assertChatPolicyWithinCeiling(target.policy, policy);
     return grant.payload.commandId;
   }
   return { createOrdinary, ordinaryReport };

@@ -1193,6 +1193,7 @@ export function createChatCommandService({
     },
     ...createOrdinaryRootAdmission({ repository, context, enabled, ordinaryFeature, now, requireCaller, producer,
       keyFor, provenance, selectionFor, captureProfile, captureNativeSelection, defaultOrdinaryModel,
+      captureWorkspacePreparation, admitWorkspacePreparation,
       admitCausality, emit, announce, schedule }),
     describeOrdinaryAction, verifyOrdinaryAction,
     send, configure, fork, rewriteHistory, chooseWorkspace, recoverMissingWorktree, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,

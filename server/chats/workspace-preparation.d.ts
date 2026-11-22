@@ -30,7 +30,7 @@ export function createChatWorkspacePreparation(options: {
     onCheckout: (result: { path: string; branch: string }) => Promise<void> }) => Promise<{ ok: boolean; path?: string; branch?: string; error?: string }>;
   onChange?: (chatId: string) => unknown; id?: () => string;
 }): {
-  capture(target: ChatTargetContext, choice?: { kind: 'automatic' | 'local' }): Promise<ChatWorkspaceIntent | null>;
+  capture(target: ChatTargetContext, choice?: { kind: 'automatic' | 'local' }, options?: { newChat?: boolean }): Promise<ChatWorkspaceIntent | null>;
   /** Call inside the same repository.atomic transaction as admitCommand. */
   admit(chatId: string, intent: ChatWorkspaceIntent | null): void;
   prepare(input: WorkspacePreparationInput): Promise<{ execution: ExecutionRecord; target: ChatTargetContext }>;
