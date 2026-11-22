@@ -44,9 +44,6 @@ import {
 
   gitDiff,
 
-
-  gitPull,
-
   gitStage,
 
   gitStatus,
@@ -121,6 +118,7 @@ import {
 } from './git-panel-name-popover';
 import { decorateGitSourceControlButton } from './git-source-control-icons';
 import { pushWithPublishPrompt } from './git-publish-push';
+import { pullWithStrategyChoice } from './git-pull-choice';
 import {
   isMissingGitRepositoryError,
   renderGitNoRepositoryState,
@@ -883,9 +881,22 @@ function ensurePanelDom(): HTMLElement {
 
   decorateGitSourceControlButton(pullBtn, 'Pull');
 
-  pullBtn.addEventListener('click', () =>
-    void runGitOp(() => gitPull(getEffectiveCwdArg()), { successMessage: 'Pulled changes', sendToChat: 'pull' }),
-  );
+  let pullPending = false;
+  pullBtn.addEventListener('click', () => {
+    if (pullPending) return;
+    pullPending = true;
+    pullBtn.setAttribute('aria-disabled', 'true');
+    const generation = cwdGeneration;
+    const workspace = getWorkspacePath();
+    const isCurrent = () => generation === cwdGeneration && workspace === getWorkspacePath();
+    void runGitOp(
+      () => pullWithStrategyChoice(getEffectiveCwdArg(), undefined, isCurrent),
+      { successMessage: 'Pulled changes', sendToChat: 'pull' },
+    ).finally(() => {
+      pullPending = false;
+      pullBtn.removeAttribute('aria-disabled');
+    });
+  });
 
   const pushBtn = document.createElement('button');
 

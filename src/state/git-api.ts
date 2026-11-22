@@ -84,6 +84,13 @@ export interface GitCommitSnapshot {
   treeSha: string;
 }
 
+export interface GitPullTarget {
+  cwd: string;
+  branch: string;
+  head: string;
+  upstream: string;
+}
+
 /** Stable checkout outcome codes from `checkoutSwitch` / `checkoutPlan` / `worktreeRemove`. */
 export type GitCheckoutCode =
   | 'in_worktree'
@@ -99,6 +106,8 @@ export type GitCheckoutCode =
 
 export interface GitOpResult {
   code?: GitCheckoutCode;
+  /** Git needs a one-time pull strategy; use the same checkout and refs on retry. */
+  pullTarget?: GitPullTarget;
   /** `worktreeRemove`: Git's lock reason (`''` when locked without one). */
   lockReason?: string;
   /** `worktreeRemove`: the worktree folder was already gone. */
@@ -313,8 +322,11 @@ export function gitPush(input?: {
   return postGit('push', input ?? {});
 }
 
-export function gitPull(cwd?: string): Promise<GitOpResult> {
-  return postGit('pull', cwd ? { cwd } : {});
+export function gitPull(
+  cwd?: string,
+  retry?: { strategy: 'merge' | 'rebase'; expectedTarget: GitPullTarget },
+): Promise<GitOpResult> {
+  return postGit('pull', { cwd: cwd || undefined, ...retry });
 }
 
 export function gitFetch(cwd?: string): Promise<GitOpResult> {
