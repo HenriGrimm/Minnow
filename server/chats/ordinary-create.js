@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { ChatContractError, validateChatCommand, validateModelSelection } from './contracts.js';
 import { createChatPolicy, intersectChatPolicies, assertChatPolicyWithinCeiling } from './policy.js';
 import { hashChatPayload } from './repository.js';
-import { assertOrdinaryChatConsent, ordinaryChatConsentHash, ORDINARY_CONSENT_MS } from './ordinary-consent.js';
+import { assertOrdinaryChatConsent, ordinaryChatConsentHash } from './ordinary-consent.js';
 import { ordinaryChatScopeBlocker } from './ordinary-routing.js';
 import { resolveProjectScope } from './caller.js';
 import { checkoutKey, readChatCheckoutIdentity } from './checkout-identity.js';
@@ -153,7 +153,9 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
         ...(commandId ? { commandId, disposition: 'queued' } : { disposition: 'created' }), replayed: false };
       saveReceipt(receiptId, chatId, 'conversation.created', { intentHash, receipt });
       if (input.reportBack) saveReceipt(reportId(caller, chatId), chatId, 'conversation.report', {
-        commandId, expiresAt: now() + ORDINARY_CONSENT_MS, checkoutIdentity: currentDestination.checkoutIdentity, policy,
+        // The report is bound to the originating execution by reportId and
+        // requireCaller, not the approval dialog's response deadline.
+        commandId, checkoutIdentity: currentDestination.checkoutIdentity, policy,
         ...(workspacePreparation ? { workspaceIntentId: workspacePreparation.id } : {}),
       });
       settleReceipt?.(receipt);
@@ -168,7 +170,7 @@ export function createOrdinaryRootAdmission({ repository, context, enabled, ordi
   function ordinaryReport(caller, target) {
     requireCaller(caller);
     const grant = repository.getOutbox(reportId(caller, target.chat.id));
-    if (grant?.kind !== 'conversation.report' || grant.payload.expiresAt <= now() || target.scope.projectId !== caller.scope.projectId) return null;
+    if (grant?.kind !== 'conversation.report' || target.scope.projectId !== caller.scope.projectId) return null;
     let policy = createChatPolicy(grant.payload.policy);
     if (grant.payload.workspaceIntentId) {
       const setup = target.chat.workspacePreparation;

@@ -13,6 +13,7 @@ import { hashChatPayload } from './repository.js';
 
 const terminal = new Set(['completed', 'failed', 'stopped', 'recovery_required']);
 const recoveryTools = new Set(['chat_list', 'chat_read', 'chat_wait', 'chat_stop']);
+const fullPeerRead = (caller, source) => caller.policy.permissionLevel === 'full' && source.policy.permissionLevel === 'full';
 const argumentNames = {
   agent_capabilities: ['search', 'cursor', 'limit'],
   chat_list: ['query', 'status', 'include_subagents', 'cursor', 'limit'],
@@ -181,11 +182,15 @@ export function createChatTools({ repository, context, service, validateCaller, 
                 ...(view === 'messages' && terminal.has(reads.execution(target.chat.id, executionId)?.status)
                   ? { assistant_final: reads.finalText(executionId) } : {}) } : {}) };
           }
-          const input = { chatId: target.chat.id, view, after, limit, requestKey: toolCallId ?? '' };
-          const proof = await confirmTarget('read', input, 'Read another chat?');
-          target = await targetFor(caller, source, args.chat_id);
-          active(caller, signal);
-          service.verifyOrdinaryAction(caller, 'read', input, target, proof);
+          if (fullPeerRead(caller, source)) {
+            ordinaryChatConsentHash(repository, caller, null); // Still a human-started turn.
+          } else {
+            const input = { chatId: target.chat.id, view, after, limit, requestKey: toolCallId ?? '' };
+            const proof = await confirmTarget('read', input, 'Read another chat?');
+            target = await targetFor(caller, source, args.chat_id);
+            active(caller, signal);
+            service.verifyOrdinaryAction(caller, 'read', input, target, proof);
+          }
         }
         const activity = reads.activity(target.chat.id);
         return { chat_id: target.chat.id, title: String(target.chat.name ?? '').slice(0, 240), link: link(target.chat.id), ...activity,
@@ -235,6 +240,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
       const requestedId = args.execution_id === undefined ? undefined : id(args.execution_id);
       let selected = reads.execution(chatId, requestedId);
       let readProof, readInput, reportCommandId, deadline;
+      let bypassReadApproval = false;
       if (!target.chat.agentConversation && target.chat.id !== caller.chatId) {
         reportCommandId = service.ordinaryReport(caller, target);
         if (reportCommandId) {
@@ -254,11 +260,13 @@ export function createChatTools({ repository, context, service, validateCaller, 
             const currentSource = await context.resolveTarget(caller.chatId);
             assertChatToolAllowed(caller.policy, name, args, { currentPolicy: currentSource.policy, approvalGranted });
             target = await targetFor(caller, currentSource, chatId, 'read', true);
-            if (service.ordinaryReport(caller, target) !== reportCommandId) throw new ChatContractError('policy_denied', 'Reporting authorization expired');
+            if (service.ordinaryReport(caller, target) !== reportCommandId) throw new ChatContractError('policy_denied', 'Reporting is no longer authorized');
           }
         } else if (selected && (requestedId || !terminal.has(selected.status))) {
           readInput = { chatId, executionId: selected.executionId, timeoutMs, requestKey: toolCallId ?? '' };
-          readProof = await confirmTarget('read', readInput, 'Wait for another chat’s result?');
+          bypassReadApproval = fullPeerRead(caller, source);
+          if (bypassReadApproval) ordinaryChatConsentHash(repository, caller, null);
+          else readProof = await confirmTarget('read', readInput, 'Wait for another chat’s result?');
         }
       }
       if (args.execution_id !== undefined && !selected) throw new ChatContractError('request_not_found', 'This execution does not belong to the selected conversation');
@@ -272,9 +280,13 @@ export function createChatTools({ repository, context, service, validateCaller, 
           const currentSource = await context.resolveTarget(caller.chatId);
           assertChatToolAllowed(caller.policy, name, args, { currentPolicy: currentSource.policy, approvalGranted });
           const currentTarget = await targetFor(caller, currentSource, chatId, 'read', Boolean(reportCommandId));
-          if (readInput) service.verifyOrdinaryAction(caller, 'read', readInput, currentTarget, readProof);
+          active(caller, signal);
+          if (bypassReadApproval && !fullPeerRead(caller, currentSource)) {
+            throw new ChatContractError('policy_denied', 'Full access was revoked while waiting for this chat');
+          }
+          if (readInput && !bypassReadApproval) service.verifyOrdinaryAction(caller, 'read', readInput, currentTarget, readProof);
           if (reportCommandId && service.ordinaryReport(caller, currentTarget) !== reportCommandId) {
-            throw new ChatContractError('policy_denied', 'Reporting authorization expired');
+            throw new ChatContractError('policy_denied', 'Reporting is no longer authorized');
           }
           const activity = reads.activity(chatId, selected.executionId), current = activity.execution;
           if (!current) return { chat_id: chatId, execution_id: selected.executionId, state: 'unavailable', link: link(chatId) };

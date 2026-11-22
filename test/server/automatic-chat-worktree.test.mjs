@@ -76,6 +76,29 @@ test('automatic chat setup isolates, coalesces, reuses the actual branch, and av
     assert.equal(repaired.ok, true, repaired.error);
     assert.equal(repaired.path, failed.path);
     assert.equal(repaired.branch, failed.branch);
+
+    // npm workspaces used to install during allocation and again during setup.
+    await fs.mkdir(path.join(repo, 'packages', 'local'), { recursive: true });
+    await fs.writeFile(path.join(repo, 'packages', 'local', 'package.json'),
+      JSON.stringify({ name: 'local-fixture', version: '1.0.0' }));
+    await fs.writeFile(path.join(repo, 'record-install.cjs'), `
+      const assert = require('node:assert/strict');
+      const fs = require('node:fs');
+      assert.equal(process.env.npm_config_prefer_offline, 'true');
+      fs.appendFileSync('install-count.txt', 'x');
+    `);
+    await fs.writeFile(path.join(repo, 'package.json'), JSON.stringify({
+      name: 'worktree-setup-test', version: '1.0.0', private: true,
+      workspaces: ['packages/*'], scripts: { install: 'node record-install.cjs' },
+    }));
+    await git(['add', 'package.json', 'record-install.cjs', 'packages']);
+    await git(['commit', '-m', 'local npm workspace fixture']);
+    const npmWorkspace = await setup({ chatId: 'npm-workspace', title: 'Local npm workspace' });
+    assert.equal(npmWorkspace.ok, true, npmWorkspace.error);
+    assert.equal(await fs.readFile(path.join(npmWorkspace.path, 'install-count.txt'), 'utf8'), 'x');
+    assert.equal(await fs.realpath(path.join(npmWorkspace.path, 'node_modules', 'local-fixture')),
+      await fs.realpath(path.join(npmWorkspace.path, 'packages', 'local')));
+    await assert.rejects(fs.stat(path.join(repo, 'install-count.txt')), { code: 'ENOENT' });
   } finally {
     if (oldHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = oldHome;
     resetMinnowHomeCache();

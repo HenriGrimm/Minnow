@@ -33,10 +33,10 @@ async function pathExists(targetPath) {
  * Windows `shell:true` spawns cmd.exe, so SIGTERM alone is not enough — kill the tree.
  * @param {string} root — integration worktree root (absolute)
  * @param {string[]} changedFiles — paths from a post-merge git diff
- * @param {{ timeout?: number, signal?: AbortSignal }} [options]
+ * @param {{ timeout?: number, signal?: AbortSignal, preferCachedNpm?: boolean }} [options]
  * @returns {Promise<{ ran: string[], failed: string[] }>}
  */
-export async function refreshDependencies(root, changedFiles, { timeout = INSTALL_TIMEOUT_MS, signal } = {}) {
+export async function refreshDependencies(root, changedFiles, { timeout = INSTALL_TIMEOUT_MS, signal, preferCachedNpm = false } = {}) {
   signal?.throwIfAborted();
   const ran = [];
   const failed = [];
@@ -74,7 +74,8 @@ export async function refreshDependencies(root, changedFiles, { timeout = INSTAL
       }
 
       try {
-        const target = installSpawnTarget(install);
+        const target = installSpawnTarget(preferCachedNpm && install.command === 'npm'
+          ? { ...install, args: [...install.args, '--prefer-offline', '--no-audit', '--no-fund'] } : install);
         const result = await (signal ? runWorktreeSetupProcess : runProcess)(target.command, target.args, {
           cwd: root,
           timeout,

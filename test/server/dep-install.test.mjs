@@ -42,6 +42,9 @@ describe('dep-install', () => {
       assert.deepEqual(result.failed, []);
       assert.deepEqual(result.ran, ['npm install']);
       assert.equal(await fs.readFile(path.join(project, 'installed.txt'), 'utf8'), 'install\n');
+      const cached = await refreshDependencies(project, ['package.json'], { timeout: 10_000, preferCachedNpm: true });
+      assert.deepEqual(cached.ran, ['npm install']);
+      assert.equal(await fs.readFile(path.join(project, 'installed.txt'), 'utf8'), 'install\n--prefer-offline\n--no-audit\n--no-fund\n');
     } finally {
       for (const [key, value] of Object.entries(saved)) {
         if (value === undefined) delete process.env[key]; else process.env[key] = value;

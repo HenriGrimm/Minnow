@@ -83,6 +83,7 @@ async function fixture(run, extra = {}) {
   const tools = createChatTools(options);
   const execute = (name, args = {}, overrides = {}) => tools.execute(name, args, { caller, toolCallId: 'call', requestOrdinaryConfirmation: confirm(), ...overrides });
   try { await run({ db, repository, context, caller, fence, tools, options, policies, initial, service, errors, execute, confirm,
+    setLivePermission(permissionLevel) { live = createChatPolicy({ ...initial, permissionLevel }); },
     revoke() { live = createChatPolicy({ ...initial, toolPermissions: { ...initial.toolPermissions, chat_wait: 'off', chat_send: 'off' } }); },
     invalidate() { valid = false; } });
   } finally { await service.dispose(); db.close(); }
@@ -417,6 +418,36 @@ test('Full access creates ordinary roots without asking, but only for human-star
   }, { permissionLevel: 'full', scheduler: true });
 });
 
+test('Full access reads and waits without confirmation only inside the authorized scope', async () => {
+  await fixture(async f => {
+    const noPrompt = { requestOrdinaryConfirmation: () => assert.fail('Full access should not ask to read') };
+    const fence = f.repository.claimExecution({ chatId: 'target', executionId: 'target-execution', ownerId: 'target-host' });
+    f.repository.updateExecution('target-execution', { status: 'completed' }, { fence });
+    assert.equal((await f.execute('chat_read', { chat_id: 'target' }, noPrompt)).chat_id, 'target');
+    assert.equal((await f.execute('chat_wait', { chat_id: 'target', execution_id: 'target-execution' }, noPrompt)).state, 'terminal');
+    await assert.rejects(f.execute('chat_read', { chat_id: 'foreign-chat' }, noPrompt),
+      error => ['cross_project_denied', 'workspace_denied'].includes(error.code));
+    f.setLivePermission('auto');
+    let asked = 0;
+    const confirm = f.confirm();
+    assert.equal((await f.execute('chat_read', { chat_id: 'target' }, {
+      requestOrdinaryConfirmation(input) { asked++; return confirm(input); },
+    })).chat_id, 'target');
+    assert.equal(asked, 1);
+  }, { permissionLevel: 'full' });
+});
+
+test('a Full access wait fails closed if the source drops to Auto without opening a prompt', async () => {
+  let downgrade;
+  await fixture(async f => {
+    downgrade = () => f.setLivePermission('auto');
+    f.repository.claimExecution({ chatId: 'target', executionId: 'target-execution', ownerId: 'target-host' });
+    await assert.rejects(f.execute('chat_wait', { chat_id: 'target' }, {
+      requestOrdinaryConfirmation: () => assert.fail('Do not open a confirmation mid-wait'),
+    }), { code: 'policy_denied', message: /Full access was revoked/ });
+  }, { permissionLevel: 'full', options: { beforeWait: () => downgrade() } });
+});
+
 test('create-and-send admits one attributed turn and scopes reporting to its command', async () => {
   await fixture(async f => {
     const args = { title: 'Review', message: 'Inspect the changelog', report_back: true, client_request_id: 'review' };
@@ -426,6 +457,11 @@ test('create-and-send admits one attributed turn and scopes reporting to its com
     assert.equal(record.command.message, args.message);
     assert.equal(record.command.provenance.actor, 'agent');
     assert.equal(record.command.provenance.sourceChatId, 'source');
+    // Existing reports may have a deadline from the former dialog timeout.
+    // They still belong to this active execution, even after slow setup.
+    const grant = f.db.prepare("SELECT outbox_id, payload_json FROM chat_outbox WHERE kind='conversation.report'").get();
+    f.db.prepare('UPDATE chat_outbox SET payload_json=? WHERE outbox_id=?')
+      .run(JSON.stringify({ ...JSON.parse(grant.payload_json), expiresAt: 1 }), grant.outbox_id);
     assert.equal((await f.execute('chat_read', { chat_id: result.chatId }, { requestOrdinaryConfirmation: undefined })).command_id, result.commandId);
     assert.equal((await f.execute('chat_wait', { chat_id: result.chatId, timeout_ms: 0 }, { requestOrdinaryConfirmation: undefined })).command_id, result.commandId);
     assert.equal(f.repository.listCommands({ chatId: result.chatId }).length, 1);

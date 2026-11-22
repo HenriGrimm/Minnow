@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
-import { runWorktreeSetupProcess } from './setup-process.js';
+import { createWorktreeSetupQueue, runWorktreeSetupProcess } from './setup-process.js';
 import { parseGitNumstat } from '../tools/git-change-stats.js';
 import { invalidateRegisteredWorktreeCache } from './allowlist.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
@@ -30,6 +30,9 @@ import {
 } from './multi-repo.js';
 
 const GIT_TIMEOUT_MS = 120_000;
+// Large batches of automatic chats otherwise start one disk-heavy install per
+// checkout at once. Keep the installations isolated, but bound the fan-out.
+const queueAutomaticChatInstall = createWorktreeSetupQueue(2);
 
 async function git(args, cwd = getEffectiveWorkspaceRoot(), options = {}) {
   // Managed checkouts add several directories to otherwise valid project paths.
@@ -1322,7 +1325,7 @@ const automaticChatSetups = new Map();
  * Install dependencies in a chat worktree — once per repo for a mirrored
  * (multi-repo) worktree, where the folder root holds no manifests of its own.
  * @param {string} wtPath
- * @param {{ signal?: AbortSignal }} [options]
+ * @param {{ signal?: AbortSignal, preferCachedNpm?: boolean }} [options]
  */
 export async function refreshChatWorktreeDependencies(wtPath, options = {}) {
   const files = ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]);
@@ -1379,7 +1382,7 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
       const stem = `minnow/${slug}-${suffix}`;
       branch = stem;
       for (let i = 2; await branchExistsInAny(sources, branch); i++) branch = `${stem}-${i}`;
-      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', requireNewBranch: true, signal, prepareDependencies: !onCheckout });
+      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', requireNewBranch: true, signal, prepareDependencies: false });
       if (!created.ok) return { ...created, error: created.error || created.output || 'Could not create worktree' };
     } else if (await pathExists(wtPath)) {
       const registered = await git(['worktree', 'list', '--porcelain'], undefined, { signal });
@@ -1403,7 +1406,7 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
       const stem = `minnow/${slug}-${suffix}`;
       branch = stem;
       for (let i = 2; await branchExists(branch); i++) branch = `${stem}-${i}`;
-      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', signal, prepareDependencies: !onCheckout });
+      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', signal, prepareDependencies: false });
       if (!created.ok) return { ...created, error: created.error || created.output || 'Could not create worktree' };
     }
     signal?.throwIfAborted();
@@ -1413,7 +1416,8 @@ export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
     const environment = await prepareChatWorktreeEnvironment(wtPath, { signal });
     if (!environment.ok) return { ok: false, path: wtPath, branch, environment,
       error: `Worktree kept. Local environment setup failed: ${environment.failed.map(item => item.reason).join(' ')} Retry setup after repair.` };
-    const preparation = await refreshChatWorktreeDependencies(wtPath, { signal });
+    const preparation = await queueAutomaticChatInstall(
+      () => refreshChatWorktreeDependencies(wtPath, { signal, preferCachedNpm: true }), signal);
     signal?.throwIfAborted();
     if (preparation.failed.length) {
       return { ok: false, path: wtPath, branch, ...preparation, error: `Worktree kept. Setup failed: ${preparation.failed.join(', ')}. Retry Enable worktree after fixing the dependency error.` };
