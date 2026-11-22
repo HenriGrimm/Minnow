@@ -49,7 +49,7 @@ import {
   stripXmlToolCallBlocks
 } from "./xml-tool-calls.js";
 import { sanitizeCompletionBodyForProvider } from "../providers/sanitize-completion-body.js";
-import { toolImageFollowUpFromAttachments, pruneSupersededToolImages, TOOL_IMAGE_NO_VISION_HINT } from "./tool-image-follow-up.js";
+import { toolImageFollowUpFromAttachments, pruneSupersededToolImages, projectToolImageNoVisionHints } from "./tool-image-follow-up.js";
 import { resolveModelApi } from "../generations/resolve-model-api.js";
 import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
@@ -742,6 +742,10 @@ function createTurnRunner(deps) {
         input.task,
         input.priorMessages
       );
+      // Image support follows the model answering now. The hint is projected
+      // onto the request body, never written into stored tool rows.
+      const sendToolImages = canSendToolImages(input.modelId);
+      const imageToolCallIds = new Set();
       let toolTurns = 0;
       const repeatGuard = createRepeatGuard({ maxRepeats: input.maxRepeatedToolCalls });
       let repeatStop = null;
@@ -1299,7 +1303,7 @@ function createTurnRunner(deps) {
         let body = applySamplerToBody(
           {
             model: input.modelId || void 0,
-            messages: finalMessages,
+            messages: projectToolImageNoVisionHints(finalMessages, { sendImages: sendToolImages, imageToolCallIds }),
             stream: true
           },
           resolvedSampler.preset,
@@ -1464,7 +1468,7 @@ function createTurnRunner(deps) {
         const body = applySamplerToBody(
           {
             model: input.modelId || void 0,
-            messages,
+            messages: projectToolImageNoVisionHints(messages, { sendImages: sendToolImages, imageToolCallIds }),
             stream: true
           },
           resolvedSampler.preset,
@@ -1785,7 +1789,6 @@ function createTurnRunner(deps) {
               })
             });
             const imageFollowUps = [];
-            const sendImages = canSendToolImages(input.modelId);
             for (const outcome of outcomes) {
               const tc = outcome.toolCall;
               if (outcome.parseError) {
@@ -1812,9 +1815,10 @@ function createTurnRunner(deps) {
                 messages.push({
                   role: "tool",
                   tool_call_id: tc.id,
-                  content: (unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")) + (repeat.warning ? `\n\n${repeat.warning}` : "")
+                  content: (unchanged ?? toolOut.content) + (repeat.warning ? `\n\n${repeat.warning}` : "")
                 });
-                if (sendImages) {
+                if (unchanged == null && toolOut.attachments?.some((att) => att.type === "image")) imageToolCallIds.add(tc.id);
+                if (sendToolImages) {
                   const followUp = toolImageFollowUpFromAttachments(toolOut.attachments, tc.id);
                   if (followUp) imageFollowUps.push(followUp);
                 }

@@ -10,6 +10,7 @@ import { initSessionsSchema } from '../../server/config/sessions-schema.js';
 import { createChatRepository } from '../../server/chats/repository.js';
 import { createChatTranscriptStore } from '../../server/chats/transcript-store.js';
 import { emptyCompactionState } from '../../server/runner/compaction/merge.js';
+import { TOOL_IMAGE_NO_VISION_HINT, USER_IMAGE_NO_VISION_HINT } from '../../server/runner/tool-image-follow-up.js';
 
 function response({ tool = false } = {}) {
   const name = typeof tool === 'string' ? tool : 'save_file';
@@ -247,5 +248,83 @@ test('only explicit negative vision capability omits persisted image bytes on th
     assert.deepEqual(memory.load('chat').messages[0].images, images);
     assert.equal(memory.load('chat').messages[0].content, 'Inspect [image: diagram.png]');
     assert.equal(memory.load('chat').messages.filter(row => row.role === 'user').length, 1);
+  }
+});
+
+function screenshotThenReply() {
+  let calls = 0;
+  return () => {
+    calls += 1;
+    if (calls > 1) return response();
+    const delta = { tool_calls: [{ index: 0, id: 'shot-1', type: 'function',
+      function: { name: 'browser_screenshot', arguments: '{}' } }] };
+    const chunk = JSON.stringify({ choices: [{ delta }] });
+    const finish = JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] });
+    return new Response(`data: ${chunk}\n\ndata: ${finish}\n\ndata: [DONE]\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+  };
+}
+
+const screenshotTools = [{ type: 'function', function: { name: 'browser_screenshot', description: 'Shot',
+  parameters: { type: 'object', properties: {} } } }];
+const screenshot = [{ type: 'image', url: '/api/browser/screenshot/shot1', mime: 'image/png',
+  dataUrl: 'data:image/png;base64,aA==' }];
+
+async function screenshotTurn(memory, vision) {
+  let request;
+  const reply = screenshotThenReply();
+  const deps = { ...dependencies(memory, async (_provider, body) => { request = body; return reply(); }),
+    isVisionModel: () => vision };
+  const result = await runTurn({ ...options, tools: screenshotTools, model: { ...model, vision }, deps,
+    execute: async () => ({ content: 'Screenshot saved: shot1.png', attachments: screenshot }) });
+  assert.equal(result.outcome, 'no_report');
+  return request;
+}
+
+test('a screenshot taken on a text-only model stops refusing images once the chat switches', async () => {
+  const memory = createMemoryTranscriptStore();
+  memory.append('chat', { role: 'user', content: 'Do the work' });
+
+  const textOnlyRequest = await screenshotTurn(memory, false);
+  const textOnlyTool = textOnlyRequest.messages.find(row => row.role === 'tool');
+  assert.match(String(textOnlyTool.content), /current model cannot view images/);
+  // The hint explains this request only; it must not become transcript text.
+  const stored = memory.load('chat').messages.find(row => row.role === 'tool');
+  assert.doesNotMatch(String(stored.content), /cannot view images/);
+
+  const visionRequest = await screenshotTurn(memory, true);
+  const visionTool = visionRequest.messages.find(row => row.role === 'tool');
+  assert.doesNotMatch(String(visionTool.content), /cannot view images/);
+  assert.match(String(visionTool.content), /Screenshot saved/);
+});
+
+test('a stored no-vision hint never reaches a chat that now runs a vision model', async () => {
+  const images = [{ name: 'shot.png', dataUrl: 'data:image/png;base64,aA==' }];
+  for (const vision of [true, false]) {
+    const memory = createMemoryTranscriptStore();
+    memory.append('chat', { role: 'user', content: 'What is wrong here?\n\n[image: shot.png]', images });
+    memory.append('chat', { role: 'assistant', content: '',
+      tool_calls: [{ id: 'shot-1', type: 'function', function: { name: 'browser_screenshot', arguments: '{}' } }] });
+    memory.append('chat', { role: 'tool', tool_call_id: 'shot-1',
+      content: `Screenshot saved: shot1.png${TOOL_IMAGE_NO_VISION_HINT}`,
+      attachments: screenshot });
+    memory.append('chat', { role: 'user',
+      content: `And this one?\n\n[image: shot.png]${USER_IMAGE_NO_VISION_HINT}` });
+    let request;
+    const result = await runTurn({ ...options, seed: '', model: { ...model, vision },
+      deps: { ...dependencies(memory, async (_provider, body) => { request = body; return response(); }),
+        isVisionModel: () => vision } });
+    assert.equal(result.outcome, 'no_report');
+    const sentText = JSON.stringify(request.messages.filter(row => row.role !== 'tool'));
+    const sentTool = request.messages.find(row => row.role === 'tool');
+    if (vision) {
+      assert.doesNotMatch(String(sentTool.content), /cannot view images/);
+      assert.doesNotMatch(sentText, /cannot accept image input/);
+      assert.match(sentText, /data:image\/png;base64,aA==/);
+    } else {
+      assert.match(String(sentTool.content), /cannot view images/);
+      assert.match(sentText, /cannot accept image input/);
+    }
+    // Stored rows keep their original text either way.
+    assert.match(String(memory.load('chat').messages[2].content), /cannot view images/);
   }
 });

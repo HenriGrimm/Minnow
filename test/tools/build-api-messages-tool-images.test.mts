@@ -145,4 +145,34 @@ describe('buildApiMessages tool screenshots', () => {
       false,
     );
   });
+
+  test('a stored no-vision hint is replaced by pixels after switching to a vision model', () => {
+    const chat = chatWithScreenshot();
+    const stored = chat.history[2];
+    if (stored.role !== 'tool') assert.fail('expected a stored tool row');
+    stored.content = `${stored.content}${TOOL_IMAGE_NO_VISION_HINT}`;
+    const messages = buildApiMessages(chat, 'sys', {
+      composedSystemPrompt: 'sys',
+      vision: true,
+    });
+    const tool = messages.find((m) => m.role === 'tool');
+    assert.ok(tool);
+    assert.doesNotMatch(String(tool.content), /cannot view images/);
+    const followUp = messages.find((m) => m.role === 'user' && Array.isArray(m.content));
+    assert.ok(followUp, 'the screenshot must reach the vision model as pixels');
+  });
+
+  test('a text-only model gets one hint even when the stored row already carries it', () => {
+    const chat = chatWithScreenshot();
+    const stored = chat.history[2];
+    if (stored.role !== 'tool') assert.fail('expected a stored tool row');
+    stored.content = `${stored.content}${TOOL_IMAGE_NO_VISION_HINT}`;
+    const messages = buildApiMessages(chat, 'sys', {
+      composedSystemPrompt: 'sys',
+      vision: false,
+    });
+    const tool = messages.find((m) => m.role === 'tool');
+    assert.ok(tool);
+    assert.equal(String(tool.content).match(/cannot view images/g)?.length, 1);
+  });
 });

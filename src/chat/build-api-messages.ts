@@ -23,9 +23,9 @@ import { indexOfLastUserMessage } from './history-truncate-core';
 import {
   isToolImageFollowUpMessage,
   pruneSupersededToolImages,
-  TOOL_IMAGE_NO_VISION_HINT,
+  projectToolImageNoVisionHint,
+  stripUserImageNoVisionHint,
   toolImageFollowUpUserMessage,
-  toolMessageHasImageAttachment,
   USER_IMAGE_NO_VISION_HINT,
 } from './tool-image-follow-up';
 import { pushOutboundSystemMessages } from '../tools/api-system-messages';
@@ -302,7 +302,7 @@ function historyImageReplayIndices(
 
 /** Persisted user row → multimodal content so the model can re-read the pixels. */
 function replayUserImageContent(message: UserMessage): ApiMessageContent {
-  const text = apiMessageContentToText(message.content);
+  const text = stripUserImageNoVisionHint(apiMessageContentToText(message.content));
   const parts: ContentPart[] = [];
   if (text.trim()) {
     parts.push({ type: 'text', text });
@@ -313,6 +313,32 @@ function replayUserImageContent(message: UserMessage): ApiMessageContent {
   }
   if (parts.length === 0) return text;
   return parts;
+}
+
+/**
+ * Drop a no-vision hint a text-only turn left in stored content. The hint is a
+ * property of the model answering now, so a chat switched to a vision model
+ * must stop re-reading its earlier refusal.
+ */
+function withoutStaleUserHint(content: ApiMessageContent): ApiMessageContent {
+  if (typeof content === 'string') return stripUserImageNoVisionHint(content);
+  if (!Array.isArray(content)) return content;
+  let changed = false;
+  const parts: ContentPart[] = [];
+  for (const part of content) {
+    if (part.type !== 'text') {
+      parts.push(part);
+      continue;
+    }
+    const text = stripUserImageNoVisionHint(part.text);
+    if (text === part.text) {
+      parts.push(part);
+      continue;
+    }
+    changed = true;
+    if (text.trim()) parts.push({ ...part, text });
+  }
+  return changed ? parts : content;
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -369,19 +395,18 @@ export function buildApiMessages(
       } else if (replayIndices.has(i)) {
         pushFromHistory({ role: 'user', content: replayUserImageContent(m) }, i);
       } else {
-        pushFromHistory({ role: 'user', content: m.content }, i);
+        pushFromHistory({ role: 'user', content: sendUserImages ? withoutStaleUserHint(m.content) : m.content }, i);
       }
       continue;
     }
 
     if (m.role === 'tool') {
-      const hasImage = toolMessageHasImageAttachment(m);
+      const projected = projectToolImageNoVisionHint(m, { sendImages: vlm });
       pushFromHistory(
         {
           role: 'tool',
           tool_call_id: m.tool_call_id,
-          content:
-            hasImage && !vlm ? `${m.content}${TOOL_IMAGE_NO_VISION_HINT}` : m.content,
+          content: projected.content,
         },
         i,
       );
@@ -517,6 +542,13 @@ export function overlayMultimodalHistoryForRunTurn(
     if (replayIndices.has(i)) {
       (history[i] as unknown as { content: ApiMessageContent }).content =
         replayUserImageContent(m);
+      continue;
+    }
+    if (sendUserImages) {
+      // A text-only turn may have stored its refusal in the row; the model
+      // answering now can read images, so that note no longer holds.
+      (history[i] as unknown as { content: ApiMessageContent }).content =
+        withoutStaleUserHint(m.content);
     }
   }
   return history.map((message, index) => projectChatAttribution(message, (sourceHistory[index] as UserMessage)?.provenance));
