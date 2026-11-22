@@ -19,7 +19,7 @@ import { buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bri
 import { isParallelSafeTool } from '../../server/runner/parallel-tool-policy.js';
 
 const enabled = () => ({ creationEnabled: true, recoveryEnabled: true });
-const effects = Object.fromEntries(AGENT_CHAT_TOOL_IDS.map(name => [name, ['chat_create', 'chat_send', 'chat_stop'].includes(name) ? 'external-write' : 'read']));
+const effects = Object.fromEntries(AGENT_CHAT_TOOL_IDS.map(name => [name, ['chat_create', 'chat_send', 'chat_stop', 'chat_retry_worktree'].includes(name) ? 'external-write' : 'read']));
 const pair = { providerId: 'fixture', modelId: 'model' };
 async function fixture(run, extra = {}) {
   const db = new Database(':memory:'); initSessionsSchema(db);
@@ -68,7 +68,7 @@ async function fixture(run, extra = {}) {
     ordinaryFeature: () => ({ admissionEnabled: true }),
     captureProfile: ({ target, selection }) => ({ profileId: 'profile-' + target.chat.id, profileVersion: 1,
       snapshot: { policy: target.currentPolicy, modelSelection: selection } }),
-    resolveModelSelection: ({ selection }) => selection, onError: error => errors.push(error) });
+    resolveModelSelection: ({ selection }) => { extra.beforeModelSelection?.(); return selection; }, onError: error => errors.push(error) });
   const requests = createChatRequestService({ repository, authorizeResponse: (_request, input) => input?.human === true });
   const confirm = (decision = 'allow_once') => async input => {
     const request = requests.open({ ...input, chatId: 'source', executionId: fence.executionId, fence });
@@ -100,10 +100,10 @@ test('spawn requires a reference title in both legacy and persistent tool schema
 
 test('chat creation is advertised only on the managed tool path', () => {
   const catalog = BUILT_IN_TOOLS.filter(row => AGENT_CHAT_TOOL_IDS.includes(row.id));
-  assert.equal(catalog.length, 7);
+  assert.equal(catalog.length, 8);
   assert.equal(projectAgentConversationTools(catalog.map(row => row.definition)).length, 0);
   assert.equal(projectAgentConversationTools(catalog.map(row => row.definition), { creationEnabled: true }).length, 6);
-  assert.equal(projectAgentConversationTools(catalog.map(row => row.definition), { creationEnabled: true, ordinaryCreationEnabled: true }).length, 7);
+  assert.equal(projectAgentConversationTools(catalog.map(row => row.definition), { creationEnabled: true, ordinaryCreationEnabled: true }).length, 8);
   const defaults = normalizeToolConfig({});
   assert.equal('permissions' in defaults, false);
   const stored = normalizeToolConfig({ enabled: { chat_send: false }, permissions: { default: { chat_send: 'off', chat_stop: 'ask' } } });
@@ -116,7 +116,7 @@ test('native CLI handoff advertises exactly the same bounded tool schemas, with 
   assert.deepEqual(native.map(row => row.name), AGENT_CHAT_TOOL_IDS);
   for (const row of native) assert.deepEqual(row.inputSchema, definitions.find(tool => tool.function.name === row.name).function.parameters);
   for (const name of ['agent_capabilities', 'chat_list']) assert.equal(isParallelSafeTool(name), true);
-  for (const name of ['chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop']) assert.equal(isParallelSafeTool(name), false);
+  for (const name of ['chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_retry_worktree', 'chat_stop']) assert.equal(isParallelSafeTool(name), false);
 });
 
 test('tools require branded active callers, exact current tool grant and known arguments', async () => {
@@ -345,7 +345,7 @@ test('native installer derives the live caller and passes the exact-confirmation
     const installed = installChatTools(runtime, { feature: enabled });
     const output = await handlers.get('chat_read')({ args: { chat_id: 'target', view: 'activity' }, execution: { executionId: 'source-execution' },
       toolContext: { toolCallId: 'read-call', requestOrdinaryConfirmation: f.confirm() } });
-    assert.equal(JSON.parse(output.content).chat_id, 'target'); assert.equal(handlers.size, 7);
+    assert.equal(JSON.parse(output.content).chat_id, 'target'); assert.equal(handlers.size, AGENT_CHAT_TOOL_IDS.length);
     installed.dispose(); assert.equal(handlers.size, 0);
   });
 });
@@ -409,13 +409,42 @@ test('Full access creates ordinary roots without asking, but only for human-star
     });
     assert.equal(f.repository.getChat(result.chatId).explicitOrdinaryRoot, true);
     assert.equal(f.repository.listCommands({ chatId: result.chatId }).length, 1);
-    await assert.rejects(f.service.send(f.caller, { chatId: result.chatId, mode: 'queue', message: 'Still needs consent', clientRequestId: 'send' }), { code: 'policy_denied' });
   }, { permissionLevel: 'full' });
   await fixture(async f => {
     await assert.rejects(f.execute('chat_create', { title: 'Not requested' }, {
       requestOrdinaryConfirmation: () => assert.fail('An unattended turn should not open a request'),
     }), { code: 'policy_denied' });
   }, { permissionLevel: 'full', scheduler: true });
+});
+
+test('Full access keeps ordinary steer and Stop pinned without asking', async () => {
+  await fixture(async f => {
+    const noPrompt = { requestOrdinaryConfirmation: () => assert.fail('Full access must not open an approval') };
+    const peer = await f.execute('chat_create', { title: 'Peer' }, noPrompt);
+    await assert.rejects(f.execute('chat_send', { chat_id: peer.chatId, mode: 'steer', message: 'Unpinned' }, noPrompt),
+      { code: 'invalid_request' });
+    await assert.rejects(f.execute('chat_stop', { chat_id: peer.chatId }, noPrompt), { code: 'invalid_request' });
+    const stop = await f.execute('chat_stop', { chat_id: peer.chatId, execution_id: 'old-execution' }, noPrompt);
+    assert.equal(stop.result.stopRequested, false);
+    assert.equal(f.repository.getCancellationEpoch(peer.chatId), 0);
+    await assert.rejects(f.execute('chat_send', { chat_id: 'foreign-chat', message: 'Out of scope', client_request_id: 'foreign' }, noPrompt),
+      error => ['cross_project_denied', 'workspace_denied'].includes(error.code));
+  }, { permissionLevel: 'full' });
+});
+
+test('a prompt-free send is denied if Full access is revoked before admission', async () => {
+  let downgrade;
+  await fixture(async f => {
+    const peer = await f.execute('chat_create', { title: 'Peer' });
+    downgrade = () => {
+      f.setLivePermission('auto');
+      f.policies.set(peer.chatId, createChatPolicy({ ...f.initial, permissionLevel: 'auto' }));
+    };
+    await assert.rejects(f.execute('chat_send', { chat_id: peer.chatId, message: 'Do not admit' }, {
+      requestOrdinaryConfirmation: () => assert.fail('Do not open an approval mid-admission'),
+    }), { code: 'policy_denied' });
+    assert.equal(f.repository.listCommands({ chatId: peer.chatId }).length, 0);
+  }, { permissionLevel: 'full', beforeModelSelection: () => downgrade?.() });
 });
 
 test('Full access reads and waits without confirmation only inside the authorized scope', async () => {

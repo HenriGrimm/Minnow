@@ -47,7 +47,7 @@ export function getProductionChatRuntime() {
 /** One production command service and host, shared by every transport. */
 export function createProductionChatRuntime({ turns, stopExternalOwner, repository = createChatRepository(),
   preparationAdapters, modelAdapters, prepare = prepareChatExecution, createRunnerDeps = createChatRunnerDeps,
-  generations = listGenerationStates } = {}) {
+  generations = listGenerationStates, enableChatWorktree } = {}) {
   let ready = false, taskAdapter, taskDelivery, causality, questionRecovery;
   let removeLegacyDelivery;
   let releaseReady;
@@ -141,7 +141,8 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       if (entry.chatId === chatId && entry.ownerId === ownerId) requests.expireExecution(entry.executionId, chatId, state);
     }
   }
-  const workspacePreparation = createChatWorkspacePreparation({ repository, context, onChange: chatId => presentation.changed(chatId) });
+  const workspacePreparation = createChatWorkspacePreparation({ repository, context, enableWorktree: enableChatWorktree,
+    onChange: chatId => presentation.changed(chatId) });
   const service = createChatCommandService({ repository, context,
     defaultOrdinaryModel: async () => {
       const saved = await readConfigJson('default-model.json');
@@ -163,6 +164,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     captureWorkspacePreparation: (target, options) => workspacePreparation.capture(target, undefined, options),
     admitWorkspacePreparation: (chatId, intent) => workspacePreparation.admit(chatId, intent),
     applyWorkspaceChoice: (caller, input) => workspacePreparation.applyChoice(caller, input),
+    retryWorkspacePreparation: input => workspacePreparation.retry(input),
     detachMissingWorktree: workspacePreparation.detachMissingWorktree,
     canResumeQuestionExecution: executionId => questionRecovery?.canResume(repository.getExecution(executionId)) === true,
     admitCausality: input => causality.admit(input),
@@ -205,7 +207,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
   });
   const checkpoints = createChatCheckpointCoordinator({ repository });
   const host = createServerChatExecutionHost({ repository, requestService: requests,
-    prepareNativeExecution: async ({ execution, fence, prepared, checkpoint, signal, resolveCurrentPolicy, waitForApproval }) => {
+    prepareNativeExecution: async ({ execution, fence, prepared, checkpoint, signal, resolveCurrentPolicy }) => {
       const selection = execution.captured.nativeExecution;
       if (selection.providerId !== prepared.model.providerId || selection.modelId !== prepared.model.id) throw new ChatContractError('capability_unavailable', 'The accepted native model cannot resolve to another provider/model.');
       const target = assertExecutionScope(execution, await context.resolveTarget(execution.chatId), prepared);
@@ -213,7 +215,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
         subscribePolicyChanges: onInvalidate => subscribeNativePolicyChanges({ home: getMinnowHome(), cwd: prepared.cwd, providerId: prepared.model.providerId, onInvalidate }),
         chatId: execution.chatId, executionId: execution.executionId, fence, cwd: prepared.cwd, workspaceId: target.scope.workspaceId,
         providerId: prepared.model.providerId, modelId: prepared.model.id, cliVersion: selection.cliVersion,
-        requestedNative: true, signal, waitForApproval });
+        requestedNative: true, signal });
     },
     prepareCheckpoint: input => checkpoints.prepare({ ...input,
       deferBaseline: repository.getExecution(input.executionId)?.captured?.nativeExecution?.requestedMode !== 'native' }),

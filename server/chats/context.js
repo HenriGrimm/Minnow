@@ -4,7 +4,7 @@ import { runProcess } from '../process-runner.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { getRequestWorkspaceRoot } from '../runtime/path-access.js';
 import { ChatContractError } from './contracts.js';
-import { createChatPolicy, intersectChatPolicies } from './policy.js';
+import { createChatPolicy, intersectChatPolicies, withOrdinaryWorktreeRetry } from './policy.js';
 import { createChatCaller, createChatProjectRegistry, resolveProjectScope } from './caller.js';
 import { checkoutKey as key, directory, identity, readChatCheckoutIdentity } from './checkout-identity.js';
 import { readMirroredBinding } from './worktree-binding.js';
@@ -252,7 +252,7 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
     // An ordinary chat's first profile preserves its role and tools. The
     // global permission setting is sampled at each new turn admission.
     if (captured && !chat.agentConversation && !chat.forkOrigin) {
-      captured = { ...captured, permissionLevel: currentPolicy.permissionLevel,
+      captured = { ...withOrdinaryWorktreeRetry(captured, currentPolicy), permissionLevel: currentPolicy.permissionLevel,
         filesystemAccess: currentPolicy.filesystemAccess,
         fileWriteScope: ['workspace', 'full'].includes(captured.fileWriteScope) ? currentPolicy.fileWriteScope : captured.fileWriteScope };
     }

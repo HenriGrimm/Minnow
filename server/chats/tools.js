@@ -17,12 +17,32 @@ const fullPeerRead = (caller, source) => caller.policy.permissionLevel === 'full
 const argumentNames = {
   agent_capabilities: ['search', 'cursor', 'limit'],
   chat_list: ['query', 'status', 'include_subagents', 'cursor', 'limit'],
-  chat_create: ['title', 'message', 'provider_id', 'model_id', 'workspace_id', 'enable_worktree', 'report_back', 'client_request_id'],
+  chat_create: ['title', 'message', 'provider_id', 'model_id', 'reasoning_effort', 'workspace_id', 'enable_worktree', 'report_back', 'client_request_id'],
   chat_read: ['chat_id', 'view', 'after_sequence', 'limit'],
   chat_send: ['chat_id', 'message', 'mode', 'client_request_id', 'execution_id'],
-  chat_wait: ['chat_id', 'execution_id', 'timeout_ms'],
+  chat_wait: ['chat_id', 'execution_id', 'command_id', 'timeout_ms'],
+  chat_retry_worktree: ['chat_id', 'intent_id'],
   chat_stop: ['chat_id', 'execution_id', 'scope', 'client_request_id'],
 };
+function worktreeFailure(error) {
+  // Installer/Git output can contain credentials. Expose the stage and exit
+  // status, not the raw diagnostic (which remains in the owning chat).
+  if (error.startsWith('Worktree kept. Setup failed:')) {
+    const exit = /\bexit (\d{1,10})\b/.exec(error)?.[1];
+    return `Dependency setup failed${exit ? ` (exit ${exit})` : ''}. Fix dependencies and retry.`;
+  }
+  if (error.startsWith('Worktree kept. Local environment setup failed:')) return 'Local environment preparation failed. Fix the environment files or permissions and retry.';
+  if (error.startsWith('The selected checkout or branch changed.')) return 'The source checkout or branch changed. Restore the original checkout before retrying.';
+  if (error.startsWith('An unconfirmed worktree allocation exists.')) return 'A worktree exists but could not be verified. Inspect it in Source Control before retrying.';
+  if (error.startsWith('The prepared worktree was replaced or its branch changed.')) return 'The prepared worktree was replaced or changed branches. Inspect it in Source Control.';
+  return 'Worktree setup failed. See the setup notice in the assigned chat for details.';
+}
+function worktreeStatus(chat) {
+  const setup = chat.workspacePreparation;
+  return setup?.intent?.id ? { worktree_setup: { status: setup.status, intent_id: setup.intent.id,
+    ...(setup.status === 'failed' ? { error: worktreeFailure(setup.error ?? '') } :
+      setup.status === 'cancelled' ? { error: 'Worktree setup was stopped.' } : {}) } } : {};
+}
 const link = id => `#/app/code/chat?chatId=${encodeURIComponent(id)}`;
 const fail = message => { throw new ChatContractError('invalid_request', message); };
 function fields(args, allowed) {
@@ -61,8 +81,9 @@ export function createChatTools({ repository, context, service, validateCaller, 
   }
   async function targetFor(caller, source, chatId, operation = 'read', allowReport = false) {
     const target = await context.resolveTarget(id(chatId), { project: source.project });
-    // A creation receipt can authorize this one report, not general access to
-    // the isolated checkout. Still require live read authority in the source.
+    // A creation receipt can authorize chat coordination without granting
+    // general access to the isolated checkout.
+    if (allowReport && operation === 'read' && service.ordinaryAssignment?.(caller, source, target, operation)) return target;
     const report = allowReport && operation === 'read' && !target.chat.agentConversation && service.ordinaryReport(caller, target);
     const authorized = report ? source : target;
     assertCallerCanTarget(caller, { chatId, scope: authorized.scope, policy: authorized.policy }, {
@@ -79,7 +100,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
       if (!state.creationEnabled && !(state.recoveryEnabled && recoveryTools.has(name))) throw new ChatContractError('capability_disabled', 'Conversation coordination is not enabled');
       const source = await context.resolveTarget(caller.chatId);
       active(caller, signal);
-      if (['chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(name) &&
+      if (['chat_read', 'chat_send', 'chat_wait', 'chat_stop', 'chat_retry_worktree'].includes(name) &&
           !repository.getExecution(caller.executionId) && id(args.chat_id) !== caller.chatId && !repository.getRelation(args.chat_id)) {
         throw new ChatContractError('capability_unavailable', 'This host cannot collect explicit confirmation for ordinary chat actions');
       }
@@ -114,6 +135,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
           ...(args.message !== undefined ? { message: text(args.message, 24_000) } : {}),
           ...(args.workspace_id !== undefined ? { workspaceId: id(args.workspace_id) } : {}),
           ...(args.provider_id !== undefined ? { selection: { providerId: text(args.provider_id, 256), modelId: text(args.model_id, 512) } } : {}),
+          ...(args.reasoning_effort !== undefined ? { reasoningEffort: text(args.reasoning_effort, 32) } : {}),
         };
         return service.createOrdinary(caller, input, { signal, settleReceipt: settleOrdinaryCreation,
           confirm: typeof requestOrdinaryConfirmation === 'function' ? (action, preview) => confirm(action, preview, 'Create a new chat?') : undefined });
@@ -167,17 +189,23 @@ export function createChatTools({ repository, context, service, validateCaller, 
         const cursor = { version: 1, projectId: source.scope.projectId, query, status: args.status ?? null, include, position };
         return { chats, next_cursor: hasMore ? Buffer.from(JSON.stringify(cursor)).toString('base64url') : null, partial_scan: visited === 200 && hasMore };
       }
+      if (name === 'chat_retry_worktree') {
+        const chatId = id(args.chat_id);
+        const receipt = await service.retryAssignedWorktree(caller, { chatId, expectedIntentId: id(args.intent_id) }, signal);
+        return { ...receipt, ...worktreeStatus(repository.getChat(chatId)) };
+      }
       if (name === 'chat_read') {
         fields(args, ['chat_id', 'view', 'after_sequence', 'limit']);
         const view = args.view ?? 'messages'; if (!['messages', 'activity'].includes(view)) fail('Choose messages or activity');
         const after = integer('after_sequence', args.after_sequence, -1, -1, Number.MAX_SAFE_INTEGER), limit = integer('limit', args.limit, 20, 1, 100);
         let target = await targetFor(caller, source, args.chat_id, 'read', true); active(caller, signal);
         if (!target.chat.agentConversation && target.chat.id !== caller.chatId) {
-          const commandId = service.ordinaryReport(caller, target);
+          const assignment = service.ordinaryAssignment?.(caller, source, target, 'read');
+          const commandId = assignment ? null : service.ordinaryReport(caller, target);
           if (commandId) {
             const record = repository.getCommand(commandId);
             const executionId = record?.executionId;
-            return { chat_id: target.chat.id, link: link(target.chat.id), command_id: commandId, state: record?.state,
+            return { chat_id: target.chat.id, link: link(target.chat.id), command_id: commandId, state: record?.state, ...worktreeStatus(target.chat),
               ...(executionId ? { execution_id: executionId, ...reads.activity(target.chat.id, executionId),
                 ...(view === 'messages' && terminal.has(reads.execution(target.chat.id, executionId)?.status)
                   ? { assistant_final: reads.finalText(executionId) } : {}) } : {}) };
@@ -194,6 +222,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
         }
         const activity = reads.activity(target.chat.id);
         return { chat_id: target.chat.id, title: String(target.chat.name ?? '').slice(0, 240), link: link(target.chat.id), ...activity,
+          ...worktreeStatus(target.chat),
           ...(view === 'messages' ? reads.messages(target.chat.id, after, limit) : {}) };
       }
       if (name === 'chat_send') {
@@ -207,7 +236,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
           const prior = await service.replayAgentAction(caller, 'send', input);
           if (prior) return prior;
           const proof = await confirmTarget('send', input, mode === 'steer' ? 'Steer another chat?' : 'Send a message to another chat?');
-          return await service.send(caller, input, proof);
+          return await service.send(caller, input, proof ?? { signal });
         }
         catch (error) {
           if (error.reason === 'broader_target_denied' && repository.getRelation(caller.chatId)?.parentChatId === chatId) {
@@ -231,36 +260,44 @@ export function createChatTools({ repository, context, service, validateCaller, 
         const prior = await service.replayAgentAction(caller, 'stop', input);
         if (prior) return prior;
         const proof = await confirmTarget('stop', input, 'Stop another chat?');
-        return service.stop(caller, input, proof);
+        return service.stop(caller, input, proof ?? { signal });
       }
-      fields(args, ['chat_id', 'execution_id', 'timeout_ms']);
+      fields(args, ['chat_id', 'execution_id', 'command_id', 'timeout_ms']);
+      if (args.command_id !== undefined && args.execution_id !== undefined) fail('Choose a command_id or an execution_id, not both');
       const chatId = id(args.chat_id);
       const timeoutMs = integer('timeout_ms', args.timeout_ms, CHAT_WAIT_TIMEOUT_MS.default, CHAT_WAIT_TIMEOUT_MS.minimum, CHAT_WAIT_TIMEOUT_MS.maximum);
       let target = await targetFor(caller, source, chatId, 'read', true); active(caller, signal);
       const requestedId = args.execution_id === undefined ? undefined : id(args.execution_id);
       let selected = reads.execution(chatId, requestedId);
       let readProof, readInput, reportCommandId, deadline;
+      const assignment = service.ordinaryAssignment?.(caller, source, target, 'read');
+      if (args.command_id !== undefined && !assignment) fail('command_id requires a chat assigned to this Full access manager');
       let bypassReadApproval = false;
       if (!target.chat.agentConversation && target.chat.id !== caller.chatId) {
-        reportCommandId = service.ordinaryReport(caller, target);
+        reportCommandId = assignment
+          ? args.command_id !== undefined ? id(args.command_id) : !requestedId && !selected ? assignment.commandId : undefined
+          : service.ordinaryReport(caller, target);
         if (reportCommandId) {
           deadline = now() + timeoutMs;
           for (;;) {
             const record = repository.getCommand(reportCommandId);
-            if (record?.executionId) {
+            if (record?.chatId !== chatId) throw new ChatContractError('command_not_found', 'This command does not belong to the selected chat');
+            if (record.executionId) {
               if (requestedId && record.executionId !== requestedId) fail('Choose the execution covered by this confirmation');
               selected = reads.execution(chatId, record.executionId);
               break;
             }
-            if (!record || ['failed', 'cancelled', 'settled'].includes(record.state)) {
-              return { chat_id: chatId, command_id: reportCommandId, state: record?.state ?? 'unavailable', link: link(chatId) };
+            if (['failed', 'cancelled', 'settled'].includes(record.state)) {
+              return { chat_id: chatId, command_id: reportCommandId, state: record.state, link: link(chatId), ...worktreeStatus(target.chat) };
             }
-            if (now() >= deadline) return { chat_id: chatId, command_id: reportCommandId, state: 'timed_out', status: record.state, link: link(chatId) };
+            if (now() >= deadline) return { chat_id: chatId, command_id: reportCommandId, state: 'timed_out', status: record.state, link: link(chatId), ...worktreeStatus(target.chat) };
             await pause(Math.min(250, Math.max(1, deadline - now())), signal);
             const currentSource = await context.resolveTarget(caller.chatId);
             assertChatToolAllowed(caller.policy, name, args, { currentPolicy: currentSource.policy, approvalGranted });
             target = await targetFor(caller, currentSource, chatId, 'read', true);
-            if (service.ordinaryReport(caller, target) !== reportCommandId) throw new ChatContractError('policy_denied', 'Reporting is no longer authorized');
+            if (assignment ? !service.ordinaryAssignment(caller, currentSource, target, 'read') : service.ordinaryReport(caller, target) !== reportCommandId) {
+              throw new ChatContractError('policy_denied', 'Reporting is no longer authorized');
+            }
           }
         } else if (selected && (requestedId || !terminal.has(selected.status))) {
           readInput = { chatId, executionId: selected.executionId, timeoutMs, requestKey: toolCallId ?? '' };
@@ -270,7 +307,8 @@ export function createChatTools({ repository, context, service, validateCaller, 
         }
       }
       if (args.execution_id !== undefined && !selected) throw new ChatContractError('request_not_found', 'This execution does not belong to the selected conversation');
-      if (!selected || (!reportCommandId && args.execution_id === undefined && terminal.has(selected.status))) return { chat_id: chatId, state: 'no_active_execution', execution_id: null, link: link(chatId) };
+      if (!selected || (!assignment && !reportCommandId && args.execution_id === undefined && terminal.has(selected.status))) return {
+        chat_id: chatId, state: 'no_active_execution', execution_id: null, link: link(chatId), ...worktreeStatus(target.chat) };
       if (selected.executionId === caller.executionId) throw new ChatContractError('wait_cycle', 'An execution cannot wait on itself');
       const release = await beforeWait?.({ caller, chatId, executionId: selected.executionId, signal });
       deadline ??= now() + timeoutMs;
@@ -279,19 +317,22 @@ export function createChatTools({ repository, context, service, validateCaller, 
           active(caller, signal);
           const currentSource = await context.resolveTarget(caller.chatId);
           assertChatToolAllowed(caller.policy, name, args, { currentPolicy: currentSource.policy, approvalGranted });
-          const currentTarget = await targetFor(caller, currentSource, chatId, 'read', Boolean(reportCommandId));
+          const currentTarget = await targetFor(caller, currentSource, chatId, 'read', Boolean(assignment || reportCommandId));
+          if (assignment && !service.ordinaryAssignment(caller, currentSource, currentTarget, 'read')) {
+            throw new ChatContractError('policy_denied', 'Assignment is no longer authorized');
+          }
           active(caller, signal);
           if (bypassReadApproval && !fullPeerRead(caller, currentSource)) {
             throw new ChatContractError('policy_denied', 'Full access was revoked while waiting for this chat');
           }
           if (readInput && !bypassReadApproval) service.verifyOrdinaryAction(caller, 'read', readInput, currentTarget, readProof);
-          if (reportCommandId && service.ordinaryReport(caller, currentTarget) !== reportCommandId) {
+          if (!assignment && reportCommandId && service.ordinaryReport(caller, currentTarget) !== reportCommandId) {
             throw new ChatContractError('policy_denied', 'Reporting is no longer authorized');
           }
           const activity = reads.activity(chatId, selected.executionId), current = activity.execution;
           if (!current) return { chat_id: chatId, execution_id: selected.executionId, state: 'unavailable', link: link(chatId) };
           if (terminal.has(current.status)) return { chat_id: chatId, execution_id: selected.executionId, state: 'terminal', status: current.status,
-            assistant_final: reads.finalText(current.executionId), link: link(chatId) };
+            command_id: current.commandId, assistant_final: reads.finalText(current.executionId), link: link(chatId), ...worktreeStatus(currentTarget.chat) };
           if (activity.requests.length || ['waiting_for_input', 'waiting_for_approval', 'waiting_for_host', 'recovery_required'].includes(current.status)) return {
             chat_id: chatId, execution_id: selected.executionId, state: current.status === 'waiting_for_host' ? 'waiting_for_capability' : 'blocked',
             status: current.status, requests: activity.requests, link: link(chatId) };

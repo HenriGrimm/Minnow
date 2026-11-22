@@ -60,7 +60,7 @@ export const TOOL_GROUP_IDS = {
   'code-intel': ['repo_map', 'find_symbol', 'who_calls', 'read_symbol'],
   lsp: ['get_lsp_diagnostics', 'godot_inspect'],
   'sub-agents': [
-    'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
+    'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop', 'chat_retry_worktree',
     'spawn_sub_agent',
     'cancel_sub_agent',
     'list_sub_agents',
