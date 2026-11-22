@@ -3,7 +3,7 @@ import { createGitCheckoutPicker } from './git-checkout-picker';
 import { fetchWorkspaceRepos, type WorkspaceRepo } from '../state/workspace-repos';
 import { pickDefaultRepo, readRememberedRepo, rememberRepo, repoLabel } from './scc-repo-switcher';
 import { getActiveViewerTabPath } from './file-viewer-tab-store';
-import { createCommitGenerationStatus } from './commit-generation-status';
+import { wrapWithCommitGenerationOverlay, type CommitGenerationOverlay } from './commit-generation-status';
 import { gitStatusRenderKey } from './git-status-render-key';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 import { isGraphiteSurfaceLayout, refreshGraphiteSurfaceLayout, requestGraphiteSurface } from './surfaces/surface-bridge';
@@ -173,7 +173,7 @@ let recovery: ReturnType<typeof createGitRecoveryNotice> | null = null;
 let aiGenerateBtn: HTMLButtonElement | null = null;
 
 let generateMessageAbort: AbortController | null = null;
-let generationStatus: HTMLDivElement | null = null;
+let generationOverlay: CommitGenerationOverlay | null = null;
 
 let statusWrap: HTMLElement | null = null;
 let statusMessageEl: HTMLElement | null = null;
@@ -998,11 +998,11 @@ function ensurePanelDom(): HTMLElement {
 
   commitActions.append(commitBtn, commitPushBtn, aiGenerateBtn);
 
-  generationStatus = createCommitGenerationStatus();
+  generationOverlay = wrapWithCommitGenerationOverlay(commitInput);
   commitConflictHint = document.createElement('p');
   commitConflictHint.className = 'git-panel-status';
   commitConflictHint.hidden = true;
-  commitBox.append(commitInput, generationStatus, commitActions, commitConflictHint);
+  commitBox.append(generationOverlay.host, commitActions, commitConflictHint);
   recovery?.clear();
   recovery = createGitRecoveryNotice({
     onOpenFile: (path, cwd) => void openFileDiffInViewer(path, false, cwd),
@@ -1366,8 +1366,8 @@ async function handleGenerateCommitMessage(): Promise<void> {
   const controller = new AbortController();
 
   generateMessageAbort = controller;
-  const pendingStatus = generationStatus;
-  if (pendingStatus) pendingStatus.hidden = false;
+  const pendingOverlay = generationOverlay;
+  pendingOverlay?.start();
 
   if (aiGenerateBtn) {
 
@@ -1428,7 +1428,9 @@ async function handleGenerateCommitMessage(): Promise<void> {
       patch: diffResult.patch,
       signal: controller.signal,
       onPartial: (text) => {
-        if (!controller.signal.aborted && commitInput) commitInput.value = text;
+        if (controller.signal.aborted || !commitInput) return;
+        commitInput.value = text;
+        if (text) pendingOverlay?.streaming();
       },
     });
 
@@ -1463,7 +1465,7 @@ async function handleGenerateCommitMessage(): Promise<void> {
       setStatus(error instanceof Error ? error.message : 'Could not generate commit message', true);
     }
   } finally {
-    if (pendingStatus) pendingStatus.hidden = true;
+    pendingOverlay?.stop();
 
     if (generateMessageAbort === controller) {
 
@@ -2613,7 +2615,7 @@ export function resetGitPanelForTests(): void {
   generateMessageAbort?.abort();
 
   generateMessageAbort = null;
-  generationStatus = null;
+  generationOverlay = null;
 
   statusWrap = null;
   statusMessageEl = null;

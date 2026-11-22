@@ -1,13 +1,53 @@
-.commit-generation-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-block: 6px;
-  color: var(--mn-fg-muted);
-  font-size: 12px;
+/* The indicator sits on top of the message input, so the commit box never
+   changes height while a message is generated. */
+.commit-generation-host {
+  position: relative;
+  min-width: 0;
 }
 
-.commit-generation-status[hidden] { display: none; }
+.commit-generation-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--mn-space-2);
+  padding-inline: var(--mn-space-3);
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition:
+    opacity 180ms var(--ease-out, ease-out),
+    transform 180ms var(--ease-out, ease-out),
+    visibility 0s linear 180ms;
+}
+
+.commit-generation-host[data-state="pending"] > .commit-generation-status {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 220ms var(--ease-out, ease-out),
+    transform 220ms var(--ease-out, ease-out),
+    visibility 0s;
+}
+
+/* Hide the placeholder or the previous message under the indicator. */
+.commit-generation-host[data-state="pending"] > textarea {
+  color: transparent;
+  caret-color: transparent;
+}
+
+.commit-generation-host[data-state="pending"] > textarea::placeholder {
+  color: transparent;
+}
+
+/* Streamed text eases in where the indicator was. */
+.commit-generation-host[data-state="streaming"] > textarea {
+  animation: commit-generation-text-in 240ms var(--ease-out, ease-out);
+}
 
 .commit-generation-status__dots { display: flex; gap: 3px; }
 
@@ -16,17 +56,57 @@
   height: 4px;
   border-radius: 50%;
   background: var(--mn-accent);
+  opacity: 0.45;
+}
+
+/* Animations run only while pending: a hidden element would otherwise keep
+   the compositor busy and cost local-model tok/s. */
+.commit-generation-host[data-state="pending"] .commit-generation-status__dots span {
   animation: commit-generation-ripple 1.4s ease-in-out infinite;
 }
 
-.commit-generation-status__dots span:nth-child(2) { animation-delay: 160ms; }
-.commit-generation-status__dots span:nth-child(3) { animation-delay: 320ms; }
+.commit-generation-host[data-state="pending"] .commit-generation-status__dots span:nth-child(2) { animation-delay: 160ms; }
+.commit-generation-host[data-state="pending"] .commit-generation-status__dots span:nth-child(3) { animation-delay: 320ms; }
+
+.commit-generation-host[data-state="pending"] .commit-generation-status__label {
+  background: linear-gradient(
+    90deg,
+    var(--mn-fg-muted) 0%,
+    var(--mn-fg-muted) 40%,
+    var(--mn-fg) 50%,
+    var(--mn-fg-muted) 60%,
+    var(--mn-fg-muted) 100%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: commit-generation-shimmer 2.2s linear infinite;
+}
 
 @keyframes commit-generation-ripple {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
   30% { transform: translateY(-3px); opacity: 1; }
 }
 
+@keyframes commit-generation-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+
+@keyframes commit-generation-text-in {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .commit-generation-status__dots span { animation: none; }
+  .commit-generation-status { transition: none; }
+  .commit-generation-host[data-state] > textarea,
+  .commit-generation-host[data-state] .commit-generation-status__dots span,
+  .commit-generation-host[data-state] .commit-generation-status__label {
+    animation: none;
+  }
+  .commit-generation-host[data-state="pending"] .commit-generation-status__label {
+    color: var(--mn-fg-muted);
+  }
 }

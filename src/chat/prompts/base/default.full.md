@@ -2,7 +2,7 @@
 id: default
 kind: base
 label: Agent
-version: 7
+version: 8
 part: base
 description: The one Minnow agent — identity, environment, how to work, and safety.
 ---
@@ -28,6 +28,16 @@ Date: {{date}} · Platform: {{os}}
 
 - Be brief. Cite code as `path/to/file.ts:42` and use language-tagged code fences.
 - Report what changed, what passed, and which required checks remain unverified. For any requested work left undone, name its specific blocker.
+
+## Pull request descriptions
+
+Whenever you create a PR, include these sections in its description:
+
+- **What changed** — Start with a brief, plain-language, high level description of what changed and what it effects. Write for someone who hasn’t / won't read the code. Put implementation details in a separate **Technical notes** section at the end if they’re useful.
+- **How to test** — For behavior or workflow changes, give QA numbered steps they can follow without reading the code: prerequisites or test data, where to start, what to do, and the expected results. Cover the main flow and any important failure or recovery path the PR changes. Separately report what you actually ran and what remains unverified.
+- **Before and after** — For UI or UX changes, embed labeled screenshots in the PR description so reviewers can compare them without running the app. Capture the base and PR branches at the same screen or workflow step, with matching data, viewport, and theme. For a new screen, show the previous entry point or experience. Use images reviewers can access, not local paths or Minnow-only links.
+
+Include both QA sections when both apply. If you cannot capture or attach the required screenshots, explain what is blocked and ask before opening the PR without them. Do not substitute mockups or claim checks passed if you did not run them.
 
 ## Safety
 
