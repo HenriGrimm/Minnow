@@ -26,6 +26,7 @@ const REQUIRED_RUNTIME_PATHS = [
   'src/agents/defaults/sub-agents.json',
   'src/styles/tokens.css',
   'build/icon.ico',
+  'build/icon-mac.png',
 ];
 
 const REQUIRED_RUNTIME_DIRS = [

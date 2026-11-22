@@ -5,8 +5,9 @@ three cells set as a `>` (the prompt) and the eye is one missing cell, so the
 mark works in a single ink.
 
 Everything here is generated from `src/lib/minnow-mark.mjs` by
-`npm run logos:render` (which also refreshes `build/icon.ico` and the tray
-icons). Change the mark there; do not hand-edit these files.
+`npm run logos:render` (which also refreshes `build/icon.ico`, the macOS
+`build/icon-mac.png` and the tray icons). Change the mark there; do not
+hand-edit these files.
 
 ## Construction
 - Grid: 7 × 5 cells, 23 filled.

@@ -260,6 +260,7 @@
       "src/agents/defaults/sub-agents.json",
       "src/agents/sub-agent-binding.mjs",
       "build/icon.ico",
+      "build/icon-mac.png",
       "build/tray/**",
       "public/logos/minnow-logo/minnow/png/minnow-1024.png",
       "scripts/generate-skills-manifest.mjs",
@@ -331,7 +332,7 @@
         "dmg",
         "zip"
       ],
-      "icon": "public/logos/minnow-logo/minnow/png/minnow-1024.png",
+      "icon": "build/icon-mac.png",
       "category": "public.app-category.developer-tools",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "hardenedRuntime": true,

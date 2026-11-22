@@ -3,7 +3,8 @@
  * Renders every Minnow logo asset from the pixel-minnow geometry in
  * src/lib/minnow-mark.mjs: SVG masters, the PNG size ladder, favicons, PWA
  * icons, lockups and the download kit. Run `npm run logos:render` (which then
- * runs `app-icon:sync` for build/icon.ico and the tray icons).
+ * runs `app-icon:sync` for build/icon.ico, build/icon-mac.png and the tray
+ * icons).
  *
  * Sizes 16–64 use hand-snapped grids so every cell lands on whole pixels;
  * larger sizes draw the vector master.
