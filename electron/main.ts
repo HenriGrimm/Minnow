@@ -15,6 +15,7 @@ import {
   powerSaveBlocker,
   session,
   shell,
+  utilityProcess,
 } from 'electron';
 import { configurePreviewSession, PREVIEW_SESSION_PARTITION } from './preview-session.js';
 import { allowedExternalUrl } from './navigation-policy.js';
@@ -33,7 +34,7 @@ import {
   registerPreviewHostIpc,
 } from './preview-host.js';
 import { getProjectRoot, importServerModule } from './server-import.js';
-import { startInProcessServer, type InProcessServerHandle } from './server-host.js';
+import { BACKEND_SERVICE_NAME, superviseBackend, type DesktopBackend } from './backend-process.js';
 import {
   loadWindowSet,
   markWindowBackgrounded,
@@ -108,6 +109,7 @@ const chatPowerGuard = createChatPowerGuard(powerSaveBlocker);
 type NativeAgentHost = {
   present(win: BrowserWindow, id: string | null, bounds: Electron.Rectangle | null): void;
   unmount(): void;
+  stop(): void;
 };
 let nativeAgentHost: NativeAgentHost | undefined;
 
@@ -153,8 +155,11 @@ const devUrl = (
   process.env.MINNOW_DEV_URL?.trim() || `http://localhost:${resolveMinnowPort()}/`
 ).replace(/\/?$/, '/');
 
-let inProcessServer: InProcessServerHandle | null = null;
+let desktopBackend: DesktopBackend | undefined;
+let backendExited = false;
 let quitInProgress = false;
+let quitReady = false;
+let quitCleanup: Promise<void> | undefined;
 let closeToTrayEnabled = true;
 let windowCloseAction: WindowCloseAction = 'ask';
 /**
@@ -505,7 +510,7 @@ function registerIpcHandlers(): void {
 
   trustedIpc.handle(channels.TRAY_SET_CLOSE_TO_TRAY, async (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return closeToTrayEnabled;
-    closeToTrayEnabled = await writeCloseToTrayPreference(enabled);
+    closeToTrayEnabled = await writeCloseToTrayPreference(enabled, persistDesktopShell);
     trayManager?.rebuildMenu();
     broadcastToShellWindows(channels.TRAY_CLOSE_TO_TRAY_CHANGED, closeToTrayEnabled);
     return closeToTrayEnabled;
@@ -514,7 +519,7 @@ function registerIpcHandlers(): void {
   trustedIpc.handle(channels.TRAY_GET_WINDOW_CLOSE_ACTION, () => windowCloseAction);
 
   trustedIpc.handle(channels.TRAY_SET_WINDOW_CLOSE_ACTION, async (_event, action: unknown) => {
-    windowCloseAction = await writeWindowCloseAction(normalizeWindowCloseAction(action));
+    windowCloseAction = await writeWindowCloseAction(normalizeWindowCloseAction(action), persistDesktopShell);
     return windowCloseAction;
   });
 
@@ -533,7 +538,7 @@ function registerIpcHandlers(): void {
 
   trustedIpc.handle(channels.APP_SET_HARDWARE_ACCELERATION, async (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return readHardwareAccelerationPreference();
-    return writeHardwareAccelerationPreference(enabled);
+    return writeHardwareAccelerationPreference(enabled, persistDesktopShell);
   });
 
   trustedIpc.handle(channels.APP_RESTART, async () => {
@@ -549,7 +554,7 @@ function registerIpcHandlers(): void {
   // be `mainWindow`.
   trustedIpc.handle(channels.SHELL_SET_ZOOM_PERCENT, async (event, percent: unknown) => {
     if (typeof percent !== 'number' || !Number.isFinite(percent)) return shellZoomPercent;
-    shellZoomPercent = await writeShellZoomPercent(percent);
+    shellZoomPercent = await writeShellZoomPercent(percent, persistDesktopShell);
     const sender = BrowserWindow.fromWebContents(event.sender);
     if (sender && !sender.isDestroyed()) {
       applyShellZoom(sender.webContents, shellZoomPercent);
@@ -721,93 +726,53 @@ async function pauseOrchestrateBoardsInRenderer(win: BrowserWindow): Promise<voi
 // ── Shutdown ─────────────────────────────────────────────────────────────────
 
 async function shutdownRuntime(): Promise<void> {
-  // Start model cleanup before waiting on renderers or browser teardown. In dev,
-  // only the separate tool server has the ChildProcess handles; importing its
-  // modules here creates a second store that cannot stop those runs.
-  const modelShutdown = shutdownModelRuntime().catch((err) => {
-    console.error('[electron] shutdown model serves failed:', err);
-  });
-  await Promise.all(listShellWindows().map((win) => pauseOrchestrateBoardsInRenderer(win)));
-  destroyAllPreviewHosts();
-  await shutdownAgentBrowserRuntime().catch((err) => {
-    console.error('[electron] shutdown Agent Browser failed:', err);
-  });
-  await modelShutdown;
-  if (!inProcessServer) return;
-  const codexLifecycle = await importServerModule<{
-    disposeCodexSessions: (filter?: () => boolean, options?: { reason?: string }) => Promise<void>;
-  }>('generations/codex-app-server/lifecycle.js');
-  await codexLifecycle.disposeCodexSessions(() => true, { reason: 'Minnow closed while this turn was running.' });
-  const [ptyHost, generationsStore, serversIndex] = await Promise.all([
-    importServerModule<{ destroyAllPtySessions: () => void }>('terminal/pty-host.js'),
-    importServerModule<{ deleteGenerationsForProviderShutdown: () => void }>(
-      'generations/store.js',
-    ),
-    importServerModule<{ shutdownAllServers: () => Promise<void> }>('servers/index.js'),
-  ]);
-  const { destroyAllPtySessions } = ptyHost;
-  const { deleteGenerationsForProviderShutdown } = generationsStore;
-  const { shutdownAllServers } = serversIndex;
-  destroyAllPtySessions();
-  deleteGenerationsForProviderShutdown();
-  await shutdownAllServers().catch((err) => {
-    console.error('[electron] shutdown managed servers failed:', err);
-  });
-  if (inProcessServer) {
-    const close = inProcessServer.close;
-    inProcessServer = null;
-    await close();
+  const modelShutdown = isDev
+    ? callBackend('/api/models/shutdown', { method: 'POST' }, 30_000).catch((err) => {
+      console.error('[electron] shutdown model serves failed:', err);
+    })
+    : Promise.resolve();
+  try {
+    if (!backendExited) {
+      // Let renderers settle while their transport still exists. A wedged
+      // renderer must not keep the backend alive indefinitely during quit.
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.all(listShellWindows().map(pauseOrchestrateBoardsInRenderer)),
+          new Promise<void>(resolve => { deadline = setTimeout(resolve, 5_000); }),
+        ]);
+      } finally {
+        clearTimeout(deadline);
+      }
+    }
+    destroyAllPreviewHosts();
+    if (isDev) {
+      await callBackend('/api/browser-agent/shutdown', { method: 'POST' }).catch((err) => {
+        console.error('[electron] shutdown Agent Browser failed:', err);
+      });
+    }
+  } finally {
+    try {
+      nativeAgentHost?.stop();
+      await modelShutdown;
+    } finally {
+      await desktopBackend?.close();
+    }
   }
-}
-
-async function shutdownModelRuntime(): Promise<void> {
-  await whenServerTransportKnown();
-  if (inProcessServer) {
-    const api = await importServerModule<{
-      shutdownAllModelServes: () => Promise<void>;
-    }>('models/index.js');
-    await api.shutdownAllModelServes();
-    return;
-  }
-  const token = readServerSessionToken();
-  const response = await fetch(`${devUrl.replace(/\/$/, '')}/api/models/shutdown`, {
-    method: 'POST',
-    headers: token ? { 'X-Minnow-Token': token } : {},
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error(`Model shutdown failed (HTTP ${response.status})`);
-}
-
-/**
- * Dev Electron talks to the separate `server.js` process over its authenticated
- * route. Packaged Electron owns that server process, so it closes the singleton
- * directly and cannot accidentally import a second service instance.
- */
-async function shutdownAgentBrowserRuntime(): Promise<void> {
-  await whenServerTransportKnown();
-  if (inProcessServer) {
-    const api = await importServerModule<{
-      shutdownAgentBrowserService: () => Promise<void>;
-    }>('browser-agent-api.js');
-    await api.shutdownAgentBrowserService();
-    return;
-  }
-
-  const token = readServerSessionToken();
-  const response = await fetch(`${devUrl.replace(/\/$/, '')}/api/browser-agent/shutdown`, {
-    method: 'POST',
-    headers: token ? { 'X-Minnow-Token': token } : {},
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!response.ok) throw new Error(`Agent Browser shutdown failed (HTTP ${response.status})`);
 }
 
 async function prepareQuitForUpdate(): Promise<void> {
-  if (quitInProgress) return;
-  quitInProgress = true;
-  setWindowStateQuitting(true);
-  disposeUpdater();
-  await shutdownRuntime();
+  if (!quitCleanup) {
+    quitInProgress = true;
+    setWindowStateQuitting(true);
+    disposeUpdater();
+    quitCleanup = shutdownRuntime();
+  }
+  try {
+    await quitCleanup;
+  } finally {
+    quitReady = true;
+  }
 }
 
 function restoreShellWindowFocus(win: BrowserWindow): void {
@@ -847,12 +812,6 @@ function flushQueuedTrayCommands(win: BrowserWindow): void {
 }
 
 function requestExplicitQuit(): void {
-  if (quitInProgress) return;
-  quitInProgress = true;
-  setWindowStateQuitting(true);
-  for (const win of listShellWindows()) {
-    win.close();
-  }
   app.quit();
 }
 
@@ -862,7 +821,7 @@ async function persistWindowCloseAnswer(
   answer: WindowClosePromptReply,
 ): Promise<WindowClosePromptReply> {
   if (answer.remember && answer.action !== 'cancel') {
-    windowCloseAction = await writeWindowCloseAction(answer.action);
+    windowCloseAction = await writeWindowCloseAction(answer.action, persistDesktopShell);
   }
   return answer;
 }
@@ -932,7 +891,7 @@ function ensureTrayManager(): TrayManager {
       },
       getCloseToTray: () => closeToTrayEnabled,
       setCloseToTray: async (enabled) => {
-        closeToTrayEnabled = await writeCloseToTrayPreference(enabled);
+        closeToTrayEnabled = await writeCloseToTrayPreference(enabled, persistDesktopShell);
         broadcastToShellWindows(channels.TRAY_CLOSE_TO_TRAY_CHANGED, closeToTrayEnabled);
         return closeToTrayEnabled;
       },
@@ -1081,7 +1040,7 @@ async function createShellWindow(
   wireShellZoom(win, {
     readPercent: async () => shellZoomPercent,
     writePercent: async (percent) => {
-      shellZoomPercent = await writeShellZoomPercent(percent);
+      shellZoomPercent = await writeShellZoomPercent(percent, persistDesktopShell);
       return shellZoomPercent;
     },
     notifyPercentChanged: (percent) => {
@@ -1160,15 +1119,6 @@ async function createShellWindow(
   return win;
 }
 
-/**
- * Tell the server a view is on this folder. Membership in that registry is the
- * filesystem security boundary — a folder no window has open is not writable.
- *
- * Packaged Minnow runs the HTTP server in this process, so calling the module
- * directly reaches the live registry. In dev the server is a *separate* process
- * (`npm run desktop` spawns `node server.js`), where the module import would
- * register into a second, unused copy — so that case goes over HTTP.
- */
 function minnowHomeDir(): string {
   const override = process.env.MINNOW_HOME;
   if (typeof override === 'string' && override.trim()) return override.trim();
@@ -1179,6 +1129,7 @@ function minnowHomeDir(): string {
 
 /** The per-boot credential the server writes at startup. */
 function readServerSessionToken(): string {
+  if (!isDev) return desktopBackend?.endpoint()?.token ?? '';
   try {
     return fs.readFileSync(path.join(minnowHomeDir(), 'session-token'), 'utf8').trim();
   } catch {
@@ -1186,59 +1137,47 @@ function readServerSessionToken(): string {
   }
 }
 
-async function callOpenWorkspaceApi(
-  method: 'POST' | 'DELETE',
-  workspacePath: string,
-): Promise<void> {
+async function callBackend(route: string, init: RequestInit, timeoutMs = 5_000): Promise<void> {
+  await shellLoadUrl();
   const base = workspaceClaimHttpBase({
     isDev,
-    inProcessUrl: inProcessServer?.url,
+    backendUrl: desktopBackend?.endpoint()?.url,
     devUrl,
   });
-  if (!base) {
-    throw new Error('Packaged server did not start; cannot register workspace over HTTP');
-  }
+  if (!base) throw new Error('Minnow backend is unavailable.');
   const token = readServerSessionToken();
-  const response = await fetch(`${base}/api/workspace/open`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'X-Minnow-Token': token } : {}),
-    },
-    body: JSON.stringify({ path: workspacePath }),
+  const headers = new Headers(init.headers);
+  if (token) headers.set('X-Minnow-Token', token);
+  const response = await fetch(`${base}${route}`, {
+    ...init,
+    headers,
+    redirect: 'error',
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(
-      `workspace registration failed (${response.status})${detail ? `: ${detail}` : ''}`,
-    );
+    throw new Error(`${route} failed (${response.status})${detail ? `: ${detail}` : ''}`);
   }
+  await response.body?.cancel();
 }
 
-/**
- * Wait for the runtime to pick a transport before deciding how to reach it.
- *
- * Packaged Electron assigns `inProcessServer` only after `resolveLoadUrl()`
- * finishes. Claims must wait for that — otherwise they POST the leftover Vite
- * port and undici reports a useless `fetch failed`.
- */
-async function whenServerTransportKnown(): Promise<void> {
-  await shellLoadUrl();
+async function persistDesktopShell(patch: Record<string, unknown>): Promise<void> {
+  await callBackend('/api/config/meta', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ desktopShell: patch }),
+  });
+}
+
+async function callOpenWorkspaceApi(method: 'POST' | 'DELETE', workspacePath: string): Promise<void> {
+  await callBackend('/api/workspace/open', {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: workspacePath }),
+  });
 }
 
 async function claimWorkspaceOnServer(workspacePath: string): Promise<void> {
-  await whenServerTransportKnown();
-  if (inProcessServer) {
-    try {
-      const mod = await importServerModule<{ openWorkspace: (p: string) => string }>(
-        'workspace/open-workspaces.js',
-      );
-      mod.openWorkspace(workspacePath);
-      return;
-    } catch (err) {
-      console.warn('[electron] in-process workspace registration failed:', err);
-    }
-  }
   try {
     await callOpenWorkspaceApi('POST', workspacePath);
   } catch (err) {
@@ -1248,18 +1187,6 @@ async function claimWorkspaceOnServer(workspacePath: string): Promise<void> {
 }
 
 async function releaseWorkspaceOnServer(workspacePath: string): Promise<void> {
-  await whenServerTransportKnown();
-  if (inProcessServer) {
-    try {
-      const mod = await importServerModule<{ closeWorkspace: (p: string) => boolean }>(
-        'workspace/open-workspaces.js',
-      );
-      mod.closeWorkspace(workspacePath);
-      return;
-    } catch {
-      // The runtime may already be torn down.
-    }
-  }
   try {
     await callOpenWorkspaceApi('DELETE', workspacePath);
   } catch {
@@ -1276,7 +1203,7 @@ async function installWorkspaceKeyNormalizer(): Promise<void> {
   try {
     const mod = await importServerModule<{
       normalizeWorkspacePathKey: (absPath: string) => string;
-    }>('workspace/root.js');
+    }>('workspace/safe-path.js');
     normalizeWorkspaceKey = mod.normalizeWorkspacePathKey;
   } catch (err) {
     console.warn('[electron] falling back to identity workspace keys:', err);
@@ -1556,22 +1483,55 @@ async function resolveLoadUrl(): Promise<string> {
     return devUrl;
   }
 
-  const { setAppRoot } = await importServerModule<{
-    setAppRoot: (dir: string, opts?: { packaged?: boolean }) => void;
-  }>('workspace/root.js');
-  const { bootstrapMinnowRuntime } = await importServerModule<{
-    bootstrapMinnowRuntime: () => Promise<{
-      workspacePath: string;
-      homePath: string;
-    }>;
-  }>('runtime/bootstrap.js');
-  setAppRoot(resolveElectronAppRoot(), { packaged: app.isPackaged });
-  const { workspacePath, homePath } = await bootstrapMinnowRuntime();
-  console.log(`Workspace: ${workspacePath}`);
-  console.log(`Minnow data: ${homePath}`);
+  const child = utilityProcess.fork(
+    path.join(__dirname, 'backend-entry.js'),
+    [resolveElectronAppRoot(), app.isPackaged ? 'packaged' : 'unpackaged'],
+    { serviceName: BACKEND_SERVICE_NAME },
+  );
+  let pid: number | undefined;
+  child.once('spawn', () => { pid = child.pid; });
+  desktopBackend = superviseBackend(child, code => handleBackendExit(code, pid));
+  return (await desktopBackend.ready).url;
+}
 
-  inProcessServer = await startInProcessServer();
-  return inProcessServer.url;
+function handleBackendExit(code: number, pid?: number): void {
+  backendExited = true;
+  setTrustedShellUrl(null);
+  nativeAgentHost?.stop();
+  destroyAllPreviewHosts();
+  if (shellBaseUrl) {
+    // Do not let the old page reconnect, send credentials or reload against
+    // whatever might bind the released loopback port after the crash.
+    const socketBase = shellBaseUrl.replace(/^http:/, 'ws:');
+    session.defaultSession.webRequest.onBeforeRequest((request, done) => {
+      done({ cancel: request.url.startsWith(shellBaseUrl) || request.url.startsWith(socketBase) });
+    });
+  }
+  crashLog.logCrash({
+    source: 'child',
+    kind: 'backend-exited',
+    message: 'The Minnow backend exited unexpectedly.',
+    exitCode: code,
+    extra: { backendPid: pid },
+  });
+  crashLog.flushCrashLogSync();
+  if (quitInProgress) return;
+  const options: Electron.MessageBoxOptions = {
+    type: 'error',
+    title: 'Minnow backend stopped',
+    message: 'The Minnow backend stopped unexpectedly.',
+    detail: 'Your window is still open. Restart Minnow to reconnect. Work running in the backend may have been interrupted.',
+    buttons: ['Restart Minnow', 'Keep window open'],
+    defaultId: 0,
+    cancelId: 1,
+  };
+  const window = focusedShellWindow();
+  const prompt = window?.isVisible() ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
+  void prompt.then(({ response }) => {
+    if (response !== 0 || quitInProgress) return;
+    app.relaunch();
+    app.quit();
+  }).catch(err => console.error('[electron] Backend recovery prompt failed:', err));
 }
 
 /** Recover a staged restore before any store opens a potentially mixed home. */
@@ -1625,17 +1585,19 @@ async function bootstrapInner(): Promise<void> {
   tray.ensureTray();
   tray.updateStatus({ ...EMPTY_TRAY_STATUS });
 
-  // Packaged windows cannot load until the in-process server is listening.
+  // Packaged windows cannot load until the backend is listening.
   // Awaiting here means a missing asar module surfaces as itself instead of a
   // later `fetch failed` against the leftover Vite port.
   shellLoadUrlPromise = resolveLoadUrl();
   shellBaseUrl = await shellLoadUrlPromise;
+  if (backendExited) return;
   configurePreviewSession(session.fromPartition(PREVIEW_SESSION_PARTITION), shellBaseUrl);
   setTrustedShellUrl(shellBaseUrl);
   if (process.env.MINNOW_NATIVE_AGENT_BROWSER !== '0' && ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(shellBaseUrl).hostname)) {
     const { startDesktopBrowserHost } = await importServerModule<{
       startDesktopBrowserHost(options: Record<string, unknown>): NativeAgentHost;
     }>('agent-browser/desktop-host.js');
+    if (backendExited) return;
     nativeAgentHost = startDesktopBrowserHost({
       electron: { app, BaseWindow, WebContentsView, dialog },
       baseUrl: shellBaseUrl, token: readServerSessionToken, getViewer: () => agentBrowserViewer.live(),
@@ -1654,6 +1616,7 @@ let shellLoadUrlPromise: Promise<string> | null = null;
 let shellBaseUrl = '';
 
 async function shellLoadUrl(): Promise<string> {
+  if (backendExited) throw new Error('Minnow backend is unavailable.');
   if (!shellLoadUrlPromise) {
     shellLoadUrlPromise = resolveLoadUrl();
   }
@@ -1679,13 +1642,13 @@ async function openShellWindow(
         }
       : undefined);
 
+  const baseUrl = await shellLoadUrl();
   const win = await createShellWindow({
     workspacePath: options.workspacePath,
     bounds,
     appId: options.appId,
   });
-  const baseUrl = await shellLoadUrl();
-  const hash = options.appId ? `#/app/${options.appId}` : '';
+  const hash = options.appId ? `#/app/${options.appId}` : (bounds?.route ?? '');
   await win.loadURL(`${baseUrl}${hash}`);
   if (replacing && !replacing.isDestroyed()) {
     // Drop the old view only once its replacement is live, so the user never
@@ -1699,9 +1662,7 @@ async function openShellWindow(
 /**
  * The folder a cold boot should land in, read straight off `config.json`.
  *
- * Not via `importServerModule`: in dev the server is a separate process, so the
- * module imported here would be a fresh copy that never ran `initWorkspaceRoot()`
- * and would answer with the app cwd.
+ * The live workspace registry belongs to the backend process.
  */
 function readPersistedDefaultWorkspace(): string {
   try {
@@ -1765,6 +1726,7 @@ async function restoreShellWindows(): Promise<void> {
 }
 
 function failBootstrap(err: unknown): void {
+  if (backendExited || quitInProgress) return;
   const formatted = formatUnknownError(err);
   crashLog.logCrash({
     source: 'main',
@@ -1908,20 +1870,18 @@ if (!gotSingleInstanceLock) {
 
   app.on('before-quit', (event) => {
     chatPowerGuard.dispose();
-    if (quitInProgress) return;
+    if (quitReady) return;
     event.preventDefault();
-    quitInProgress = true;
-    setWindowStateQuitting(true);
-    disposeUpdater();
+    if (quitInProgress) return;
     trayManager?.destroyTray();
-    shutdownRuntime()
+    prepareQuitForUpdate()
       .catch((err) => {
         console.error('[electron] shutdown error:', err);
       })
       .finally(() => {
         // app.exit skips the `quit` event electron-updater uses to run the
         // downloaded NSIS installer. A second app.quit() is a no-op loop
-        // because quitInProgress is already true.
+        // because quitReady is already true.
         app.quit();
       });
   });

@@ -11,7 +11,7 @@ import { isPageReload } from '../boot/page-navigation';
 import { loadWorkspaceFromServer } from '../state/workspace';
 import { isOsShellEnabled } from './page-bridge';
 import { getOsView, subscribeInstances } from './instances';
-import { launchApp, returnToChat } from './router';
+import { initOsRouter, launchApp, returnToChat } from './router';
 import { createBackToChatButton } from '../ui/back-to-chat';
 import { hasViewWorkspace } from '../state/view-workspace';
 import { getAppWindowId, isAppWindowRenderer } from './app-window';
@@ -338,6 +338,8 @@ export async function beginWorkspaceGateForBoot(): Promise<{ whenChosen: Promise
   if (!isOsShellEnabled()) return null;
 
   await loadWorkspaceFromServer();
+  // Restored routes need the workspace path before starting their first reads.
+  initOsRouter();
 
   if (!shouldBlockBootOnWorkspaceGate()) {
     // A window bound to a folder resolves the gate immediately.

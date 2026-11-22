@@ -4,11 +4,11 @@
  */
 export function workspaceClaimHttpBase(options: {
   isDev: boolean;
-  inProcessUrl: string | null | undefined;
+  backendUrl: string | null | undefined;
   devUrl: string;
 }): string | null {
-  const inProcess = options.inProcessUrl?.trim();
-  if (inProcess) return inProcess.replace(/\/$/, '');
+  const backend = options.backendUrl?.trim();
+  if (backend) return backend.replace(/\/$/, '');
   if (options.isDev) return options.devUrl.replace(/\/$/, '');
   return null;
 }

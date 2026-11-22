@@ -4,7 +4,7 @@ import { isTrustedShellIpcSource } from './navigation-policy.js';
 const trustedIds = new Set<number>();
 let appUrl: string | null = null;
 
-export function setTrustedShellUrl(url: string): void {
+export function setTrustedShellUrl(url: string | null): void {
   appUrl = url;
 }
 

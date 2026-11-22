@@ -33,7 +33,7 @@ let lastForegroundApp: AppId | null = null;
 let lastAppliedSettingsOptions: LaunchOptions | undefined;
 /** Last Brain section/path applied to its mounted window. */
 let lastAppliedBrainNavigation: string | undefined;
-/** Bumps on each syncFromSnapshot so stale openAppPage work cannot relaunch apps. */
+/** Bumps when a page open is replaced or the shell returns to the workspace gate. */
 let syncGeneration = 0;
 
 function brainNavigationKey(options?: LaunchOptions): string {
@@ -249,6 +249,7 @@ async function openAppPage(
     }
     case 'source-control': {
       const { mountSourceControlCenter } = await import('../ui/source-control-center');
+      if (generation != null && generation !== syncGeneration) return;
       await mountSourceControlCenter();
       break;
     }
@@ -384,8 +385,6 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
   const stage = getStage();
   if (!stage) return;
 
-  const generation = ++syncGeneration;
-
   const blur = shouldBlurDesktop(snapshot);
   const immersive = shouldSuppressDesktopChrome();
   stage.classList.toggle('is-in-app', blur);
@@ -393,6 +392,7 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
   stage.classList.toggle('is-immersive-app', immersive);
 
   if (snapshot.view === 'workspaces') {
+    syncGeneration += 1;
     hideAllLayers();
     if (lastForegroundApp !== null) closeAllAppPages();
     lastForegroundApp = null;
@@ -408,6 +408,7 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
   const deferLayerUntilPageOpen = shouldDeferAppLayerReveal(appId);
 
   if (appId !== lastForegroundApp) {
+    const generation = ++syncGeneration;
     const animateEnter = lastForegroundApp === null;
     if (deferLayerUntilPageOpen) {
       openAppPageInBackground(appId, options, generation, { animateEnter });
@@ -423,7 +424,7 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
     openAppPageInBackground(
       appId,
       options,
-      generation,
+      ++syncGeneration,
       deferLayerUntilPageOpen && !isAppPageLayerOpen(appId)
         ? { animateEnter: false }
         : undefined,
@@ -432,7 +433,7 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
     openAppPageInBackground(
       appId,
       options,
-      generation,
+      ++syncGeneration,
       deferLayerUntilPageOpen ? { animateEnter: false } : undefined,
     );
   }
