@@ -59,6 +59,8 @@ Open **Source Control** from the workspace sidebar. The header shows the workspa
 
 Use **History** to find the commit that introduced a change. Use **Branches** or **Worktrees** to inspect or switch checkouts. A worktree has its own files and branch, so look for uncommitted changes there before removing it.
 
+When **Pull** finds new commits on both branches and Git has no pull strategy configured, Minnow offers **Merge once**, **Rebase once**, or **Cancel**. Merging preserves existing commit IDs; rebasing replays your local commits with new IDs. The choice does not change your Git settings. If Git is configured for fast-forward-only pulls, Minnow respects that setting.
+
 ### Switch branches and pull requests
 
 Every switch control (the thread's **Checkout** row, the composer's worktree menu, the side panel, **Branches**, **Pull requests** and the history menu) works the same way:

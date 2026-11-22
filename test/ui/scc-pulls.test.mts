@@ -377,6 +377,7 @@ test('one sync menu runs bulk actions and remembers the main-button scope per wo
   globalThis.localStorage?.removeItem(preference);
   const repo = (id: string, absPath: string) => ({ id, relPath: id, absPath, isRoot: id === '.', remote: null });
   const syncCalls: string[][] = [];
+  let divergentPull = false;
   globalThis.fetch = (async (url, init) => {
     const request = new URL(String(url), 'http://localhost');
     if (request.pathname === '/api/workspace/repos') {
@@ -390,7 +391,11 @@ test('one sync menu runs bulk actions and remembers the main-button scope per wo
     if (args.op === 'list') return Response.json({ ok: true, output: `worktree ${backend}\nHEAD 0000\nbranch refs/heads/main\n` });
     if (['fetch', 'pull', 'push'].includes(args.op)) {
       syncCalls.push([args.op, args.cwd]);
-      if (args.op === 'pull' && args.cwd === linked) return Response.json({ ok: false, error: 'Local edits need attention' });
+      if (args.op === 'pull' && args.cwd === linked) {
+        return Response.json(divergentPull
+          ? { ok: false, pullTarget: { cwd: linked, branch: 'review', head: 'abcd', upstream: 'origin/review' } }
+          : { ok: false, error: 'Local edits need attention' });
+      }
     }
     if (args.op === 'branchTree') return Response.json({ ok: true, current: 'main', branches: [{ name: 'main', upstream: 'origin/main' }] });
     if (args.op === 'status') return Response.json({ ok: true, branch: 'main', ahead: 3, behind: 2 });
@@ -425,6 +430,19 @@ test('one sync menu runs bulk actions and remembers the main-button scope per wo
     const summary = document.querySelector('#appDialogPanel');
     assert.match(summary?.textContent ?? '', /Pulled 1 of 2 repositories/);
     assert.match(summary?.textContent ?? '', /backend\s+Local edits need attention/);
+    resetAppDialogForTests();
+
+    divergentPull = true;
+    openOptions();
+    menuItem('Pull all').click();
+    await settle();
+    const pullDialog = document.querySelector('#appDialogPanel')!;
+    assert.match(pullDialog.textContent ?? '', /Choose how to pull · backend/);
+    assert.deepEqual(syncCalls.splice(0), [['pull', linked]]);
+    pullDialog.querySelector<HTMLButtonElement>('[data-dialog-action="cancel"]')!.click();
+    await settle();
+    assert.deepEqual(syncCalls.splice(0), [['pull', frontend]]);
+    assert.match(document.querySelector('#appDialogPanel')?.textContent ?? '', /backend\s+Skipped/);
     resetAppDialogForTests();
 
     const toggleLabel = 'Main buttons sync all repos';

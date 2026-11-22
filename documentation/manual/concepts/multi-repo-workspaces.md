@@ -10,6 +10,8 @@ When the workspace holds two or more repositories, the Source Control header sho
 
 **Fetch**, **Pull**, and **Push** act on the selected checkout by default. The **Sync options** menu at the right of the group offers **Fetch all**, **Pull all**, and **Push all**. Turn on **Main buttons sync all repos** to use those actions directly from the buttons. Minnow remembers the setting for this workspace. In a chat worktree, bulk sync uses that chat’s isolated checkouts. If you open a standalone worktree for a single repository, bulk sync uses that checkout for its repository and the workspace checkouts for the others. Minnow reports any repositories that were skipped or could not sync.
 
+If a repository needs a pull strategy, **Pull all** names it in the prompt. **Cancel** skips that repository and continues with the others.
+
 In Code, the Changes panel and the thread's **Checkout** picker also let you choose a repository for changes, branches, and pull requests. You can switch repositories while the editor and chat continue to use the full workspace. Minnow remembers the last repository you picked for each workspace. The first time, it picks the repository of the file open in the editor, when available.
 
 Commits, pushes and pull requests belong to one repository. To land a change that spans two, commit and open a pull request in each. Unsubmitted pull request drafts stay with their repository and branch while you switch between them in the current window. If repository discovery fails, use **Retry repository discovery**.

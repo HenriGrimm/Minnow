@@ -44,3 +44,21 @@ export declare function pruneSupersededToolImages(messages: ApiMessage[], keep?:
  * Without it the model sees only `[image: name]` and reports a missing tool.
  */
 export declare const USER_IMAGE_NO_VISION_HINT = "\n\n(The user attached the image(s) named above, but the current model cannot accept image input, so the pixels were not sent. There is no tool that can read them \u2014 say you cannot see the image and suggest switching to a vision model.)";
+/** Remove a tool no-vision hint a text-only turn left in stored content. */
+export declare function stripToolImageNoVisionHint(content: string): string;
+/** Remove a user no-vision hint a text-only turn left in stored content. */
+export declare function stripUserImageNoVisionHint(content: string): string;
+/**
+ * Project the tool no-vision hint for one request. The hint follows the model
+ * answering now, so switching a chat to a vision model removes a stale hint and
+ * a text-only model still learns that a screenshot was withheld.
+ */
+export declare function projectToolImageNoVisionHint<T extends Message>(message: T, options?: {
+    sendImages?: boolean;
+    /** Tool calls in this turn whose result carried image attachments. */
+    imageToolCallIds?: ReadonlySet<string>;
+}): T;
+export declare function projectToolImageNoVisionHints<T extends ApiMessage>(messages: T[], options?: {
+    sendImages?: boolean;
+    imageToolCallIds?: ReadonlySet<string>;
+}): T[];

@@ -835,11 +835,52 @@ export async function push({ cwd, setUpstream, branch } = {}) {
   return { ok: true, stdout: (result.stdout ?? '').trim() };
 }
 
-export async function pull({ cwd } = {}) {
+async function pullTarget(cwd) {
+  const result = await git(['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--no-ahead-behind', '--untracked-files=no'], cwd);
+  if (result.code !== 0) return null;
+  const lines = result.stdout.split('\n');
+  const header = (name) => {
+    const prefix = `# branch.${name} `;
+    return lines.find((line) => line.startsWith(prefix))?.slice(prefix.length).trimEnd();
+  };
+  const branch = header('head');
+  const head = header('oid');
+  const upstream = header('upstream');
+  return branch && head && upstream ? { cwd: path.resolve(cwd), branch, head, upstream } : null;
+}
+
+export async function pull({ cwd, strategy, expectedTarget } = {}) {
+  if (strategy !== undefined && strategy !== 'merge' && strategy !== 'rebase') {
+    return { ok: false, error: 'Invalid pull strategy' };
+  }
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
-  return runCheckoutMutation(repo.cwd, ['pull']);
+  return withIndexMutation(repo.cwd, async () => {
+    if (strategy) {
+      const target = await pullTarget(repo.cwd);
+      if (!target || !expectedTarget ||
+        target.cwd !== expectedTarget.cwd || target.branch !== expectedTarget.branch ||
+        target.head !== expectedTarget.head || target.upstream !== expectedTarget.upstream) {
+        return { ok: false, error: 'The checkout or upstream changed while you were choosing. Select Pull again.' };
+      }
+    }
+    const args = ['pull'];
+    if (strategy === 'merge') args.push('--no-rebase', '--no-edit');
+    if (strategy === 'rebase') args.push('--rebase');
+    const result = await git(args, repo.cwd, { LC_ALL: 'C' });
+    if (result.code === 0) return { ok: true, stdout: (result.stdout ?? '').trim() };
+
+    const error = processError(result);
+    if (!strategy && /^fatal: Need to specify how to reconcile divergent branches\.\r?$/m.test(result.stderr ?? '')) {
+      const target = await pullTarget(repo.cwd);
+      if (target) return { ok: false, error, pullTarget: target };
+    }
+    if (/^fatal: Not possible to fast-forward, aborting\.\r?$/m.test(result.stderr ?? '')) {
+      return { ok: false, error: `Git is set to fast-forward only, but both branches have new commits. That setting has not been changed.\n\n${error}` };
+    }
+    return { ok: false, error, conflict: isGitConflictOutput(error) };
+  });
 }
 
 export async function fetch({ cwd } = {}) {

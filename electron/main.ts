@@ -120,6 +120,12 @@ function appIconPath(): string {
   if (process.platform === 'win32') {
     return path.join(root, 'build', 'icon.ico');
   }
+  // macOS paints the whole canvas as the Dock tile, so it needs Apple's inset
+  // artwork (824 px in a 1024 px canvas); the full-bleed PNG is for the
+  // surfaces that mask the icon themselves.
+  if (process.platform === 'darwin') {
+    return path.join(root, 'build', 'icon-mac.png');
+  }
   return path.join(
     root,
     'public',

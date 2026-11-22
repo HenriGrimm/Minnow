@@ -66,6 +66,43 @@ function pruneSupersededToolImages(messages, keep = MAX_LIVE_TOOL_IMAGES) {
   return { messages: next, droppedMessages: superseded.size, droppedImages };
 }
 const USER_IMAGE_NO_VISION_HINT = "\n\n(The user attached the image(s) named above, but the current model cannot accept image input, so the pixels were not sent. There is no tool that can read them \u2014 say you cannot see the image and suggest switching to a vision model.)";
+/** Removes a hint a text-only turn left in stored content. */
+function withoutHint(content, hint) {
+  return typeof content === "string" && content.includes(hint) ? content.split(hint).join("") : content;
+}
+function stripToolImageNoVisionHint(content) {
+  return withoutHint(content, TOOL_IMAGE_NO_VISION_HINT);
+}
+function stripUserImageNoVisionHint(content) {
+  return withoutHint(content, USER_IMAGE_NO_VISION_HINT);
+}
+/**
+ * Image support belongs to the model answering this request, not to the stored
+ * tool result. A chat that started on a text-only model must stop telling a
+ * later vision model that it cannot view images (and the hint must not become
+ * permanent transcript text in the first place).
+ */
+function projectToolImageNoVisionHint(message, { sendImages = true, imageToolCallIds } = {}) {
+  if (message?.role !== "tool" || typeof message.content !== "string") return message;
+  const withoutNoVisionHint = stripToolImageNoVisionHint(message.content);
+  const carriedImage = withoutNoVisionHint !== message.content
+    || toolMessageHasImageAttachment(message)
+    || Boolean(message.tool_call_id && imageToolCallIds?.has?.(message.tool_call_id));
+  if (sendImages || !carriedImage) {
+    return withoutNoVisionHint === message.content ? message : { ...message, content: withoutNoVisionHint };
+  }
+  return { ...message, content: withoutNoVisionHint + TOOL_IMAGE_NO_VISION_HINT };
+}
+function projectToolImageNoVisionHints(messages, options) {
+  if (!Array.isArray(messages)) return messages;
+  let changed = false;
+  const projected = messages.map((message) => {
+    const next = projectToolImageNoVisionHint(message, options);
+    if (next !== message) changed = true;
+    return next;
+  });
+  return changed ? projected : messages;
+}
 export {
   MAX_LIVE_TOOL_IMAGES,
   TOOL_IMAGE_SUPERSEDED_TEXT,
@@ -74,6 +111,10 @@ export {
   TOOL_IMAGE_FOLLOW_UP_TEXT,
   TOOL_IMAGE_NO_VISION_HINT,
   USER_IMAGE_NO_VISION_HINT,
+  projectToolImageNoVisionHint,
+  projectToolImageNoVisionHints,
+  stripToolImageNoVisionHint,
+  stripUserImageNoVisionHint,
   isToolImageFollowUpMessage,
   toolImageFollowUpFromAttachments,
   toolImageFollowUpUserMessage,

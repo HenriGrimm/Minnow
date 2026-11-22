@@ -8,7 +8,6 @@ import {
   gitCherryPick,
   gitCreateTag,
   gitFetch,
-  gitPull,
   gitPush,
   gitStatus,
   type GitOpResult,
@@ -63,6 +62,7 @@ import { openContextMenu } from './context-menu';
 import { getActiveViewerTabPath } from './file-viewer-tab-store';
 import { createChangesView, focusCommitMessage } from './scc-changes';
 import { pushWithPublishPrompt } from './git-publish-push';
+import { pullWithStrategyChoice } from './git-pull-choice';
 import { createActionsView } from './scc-actions';
 import { createReleasesView } from './scc-releases';
 import { createHistoryView } from './scc-history';
@@ -90,7 +90,7 @@ const GIT_POLL_MS = 5_000;
 const FORGE_POLL_MS = 60_000;
 const syncActions = {
   Fetch: { run: gitFetch, progress: 'Fetching', completed: 'Fetched', success: 'Fetched remotes' },
-  Pull: { run: gitPull, progress: 'Pulling', completed: 'Pulled', success: 'Pulled changes' },
+  Pull: { run: pullWithStrategyChoice, progress: 'Pulling', completed: 'Pulled', success: 'Pulled changes' },
   Push: { run: (cwd?: string, repo?: string) => pushWithPublishPrompt(cwd, undefined, repo), progress: 'Pushing', completed: 'Pushed', success: 'Pushed changes' },
 };
 type SyncAction = keyof typeof syncActions;
@@ -199,6 +199,12 @@ export function syncSourceControlChatCheckout(previous: string): void {
 
 function effectiveCwd(): string | undefined {
   return resolvePanelWorktreeCwd(panelCwd);
+}
+
+function captureSyncScope(): () => boolean {
+  const version = checkoutVersion;
+  const workspace = getWorkspacePath();
+  return () => version === checkoutVersion && workspace === getWorkspacePath();
 }
 
 function sections(): SectionDef[] {
@@ -919,9 +925,9 @@ async function runOp(
       ctx: gitUiCtx(effectiveCwd(), currentBranch),
       recoveryActions,
     });
-    if (!result.ok) return false;
+    if (!result.ok && !result.conflict) return false;
     await refreshAll();
-    return true;
+    return result.ok;
   } finally {
     setSyncBusy(false);
   }
@@ -936,12 +942,14 @@ function setSyncBusy(value: boolean): void {
 async function runPrimarySync(action: SyncAction): Promise<void> {
   if (mainButtonsSyncAll()) return runSyncAll(action, syncTargets());
   const { run, success } = syncActions[action];
-  await runOp(() => run(effectiveCwd(), undefined), success);
+  const isCurrent = captureSyncScope();
+  await runOp(() => run(effectiveCwd(), undefined, isCurrent), success);
 }
 
 async function runSyncAll(action: SyncAction, targets: { label: string; cwd: string }[]): Promise<void> {
   if (busy) return;
   const { run, progress, completed } = syncActions[action];
+  const isCurrent = captureSyncScope();
   const issues: string[] = [];
   let succeeded = 0;
   setSyncBusy(true);
@@ -949,7 +957,7 @@ async function runSyncAll(action: SyncAction, targets: { label: string; cwd: str
     await runGitUiOp(async () => {
       for (const { label, cwd } of targets) {
         try {
-          const result = await run(cwd, label);
+          const result = await run(cwd, label, isCurrent);
           if (result.ok) succeeded += 1;
           else issues.push(`${label}\n${result.error === 'cancelled' ? 'Skipped' : result.error || 'Git operation failed'}`);
         } catch (error) {
@@ -1151,7 +1159,10 @@ function buildCommands(): Command[] {
       title: 'Pull',
       group: 'Sync',
       keywords: 'download upstream merge remote',
-      run: () => void runOp(() => gitPull(effectiveCwd()), 'Pulled changes'),
+      run: () => {
+        const isCurrent = captureSyncScope();
+        void runOp(() => pullWithStrategyChoice(effectiveCwd(), undefined, isCurrent), 'Pulled changes');
+      },
     },
     {
       id: 'sync.push',

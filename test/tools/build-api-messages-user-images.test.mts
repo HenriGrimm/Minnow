@@ -214,6 +214,27 @@ describe('buildApiMessages user attachments', () => {
       false,
     );
   });
+
+  test('a stored no-vision hint is dropped once the model can read the image again', () => {
+    const chat = chatWithPendingImage();
+    chat.history = [
+      {
+        role: 'user',
+        content: `What is wrong here?\n\n[image: shot.png]${USER_IMAGE_NO_VISION_HINT}`,
+        images: [{ name: 'shot.png', dataUrl: SHOT }],
+      },
+      { role: 'assistant', content: 'I cannot see the image.' },
+    ];
+    const messages = buildApiMessages(chat, 'sys', {
+      composedSystemPrompt: 'sys',
+      vision: true,
+    });
+    const user = messages.find((m) => m.role === 'user');
+    assert.ok(user);
+    assert.equal(Array.isArray(user.content), false, 'no pending image keeps the row textual');
+    assert.doesNotMatch(String(user.content), /cannot accept image input/);
+    assert.match(String(user.content), /\[image: shot\.png\]/);
+  });
 });
 
 describe('persistableUserImages', () => {
