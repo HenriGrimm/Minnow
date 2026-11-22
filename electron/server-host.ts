@@ -130,10 +130,10 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   const url = `http://127.0.0.1:${bound.port}/`;
   if (bound.ephemeral) {
     console.warn(
-      `Minnow preferred port ${preferredPort} was busy; in-process server using ephemeral ${bound.port}`,
+      `Minnow preferred port ${preferredPort} was busy; backend using ephemeral ${bound.port}`,
     );
   }
-  console.log(`Minnow in-process server: ${url}`);
+  console.log(`Minnow desktop backend: ${url}`);
   configureRemoteIngress({ requestHandler: connectApp as unknown as http.RequestListener });
   try {
     await applyRemoteConfigAtBoot();
@@ -157,9 +157,9 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       flushDeviceActivity();
       try {
         await shutdownRemoteIngress();
-        await closeHttpServer();
       } finally {
-        await stopIsolatedPreviewHost();
+        try { await closeHttpServer(); }
+        finally { await stopIsolatedPreviewHost(); }
       }
     },
   };

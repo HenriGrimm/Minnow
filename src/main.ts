@@ -217,8 +217,8 @@ import { installRendererDiagnostics } from './boot/diagnostics';
 import { installLongTaskObserver } from './boot/long-task-observer';
 import { initNotificationAudioUnlock } from './notifications/sound';
 import { initOsPageBridge, isOsShellEnabled } from './os/page-bridge';
-import { initOsRouter } from './os/router';
 import { initOsShell } from './os/shell';
+import { hasViewWorkspace } from './state/view-workspace';
 import { applyAppWindowBoot, isAppWindowRenderer } from './os/app-window';
 import { initElectronTrayBridge } from './electron-tray-bridge';
 import { installAppDialogs } from './ui/app-dialog';
@@ -641,6 +641,7 @@ async function startApp(): Promise<void> {
     const appWindowId = window.minnow?.viewContext?.appId?.trim();
     const bootToWorkspacePicker =
       !appWindowId &&
+      !(hasViewWorkspace() && hash === '#/app/source-control') &&
       (hash === '' ||
         hash === '#' ||
         hash === '#/' ||
@@ -658,9 +659,6 @@ async function startApp(): Promise<void> {
   markBootPhase('sessions');
   const { initPluginUi } = await import('./plugins/ui-runtime');
   await initPluginUi();
-  if (isOsShellEnabled()) {
-    initOsRouter();
-  }
   const { initWindowClosePromptBridge } = await import('./ui/window-close-prompt');
   initWindowClosePromptBridge();
   initElectronTrayBridge();

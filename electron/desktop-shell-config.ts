@@ -14,6 +14,7 @@ import {
 } from './tray-close.js';
 
 const CONFIG_FILE = 'config.json';
+type PersistDesktopShell = (patch: Record<string, unknown>) => Promise<void>;
 
 export const DEFAULT_CLOSE_TO_TRAY = true;
 
@@ -71,19 +72,9 @@ export async function readShellZoomPercent(): Promise<number> {
   }
 }
 
-async function updateDesktopShell(patch: Record<string, unknown>): Promise<void> {
-  const { updateConfigJson } = await importServerModule<{
-    updateConfigJson: (rel: string, mutate: (current: unknown) => unknown) => Promise<unknown>;
-  }>('config/store.js');
-  const { mergeConfigMeta } = await importServerModule<{
-    mergeConfigMeta: (current: unknown, fields: Record<string, unknown>) => Record<string, unknown>;
-  }>('config/validators.js');
-  await updateConfigJson(CONFIG_FILE, current => mergeConfigMeta(current, { desktopShell: patch }));
-}
-
-export async function writeShellZoomPercent(percent: number): Promise<number> {
+export async function writeShellZoomPercent(percent: number, persist: PersistDesktopShell): Promise<number> {
   const next = clampShellZoomPercent(percent);
-  await updateDesktopShell({ zoomPercent: next });
+  await persist({ zoomPercent: next });
   return next;
 }
 
@@ -98,8 +89,8 @@ export async function readCloseToTrayPreference(): Promise<boolean> {
   }
 }
 
-export async function writeCloseToTrayPreference(enabled: boolean): Promise<boolean> {
-  await updateDesktopShell({ closeToTray: enabled });
+export async function writeCloseToTrayPreference(enabled: boolean, persist: PersistDesktopShell): Promise<boolean> {
+  await persist({ closeToTray: enabled });
   return enabled;
 }
 
@@ -115,9 +106,10 @@ export async function readWindowCloseAction(): Promise<WindowCloseAction> {
 
 export async function writeWindowCloseAction(
   action: WindowCloseAction,
+  persist: PersistDesktopShell,
 ): Promise<WindowCloseAction> {
   const next = normalizeWindowCloseAction(action);
-  await updateDesktopShell({ windowCloseAction: next });
+  await persist({ windowCloseAction: next });
   return next;
 }
 
@@ -157,7 +149,7 @@ export async function readHardwareAccelerationPreference(): Promise<boolean> {
   }
 }
 
-export async function writeHardwareAccelerationPreference(enabled: boolean): Promise<boolean> {
-  await updateDesktopShell({ hardwareAcceleration: enabled });
+export async function writeHardwareAccelerationPreference(enabled: boolean, persist: PersistDesktopShell): Promise<boolean> {
+  await persist({ hardwareAcceleration: enabled });
   return enabled;
 }

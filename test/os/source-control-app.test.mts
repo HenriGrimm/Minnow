@@ -13,6 +13,46 @@ test('Source Control follows Code in the rail and has its own route', () => {
   assert.equal(hashForRoute(route), '#/app/source-control');
 });
 
+test('a restored Source Control route mounts when the shell syncs it twice at boot', async () => {
+  const win = new Window();
+  const workspacePath = '/repo';
+  const repoScopes: Array<string | null> = [];
+  Object.assign(win, { minnow: { viewContext: { workspacePath } } });
+  installHappyDomGlobals(win, { fetch: async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    if (url.pathname === '/api/workspace') return Response.json({ path: workspacePath, label: 'repo' });
+    if (url.pathname === '/api/workspace/repos') repoScopes.push(url.searchParams.get('checkout'));
+    return Response.json({ ok: true, repos: [] });
+  } });
+  seedMinimalSession('chat-1');
+  win.location.hash = '#/app/source-control';
+  document.body.innerHTML = `
+    <div id="osStage"><div id="osAppsLayer"></div></div>
+    <main id="sourceControlView"></main>`;
+  const { initAppHost, resetAppHostForTests } = await import('../../src/os/app-host.ts');
+  const { resetInstancesForTests } = await import('../../src/os/instances.ts');
+  const { resetOsRouterForTests, syncOsRouteFromHash } = await import('../../src/os/router.ts');
+  const { beginWorkspaceGateForBoot } = await import('../../src/os/workspace-gate.ts');
+  const { resetWorkspaceStateForTests } = await import('../../src/state/workspace.ts');
+  const { resetSourceControlCenterForTests } = await import('../../src/ui/source-control-center.ts');
+  try {
+    initAppHost();
+    assert.equal(await beginWorkspaceGateForBoot(), null);
+    syncOsRouteFromHash();
+    await setImmediate();
+    assert.ok(document.querySelector('#sourceControlView.is-active #sourceControlCenterRoot'));
+    assert.equal(window.location.hash, '#/app/source-control');
+    assert.deepEqual(repoScopes, [workspacePath]);
+  } finally {
+    resetOsRouterForTests();
+    resetAppHostForTests();
+    resetInstancesForTests();
+    resetSourceControlCenterForTests();
+    resetWorkspaceStateForTests();
+    await teardownHappyDomAsync(win);
+  }
+});
+
 test('mounting and leaving Source Control preserves the chat DOM', async () => {
   const win = new Window();
   win.fetch = async () => new Response(JSON.stringify({ ok: false, error: 'not a git repository' }), {
@@ -114,7 +154,7 @@ test('change selection keys reach the list and Escape dismisses its menu without
     launchInstance('source-control');
     await scc.mountSourceControlCenter();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    const row = document.querySelector<HTMLElement>('.scc-filerow')!;
+    const row = document.querySelector<HTMLElement>('.scc-filerow__trigger')!;
     assert.ok(row);
     row.focus();
     row.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true }));

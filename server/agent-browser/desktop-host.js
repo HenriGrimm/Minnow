@@ -303,12 +303,15 @@ export function startDesktopBrowserHost({ electron, baseUrl, token, getViewer, o
     });
   }
   connect();
-  app.once('will-quit', () => {
+  function stop() {
+    if (stopping) return;
     stopping = true;
+    app.off('will-quit', stop);
     clearTimeout(retry);
     socket.terminate();
     for (const tab of tabs.values()) dispose(tab);
     if (shield && !shield.webContents.isDestroyed()) shield.webContents.close();
-  });
-  return { present, unmount, ready };
+  }
+  app.once('will-quit', stop);
+  return { present, unmount, ready, stop };
 }

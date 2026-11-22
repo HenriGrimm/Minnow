@@ -45,6 +45,21 @@ describe('single-agent prompt', () => {
     assert.ok(orchestrate.length > build.length, 'orchestrate keeps its board prompt');
   });
 
+  test('PR description guidance is shared without a skill or tool-specific prompt', () => {
+    for (const context of [
+      baseComposeContext({ skillBody: null }),
+      baseComposeContext({ modeId: 'orchestrate', skillBody: null, enabledToolIds: [] }),
+    ]) {
+      const prompt = composeSystemPrompt(context, { turnContext: [] });
+      assert.match(prompt, /## Pull request descriptions/);
+      assert.match(prompt, /\*\*What changed\*\*.*plain-language description.*\*\*Technical notes\*\*/);
+      assert.match(prompt, /\*\*How to test\*\*.*numbered steps.*expected results.*unverified/);
+      assert.match(prompt, /\*\*Before and after\*\*.*embed labeled screenshots.*base and PR branches.*images reviewers can access/);
+      assert.match(prompt, /Include both QA sections when both apply/);
+      assert.match(prompt, /ask before opening the PR without them/);
+    }
+  });
+
   test('no mode-handoff, browser-allowlist or duplicated verification fragments', () => {
     const prompt = composeSystemPrompt(baseComposeContext({
       enabledToolIds: ['read_file', 'execute_command', 'browser_navigate', 'ask_question', 'spawn_sub_agent'],
@@ -54,7 +69,8 @@ describe('single-agent prompt', () => {
 
   test('base + tool usage stays lean', () => {
     const prompt = composeSystemPrompt(baseComposeContext({ flaticonIconGuidanceEnabled: false }));
-    assert.ok(prompt.length < 6000, `prompt is ${prompt.length} chars`);
+    // Keep the existing 6k budget for other instructions; allow 1.4k for PR QA.
+    assert.ok(prompt.length < 7400, `prompt is ${prompt.length} chars`);
   });
 
   test('local-model appendix: auto follows the provider, on/off override it', () => {

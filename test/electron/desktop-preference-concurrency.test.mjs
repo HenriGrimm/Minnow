@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { writeHardwareAccelerationPreference, writeShellZoomPercent, writeWindowCloseAction } from '../../electron/dist/desktop-shell-config.js';
+import { writeResource } from '../../server/config/store.js';
 
 test('concurrent Electron IPC preference updates persist together', async t => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-shell-prefs-'));
@@ -14,7 +15,12 @@ test('concurrent Electron IPC preference updates persist together', async t => {
     else process.env.MINNOW_HOME = previous;
     await fs.rm(home, { recursive: true, force: true });
   });
-  await Promise.all([writeShellZoomPercent(125), writeHardwareAccelerationPreference(false), writeWindowCloseAction('background')]);
+  const persist = patch => writeResource('meta', { desktopShell: patch });
+  await Promise.all([
+    writeShellZoomPercent(125, persist),
+    writeHardwareAccelerationPreference(false, persist),
+    writeWindowCloseAction('background', persist),
+  ]);
   const { desktopShell } = JSON.parse(await fs.readFile(path.join(home, 'config.json'), 'utf8'));
   assert.equal(desktopShell.zoomPercent, 125);
   assert.equal(desktopShell.hardwareAcceleration, false);

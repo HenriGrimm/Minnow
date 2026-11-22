@@ -3,6 +3,7 @@ import path from 'node:path';
 import { app, type BrowserWindow } from 'electron';
 import {
   DEFAULT_WINDOW_STATE,
+  SOURCE_CONTROL_ROUTE,
   parseWindowSet,
   type PersistedWindowSet,
   type PersistedWindowState,
@@ -84,16 +85,24 @@ export function trackWindowState(
 ): void {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+  const getRoute = (workspacePath: string): PersistedWindowState['route'] =>
+    workspacePath && URL.parse(win.webContents.getURL())?.hash === SOURCE_CONTROL_ROUTE
+      ? SOURCE_CONTROL_ROUTE
+      : undefined;
+
   const snapshot = (): void => {
     if (win.isDestroyed()) return;
     const bounds = win.getBounds();
+    const workspacePath = getWorkspacePath();
+    const route = getRoute(workspacePath);
     liveWindowState.set(win.id, {
       width: bounds.width,
       height: bounds.height,
       x: bounds.x,
       y: bounds.y,
       isMaximized: win.isMaximized(),
-      workspacePath: getWorkspacePath(),
+      workspacePath,
+      ...(route ? { route } : {}),
       // Backgrounding is reported explicitly by the caller rather than read off
       // `isVisible()`: a window is invisible before its first paint and, on
       // Windows, while minimized — neither means "kept in the tray".
@@ -114,6 +123,13 @@ export function trackWindowState(
 
   win.on('resize', persist);
   win.on('move', persist);
+  const persistRouteChange = (): void => {
+    if (getRoute(getWorkspacePath()) !== liveWindowState.get(win.id)?.route) persist();
+  };
+  win.webContents.on('did-finish-load', persistRouteChange);
+  win.webContents.on('did-navigate-in-page', (_event, _url, isMainFrame) => {
+    if (isMainFrame) persistRouteChange();
+  });
   win.on('close', () => {
     // Capture the final bounds before the window goes away, then drop it from
     // the set so a closed window does not reopen on next boot.

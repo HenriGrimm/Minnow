@@ -56,6 +56,15 @@ describe('window-state v1 → v2', () => {
     assert.equal(set.windows[0].height, 800);
     assert.equal(set.windows[0].workspacePath, '');
   });
+
+  test('restores Source Control only for the workspace window that saved it', () => {
+    const { windows } = parseWindowSet({ version: 2, windows: [
+      { workspacePath: '/repo/a', route: '#/app/source-control' },
+      { workspacePath: '/repo/b', route: '#/app/code/chat' },
+      { workspacePath: '', route: '#/app/source-control' },
+    ] });
+    assert.deepEqual(windows.map(({ route }) => route), ['#/app/source-control', undefined, undefined]);
+  });
 });
 
 // A window hidden to the tray is deliberately not restored: leaving those in

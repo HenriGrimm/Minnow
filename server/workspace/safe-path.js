@@ -43,6 +43,19 @@ export function realpathForBoundaryCheck(resolvedAbs) {
 }
 
 /**
+ * Normalize an absolute path for dedupe keys (resolve + Windows case-fold).
+ * @param {string} absPath
+ */
+export function normalizeWorkspacePathKey(absPath) {
+  let resolved = path.resolve(String(absPath).trim());
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    try { resolved = realpathForBoundaryCheck(resolved); }
+    catch { /* Use the resolved lexical path if realpath fails. */ }
+  }
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+/**
  * True when resolvedAbs lies under rootAbs after canonicalizing both via realpath.
  * @param {string} resolvedAbs
  * @param {string} rootAbs

@@ -17,7 +17,7 @@ disable-model-invocation: true
 ## Steps
 
 1. Run `git_status` — note branch, staged/unstaged state, and whether `origin` exists.
-2. If there are uncommitted changes that belong to this work, stop and tell the user to commit first (or use Commit on the strip). Do not open a PR on a dirty tree unless the user explicitly asked to include uncommitted work.
+2. If there are uncommitted changes that belong to this work, ask the user if they would like to commit this first. Do not open a PR on a dirty tree unless the user explicitly asked to include uncommitted work.
 3. Run `git_log` (recent commits) and `git_diff` as needed to summarize what the PR contains.
 4. Push the current branch: `execute_command` with `git push -u origin HEAD` when upstream is missing, otherwise `git push`.
 5. Create the PR: `execute_command` with `gh pr create` and a clear title (≤72 chars) plus a body that explains **why** (user impact, not a file list). Use `--fill` only when it produces a good title/body.
@@ -26,7 +26,7 @@ disable-model-invocation: true
 ## Quality checks
 
 - Title matches the committed scope on this branch
-- Body explains motivation and testing notes when relevant
+- Body follows the shared **Pull request descriptions** guidance: plain-language **What changed**, reproducible **How to test** steps for functional changes, and embedded **Before and after** screenshots for UX changes.
 - No secrets in PR title or body
 - If push fails (no remote, auth), report the error and do not claim the PR exists
 

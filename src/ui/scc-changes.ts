@@ -1,5 +1,5 @@
 import { createGitChangeSelection } from './git-change-selection';
-import { createCommitGenerationStatus } from './commit-generation-status';
+import { wrapWithCommitGenerationOverlay } from './commit-generation-status';
 import { gitStatusRenderKey } from './git-status-render-key';
 import { getWorkspacePath } from '../state/workspace';
 import { pushWithPublishPrompt } from './git-publish-push';
@@ -190,17 +190,17 @@ export function createChangesView(ctx: SccContext): SccView {
   shortcutHint.textContent = shortcut;
   const commitActions = el('div', 'scc-commit__actions');
   commitActions.append(generateBtn, commitHint, shortcutHint, commitPushBtn, commitBtn);
-  const generationStatus = createCommitGenerationStatus();
+  const generationOverlay = wrapWithCommitGenerationOverlay(messageInput);
   // One field: message on top, its controls along the bottom edge (matches the issue launcher).
   const messageField = el('div', 'scc-commit__field');
-  messageField.append(messageInput, commitActions);
+  messageField.append(generationOverlay.host, commitActions);
   messageField.addEventListener('mousedown', (event) => {
     if (event.target !== messageField && event.target !== commitActions && event.target !== commitHint) return;
     if (messageInput.disabled) return;
     event.preventDefault();
     messageInput.focus();
   });
-  commitBox.append(messageField, generationStatus, mergeBtn);
+  commitBox.append(messageField, mergeBtn);
   commitBox.addEventListener('submit', (event) => event.preventDefault());
 
   const stageAllBtn = button({
@@ -674,7 +674,7 @@ export function createChangesView(ctx: SccContext): SccView {
     if (generateAbort || destroyed) return;
     const controller = new AbortController();
     generateAbort = controller;
-    generationStatus.hidden = false;
+    generationOverlay.start();
     generateBtn.setAttribute('aria-busy', 'true');
     syncCommitButtons();
 
@@ -720,7 +720,9 @@ export function createChangesView(ctx: SccContext): SccView {
         patch: diff.patch,
         signal: controller.signal,
         onPartial: (text) => {
-          if (!controller.signal.aborted && !destroyed) messageInput.value = text;
+          if (controller.signal.aborted || destroyed) return;
+          messageInput.value = text;
+          if (text) generationOverlay.streaming();
         },
       });
 
@@ -739,7 +741,7 @@ export function createChangesView(ctx: SccContext): SccView {
         showToast(error instanceof Error ? error.message : 'Could not generate commit message', 'error');
       }
     } finally {
-      generationStatus.hidden = true;
+      generationOverlay.stop();
       if (generateAbort === controller) generateAbort = null;
       generateBtn.removeAttribute('aria-busy');
       syncCommitButtons();

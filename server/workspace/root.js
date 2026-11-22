@@ -13,8 +13,10 @@ import { getMinnowHome } from '../config/home.js';
 import {
   isResolvedPathUnderRoot,
   normalizePathForComparison,
-  realpathForBoundaryCheck,
+  normalizeWorkspacePathKey,
 } from './safe-path.js';
+
+export { normalizeWorkspacePathKey } from './safe-path.js';
 
 /** User-facing label for the Minnow-owned sandbox (~/.minnow/workspace). */
 export const SCRATCH_WORKSPACE_LABEL = 'Sandbox';
@@ -194,30 +196,6 @@ export function workspaceLabel(absPath) {
   }
   const base = path.basename(absPath);
   return base || absPath;
-}
-
-/**
- * Normalize an absolute path for dedupe keys (resolve + Windows case-fold).
- * @param {string} absPath
- * @returns {string}
- */
-export function normalizeWorkspacePathKey(absPath) {
-  const resolved = path.resolve(String(absPath).trim());
-  if (process.platform === 'win32') {
-    try {
-      return realpathForBoundaryCheck(resolved).toLowerCase();
-    } catch {
-      return resolved.toLowerCase();
-    }
-  }
-  if (process.platform === 'darwin') {
-    try {
-      return realpathForBoundaryCheck(resolved);
-    } catch {
-      return resolved;
-    }
-  }
-  return resolved;
 }
 
 /**

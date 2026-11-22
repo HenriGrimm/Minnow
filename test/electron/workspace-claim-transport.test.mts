@@ -5,11 +5,11 @@ import { workspaceClaimHttpBase } from '../../electron/workspace-claim-transport
 describe('workspaceClaimHttpBase', () => {
   const devUrl = 'http://localhost:9473/';
 
-  test('prefers the in-process server when it is up', () => {
+  test('prefers the packaged backend when it is up', () => {
     assert.equal(
       workspaceClaimHttpBase({
         isDev: false,
-        inProcessUrl: 'http://127.0.0.1:9473/',
+        backendUrl: 'http://127.0.0.1:9473/',
         devUrl,
       }),
       'http://127.0.0.1:9473',
@@ -20,7 +20,7 @@ describe('workspaceClaimHttpBase', () => {
     assert.equal(
       workspaceClaimHttpBase({
         isDev: true,
-        inProcessUrl: null,
+        backendUrl: null,
         devUrl,
       }),
       'http://localhost:9473',
@@ -31,7 +31,7 @@ describe('workspaceClaimHttpBase', () => {
     assert.equal(
       workspaceClaimHttpBase({
         isDev: false,
-        inProcessUrl: null,
+        backendUrl: null,
         devUrl,
       }),
       null,
