@@ -3,32 +3,8 @@
  * The AI SDK adds betas such as structured-outputs that Console proxies reject with 400.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { isAnthropicGatewayBaseUrl } from '../../../src/lib/anthropic-thinking-style.mjs';
 import { mergeOpenCodeIdentityHeaders } from '../../providers/opencode-identity.js';
-
-/**
- * Temporary diagnostic dump of the sanitized outbound body + upstream error body
- * when a gateway request fails, so opaque "Upstream request failed" responses
- * can be root-caused without reproducing against a live proxy from a script.
- * @param {unknown} sanitizedBody
- * @param {string} responseText
- * @param {number} status
- */
-function dumpGatewayFailure(sanitizedBody, responseText, status) {
-  try {
-    const dir = join(homedir(), '.minnow', 'debug');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, 'anthropic-gateway-last-error.json'),
-      JSON.stringify({ status, responseText, sanitizedBody }, null, 2),
-      'utf8',
-    );
-  } catch {
-  }
-}
 
 /** Beta features stripped before POST to non-native Anthropic gateways. */
 export const GATEWAY_STRIPPED_BETAS = new Set([
@@ -245,18 +221,6 @@ export function createAnthropicGatewayFetch(
         { baseUrl, sessionId: options.sessionId },
       );
     }
-    const res = await fetchImpl(input, sanitized);
-    if (!res.ok) {
-      const cloned = res.clone();
-      cloned
-        .text()
-        .then((text) => {
-          const parsedBody =
-            typeof sanitized?.body === 'string' ? JSON.parse(sanitized.body) : sanitized?.body;
-          dumpGatewayFailure(parsedBody, text, res.status);
-        })
-        .catch(() => {});
-    }
-    return res;
+    return fetchImpl(input, sanitized);
   };
 }

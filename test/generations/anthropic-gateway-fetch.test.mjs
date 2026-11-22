@@ -3,6 +3,10 @@
  */
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { MINNOW_OPENCODE_USER_AGENT } from '../../server/providers/opencode-identity.js';
 import {
@@ -223,5 +227,63 @@ describe('createAnthropicGatewayFetch', () => {
     );
     const body = JSON.parse(String(seenInit?.body));
     assert.equal(body.thinking, undefined);
+  });
+
+  test('returns upstream failures without cloning or writing payloads', () => {
+    const home = mkdtempSync(join(tmpdir(), 'minnow-anthropic-gateway-'));
+    const gatewayModule = new URL('../../server/generations/anthropic/gateway-fetch.js', import.meta.url);
+    try {
+      execFileSync(process.execPath, ['--input-type=module', '-e', `
+        import assert from 'node:assert/strict';
+        import { readdirSync } from 'node:fs';
+        import { homedir } from 'node:os';
+        import { resolve } from 'node:path';
+
+        const [gatewayModule, home] = process.argv.slice(1);
+        assert.equal(resolve(homedir()), resolve(home));
+        const { createAnthropicGatewayFetch } = await import(gatewayModule);
+
+        const requestMarker = 'synthetic conversation content';
+        const responseMarker = 'synthetic upstream error';
+        const upstream = new Response(responseMarker, {
+          status: 502,
+          headers: { 'x-request-id': 'synthetic-id' },
+        });
+        let cloneCalls = 0;
+        let cloneRead;
+        upstream.clone = () => {
+          cloneCalls++;
+          const cloned = Response.prototype.clone.call(upstream);
+          const readText = cloned.text.bind(cloned);
+          cloned.text = () => (cloneRead = readText());
+          return cloned;
+        };
+
+        const wrapped = createAnthropicGatewayFetch('https://opencode.ai/zen', async (_input, init) => {
+          assert.equal(JSON.parse(init.body).messages[0].content, requestMarker);
+          return upstream;
+        });
+        const response = await wrapped('https://opencode.ai/zen/v1/messages', {
+          method: 'POST',
+          body: JSON.stringify({ messages: [{ role: 'user', content: requestMarker }] }),
+        });
+        assert.equal(response, upstream);
+        assert.equal(response.status, 502);
+        assert.equal(response.headers.get('x-request-id'), 'synthetic-id');
+        assert.equal(response.bodyUsed, false);
+        assert.equal(await response.text(), responseMarker);
+
+        // Let any clone read and its already-registered diagnostic callback finish.
+        await cloneRead;
+        assert.deepEqual(readdirSync(home), [], 'gateway failure must not write to the scratch home');
+        assert.equal(cloneCalls, 0);
+      `, gatewayModule.href, home], {
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        stdio: 'pipe',
+        timeout: 10_000,
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
