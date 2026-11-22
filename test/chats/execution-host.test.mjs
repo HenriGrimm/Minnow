@@ -227,6 +227,7 @@ test('accepted native selection reaches only private completion options and disp
       prepareNativeExecution: async input => {
         admitted++; assert.equal(input.execution.captured.nativeExecution, selected);
         assert.equal(input.prepared.cwd, s.scratch); assert.ok(input.checkpoint.effect);
+        assert.equal(Object.hasOwn(input, 'waitForApproval'), false, 'Native escalation must not open a human approval');
         return authority;
       },
       prepareExecution: s.prepare(async (_provider, body, _signal, options) => {

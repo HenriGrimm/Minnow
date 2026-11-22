@@ -50,7 +50,6 @@ export function createServerChatExecutionHost(options: {
   prepareNativeExecution?: (input: ChatDispatchContext & { prepared: ChatHostPreparation;
     checkpoint: { baseline: Promise<unknown>; effect<T>(id: string, operation: () => Promise<T>): Promise<T>; finalize(): Promise<void> };
     resolveCurrentPolicy(): Promise<ChatPolicySnapshot>;
-    waitForApproval(request: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
   }) => Promise<import('../generations/native-execution-context').NativeExecutionContext>;
   authorizeResponse?: Parameters<typeof import('./requests').createChatRequestService>[0]['authorizeResponse'];
   onEvent?: (event: ChatHostEvent) => void;

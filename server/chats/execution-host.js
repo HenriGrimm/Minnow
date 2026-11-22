@@ -192,7 +192,7 @@ export function createServerChatExecutionHost({
         if (execution.captured?.nativeExecution?.requestedMode === 'native') {
           if (typeof prepareNativeExecution !== 'function' || !checkpoint) throw new ChatContractError('capability_unavailable', 'This host cannot enforce the accepted native-tool selection. No fallback was started.');
           nativeExecution = await prepareNativeExecution({ command, execution, fence, prepared, checkpoint, signal: combinedSignal,
-            resolveCurrentPolicy: livePolicy, waitForApproval: (request, signal) => waitForHuman(request, signal) });
+            resolveCurrentPolicy: livePolicy });
         }
         const runnerDeps = { ...prepared.deps,
           postChatCompletions: (provider, body, signal, options) => prepared.deps.postChatCompletions(provider, body,
