@@ -2,6 +2,7 @@
 :is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]) .mn-os {
   --mn-graphite-sidebar-width: 291px;
   --mn-graphite-window-inset: 8px;
+  --mn-graphite-menubar-start: var(--mn-menubar-inline-padding);
   --os-menubar-h: 52px;
   --mn-caption-top: calc(var(--mn-graphite-window-inset) + (var(--mn-workbench-band-h) - var(--os-window-btn-size)) / 2);
   background: var(--mn-graphite-ground, var(--mn-bg));
@@ -47,6 +48,7 @@ html.is-electron-shell[data-platform='win32']:is(.mn-graphite-workspace, .mn-gra
   height: calc(var(--os-menubar-h) - var(--mn-graphite-window-inset));
   box-sizing: border-box;
   padding-bottom: var(--mn-graphite-window-inset);
+  padding-left: var(--mn-graphite-menubar-start);
   background: transparent;
 }
 
@@ -72,9 +74,10 @@ html.is-electron-shell[data-platform='win32']:is(.mn-graphite-workspace, .mn-gra
   border-start-end-radius: 0;
 }
 
-/* Keep the logo and controls aligned with the native traffic lights. */
-html.mn-graphite-workspace.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true'], .mn-graphite-sidebar-open, .os-workspace-gate-open) #osMenubar[data-view='app'] {
-  padding-left: calc(var(--mn-mac-traffic-lights-end) / var(--mn-shell-zoom, 1) + var(--mn-mac-traffic-lights-gap) - var(--mn-graphite-window-inset));
+/* The collapsed menubar and app header share an origin at the inset sheet edge. */
+html.is-electron-shell[data-platform='darwin']:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-window]):not([data-window-full-screen='true'], .mn-graphite-sidebar-open, .os-workspace-gate-open) .mn-os {
+  --mn-graphite-mac-titlebar-clearance: calc(var(--mn-mac-traffic-lights-end) / var(--mn-shell-zoom, 1) + var(--mn-mac-traffic-lights-gap));
+  --mn-graphite-menubar-start: calc(var(--mn-graphite-mac-titlebar-clearance) - var(--mn-graphite-window-inset));
 }
 
 .mn-graphite-workspace:not(.os-workspace-gate-open) .mn-os-app-layer.is-active {
@@ -213,13 +216,14 @@ html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-win
       right: calc(var(--mn-graphite-window-inset) + var(--mn-titlebar-end-inset, var(--mn-menubar-inline-padding)) + var(--mn-space-2));
     }
   }
+  --mn-titlebar-start-inset: var(--mn-graphite-mac-titlebar-clearance);
   --mn-titlebar-actions-width: calc(6 * var(--os-window-btn-size) + 6 * var(--mn-space-1));
 }
 
 .mn-graphite-workspace:not(.mn-graphite-sidebar-open, .os-workspace-gate-open)
   .mn-os:has(#osStage :is(.product-wiki:not(.hidden), #osAppsLayer > .mn-os-app-layer.is-active) [data-app-titlebar]:not([hidden], .brain-page .code-map-bar)) {
   --mn-titlebar-navigation-width: var(--mn-titlebar-measured-navigation-width, calc(var(--os-window-btn-size) + 9rem + var(--mn-space-5)));
-  --mn-titlebar-start-inset: calc(var(--mn-titlebar-navigation-width) + var(--mn-menubar-inline-padding));
+  --mn-titlebar-start-inset: calc(var(--mn-graphite-menubar-start) + var(--mn-titlebar-navigation-width));
   --mn-titlebar-actions-width: calc(7 * var(--os-window-btn-size) + 7 * var(--mn-space-1));
   > #osMenubar[data-view='app'] {
     inset-inline-end: auto;
@@ -238,11 +242,6 @@ html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-win
       right: calc(var(--mn-graphite-window-inset) + var(--mn-titlebar-end-inset, var(--mn-menubar-inline-padding)) + var(--mn-space-2));
     }
   }
-}
-
-html.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true'], .mn-graphite-sidebar-open)
-  .mn-os:has(#osStage [data-app-titlebar]) {
-  --mn-titlebar-start-inset: calc(var(--mn-mac-traffic-lights-end) / var(--mn-shell-zoom, 1) + var(--mn-mac-traffic-lights-gap) + var(--mn-titlebar-navigation-width, 0px));
 }
 
 /* Give the graph toolbar the full top row so the inspector starts below it. */

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, test } from 'node:test';
 import {
-  getDefaultWorkAgentForMode,
   getWorkAgent,
   getWorkAgentPromptOverride,
   listWorkAgents,
@@ -11,6 +10,7 @@ import {
   setUserWorkAgentOverrides,
   setWorkAgentRegistryIndex,
 } from '../../src/agents/work-agent-registry.ts';
+import { resolveActiveWorkAgent } from '../../src/agents/resolve-work-agent.ts';
 import { fixtureRegistryIndex, loadWorkAgentFixtureMap } from './test-helpers.mjs';
 
 describe('work agent registry', () => {
@@ -70,11 +70,12 @@ describe('work agent registry', () => {
     assert.equal(merged.modelId, null);
   });
 
-  test('getDefaultWorkAgentForMode matches defaultForModes', async () => {
+  test('ordinary chats ignore saved automatic roles and keep explicit pins', async () => {
     const map = await loadWorkAgentFixtureMap();
     registerWorkAgentFilesFromRaw(map);
-    const agent = getDefaultWorkAgentForMode('build');
-    assert.ok(agent);
-    assert.equal(agent.id, 'agent-alpha');
+    const chat = { modeId: 'build', workAgentId: 'agent-alpha', workAgentAuto: true };
+    assert.equal(resolveActiveWorkAgent(chat), null);
+    assert.equal(resolveActiveWorkAgent({ ...chat, workAgentAuto: false })?.id, 'agent-alpha');
+    assert.equal(resolveActiveWorkAgent({ ...chat, boardTaskId: 'task-1' })?.id, 'agent-alpha');
   });
 });

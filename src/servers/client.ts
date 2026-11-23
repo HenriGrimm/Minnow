@@ -44,6 +44,11 @@ export interface ManagedServerSummary {
   installable?: boolean;
   /** Why Install is unavailable (e.g. MLX off-platform). */
   reason?: string | null;
+  /** Detected MTPLX CLI and Mac app, which can share one runtime. */
+  path?: string | null;
+  source?: 'app' | 'path' | 'user' | null;
+  appPath?: string | null;
+  appVersion?: string | null;
 }
 
 /** Whether the Servers API is reachable (npm start). */

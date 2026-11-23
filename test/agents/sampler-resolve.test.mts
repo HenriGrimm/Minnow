@@ -25,16 +25,24 @@ describe('sampler preset merge', () => {
     resetSubAgentConfigCache();
   });
 
-  test('work agent merges global, role default, and user partial override', () => {
+  test('work agent uses the shared sampler with explicit user overrides', () => {
     mergeUserWorkAgentOverride('builder', { sampler: { temperature: 0.1 } });
     const resolved = resolveSamplerPreset({
       kind: 'work-agent',
       agentKey: 'builder',
-      global: { maxTokens: 8192, preset: { temperature: 0.7 } },
+      global: { maxTokens: 8192, preset: { temperature: 0.7, topP: 0.8 } },
     });
     assert.equal(resolved.preset.temperature, 0.1);
-    assert.equal(resolved.preset.topP, 0.95);
+    assert.equal(resolved.preset.topP, 0.8);
     assert.equal(resolved.maxTokens, 8192);
+  });
+
+  test('Builder and Planner inherit the shared sampler', () => {
+    const global = { maxTokens: 8192, preset: { temperature: 1, topP: 0.8, topK: 50 } };
+    for (const agentKey of ['builder', 'planner']) {
+      const resolved = resolveSamplerPreset({ kind: 'work-agent', agentKey, global });
+      assert.deepEqual(resolved, global);
+    }
   });
 
   test('passthrough work agent uses global drawer only', () => {

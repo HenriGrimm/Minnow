@@ -177,7 +177,8 @@ export function sanitizeCompletionBodyForProvider(
   }
 
   const next = stripInternalApiMessageFields({ ...body });
-  const templateKwargsReachModel = providerSupportsChatTemplateKwargs(provider);
+  const nativeMtplx = modelCapabilities?.reasoningSource === 'mtplx';
+  const templateKwargsReachModel = nativeMtplx || providerSupportsChatTemplateKwargs(provider);
   const openCodeGo = isOpenCodeGoBaseUrl(provider.baseUrl);
   if (!providerKeepsExtendedSamplers(provider)) {
     delete next.top_k;
@@ -212,7 +213,7 @@ export function sanitizeCompletionBodyForProvider(
   }
 
   const modelId = typeof next.model === 'string' ? next.model : '';
-  rewriteGlm53ThinkingBody(next, modelId);
+  if (!nativeMtplx) rewriteGlm53ThinkingBody(next, modelId);
   if (/^https?:\/\/api\.deepseek\.com(?:\/|$)/i.test(provider.baseUrl ?? '')) {
     delete next.reasoning;
   }

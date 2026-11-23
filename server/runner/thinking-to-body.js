@@ -123,6 +123,15 @@ function anthropicThinkingPatch(thinking, effort, explicitBudget) {
   };
 }
 function reasoningEffortToCompletionBody(effort, apiKind, modelCapabilities, budgetTokens, modelId) {
+  if (apiKind === "openai-v1" && modelCapabilities?.reasoningSource === "mtplx") {
+    if (reasoningBlocked(effort, modelCapabilities) ||
+        (effort === "off" && !modelCapabilities.reasoningAllowedOptions?.includes("off"))) return { body: {} };
+    if (effort === "off") return { body: { thinking: { type: "disabled" }, ...LOCAL_TEMPLATE_THINKING_OFF } };
+    const body = { enable_thinking: true };
+    if (isWireLevelEffort(effort)) body.reasoning_effort = effort;
+    if (budgetTokens > 0) body.thinking_budget_tokens = budgetTokens;
+    return { body };
+  }
   if (apiKind === "agent-cli-v1") {
     if (reasoningBlocked(effort, modelCapabilities)) return { body: {} };
     return { body: { reasoning_effort: effort === "on" ? "medium" : effort } };
@@ -218,6 +227,13 @@ function reasoningEffortToCompletionBody(effort, apiKind, modelCapabilities, bud
   return { body, hint: LM_STUDIO_BEST_EFFORT };
 }
 function thinkingToCompletionBody(resolved, apiKind, modelCapabilities, budgetTokens, modelId) {
+  if (apiKind === "openai-v1" && modelCapabilities?.reasoningSource === "mtplx") {
+    const allowed = modelCapabilities.reasoningAllowedOptions ?? [];
+    const level = modelCapabilities.reasoningDefault;
+    const effort = resolved === "on" && !allowed.includes("on")
+      ? (isWireLevelEffort(level) ? level : allowed.find(isWireLevelEffort)) : resolved;
+    return effort ? reasoningEffortToCompletionBody(effort, apiKind, modelCapabilities, budgetTokens, modelId) : { body: {} };
+  }
   if (apiKind === "agent-cli-v1") {
     if (modelCapabilities?.reasoning === false) return { body: {} };
     return { body: { reasoning_effort: resolved === "on" ? "medium" : "off" } };

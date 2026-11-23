@@ -19,6 +19,7 @@ export interface RunnerProvider {
 export interface SendModelCapabilities {
   reasoning?: boolean | null;
   reasoningAllowedOptions?: readonly string[];
+  reasoningSource?: 'mtplx';
 }
 
 export interface PostChatCompletionsOptions {

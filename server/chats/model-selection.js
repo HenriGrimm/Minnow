@@ -1,6 +1,7 @@
 import { ChatContractError, resolveModelSelection, validateModelOptions, validateModelSelection } from './contracts.js';
 import { cursorVariantParts, reasoningFavoriteKey, resolveCursorVariantId, usesCliReasoningFavorite } from '../../src/models/cursor-variants.mjs';
-import { ensureGlm53ReasoningAllowedOptions, ensureQwen38ReasoningAllowedOptions, normalizeReasoningAllowedOptions } from '../runner/reasoning-effort.js';
+import { ensureGlm53ReasoningAllowedOptions, ensureQwen38ReasoningAllowedOptions, legacyMtplxReasoningEffort, normalizeReasoningAllowedOptions } from '../runner/reasoning-effort.js';
+import { mtplxReasoningCatalog } from '../models/mtplx-reasoning.js';
 
 export const AGENT_POOL_PROVIDER_ID = 'minnow-router';
 export const AGENT_LIBRARY_PROVIDER_ID = 'minnow-library';
@@ -46,15 +47,19 @@ export function modelOptionSupport(model, providerCapabilities = {}, provider = 
   const modelId = model?.id ?? '';
   const probed = providerCapabilities.models?.[modelId] ?? {};
   const rowCaps = model?.capabilities ?? {};
-  const reasoning = probed.reasoning === false ? false : probed.reasoning === true || rowCaps.reasoning === true || model?.reasoning === true || typeof model?.reasoning === 'object';
-  const raw = model?.reasoning?.allowed_options ?? rowCaps.reasoningAllowedOptions ?? [];
-  const allowed = probed.reasoning === false ? [] : ensureGlm53ReasoningAllowedOptions(modelId,
-    ensureQwen38ReasoningAllowedOptions(modelId, normalizeReasoningAllowedOptions(Array.isArray(raw) ? raw : [], modelId)));
-  const knownReasoning = reasoning || allowed.length > 0;
+  const raw = model?.reasoning?.allowed_options ?? rowCaps.reasoningAllowedOptions;
+  const advertised = Array.isArray(raw) ? raw : [];
+  const nativeMtplx = model?.reasoning?.source === 'mtplx';
+  const allowed = nativeMtplx ? normalizeReasoningAllowedOptions(advertised)
+    : probed.reasoning === false ? [] : ensureGlm53ReasoningAllowedOptions(modelId,
+    ensureQwen38ReasoningAllowedOptions(modelId, normalizeReasoningAllowedOptions(advertised, modelId)));
+  const knownReasoning = nativeMtplx ? allowed.some((level) => level !== 'off')
+    : probed.reasoning !== false && (allowed.length > 0 || probed.reasoning === true || rowCaps.reasoning === true
+      || model?.reasoning === true || typeof model?.reasoning === 'object');
   const alwaysOn = allowed.length > 0 && !allowed.includes('off') && allowed.some((value) => value !== 'on');
   const thinkingModes = ['inherit'];
   if (knownReasoning) thinkingModes.push('on');
-  if (probed.reasoning === false || model?.reasoning === false || (knownReasoning && !alwaysOn)) thinkingModes.push('off');
+  if (nativeMtplx ? allowed.includes('off') : probed.reasoning === false || model?.reasoning === false || (knownReasoning && !alwaysOn)) thinkingModes.push('off');
   const nativeBudget = providerCapabilities.supportsThinkingBudget === true || rowCaps.supportsThinkingBudget === true;
   const budget = nativeBudget ? 'native' : knownReasoning && provider.apiKind !== 'agent-cli-v1' ? 'runner' : null;
   return Object.freeze({
@@ -63,7 +68,8 @@ export function modelOptionSupport(model, providerCapabilities = {}, provider = 
     thinkingMode: Object.freeze(thinkingModes),
     thinkingBudgetTokens: Object.freeze({ supported: budget !== null, enforcement: budget }),
     sendCapabilities: Object.freeze({
-      reasoning: knownReasoning && probed.reasoning !== false,
+      reasoning: knownReasoning,
+      ...(nativeMtplx ? { reasoningSource: 'mtplx' } : {}),
       reasoningAllowedOptions: Object.freeze([...allowed]),
       ...(text(model?.reasoning?.default ?? rowCaps.reasoningDefault) ? { reasoningDefault: text(model?.reasoning?.default ?? rowCaps.reasoningDefault) } : {}),
     }),
@@ -178,12 +184,19 @@ export async function inspectAgentModel(selection, context = {}) {
   abort(snapshot);
   const selected = parsed(validateModelSelection(selection));
   if (selected.providerId === AGENT_LIBRARY_PROVIDER_ID) {
-    const model = libraryCatalogModels(await snapshot.library()).find((row) => row.id === selected.modelId);
-    if (!model || !await snapshot.adapters.resolveLibraryTarget(selected.modelId)) unavailable('The selected My Models artifact is missing or cannot be served');
+    let model = libraryCatalogModels(await snapshot.library()).find((row) => row.id === selected.modelId);
+    const target = model && await snapshot.adapters.resolveLibraryTarget(selected.modelId);
+    if (!target) unavailable('The selected My Models artifact is missing or cannot be served');
     const [caps, serves] = await Promise.all([snapshot.capabilities(AGENT_LIBRARY_PROVIDER_ID), snapshot.serves()]);
     abort(snapshot);
     checkRequestCapabilities(model, caps, snapshot.request);
-    const serve = serves.find((row) => row.libraryId === selected.modelId && ['running', 'starting', 'unhealthy'].includes(row.status));
+    const serve = serves.find((row) => (row.libraryId === selected.modelId || (target.modelPath && row.modelPath === target.modelPath))
+      && ['running', 'starting', 'unhealthy'].includes(row.status));
+    if (selected.modelId.startsWith('mtplx:')) {
+      const runtime = serve?.runtime ?? target.runtime;
+      model = { ...model, reasoning: runtime === 'mtplx'
+        ? mtplxReasoningCatalog(serve?.mtplxDescriptor, serve?.mtplxSettings) ?? model.reasoning : undefined };
+    }
     const availability = { state: serve?.status === 'running' ? 'available' : serve ? 'loading_model' : 'loadable', reason: serve?.status === 'running' ? 'Available' : serve ? 'Loading model' : 'Available to load' };
     return { model, provider: { id: AGENT_LIBRARY_PROVIDER_ID, label: 'My Models' }, capabilities: caps, support: modelOptionSupport(model, caps), availability, vision: canSendModelImages(model, caps) };
   }
@@ -298,6 +311,8 @@ export async function resolveAgentModelSelection(input = {}, context = {}) {
     }
   }
   if (inspected.availability.state === 'unavailable') unavailable(inspected.availability.reason);
+  const effort = legacyMtplxReasoningEffort(selection.options?.reasoningEffort, inspected.support.sendCapabilities, selection.modelId);
+  if (effort !== selection.options?.reasoningEffort) selection = { ...selection, options: { ...selection.options, reasoningEffort: effort } };
   assertSupportedModelOptions(selection.options, inspected.support);
   return { selection, source, exactModel: source === 'explicit', availability: inspected.availability, sendCapabilities: inspected.support.sendCapabilities, vision: inspected.vision };
 }

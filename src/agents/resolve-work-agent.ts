@@ -1,27 +1,25 @@
 import type { Chat } from '../types';
 import { getWorkAgent } from './work-agent-registry';
 import type { WorkAgentDefinition } from './work-agent-types';
+import { UI_DESIGNER_AGENT_ID } from './ui-designer/constants';
 
 export function isPassthroughWorkAgentId(agentId: string | null | undefined): boolean {
   return !agentId || agentId === 'default';
 }
 
+export function pinnedWorkAgentId(chat: Chat): string | null {
+  const id = chat.workAgentId;
+  if (!id) return null;
+  if (chat.workAgentAuto === false) return id;
+  // Older ordinary chats stored their mode's role with workAgentAuto enabled.
+  if (isPassthroughWorkAgentId(id)) return null;
+  return id === UI_DESIGNER_AGENT_ID || chat.boardGroupId?.trim() || chat.boardTaskId?.trim() ? id : null;
+}
+
 export function resolveActiveWorkAgent(chat: Chat): WorkAgentDefinition | null {
-  const auto = chat.workAgentAuto !== false;
-
-  if (!auto && chat.workAgentId) {
-    const pinned = getWorkAgent(chat.workAgentId);
-    return pinned && !pinned.disabled ? pinned : null;
-  }
-
-  if (chat.workAgentId && !isPassthroughWorkAgentId(chat.workAgentId)) {
-    const pinned = getWorkAgent(chat.workAgentId);
-    if (pinned && !pinned.disabled) return pinned;
-  }
-
-  // One agent: chats no longer pick a work agent from their mode. Only an
-  // explicitly pinned agent (board lanes, the UI designer) adds a role part.
-  return null;
+  const id = pinnedWorkAgentId(chat);
+  const pinned = id ? getWorkAgent(id) : null;
+  return pinned && !pinned.disabled ? pinned : null;
 }
 
 export function resolveActiveWorkAgentId(chat: Chat): string | null {

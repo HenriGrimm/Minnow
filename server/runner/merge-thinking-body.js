@@ -36,7 +36,8 @@ function mergeThinkingIntoCompletionBody(body, resolved, provider, modelCapabili
       effortForSend = resolveEffectiveReasoningEffort(
         { reasoningEffort: reasoningEffort ?? void 0 },
         modelCapabilities ?? null,
-        resolved
+        resolved,
+        modelId
       ) ?? effortForSend;
     }
   }

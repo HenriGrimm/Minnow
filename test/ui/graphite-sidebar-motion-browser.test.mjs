@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { discoverBrowser, launchBrowser } from '../../server/browser-driver/index.js';
 
-test('the Graphite stage covers the sidebar as it grows and Windows controls stay at the right edge', { timeout: 30_000 }, async t => {
+test('Graphite titlebar layout and hit targets across sidebar states and platforms', { timeout: 30_000 }, async t => {
   const browser = await discoverBrowser();
   if (!browser.available) return t.skip(browser.detail);
   const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'sidebar', 'graphite-workspace', 'thread-card',
@@ -465,4 +465,57 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
       menubarRegion: getComputedStyle(document.getElementById('osMenubar')).getPropertyValue('app-region') };
   })()`);
   assert.deepEqual(detached, { top: start.top, captionWithinHeader: true, actionClear: true, menubarRegion: 'none' });
+
+  await t.test('collapsed macOS navigation clears the traffic lights and the thread header clears navigation', async () => {
+    await session.navigate(`http://127.0.0.1:${server.address().port}/`);
+    await session.client.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+    });
+
+    for (const { width, zoom, wide, fullScreen } of [
+      { width: 1440, zoom: 1, wide: true, fullScreen: false },
+      { width: 1060, zoom: 0.8, wide: true, fullScreen: false },
+      { width: 1060, zoom: 1.2, wide: false, fullScreen: false },
+      { width: 1060, zoom: 1, wide: true, fullScreen: true },
+    ]) {
+      await session.client.send('Emulation.setDeviceMetricsOverride', {
+        width, height: 900, mobile: false, deviceScaleFactor: 1,
+      });
+      const frame = await session.evaluate(`(() => {
+        const html = document.documentElement;
+        html.dataset.platform = 'darwin';
+        html.dataset.windowFullScreen = '${fullScreen}';
+        if (${wide}) html.dataset.macTitlebar = 'wide';
+        else delete html.dataset.macTitlebar;
+        html.style.setProperty('--mn-shell-zoom', '${zoom}');
+        html.classList.remove('mn-graphite-sidebar-open');
+        const navigation = document.querySelector('.mn-os-mb-left');
+        const picker = navigation.querySelector('.mn-os-mb-workspace-slot button');
+        const toggle = document.getElementById('sidebarToggle');
+        const header = document.getElementById('graphiteThreadHeader');
+        const bounds = element => element.getBoundingClientRect();
+        document.querySelector('.mn-os').style.setProperty('--mn-titlebar-measured-navigation-width', bounds(navigation).width + 'px');
+        const dragStrip = getComputedStyle(header, '::before');
+        const clickable = element => {
+          const { left, top, width, height } = bounds(element);
+          return element.contains(document.elementFromPoint(left + width / 2, top + height / 2));
+        };
+        return {
+          pickerLeft: bounds(picker).left,
+          toggleRight: bounds(toggle).right,
+          titleLeft: bounds(header.querySelector('h1')).left,
+          dragLeft: bounds(header).left + parseFloat(dragStrip.left),
+          navigationClickable: clickable(picker) && clickable(toggle),
+          threadActionClickable: clickable(document.getElementById('threadAction')),
+        };
+      })()`);
+      const detail = JSON.stringify({ width, zoom, wide, fullScreen, ...frame });
+      if (fullScreen) assert.ok(frame.pickerLeft < 40, detail);
+      else assert.ok(frame.pickerLeft >= (wide ? 77 : 71) / zoom + 16 - 1, detail);
+      assert.ok(frame.titleLeft >= frame.toggleRight, detail);
+      assert.ok(frame.titleLeft - frame.toggleRight <= 28, detail);
+      assert.ok(frame.dragLeft >= frame.toggleRight, detail);
+      assert.ok(frame.navigationClickable && frame.threadActionClickable, detail);
+    }
+  });
 });

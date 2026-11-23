@@ -175,6 +175,25 @@ test('production preparation composes shared prompts, current input first-turn d
   assert.deepEqual(prepared.sendCapabilities.reasoningAllowedOptions, ['off', 'high']);
 });
 
+test('managed chat ignores legacy automatic Builder and Planner bindings', async () => {
+  for (const [modeId, workAgentId] of [['build', 'builder'], ['plan', 'planner']]) {
+    const f = fixture({ chat: { modeId, workAgentId, workAgentAuto: true } });
+    f.adapters.loadWorkAgents = async () => ({
+      agents: f.agents, overrides: { [workAgentId]: { sampler: { temperature: 0.2 } } },
+    });
+    const snapshot = await captureChatProfile(f.chat, f.scope, { adapters: f.adapters });
+    assert.equal(snapshot.prompt.workAgent, null);
+    f.execution.captured.turnSettings = snapshot;
+
+    const prepared = await f.prepare();
+    assert.doesNotMatch(prepared.systemPrompt, /BUILDER BODY|PLANNER BODY/);
+    assert.equal(prepared.toolContext.workAgentId, null);
+    assert.equal(prepared.model.sampler.preset.temperature, 0.4);
+    assert.equal(prepared.model.sampler.preset.topP, 0.8);
+    assert.equal(prepared.model.sampler.maxTokens, 9000);
+  }
+});
+
 test('a captured /plan skill narrows the turn even after its chat is unpinned', async () => {
   const f = fixture();
   const readTool = 'mcp__docs__read';

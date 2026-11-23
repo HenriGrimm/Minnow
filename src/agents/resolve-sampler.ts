@@ -1,6 +1,4 @@
-import WORK_AGENT_SAMPLER_DEFAULTS from './defaults/work-agent-samplers.json';
 import SUB_AGENT_DEFAULTS from './defaults/sub-agents.json';
-import { isPassthroughWorkAgentId } from './resolve-work-agent';
 import { getUserWorkAgentOverride } from './work-agent-registry';
 import {
   clampSamplerPreset,
@@ -30,11 +28,6 @@ export interface ResolvedSampler {
 /** Last-resort when type, global, and fallback all omit a usable max. */
 const DEFAULT_SUB_AGENT_MAX_TOKENS = DEFAULT_AGENT_MAX_TOKENS;
 
-function builtinWorkAgentSampler(agentId: string): SamplerPreset {
-  const map = WORK_AGENT_SAMPLER_DEFAULTS as Record<string, SamplerPreset>;
-  return map[agentId] ? { ...map[agentId] } : {};
-}
-
 function builtinSubAgentSampler(typeId: string): SamplerPreset {
   const types = SUB_AGENT_DEFAULTS.types as Record<string, SubAgentTypeConfig>;
   const row = types[typeId];
@@ -61,15 +54,9 @@ export function resolveSamplerPreset(input: ResolveSamplerInput): ResolvedSample
       (key ? builtinSubAgentSampler(key) : {});
     merged = clampSamplerPreset(typeSampler);
   } else {
-    const key = input.agentKey;
-    const global = globalLayer(input);
-    let roleDefault: SamplerPreset = {};
-    if (key && !isPassthroughWorkAgentId(key)) {
-      roleDefault = builtinWorkAgentSampler(key);
-    }
-    const userOverride = userWorkAgentSampler(key ?? 'default');
+    const userOverride = userWorkAgentSampler(input.agentKey ?? 'default');
     merged = clampSamplerPreset(
-      mergeSamplerLayers(global, roleDefault, userOverride),
+      mergeSamplerLayers(globalLayer(input), userOverride),
     );
   }
 

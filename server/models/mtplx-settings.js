@@ -3,7 +3,7 @@ import { normalizeExtraArgs } from '../../src/models/argv-tokenize.mjs';
 export const MTPLX_SETTING_ENUMS = {
   profile: ['auto', 'sustained', 'turbo', 'performance-cold'],
   generation_mode: ['mtp', 'ar', 'auto'], paged_kv_quantization: ['off', 'q8', 'q4'],
-  reasoning: ['auto', 'on', 'off'], reasoning_effort: ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+  reasoning: ['auto', 'on', 'off'], reasoning_effort: ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
   preserve_thinking: ['auto', 'on', 'off', 'scoped'], tool_prompt_mode: ['hybrid', 'native'],
   reasoning_parser: ['qwen3', 'step3p5', 'gemma4', 'poolside_v1', 'none'],
   scheduler_mode: ['serial', 'ar_batch', 'mtp_batch'], batching_preset: ['solo', 'latency', 'agent', 'throughput'],
@@ -31,7 +31,8 @@ export function normalizeMtplxSettings(raw, descriptor, warnings = []) {
   for (const [key, choices] of Object.entries(MTPLX_SETTING_ENUMS)) {
     const allowed = key === 'paged_kv_quantization' ? descriptor?.kvQuant?.modes ?? choices
       : key === 'reasoning' ? descriptor?.reasoning?.modes ?? choices
-      : key === 'reasoning_effort' ? ['auto', ...(descriptor?.reasoning?.effortLevels ?? choices)] : choices;
+      : key === 'reasoning_effort' ? ['auto', ...(descriptor?.reasoning?.effortLevels ?? choices)]
+        .filter((level) => !descriptor?.launchEffortLevels || descriptor.launchEffortLevels.includes(level)) : choices;
     if (typeof raw[key] !== 'string') continue;
     if (allowed.includes(raw[key])) out[key] = raw[key];
     else if (key === 'paged_kv_quantization') {

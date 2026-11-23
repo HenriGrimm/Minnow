@@ -177,19 +177,6 @@ export function getWorkAgent(id: string): WorkAgentDefinition | null {
   return mergeWorkAgentDefinition(agent, userOverrides[id]);
 }
 
-export function getDefaultWorkAgentForMode(modeId: string): WorkAgentDefinition | null {
-  const mode = modeId.trim();
-  if (!mode) return null;
-
-  for (const id of registryIndex.ids) {
-    const agent = getWorkAgent(id);
-    if (!agent || agent.disabled || agent.id === 'default') continue;
-    if (agent.defaultForModes?.includes(mode)) return agent;
-  }
-
-  return null;
-}
-
 export function getUserWorkAgentOverride(agentId: string): WorkAgentUserOverride | undefined {
   return userOverrides[agentId];
 }

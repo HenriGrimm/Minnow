@@ -7,7 +7,7 @@ import { cancelDownload, pauseDownload, resumeDownload, listDownloads, startDown
 import { getHubFiles } from './hf-files.js';
 import { searchHubModels } from './hf-search.js';
 import { getHfCreatorAvatarImage } from './hf-avatar.js';
-import { listCachedModels } from './cached.js';
+import { invalidateCachedModelsCache, listCachedModels } from './cached.js';
 import { deleteLibraryModel } from './delete.js';
 import { listInstalled } from './installed.js';
 import { getModelsConfig, patchModelsConfig } from './models-config.js';
@@ -206,7 +206,9 @@ export async function handleModelsRequest(req, res, pathname) {
 
   if (pathname === '/api/models/mtplx/runtime' && req.method === 'GET') {
     const refresh = new URL(req.url ?? '/', 'http://localhost').searchParams.get('refresh') === '1';
-    sendJson(res, 200, await (refresh ? refreshMtplxStatus() : getMtplxStatus())); return true;
+    const status = await (refresh ? refreshMtplxStatus() : getMtplxStatus());
+    if (refresh) invalidateCachedModelsCache();
+    sendJson(res, 200, status); return true;
   }
   if (pathname === '/api/models/mtplx/estimate' && req.method === 'POST') {
     try {

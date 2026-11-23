@@ -68,6 +68,7 @@ export interface LibraryModel {
   servable: boolean;
   mtpCapable?: boolean;
   mtplxValidated?: boolean;
+  reasoning?: import('../types').LmModelRecord['reasoning'];
   unavailableReason?: string;
   incomplete: boolean;
   isMoe: boolean;
@@ -336,6 +337,7 @@ export async function buildLibrary(cached: CachedModelRow[]): Promise<LibraryMod
         servable: isMlx && (!row.mtplx_root || row.mtplx_validated === true),
         mtpCapable: row.mtplx_validated === true,
         mtplxValidated: row.mtplx_validated,
+        ...(row.reasoning ? { reasoning: row.reasoning } : {}),
         unavailableReason: row.mtplx_reason,
         incomplete: row.has_incomplete,
         isMoe: entry?.is_moe ?? false,

@@ -52,11 +52,14 @@ export interface MtplxModelDescriptor {
   /** Inherited load values and automatic policies, excluding per-model overrides. */
   loadDefaults?: Partial<Record<keyof MtplxServeSettings, string | number | boolean>>;
   modelPath: string;
+  vision?: boolean;
   canRun: boolean;
   mtpSupported: boolean;
   recommendedProfile: string | null;
   source: 'inspect' | 'health' | 'fallback';
   fetchedAt: number;
+  /** Values accepted by the installed CLI's serve flag. */
+  launchEffortLevels?: string[];
   draft: { supported: boolean; minimum: number; maximum: number; default: number; valueLabels: string[]; displayLabel?: string };
   contextWindow: { supported: boolean; minimum: number; maximum: number; default: number; step: number };
   kvQuant: { supported: boolean; modes: string[]; restartRequired: boolean };

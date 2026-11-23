@@ -26,10 +26,14 @@ import { MODEL_LOAD_TIMEOUT_MS } from '../models/timeouts.js';
 import { serveMatchesModelId } from '../models/admit-serve.js';
 import { detectAgentCli } from '../models/agent-cli-detect.js';
 import { listAgentCliModelsWithConfig } from '../models/agent-cli-catalog.js';
+import { descriptorFromHealth } from '../models/mtplx-descriptor.js';
+import { mtplxReasoningCatalog } from '../models/mtplx-reasoning.js';
+import { probeMtplxHealth, probeMtplxReasoningSettings } from '../models/mtplx-serve.js';
 import {
   findLiveLlamaCppServeForModel,
   findLiveServeForRuntime,
   getLastTtlEviction,
+  listServes,
   startServe,
   touchServeLastUsedAt,
 } from '../models/serve.js';
@@ -111,6 +115,16 @@ export async function proxyModels(id, options = {}) {
     return { data: [] };
   }
   const { profile, secrets, headers, paths } = await getProviderRuntime(id);
+  if (id === MTPLX_LOCAL_ID) {
+    const rows = (await listServes()).filter((serve) => serve.runtime === 'mtplx' && serve.status === 'running');
+    if (rows.length) return { data: rows.map((serve) => ({
+      id: serve.modelLabel, type: 'llm', state: 'loaded', api: 'openai-v1', owned_by: 'mtplx',
+      catalogVision: serve.mtplxDescriptor?.vision,
+      loaded_context_length: serve.mtplxSettings?.context_window,
+      max_context_length: serve.mtplxDescriptor?.contextWindow?.maximum,
+      reasoning: mtplxReasoningCatalog(serve.mtplxDescriptor, serve.mtplxSettings),
+    })) };
+  }
   if (profile.apiKind === 'agent-cli-v1') {
     const status = await detectAgentCli(profile.agentCli.kind, {
       binPath: profile.agentCli.binPath,
@@ -161,6 +175,16 @@ export async function proxyModels(id, options = {}) {
     }
     const json = await res.json();
     let normalized = normalizeModelsResponse(profile.apiKind, json);
+    if (profile.apiKind === 'openai-v1' && normalized.data.some((row) => row.owned_by === 'mtplx')) {
+      const mtplxUrl = baseUrl.replace(/\/v1$/, '');
+      const health = await probeMtplxHealth(mtplxUrl, headers);
+      const modelId = health?.startup?.model_id ?? health?.model;
+      const row = normalized.data.find((candidate) => candidate.id === modelId && candidate.owned_by === 'mtplx');
+      if (row) {
+        const settings = await probeMtplxReasoningSettings(mtplxUrl, headers, modelId);
+        row.reasoning = mtplxReasoningCatalog(descriptorFromHealth(health), { reasoning: health.reasoning, ...settings }) ?? row.reasoning;
+      }
+    }
     if (profile.apiKind === 'lm-studio-v0') {
       normalized = await enrichLmStudioModelsWithV1Reasoning(
         profile.baseUrl,
@@ -407,7 +431,7 @@ async function jitReloadTtlEvicted(modelId) {
  *   priority: 'interactive' | 'background',
  *   signal?: AbortSignal,
  * }} opts
- * @returns {Promise<{ baseUrl: string, release: () => void }>}
+ * @returns {Promise<{ baseUrl: string, release: () => void, useNativeSampler?: boolean }>}
  */
 export async function admitLocalCompletion(opts) {
   const providerId = opts.providerId;
@@ -442,7 +466,11 @@ export async function admitLocalCompletion(opts) {
       );
     }
     if (row.id) await touchServeLastUsedAt(row.id);
-    return { baseUrl: row.baseUrl, release };
+    const useNativeSampler = row.runtime === 'mtplx' && (
+      row.mtplxDescriptor?.archId === 'inkling2-loop' ||
+      /\binkling[-_ ]?2[-_ ]?mini\b/i.test(`${row.libraryId ?? ''} ${row.modelLabel ?? ''}`)
+    );
+    return { baseUrl: row.baseUrl, release, ...(useNativeSampler ? { useNativeSampler } : {}) };
   } catch (err) {
     release();
     throw err;

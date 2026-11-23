@@ -94,7 +94,6 @@ import {
   updateCodeChangeStrip,
 } from './code-change-strip';
 import { updateWorkspaceCodeChangeDisplay } from './workspace-code-change';
-import { getDefaultWorkAgentForMode } from '../agents/work-agent-registry';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
 import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
 import { syncOrchestratePlanStripFromActiveChat } from './orchestrate-plan-selector';
@@ -2323,15 +2322,6 @@ export interface CreateChatWithModeOptions {
 
 // ── Create ───────────────────────────────────────────────────────────────────
 
-/** Apply operating mode and default work-agent binding on an existing chat row. */
-function applyModeIdToChat(chat: Chat, modeId: ModeId): void {
-  chat.modeId = modeId;
-  if (chat.workAgentAuto !== false) {
-    const agent = getDefaultWorkAgentForMode(modeId);
-    chat.workAgentId = agent?.id ?? null;
-  }
-}
-
 /** Board planners must not be repurposed when New chat requests a different mode. */
 function isBoardAnchorChat(chat: Chat): boolean {
   if (findBoardGroupForPlanner(chat.id)) return true;
@@ -2439,7 +2429,7 @@ export async function createChatWithMode(
     const needsNewChat = requestedMode !== activeMode && isBoardAnchorChat(active);
     if (!needsNewChat) {
       if (requestedMode !== activeMode) {
-        applyModeIdToChat(active, requestedMode);
+        active.modeId = requestedMode;
       }
       if (workflowSkill) active.pinnedSkill = { id: workflowSkill };
       else if (workflowSkillForMode(active.pinnedSkill?.id)) delete active.pinnedSkill;
@@ -2475,10 +2465,6 @@ export async function createChatWithMode(
   }
   chat.modeId = modeId;
   if (workflowSkill) chat.pinnedSkill = { id: workflowSkill };
-  if (chat.workAgentAuto !== false) {
-    const agent = getDefaultWorkAgentForMode(modeId);
-    chat.workAgentId = agent?.id ?? null;
-  }
 
   const defaultPin = buildDefaultPinnedSkillForNewChat();
   if (defaultPin) {

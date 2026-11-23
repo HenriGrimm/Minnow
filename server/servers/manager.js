@@ -483,6 +483,7 @@ export async function listServers() {
       supported: install.supported,
       installable: install.installable,
       reason: install.reason ?? null,
+      ...(def.id === 'mtplx' ? { path: install.path, source: install.source, appPath: install.appPath, appVersion: install.appVersion } : {}),
     });
   }
 

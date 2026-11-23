@@ -358,8 +358,9 @@ export async function fetchLibraryModelSelectMerge(
         model.capabilities.includes('vision') &&
         !(model.id.startsWith('mtplx:') && upstreamProviderForLibraryModel(model) === MLX_LM_LOCAL_PROVIDER_ID);
       const loadedContext = servedContextLength(serve);
-      const reasoning = model.id.startsWith('mtplx:')
-        ? mtplxReasoningCatalog(model.id, serve?.mtplxDescriptor) : undefined;
+      const reasoning = serve?.runtime === 'mtplx'
+        ? mtplxReasoningCatalog(serve.mtplxDescriptor, serve.mtplxSettings) ?? model.reasoning
+        : upstreamProviderForLibraryModel(model) === MTPLX_LOCAL_ID ? model.reasoning : undefined;
       if (reasoning && serve?.runtime === 'mtplx' && serve.status === 'running') {
         servedReasoning.push({ providerId: serve.providerId, baseUrl: serve.baseUrl,
           modelId: serve.modelLabel, reasoning });

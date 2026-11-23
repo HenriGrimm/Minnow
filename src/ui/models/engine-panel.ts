@@ -751,13 +751,23 @@ function mtplxBlock(): HTMLElement {
 
 function renderMtplxInto(block: HTMLElement): void {
   block.replaceChildren(el('h3', 'models-block__label', 'MTPLX'));
-  block.appendChild(el('p', 'models-engine__desc', 'Powered by MTPLX. Apple Silicon inference with multi-token prediction. Uses your existing installation.'));
+  block.appendChild(el('p', 'models-engine__desc', 'Powered by MTPLX. Minnow starts its local servers with an installed MTPLX runtime and can connect to a matching model already running in the MTPLX Mac app.'));
   const server = mtplx;
   if (server) {
     const head = el('div', 'models-engine__head');
     head.appendChild(chip(server.supported === false ? 'Unsupported' : server.installed ? 'Installed' : 'Not installed', server.supported !== false && server.installed ? 'fit-perfect' : 'muted'));
-    if (server.version) head.appendChild(chip(server.version, 'muted'));
     block.appendChild(head);
+    const installations = el('dl', 'models-engine__update-methods');
+    if (server.appPath) {
+      installations.append(el('dt', undefined, 'MTPLX Mac app'), el('dd', undefined, server.appVersion ?? 'Installed'));
+    }
+    if (server.installed && server.supported !== false) {
+      const source = server.source === 'app' ? 'Mac app runtime' : server.source === 'path' ? 'CLI on PATH' : 'User CLI';
+      const value = el('dd', undefined, server.version ? `${source} · ${server.version}` : source);
+      if (server.path) value.title = server.path;
+      installations.append(el('dt', undefined, 'Runtime for Minnow launches'), value);
+    }
+    if (installations.childElementCount) block.appendChild(installations);
     if (server.reason) block.appendChild(el('p', 'models-hint', server.reason));
     if (server.supported !== false && server.installed) {
       block.appendChild(el('p', 'models-hint', 'Load models in Models → My Models. Select MTPLX in the model’s Load settings.'));
@@ -768,7 +778,7 @@ function renderMtplxInto(block: HTMLElement): void {
   if (server?.supported) {
     const updates = el('details', 'models-engine__update');
     updates.appendChild(el('summary', undefined, server.installed ? 'Update MTPLX on this Mac' : 'Install MTPLX on this Mac'));
-    updates.appendChild(el('p', 'models-hint', 'MTPLX is managed outside Minnow. Unload MTPLX models before updating, then use the same installer and Python environment as your existing installation.'));
+    updates.appendChild(el('p', 'models-hint', 'Unload MTPLX models before updating the runtime listed above.'));
     const methods = el('dl', 'models-engine__update-methods');
     methods.append(
       el('dt', undefined, 'Mac app'),
@@ -801,7 +811,7 @@ function renderMtplxInto(block: HTMLElement): void {
       try {
         const response = await fetch('/api/models/mtplx/runtime?refresh=1');
         if (!response.ok) throw new Error('Could not refresh MTPLX. Try again.');
-        const status = await response.json() as { installed: boolean; supported: boolean; version: string | null; reason: string | null };
+        const status = await response.json() as Pick<ManagedServerSummary, 'installed' | 'supported' | 'reason' | 'source' | 'path' | 'appPath' | 'appVersion'> & { version: string | null };
         if (generation !== mountGeneration) return;
         if (mtplx) mtplx = { ...mtplx, ...status, version: status.version ?? undefined };
         else await loadManagedRuntimes();

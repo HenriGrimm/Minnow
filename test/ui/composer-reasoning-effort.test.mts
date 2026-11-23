@@ -657,6 +657,27 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.ok(!thinkingControl?.classList.contains('hidden'));
   });
 
+  test('MTPLX Qwen shows its advertised levels and renders older High selections as Extra high', () => {
+    setupDom();
+    const providerId = 'minnow-library';
+    const modelId = 'mtplx:Fixture/Qwen3.8';
+    const chat = seedChat({ providerId, modelId, thinkingMode: 'on' });
+    modelCache.set(encodeModelSelectKey(providerId, modelId), {
+      id: modelId,
+      reasoning: { source: 'mtplx', allowed_options: ['off', 'on', 'low', 'medium', 'xhigh'], default: 'medium' },
+    });
+    assert.equal(getComposerReasoningState().label, 'Medium');
+    assert.deepEqual(getComposerReasoningState().choices.map((choice) => choice.value), ['inherit', 'off', 'low', 'medium', 'xhigh']);
+
+    chat.reasoningEffort = 'high';
+    initThinkingControl();
+    initComposerReasoningEffort();
+    syncComposerReasoningEffortFromActiveChat();
+    assert.equal(getComposerReasoningState().label, 'Extra high');
+    assert.equal(getComposerReasoningState().selected, 'xhigh');
+    assert.equal(chat.reasoningEffort, 'high');
+  });
+
   test('GLM-5.3 shows Low/High/Max only, hides the brain Off toggle, defaults to Max', () => {
     setupDom();
     const chat = seedChat({

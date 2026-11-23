@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { getModelsRoot } from './paths.js';
-import { runMtplxJson } from './mtplx-runtime.js';
+import { getMtplxStatus, runMtplxJson } from './mtplx-runtime.js';
 
 const fallbackDraft = { supported: true, default: 3, minimum: 1, maximum: 3, valueLabels: ['D1', 'D2', 'D3'] };
 const fallbackContext = { supported: true, minimum: 4096, maximum: 262144, default: 262144, step: 1024 };
@@ -11,7 +11,7 @@ const positive = (v, fallback) => Number.isFinite(v) && v > 0 ? Math.trunc(v) : 
 const object = (v) => v && typeof v === 'object' && !Array.isArray(v) ? v : {};
 const supported = (v) => v === true || v === 'yes';
 const text = (v) => typeof v === 'string' && v.trim() ? v.trim() : null;
-const DESCRIPTOR_VERSION = 3;
+const DESCRIPTOR_VERSION = 4;
 
 function bounds(raw, fallback) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...fallback };
@@ -32,7 +32,8 @@ function normalize(json, source, modelPath) {
   const draftControl = controls.draft_control ?? (Number.isFinite(contract.mtp_depth_max)
     ? { ...fallbackDraft, maximum: contract.mtp_depth_max, default: Math.min(3, contract.mtp_depth_max) }
     : undefined);
-  const reasoning = Object.keys(object(controls.reasoning)).length ? controls.reasoning : null;
+  const rawReasoning = controls.reasoning ?? backend.reasoning_codec;
+  const reasoning = Object.keys(object(rawReasoning)).length ? rawReasoning : null;
   const kv = Object.keys(object(controls.kv_quant ?? controls.kv_quant_policy)).length ? controls.kv_quant ?? controls.kv_quant_policy : null;
   const profile = source === 'health' ? json.profile ?? compatibility.recommended_profile
     : compatibility.recommended_profile ?? json.recommended_profile ?? json.profile;
@@ -40,6 +41,7 @@ function normalize(json, source, modelPath) {
   const sampler = Object.fromEntries(['temperature', 'top_p', 'top_k'].filter((key) => typeof sampling[key] === 'number' && Number.isFinite(sampling[key])).map((key) => [key, sampling[key]]));
   return {
     modelPath: modelPath ?? json.model_path ?? json.model_dir ?? controls.model_ref ?? '',
+    ...(typeof json.vision?.enabled === 'boolean' ? { vision: json.vision.enabled } : {}),
     archId: text(controls.architecture_id ?? compatibility.arch_id ?? contract.arch_id ?? json.architecture),
     backendId: text(controls.backend_id ?? backend.backend_id ?? compatibility.recommended_backend),
     supportLevel: text(controls.support_level ?? compatibility.support_level),
@@ -66,20 +68,21 @@ export const fallbackMtplxDescriptor = (modelPath) => ({ ...normalize({}, 'inspe
 const inflight = new Map();
 let writes = Promise.resolve();
 const cacheFile = () => path.join(getModelsRoot(), 'mtplx-descriptors.json');
-async function fingerprint(modelPath) {
-  return (await Promise.all(['', 'config.json', 'mtplx_runtime.json', 'mtp.safetensors'].map(async (name) => {
+async function fingerprint(modelPath, runtime) {
+  const files = await Promise.all(['', 'config.json', 'mtplx_runtime.json', 'mtp.safetensors'].map(async (name) => {
     try { const stat = await fsp.stat(path.join(modelPath, name)); return `${stat.mtimeMs}:${stat.size}`; }
     catch { return 'missing'; }
-  }))).join('|');
+  }));
+  return JSON.stringify([runtime?.path, runtime?.version, runtime?.launchEffortLevels, ...files]);
 }
 async function readCache() {
   try { return object(JSON.parse(await fsp.readFile(cacheFile(), 'utf8'))); } catch { return {}; }
 }
 const cacheMatches = (row, signature) => row?.version === DESCRIPTOR_VERSION && row?.signature === signature && object(row.descriptor) === row.descriptor;
-export async function getCachedMtplxDescriptor(modelPath) {
+export async function getCachedMtplxDescriptor(modelPath, runtime = null) {
   modelPath = path.resolve(modelPath);
   const row = (await readCache())[modelPath];
-  return cacheMatches(row, await fingerprint(modelPath)) ? row.descriptor : null;
+  return cacheMatches(row, await fingerprint(modelPath, runtime)) ? row.descriptor : null;
 }
 async function persist(modelPath, descriptor, signature) {
   const file = cacheFile();
@@ -95,22 +98,34 @@ async function persist(modelPath, descriptor, signature) {
   writes = next;
   return next;
 }
-export async function getMtplxDescriptor(modelPath, { inspect = runMtplxJson } = {}) {
+export async function getMtplxDescriptor(modelPath, { inspect, runtime } = {}) {
   modelPath = path.resolve(modelPath);
-  const signature = await fingerprint(modelPath);
+  runtime ??= inspect ? null : await getMtplxStatus();
+  if (!inspect && !runtime?.path) return fallbackMtplxDescriptor(modelPath);
+  const signature = await fingerprint(modelPath, runtime);
   const cached = (await readCache())[modelPath];
   if (cacheMatches(cached, signature)) return cached.descriptor;
   const key = `${cacheFile()}:${modelPath}:${DESCRIPTOR_VERSION}:${signature}`;
   if (!inflight.has(key)) inflight.set(key, (async () => {
     try {
-      const json = await inspect(['inspect', modelPath, '--json']);
-      return await persist(modelPath, descriptorFromInspect(json, modelPath), signature);
+      const run = inspect ?? ((args) => runMtplxJson(args, { binary: runtime.path }));
+      const json = await run(['inspect', modelPath, '--json']);
+      const descriptor = descriptorFromInspect(json, modelPath);
+      if (descriptor.canRun && !descriptor.reasoning) {
+        // The CLI's dry run reports family controls without loading weights or tuning.
+        const preview = await run(['tune', '--model', modelPath, '--dry-run', '--json']).catch(() => null);
+        if (preview?.model_controls) descriptor.reasoning = descriptorFromInspect(preview, modelPath).reasoning;
+      }
+      if (runtime?.launchEffortLevels) descriptor.launchEffortLevels = runtime.launchEffortLevels;
+      return await persist(modelPath, descriptor, signature);
     } catch { return fallbackMtplxDescriptor(modelPath); }
     finally { inflight.delete(key); }
   })());
   return inflight.get(key);
 }
-export async function recordMtplxHealthDescriptor(modelPath, health) {
+export async function recordMtplxHealthDescriptor(modelPath, health, runtime = null) {
   modelPath = path.resolve(modelPath);
-  return persist(modelPath, descriptorFromHealth(health, modelPath), await fingerprint(modelPath));
+  const descriptor = descriptorFromHealth(health, modelPath);
+  if (runtime?.launchEffortLevels) descriptor.launchEffortLevels = runtime.launchEffortLevels;
+  return persist(modelPath, descriptor, await fingerprint(modelPath, runtime));
 }

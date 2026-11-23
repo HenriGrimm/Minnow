@@ -368,7 +368,10 @@ export async function setLibraryLaunchSettings(libraryId, settings) {
     const { listCachedModels } = await import('./cached.js');
     const { getCachedMtplxDescriptor } = await import('./mtplx-descriptor.js');
     const model = (await listCachedModels()).models.find((row) => `mtplx:${row.repo_id}` === id);
-    if (model?.mtplx_root) descriptor = await getCachedMtplxDescriptor(model.mtplx_root);
+    if (model?.mtplx_root) {
+      const { getMtplxStatus } = await import('./mtplx-runtime.js');
+      descriptor = await getCachedMtplxDescriptor(model.mtplx_root, await getMtplxStatus());
+    }
   }
   const normalized = normalizeLaunchSettings(settings, { includeProgress: true, descriptor });
   if (Object.keys(normalized).length === 0) {

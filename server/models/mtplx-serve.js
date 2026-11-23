@@ -22,11 +22,29 @@ export async function mtplxAuthHeaders(row) {
 
 export async function probeMtplxHealth(baseUrl, headers = {}, fetchImpl = fetch) {
   try {
-    const response = await fetchImpl(`${baseUrl}/health`, { headers, signal: AbortSignal.timeout(2500) });
+    const response = await fetchImpl(`${baseUrl}/health`, { headers, redirect: 'error', signal: AbortSignal.timeout(2500) });
     if (!response.ok) return null;
     const json = await response.json();
     return (json.ok === true || json.status === 'ok') && typeof json.model_path === 'string' ? json : null;
   } catch { return null; }
+}
+
+export async function probeMtplxReasoningSettings(baseUrl, headers, modelId) {
+  if (!modelId) return {};
+  try {
+    const response = await fetch(`${baseUrl}/v1/mtplx/settings`, { headers, redirect: 'error', signal: AbortSignal.timeout(2500) });
+    if (!response.ok) return {};
+    const settings = await response.json();
+    if (settings.model !== modelId) return {};
+    return {
+      ...(['auto', 'on', 'off'].includes(settings.reasoning) ? { reasoning: settings.reasoning } : {}),
+      ...(typeof settings.reasoning_effort === 'string' ? { reasoning_effort: settings.reasoning_effort } : {}),
+    };
+  } catch { return {}; }
+}
+
+export function observedMtplxHost(health) {
+  return Number.isSafeInteger(health?.startup?.app_parent_pid) && health.startup.app_parent_pid > 0 ? 'app' : 'external';
 }
 
 export async function mtplxHealthMatchesModel(health, modelPath) {
@@ -53,7 +71,7 @@ export async function startMtplxServe(body, deps) {
   const modelPath = await fsp.realpath(body.modelPath);
   const previous = deps.rows.find((r) => r.runtime === 'mtplx' && r.modelPath === modelPath && ['starting', 'running', 'unhealthy'].includes(r.status));
   if (previous) return previous;
-  let descriptor = await (deps.descriptor ?? getMtplxDescriptor)(modelPath);
+  let descriptor = await (deps.descriptor ?? getMtplxDescriptor)(modelPath, { runtime: status });
   const saved = body.libraryId ? (await getLaunchPrefs()).byLibraryId[body.libraryId]?.mtplx : undefined;
   const desiredPort = body.port ?? await getManagedServerPort('mtplx') ?? 8088;
   const requested = buildMtplxServeLaunch({ modelPath, port: desiredPort, descriptor, defaults: await readMtplxConfig(), saved, settings: body.mtplx });
@@ -84,7 +102,10 @@ export async function startMtplxServe(body, deps) {
   const row = { id: crypto.randomUUID(), runtime: 'mtplx', modelPath,
     modelLabel: launch.settings.model_id || body.modelLabel || path.basename(modelPath),
     port, baseUrl: `http://${adopted ? '127.0.0.1' : connectHost}:${port}`, providerId: MINNOW_LIBRARY_PROVIDER_ID,
-    ownership: adopted ? 'external' : 'minnow', status: 'starting', startedAt: Date.now(),
+    ownership: adopted ? 'external' : 'minnow',
+    mtplxHost: adopted ? observedMtplxHost(health) : 'minnow',
+    ...(adopted ? {} : { mtplxVersion: status.version }),
+    status: 'starting', startedAt: Date.now(),
     lastUsedAt: Date.now(), libraryId: body.libraryId, mtplxSettings: launch.settings,
     mtplxDescriptor: descriptor, apiKeyFile: adopted ? authFile : launch.apiKeyFile,
     restartCount: body.restartCount ?? 0,
@@ -128,19 +149,21 @@ export async function startMtplxServe(body, deps) {
         if (!await mtplxHealthMatchesModel(health, modelPath)) throw new Error('MTPLX health returned a different model');
       }
       if (['stopped', 'crashed', 'error'].includes(row.status)) return row;
-      row.mtplxDescriptor = await recordMtplxHealthDescriptor(modelPath, health);
+      row.mtplxDescriptor = adopted ? descriptorFromHealth(health, modelPath) : await recordMtplxHealthDescriptor(modelPath, health, status);
       row.pid = row.pid ?? health.startup?.pid;
       row.mtplxSettings = { ...row.mtplxSettings,
         ...(Number.isFinite(health.context_window) ? { context_window: health.context_window } : {}),
         ...(Number.isFinite(health.depth) ? { depth: health.depth } : {}),
       };
       const catalog = deps.models ? await deps.models(row) : await fetch(row.baseUrl + '/v1/models', { headers: await mtplxAuthHeaders(row), signal: AbortSignal.timeout(5000) }).then((res) => res.ok ? res.json() : null).catch(() => null);
-      const modelId = catalog?.data?.find((model) => typeof model.id === 'string')?.id;
+      const modelId = health.startup?.model_id ?? catalog?.data?.find((model) => typeof model.id === 'string')?.id ?? health.model;
       if (modelId) row.modelLabel = modelId;
       if (adopted) {
         // These are observed values, not a claim that saved launch preferences were applied.
         row.mtplxSettings = { depth: health.depth, profile: row.mtplxDescriptor.recommendedProfile, context_window: health.context_window };
       }
+      if (['auto', 'on', 'off'].includes(health.reasoning)) row.mtplxSettings.reasoning = health.reasoning;
+      if (!deps.probe) Object.assign(row.mtplxSettings, await probeMtplxReasoningSettings(row.baseUrl, await mtplxAuthHeaders(row), modelId));
       await deps.upsert({ id: MTPLX_LOCAL_ID, label: 'Powered by MTPLX', baseUrl: row.baseUrl, enabled: true });
       if (row.apiKeyFile) await updateProviderSecrets(MTPLX_LOCAL_ID, { apiKey: (await fsp.readFile(row.apiKeyFile, 'utf8')).trim() });
       if (['stopped', 'crashed', 'error'].includes(row.status)) {

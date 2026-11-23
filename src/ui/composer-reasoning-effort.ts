@@ -4,6 +4,7 @@ import {
   formatReasoningEffortLabel,
   getComposerReasoningLevelOptions,
   isComposerReasoningLevel,
+  legacyMtplxReasoningEffort,
   modelUsesAlwaysOnReasoning,
   modelShowsComposerBrainToggle,
   modelUsesComposerReasoningLevelDropdown,
@@ -62,7 +63,8 @@ function validateAndClearInvalidEffort(): void {
   const caps = effectiveCapabilities();
   const levels = getLevelOptions();
   if (chat.reasoningEffort === 'off' && !modelUsesAlwaysOnReasoning(caps)) return;
-  if (isComposerReasoningLevel(chat.reasoningEffort) && levels.includes(chat.reasoningEffort)) {
+  const effort = legacyMtplxReasoningEffort(chat.reasoningEffort, caps, chat.modelId);
+  if (isComposerReasoningLevel(effort) && levels.includes(effort)) {
     return;
   }
   delete chat.reasoningEffort;
@@ -85,7 +87,7 @@ function resolveDisplayEffort(levels: EffortOption[]): EffortOption | undefined 
   });
   const favorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId) && chat.thinkingMode !== 'off'
     ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined;
-  const effort = resolveEffectiveReasoningEffort(favorite ? { reasoningEffort: favorite } : chat, caps, favorite ? 'on' : resolved.mode);
+  const effort = resolveEffectiveReasoningEffort(favorite ? { reasoningEffort: favorite } : chat, caps, favorite ? 'on' : resolved.mode, chat.modelId);
   if (effort && levels.includes(effort)) return effort;
   return levels.includes('medium') ? 'medium' : levels[0];
 }
@@ -151,7 +153,7 @@ export function getComposerReasoningState() {
   const favorite = levels.length ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined;
   const followsCliFavorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId)
     && !chat.reasoningEffort && chat.thinkingMode !== 'off' && favorite;
-  const effective = followsCliFavorite || resolveEffectiveReasoningEffort(chat, caps, resolved.mode) || resolved.mode;
+  const effective = followsCliFavorite || resolveEffectiveReasoningEffort(chat, caps, resolved.mode, chat.modelId) || resolved.mode;
   const choices: ComposerReasoningChoice[] = [];
   if (levels.length || toggle) {
     choices.push({ value: 'inherit', label: 'Default' });
@@ -167,7 +169,7 @@ export function getComposerReasoningState() {
     : `Reasoning ${effective === 'off' ? 'off' : 'on'}`;
   return {
     label: choices.length && (caps?.reasoning === true || getAllowedOptions().length || chat.thinkingMode || chat.reasoningEffort) ? label : '', choices,
-    selected: (chat.reasoningEffort ?? chat.thinkingMode ?? 'inherit') as ComposerReasoningChoice['value'],
+    selected: (legacyMtplxReasoningEffort(chat.reasoningEffort, caps, chat.modelId) ?? chat.thinkingMode ?? 'inherit') as ComposerReasoningChoice['value'],
     favorite,
     disabled: (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked(),
   };

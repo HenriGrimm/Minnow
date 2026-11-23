@@ -94,9 +94,10 @@ function dumpUpstreamFailure(info) {
  * @param {import('./store.js').SendReasoningCapabilities | null} [modelCapabilities]
  *   Known capabilities for this model; without them the sanitizer keeps its
  *   capability-unknown behaviour.
+ * @param {boolean} [useNativeSampler]
  * @returns {Buffer}
  */
-function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, providerId, fallbackRole, modelCapabilities) {
+function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, providerId, fallbackRole, modelCapabilities, useNativeSampler) {
   const apiKind = resolvedApi ?? profile.apiKind ?? 'openai-v1';
   let body = requestBody;
 
@@ -114,6 +115,13 @@ function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, 
         },
         modelCapabilities ?? undefined,
       );
+      if (useNativeSampler) {
+        // Let MTPLX own sampling for Inkling while retaining the request's
+        // output budget, stop sequences and reasoning controls.
+        for (const key of ['temperature', 'top_p', 'top_k', 'min_p', 'repetition_penalty', 'presence_penalty', 'frequency_penalty']) {
+          delete sanitized[key];
+        }
+      }
       body = Buffer.from(JSON.stringify(sanitized), 'utf8');
     }
   } catch {
@@ -344,6 +352,8 @@ export async function pumpUpstreamAsync({ state }) {
           candidate.providerId,
           state.fallbackRole,
           state.modelCapabilities?.[candidate.modelId],
+          completionAdmission?.useNativeSampler === true
+            && classifyLocalCompletionPriority({ fallbackRole: state.fallbackRole }) === 'interactive',
         ),
         idleMs,
         maxMs,

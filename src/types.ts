@@ -1313,9 +1313,9 @@ export interface Chat {
   cursorFast?: boolean;
   /** Opt-in speed override for the current Codex or Claude Code model. */
   cliFastMode?: boolean;
-  /** Active Work Agent; null = default / auto from mode (Step 08). */
+  /** Explicit role for a specialized chat, or a legacy automatic role. */
   workAgentId?: string | null;
-  /** When true, mode switch picks defaultForModes agent (Step 08). */
+  /** False marks an explicitly selected role. Older chats may store an automatic role. */
   workAgentAuto?: boolean;
   /** UI Designer plan vs implement (Step 15); default plan. */
   uiDesignerMode?: 'plan' | 'implement';
@@ -1547,6 +1547,7 @@ export interface ModelCapabilities {
   reasoning: boolean | null;
   /** Catalog `reasoning.allowed_options` when upstream exposes effort control. */
   reasoningAllowedOptions?: ReasoningEffortOption[];
+  reasoningSource?: 'mtplx';
   /** Catalog default reasoning effort when provided. */
   reasoningDefault?: ReasoningEffortOption;
   /** Value to send for `thinking.type` when enabled on openai-v1 providers (defaults to 'enabled'). MiniMax requires 'adaptive'. */
@@ -1579,6 +1580,7 @@ export interface LmModelRecord {
   reasoning?: {
     allowed_options?: string[];
     default?: string;
+    source?: 'mtplx';
   };
   /** Upstream catalog vision flag (`capabilities.vision` or `type: vlm`) before Minnow merge. */
   catalogVision?: boolean;
