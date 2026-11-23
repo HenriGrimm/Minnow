@@ -33,15 +33,20 @@ test('PR review copies local dotenv before checks and retains unsafe setup for a
     } } };
     const ok = stdout => ({ code: 0, stdout, stderr: '', timedOut: false });
     let reviews = 0;
+    let stopOnCheckout = false;
+    let cancelled = false;
     const input = {
       job, runId: 'environment-review',
+      isCancelled: () => cancelled,
       processRun: async (command, args, options) => {
         if (args[0] === 'fetch') {
           await git(['update-ref', 'refs/minnow/pr-review/1', head]);
           await git(['update-ref', 'refs/minnow/pr-review/base-1', head]);
           return ok('');
         }
-        return runProcess(command, args, options);
+        const result = await runProcess(command, args, options);
+        if (stopOnCheckout && args[0] === '-C' && args[2] === 'checkout') cancelled = true;
+        return result;
       },
       gh: async args => {
         if (args[0] === 'pr' && args[1] === 'list') return ok(JSON.stringify([{
@@ -67,6 +72,18 @@ test('PR review copies local dotenv before checks and retains unsafe setup for a
     assert.match(failure.summary, /1 MiB/);
     assert.equal(reviews, 0);
     await fs.access(path.join(cwd, '.worktrees/pr-review-1/.git'));
+
+    // If Stop arrives during preparation, even a late environment rejection
+    // must release the worktree rather than retain it for diagnosis.
+    await retryPrReview(job, 1);
+    stopOnCheckout = true;
+    const stopped = await runPrReview({ ...input, runId: 'environment-stop' });
+    assert.match(stopped.summary, /Stopped/);
+    assert.equal(reviews, 0);
+    await assert.rejects(fs.access(path.join(cwd, '.worktrees/pr-review-1')), { code: 'ENOENT' });
+
+    stopOnCheckout = false;
+    cancelled = false;
     await fs.writeFile(path.join(cwd, '.env'), 'FIXTURE=review\n');
     await retryPrReview(job, 1);
     const retried = await runPrReview({ ...input, runId: 'environment-retry' });

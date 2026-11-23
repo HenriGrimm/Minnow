@@ -160,8 +160,20 @@ export async function pollPrReview(job, runId, deps) {
       if (row.claimCommentId) await deps.deleteComment(row.claimCommentId).catch(() => {});
       await touch('skipped', { reason, claimCommentId: undefined });
     };
+    const stopReview = async (summary) => {
+      if (row.worktreePath && deps.cleanupWorktree) {
+        try {
+          await deps.cleanupWorktree(row.worktreePath);
+          row.worktreePath = undefined;
+        } catch { /* Keep the path for recovery when removal is unconfirmed. */ }
+      }
+      await release('Stopped');
+      return { changed: true, blocked: false, summary };
+    };
 
+    let preparing = true;
     try {
+      if (deps.isCancelled?.()) return await stopReview('Stopped before reviewing.');
       // 1. Claim, then re-check after a pause.
       if (config.claim) {
         headline(`Claiming #${pull.number}`, pull, 'claiming');
@@ -184,12 +196,14 @@ export async function pollPrReview(job, runId, deps) {
         }
         activity(`Claimed #${pull.number} ${pull.title}`, 'run', pull);
       }
-      if (deps.isCancelled?.()) { await release('Stopped'); return { changed: true, blocked: false, summary: 'Stopped before reviewing.' }; }
+      if (deps.isCancelled?.()) return await stopReview('Stopped before reviewing.');
 
       // 2. Check out the PR in its own worktree.
       headline(`Preparing #${pull.number}`, pull, 'preparing');
       const { workspacePath, baseRef } = await deps.prepareWorktree(pull);
       await touch('reviewing', { worktreePath: workspacePath });
+      if (deps.isCancelled?.()) return await stopReview('Stopped before reviewing.');
+      preparing = false;
 
       // 3. Reviewers in parallel.
       const lenses = config.reviewers.length
@@ -202,7 +216,7 @@ export async function pollPrReview(job, runId, deps) {
         return { id: reviewer.id, label: reviewer.label, run, verdict: run.status === 'completed' ? parseReviewerVerdict(run.assistantFinal) : null };
       }));
       row.reviewers = results.map((r) => ({ role: r.id, label: r.label, runId: r.run.runId, status: r.run.status, verdict: r.verdict?.verdict }));
-      if (deps.isCancelled?.()) { await deps.cleanupWorktree?.(workspacePath).catch(() => {}); await release('Stopped'); return { changed: true, summary: 'Stopped during review.' }; }
+      if (deps.isCancelled?.()) return await stopReview('Stopped during review.');
 
       const incomplete = results.filter((r) => !r.verdict);
       if (incomplete.length) {
@@ -246,6 +260,7 @@ export async function pollPrReview(job, runId, deps) {
       headline(text, pull, phase);
       return { changed: true, summary: text };
     } catch (error) {
+      if (preparing && deps.isCancelled?.()) return await stopReview('Stopped before reviewing.');
       const message = String(error?.message ?? error).slice(0, 2000);
       if (row.worktreePath) await deps.cleanupWorktree?.(row.worktreePath).catch(() => {});
       await touch('blocked', { error: message, worktreePath: undefined });

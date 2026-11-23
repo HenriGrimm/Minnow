@@ -189,9 +189,9 @@ function parseResultFromStdout(stdout) {
  * decrypting the prompt, resolving the run model, or resolving the
  * workspace path) propagates to the caller so it can be treated as a
  * uniform preparation failure.
- * @param {{ storedJob: object; runId: string; baseUrl: string; timeoutMs: number; spawnImpl: typeof import('node:child_process').spawn; liveRunId?: string; persistChat?: boolean; chatName?: string }} params
+ * @param {{ storedJob: object; runId: string; baseUrl: string; timeoutMs: number; spawnImpl: typeof import('node:child_process').spawn; liveRunId?: string; persistChat?: boolean; chatName?: string; isCancelled?: () => boolean }} params
  */
-async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl, liveRunId = runId, persistChat = true, chatName }) {
+async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl, liveRunId = runId, persistChat = true, chatName, isCancelled = () => isRunCancelled(runId) }) {
   const entry = resolveHeadlessRunEntry();
   const prompt = await decryptSecretPayload(storedJob.promptEnc);
   // The result is written to --json-out below; stdout carries --stream-json events.
@@ -267,6 +267,9 @@ async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl, 
 
   try {
     const result = await new Promise((resolve, reject) => {
+      // Stop can run during any awaited preparation above. Keep this check,
+      // spawn, and registration synchronous so Stop cannot miss a new child.
+      if (isCancelled()) throw new Error('Run stopped');
       const child = spawnImpl(process.execPath, args, {
         cwd: entry.cwd,
         // Packaged Electron: run the script as Node, not as a second app instance.
@@ -332,8 +335,9 @@ export async function runHeadlessSubRun(input) {
   const siblings = childRunsByParent.get(input.parentRunId) ?? new Set();
   siblings.add(runId);
   childRunsByParent.set(input.parentRunId, siblings);
+  const isCancelled = () => isRunCancelled(runId) || isRunCancelled(input.parentRunId);
   try {
-    if (cancelledRunIds.has(input.parentRunId)) throw new Error('Run stopped');
+    if (isCancelled()) throw new Error('Run stopped');
     const result = await executeJobRun({
       storedJob: {
         ...input.storedJob,
@@ -347,20 +351,25 @@ export async function runHeadlessSubRun(input) {
       timeoutMs: input.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS,
       spawnImpl: input.spawn ?? spawn,
       persistChat: false,
+      isCancelled,
     });
-    const status = cancelledRunIds.has(input.parentRunId) ? 'cancelled'
+    const status = isCancelled() ? 'cancelled'
       : result.timedOut ? 'timeout'
         : result.exitCode === 0 && result.parsedResult?.ok !== false ? 'completed' : 'failed';
     const assistantFinal = String(result.parsedResult?.assistantFinal ?? '');
-    const error = status === 'completed' ? null : String(result.parsedResult?.error || result.stderr || status).slice(-2000);
+    const error = status === 'completed' ? null : status === 'cancelled' ? 'Run stopped'
+      : String(result.parsedResult?.error || result.stderr || status).slice(-2000);
     finishLiveRun(runId, { status, result: { assistantFinal, error } });
     return { runId, status, assistantFinal, error };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    finishLiveRun(runId, { status: 'failed', result: { error: message } });
-    return { runId, status: 'failed', assistantFinal: '', error: message };
+    const status = isCancelled() ? 'cancelled' : 'failed';
+    const message = status === 'cancelled' ? 'Run stopped' : error instanceof Error ? error.message : String(error);
+    finishLiveRun(runId, { status, result: { error: message } });
+    return { runId, status, assistantFinal: '', error: message };
   } finally {
     activeChildren.delete(runId);
+    cancelledRunIds.delete(runId);
+    siblings.delete(runId);
   }
 }
 
@@ -500,50 +509,46 @@ async function completeStoredJob(storedJob, options) {
       trigger,
     });
 
-    let stdout;
-    let stderr;
-    let exitCode;
-    let timedOut;
-    let parsedResult;
+    let result = { stdout: '', stderr: '', exitCode: 1, timedOut: false, parsedResult: null };
 
     try {
-      const result = engine === 'github-watch'
-        ? await executeGithubWatch({ storedJob, runId, baseUrl, timeoutMs, spawnImpl })
-        : engine === 'pr-review'
-          ? await executePrReview({ storedJob, runId, baseUrl, timeoutMs, spawnImpl })
-          : await executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl });
-      stdout = result.stdout;
-      stderr = result.stderr;
-      exitCode = result.exitCode;
-      timedOut = result.timedOut;
-      parsedResult = result.parsedResult;
+      if (!isRunCancelled(runId)) {
+        result = engine === 'github-watch'
+          ? await executeGithubWatch({ storedJob, runId, baseUrl, timeoutMs, spawnImpl })
+          : engine === 'pr-review'
+            ? await executePrReview({ storedJob, runId, baseUrl, timeoutMs, spawnImpl })
+            : await executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl });
+      }
     } catch (err) {
-      completedAt = new Date().toISOString();
-      const errorText = err instanceof Error ? err.message : String(err);
-      finishLiveRun(runId, { status: 'failed', result: { error: errorText } });
-      await persistRunTranscript(jobId, runId).catch(() => {});
-      void recordActivity({ jobId, label: storedJob.label, runId, tone: 'fail', text: `${storedJob.label} failed: ${errorText}` });
-      await settleRunFailure(jobId, {
-        id: runId,
-        jobId,
-        startedAt,
-        completedAt,
-        exitCode: 1,
-        error: errorText,
-        trigger,
-      });
-      return {
-        started: true,
-        runId,
-        status: 'failed',
-        exitCode: 1,
-        output: '',
-        error: errorText,
-      };
+      if (!isRunCancelled(runId)) {
+        completedAt = new Date().toISOString();
+        const errorText = err instanceof Error ? err.message : String(err);
+        finishLiveRun(runId, { status: 'failed', result: { error: errorText } });
+        await persistRunTranscript(jobId, runId).catch(() => {});
+        void recordActivity({ jobId, label: storedJob.label, runId, tone: 'fail', text: `${storedJob.label} failed: ${errorText}` });
+        await settleRunFailure(jobId, {
+          id: runId,
+          jobId,
+          startedAt,
+          completedAt,
+          exitCode: 1,
+          error: errorText,
+          trigger,
+        });
+        return {
+          started: true,
+          runId,
+          status: 'failed',
+          exitCode: 1,
+          output: '',
+          error: errorText,
+        };
+      }
     }
 
+    const { stdout, stderr, exitCode, timedOut, parsedResult } = result;
     completedAt = new Date().toISOString();
-    const status = cancelledRunIds.has(runId)
+    const status = isRunCancelled(runId)
       ? 'cancelled'
       : timedOut
         ? 'timeout'

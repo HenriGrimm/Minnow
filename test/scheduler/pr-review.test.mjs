@@ -100,6 +100,61 @@ describe('choosing a PR', () => {
 });
 
 describe('pollPrReview', () => {
+  for (const pauseAt of ['worktree', 'reviewing ledger', 'worktree failure', 'claim recheck failure', 'rejected removal', 'unavailable removal']) {
+    test(`Stop during ${pauseAt} releases the claim without dispatching reviewers`, { timeout: 5_000 }, async () => {
+      const h = harness();
+      const entered = Promise.withResolvers();
+      const resume = Promise.withResolvers();
+      const cleaned = [];
+      const effects = [];
+      let cancelled = false;
+      h.deps.isCancelled = () => cancelled;
+      h.deps.cleanupWorktree = pauseAt === 'unavailable removal' ? undefined : async (dir) => {
+        cleaned.push(dir);
+        if (pauseAt === 'rejected removal') throw new Error('fixture removal failed');
+      };
+      h.deps.runReviewer = async () => {
+        effects.push('reviewer dispatched');
+        return { runId: 'review', status: 'completed', assistantFinal: PASS };
+      };
+      if (pauseAt === 'reviewing ledger') {
+        h.deps.writeLedger = async (_repo, ledger) => {
+          if (ledger.pulls[0]?.phase !== 'reviewing') return;
+          entered.resolve();
+          await resume.promise;
+        };
+      } else if (pauseAt === 'claim recheck failure') {
+        h.deps.sleep = async () => {
+          entered.resolve();
+          await resume.promise;
+          throw new Error('late claim recheck failure');
+        };
+      } else {
+        h.deps.prepareWorktree = async () => {
+          entered.resolve();
+          await resume.promise;
+          if (pauseAt === 'worktree failure') throw new Error('late checkout failure');
+          return { workspacePath: '/tmp/wt', baseRef: 'refs/base' };
+        };
+      }
+      const completion = pollPrReview(h.job, 'run-1', h.deps);
+      await entered.promise;
+      cancelled = true;
+      resume.resolve();
+      const result = await completion;
+      const [row] = h.ledger.pulls;
+      assert.deepEqual(effects, []);
+      assert.match(result.summary, /Stopped/);
+      assert.deepEqual(cleaned, pauseAt.endsWith('failure') || pauseAt === 'unavailable removal' ? [] : ['/tmp/wt']);
+      assert.deepEqual(h.deleted, [100]);
+      assert.equal(row.phase, 'skipped');
+      assert.equal(row.worktreePath, pauseAt.endsWith('removal') ? '/tmp/wt' : undefined);
+      assert.equal(h.posted.length, 1); // Only the initial claim.
+      assert.deepEqual(h.merges, []);
+      assert.deepEqual(h.reviews, []);
+    });
+  }
+
   test('claims, reviews in parallel, reports and queues a passing PR', async () => {
     const h = harness();
     const result = await pollPrReview(h.job, 'run-1', h.deps);

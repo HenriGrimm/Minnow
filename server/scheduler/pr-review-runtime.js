@@ -25,6 +25,7 @@ export async function runPrReview({ job, runId, runReviewer, isCancelled, gh = r
     return value.stdout.trim();
   };
   const git = (args, options = {}) => checked(processRun('git', args, { cwd, timeout: 180_000, ...options }));
+  const cleanupWorktree = (workspacePath) => git(['worktree', 'remove', '--force', workspacePath]);
   const github = (args) => checked(gh(args, { cwd, timeout: 60_000, env: { GH_HOST: 'github.com', GH_PROMPT_DISABLED: '1' } }));
   const json = async (args) => JSON.parse(await github(args));
   const withBodyFile = async (body, work) => {
@@ -74,12 +75,17 @@ export async function runPrReview({ job, runId, runReviewer, isCancelled, gh = r
       } catch {
         await git(['worktree', 'add', '--detach', '--force', workspacePath, head]);
       }
-      await requireWorktreeEnvironment(cwd, workspacePath);
+      try {
+        await requireWorktreeEnvironment(cwd, workspacePath);
+      } catch (error) {
+        // The polling engine does not know this path until preparation returns.
+        // Keep ordinary failed setup retryable, but clean up if Stop won.
+        if (isCancelled?.()) await cleanupWorktree(workspacePath).catch(() => {});
+        throw error;
+      }
       return { workspacePath, baseRef: `refs/minnow/pr-review/base-${pull.number}` };
     },
-    cleanupWorktree: async (workspacePath) => {
-      await git(['worktree', 'remove', '--force', workspacePath]).catch(() => {});
-    },
+    cleanupWorktree,
     runReviewer,
     merge: async (number, { auto }) => {
       await github(['pr', 'merge', String(number), '--repo', repository, '--squash', ...(auto ? ['--auto'] : [])]);
