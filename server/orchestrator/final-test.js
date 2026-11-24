@@ -403,7 +403,7 @@ export async function runFinalLadder(input) {
       ? String(input.planMarkdown)
       : await loadPlanMarkdown(cwd, input.planPath);
   const packageJson = await readJsonIfPresent(path.join(cwd, 'package.json'));
-  const rungs = resolveLadderRungs({ planMarkdown, packageJson });
+  const rungs = input.rungs ?? resolveLadderRungs({ planMarkdown, packageJson });
   const baseline =
     input.baseline !== undefined ? input.baseline : await loadFinalTestBaseline(cwd);
   const execCommand = input.execCommand ?? execLadderCommand;
@@ -468,10 +468,10 @@ export async function runFinalLadder(input) {
 
   const last = rungs[rungs.length - 1];
   const staticInstructions = formatRunInstructions({
-    command: last ? last.command : DEFAULT_RUNG_COMMANDS.build,
+    command: last?.command ?? '(no static verification command configured)',
     cwd,
   });
-  const staticSummary = `Final ladder passed ${ran.join(', ')}.`;
+  const staticSummary = ran.length ? `Final ladder passed ${ran.join(', ')}.` : 'No static verification commands were configured.';
 
   if (input.browser === false) {
     return {

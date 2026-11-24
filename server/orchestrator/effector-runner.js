@@ -47,6 +47,8 @@ import {
 import { parseReportFor, reportToolFor, REPORT_TOOL_NAME } from './report-tool.js';
 import { createPauseGate } from '../runner/pause-gate.js';
 import { checkpointAttempt } from './checkpoint.js';
+import { readBoardRepos } from '../worktree/board-repos.js';
+import { boardVerificationTargets, runBoardVerification } from './repo-verification.js';
 import { allowanceContext, getAllowanceTracker } from '../generations/allowance.js';
 import { buildSeed } from './seeds.js';
 import { runMerge } from './merge-queue.js';
@@ -547,15 +549,19 @@ export function createRunnerEffector(options = {}) {
       try {
         const state = await currentState();
         const integrationSha = state.integrationSha;
-        const checkGitIdentity = state.recoveryVersion && isolateWorktrees && boardId && /^[0-9a-f]{40,64}$/i.test(integrationSha || '');
+        const layout = boardId ? await readBoardRepos(boardId) : null;
+        const checkGitIdentity = state.recoveryVersion && isolateWorktrees && boardId && (layout || /^[0-9a-f]{40,64}$/i.test(integrationSha || ''));
         const beforeHead = checkGitIdentity ? await readIntegrationRef({ boardId, ref: 'HEAD' }) : null;
         const beforeClean = checkGitIdentity ? await checkWorktreeDirty({ boardId, slotId: INTEGRATION_SLOT }) : null;
-        const result = await ladderFn({
+        const ladderOptions = {
           cwd: integrationCwd,
           planPath: state.planPath || null,
           signal: entry.controller.signal,
           browser: state.recoveryVersion > 0,
-        });
+        };
+        const result = layout
+          ? await runBoardVerification(await boardVerificationTargets(layout, integrationCwd, state.planPath), ladderFn, ladderOptions)
+          : await ladderFn(ladderOptions);
         const browserRequired = [...state.tasks.values()].some(task => /\bbrowser\b|playwright|puppeteer|\be2e\b/i.test(`${task.testSpec} ${task.accept}`));
         if (state.recoveryVersion && result.evidence?.blockedRung === 'browser' && (result.evidence?.browser?.reason !== 'no-observable-criteria' || browserRequired)) {
           result.outcome = 'fail';
@@ -625,23 +631,29 @@ export function createRunnerEffector(options = {}) {
       /** @type {string | null} */
       let mergeSlotId = null;
       try {
-        const state = await currentState();
-        mergeWorktree = desired.taskId ? previousWorktreeForTask(state, desired.taskId) : null;
-        mergeSlotId =
-          mergeWorktree && boardId ? slotIdFromWorktreePath(boardId, mergeWorktree) : null;
-        const manualMerge = desired.taskId && state.tasks.get(desired.taskId)?.attempts.some(
-          (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
-        );
-        if (manualMerge && boardId && mergeSlotId) {
-          const committed = await commitAttemptWorktree({ boardId, slotId: mergeSlotId, message: taskCommitTitle(state, desired.taskId) });
-          if (!committed.ok) throw new Error(committed.error || committed.output || 'Could not preserve task changes');
-        }
-        end = await runMerge({
-          boardId: /** @type {string} */ (boardId),
-          taskId: desired.taskId,
-          attemptId,
-          state,
-        });
+        entry.gitOperation = (async () => {
+          const state = await currentState();
+          entry.controller.signal.throwIfAborted();
+          mergeWorktree = desired.taskId ? previousWorktreeForTask(state, desired.taskId) : null;
+          mergeSlotId = mergeWorktree && boardId ? slotIdFromWorktreePath(boardId, mergeWorktree) : null;
+          const manualMerge = desired.taskId && state.tasks.get(desired.taskId)?.attempts.some(
+            (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
+          );
+          return runMerge({
+            boardId: /** @type {string} */ (boardId),
+            taskId: desired.taskId,
+            attemptId,
+            state,
+            async prepare() {
+              entry.controller.signal.throwIfAborted();
+              if (manualMerge && boardId && mergeSlotId) {
+                const committed = await commitAttemptWorktree({ boardId, slotId: mergeSlotId, message: taskCommitTitle(state, desired.taskId) });
+                if (!committed.ok) throw new Error(committed.error || committed.output || 'Could not preserve task changes');
+              }
+            },
+          });
+        })();
+        end = await entry.gitOperation;
       } catch (err) {
         end = {
           attemptId,
@@ -827,12 +839,16 @@ export function createRunnerEffector(options = {}) {
         await prepareVerificationInputs({ workspace: state.workspacePath || await boardWorkspaceRoot(), cwd, markdown, boardId, signal });
         let packageJson;
         try { packageJson = JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf8')); } catch {}
-        const rungs = resolveLadderRungs({ planMarkdown: markdown, packageJson });
+        const layout = await readBoardRepos(boardId);
+        const targets = layout ? await boardVerificationTargets(layout, cwd, state.planPath)
+          : [{ cwd, rungs: resolveLadderRungs({ planMarkdown: markdown, packageJson }) }];
         // Resolve the verifier and commands before allocating paid builders.
         if (deriveBrowserAssertions(markdown).assertions.length && !await prerequisitesReady([{ kind: 'browser' }], cwd)) throw prerequisiteError('Required browser verification is unavailable. Enable browser automation and install a supported Chromium browser.', [{ kind: 'browser' }], 'verification');
-        for (const name of new Set(rungs.map((rung) => /^\s*(npm|npx|node|python3?|uv|cargo|go)\b/.exec(rung.command)?.[1]).filter(Boolean))) {
-          signal?.throwIfAborted();
-          if (!await prerequisitesReady([{ kind: 'executable', name }], cwd)) throw prerequisiteError(`Required verifier executable ${name} is unavailable.`, [{ kind: 'executable', name }], 'verification');
+        for (const target of targets) {
+          for (const name of new Set(target.rungs.map((rung) => /^\s*(npm|npx|pnpm|yarn|bun|node|python3?|uv|cargo|go)\b/.exec(rung.command)?.[1]).filter(Boolean))) {
+            signal?.throwIfAborted();
+            if (!await prerequisitesReady([{ kind: 'executable', name }], target.cwd)) throw prerequisiteError(`Required verifier executable ${name} is unavailable.`, [{ kind: 'executable', name }], 'verification');
+          }
         }
       }
       signal?.throwIfAborted();
@@ -941,6 +957,10 @@ export function createRunnerEffector(options = {}) {
           throw new Error(`runner effector: worktree allocate failed: ${allocated.error || 'unknown'}`);
         }
         attemptCwd = allocated.path;
+        const layout = await readBoardRepos(boardId);
+        if (layout) {
+          seed += `\n\n## Board repositories\n${layout.repos.map(repo => `- \`${repo.id}\``).join('\n')}\nUse workspace-relative paths for files. Pass the repository id to git tools and run repository commands from its directory. The board will commit and merge changes per repository. Keep edits inside these checkouts.`;
+        }
         slotId = allocated.slotId;
         discarded.push(...allocated.discarded);
         if (allocated.gitInitialized) gitInitialized = allocated.gitInitialized;
@@ -1148,6 +1168,7 @@ export function createRunnerEffector(options = {}) {
       if (!entry) return;
       entry.stopped = true;
       entry.controller.abort();
+      await entry.gitOperation?.catch(() => {});
       running.delete(attemptId);
       liveAttemptIds.delete(attemptId);
     },

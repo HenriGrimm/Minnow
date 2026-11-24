@@ -1,3 +1,4 @@
+import { formatBoardRevision } from '../../server/orchestrator/core/revision.js';
 import type {
   Attempt,
   BoardState,
@@ -454,7 +455,7 @@ function renderFacts(task: TaskState): HTMLElement {
   if (task.dependsOn.length > 0) add('Depends on', task.dependsOn.join(', '), true);
   const retries = retryCount(task);
   if (retries > 0) add('Retries', String(retries));
-  if (task.mergedSha) add('Merge', task.mergedSha.slice(0, 10), true);
+  if (task.mergedSha) add('Merge', formatBoardRevision(task.mergedSha, 10), true);
   return facts;
 }
 

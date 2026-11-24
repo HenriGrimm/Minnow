@@ -1,3 +1,4 @@
+import { formatBoardRevision } from '../../server/orchestrator/core/revision.js';
 import type { BoardState, TaskEditChanges, TaskState } from '../../server/orchestrator/core/types';
 import { attemptInterruption } from './attempt-status';
 import { reopenTargets } from '../../server/orchestrator/core/plan.js';
@@ -287,7 +288,7 @@ function renderHeaderMeta(state: BoardState, connected: boolean, desktopLayout: 
     bits.push(`stopped: ${state.stopReason}`);
   }
   if (state.integrationSha) {
-    bits.push(state.integrationSha.slice(0, 8));
+    bits.push(formatBoardRevision(state.integrationSha, 8));
   }
   if (!connected && state.status !== 'running') {
     bits.push('reconnecting');
@@ -1023,7 +1024,7 @@ export function renderRunLedger(
   stats.appendChild(field('Skipped', String(countPhase(state, 'skipped'))));
   stats.appendChild(field('Retries', String(totalRetries(state))));
   if (state.integrationSha) {
-    stats.appendChild(field('Integration', state.integrationSha.slice(0, 12)));
+    stats.appendChild(field('Integration', formatBoardRevision(state.integrationSha, 12)));
   }
   wrap.appendChild(stats);
 

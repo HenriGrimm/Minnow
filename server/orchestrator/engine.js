@@ -23,7 +23,7 @@ import {
   slotIdForTask,
   slotIdFromWorktreePath,
 } from './worktree-lifecycle.js';
-import { abortMerge, deleteLocalBranch, restoreIntegration } from '../worktree/worktree-ops.js';
+import { abortMerge, deleteBoardTaskBranch, restoreIntegration } from '../worktree/worktree-ops.js';
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 
@@ -118,7 +118,7 @@ async function releaseTaskSlots(boardId, state, taskIds) {
       taskId: meta.taskId,
       ...(meta.worktree ? { worktree: meta.worktree } : {}),
     });
-    await deleteLocalBranch(attemptBranch(boardId, slotId));
+    await deleteBoardTaskBranch(boardId, attemptBranch(boardId, slotId));
   }
 }
 
@@ -366,6 +366,8 @@ export function createEngine(options) {
       const result = await runPreflight();
       if (!disposed && revision === state.recoveryRevision) {
         const events = graph.eventsForPreflight?.(result) ?? [];
+        const hold = state.recoveryHolds['preflight:'];
+        if (hold?.stage === 'preflight') events.push(makeEvent('recovery.released', { key: hold.key, observedAt: clock.now() }));
         if (events.length) await append(events);
       }
     } catch (error) {
@@ -443,7 +445,11 @@ export function createEngine(options) {
           catch (error) {
             if (error?.code === 'BOARD_SETUP_CANCELLED') return;
             if (!disposed && revision === state.recoveryRevision && state.status === 'running') {
-              await append([makeEvent('recovery.held', { hold: { ...recoveryHold(state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ message: error.message, failure: error.failure }, clock.now()), now: clock.now() }), ...(hold.probe ? { probe: true } : {}) } })]);
+              const now = clock.now();
+              const failure = boardFailure({ message: error.message, failure: error.failure }, now);
+              const nextHold = recoveryHold(state, { role: 'preflight', stage: 'preflight', failure, now });
+              if (hold.probe && failure.scope !== 'workspace') nextHold.probe = true;
+              await append([makeEvent('recovery.held', { hold: nextHold })]);
             }
             continue;
           }
@@ -1291,6 +1297,11 @@ export function createEngine(options) {
       const { beforeSha, taskIds, fromTaskId } = plan;
       const wanted = new Set(taskIds);
       const attemptIds = attemptIdsForTasks(state, taskIds);
+      for (const running of effector.inspect()) {
+        if (running.taskId && (wanted.has(running.taskId) || running.role === 'merge')) {
+          await effector.stop(running.attemptId);
+        }
+      }
       if (needsMergeAbort(state, taskIds)) {
         await abortMerge({ boardId });
       }
@@ -1301,11 +1312,6 @@ export function createEngine(options) {
           taskIds,
           reason: restored.error || restored.output || 'could not restore integration',
         };
-      }
-      for (const running of effector.inspect()) {
-        if (running.taskId && wanted.has(running.taskId)) {
-          await effector.stop(running.attemptId);
-        }
       }
       await releaseTaskSlots(boardId, state, taskIds);
       await deleteAttemptTranscripts(boardId, attemptIds);

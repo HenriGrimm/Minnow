@@ -21,6 +21,7 @@ const prRequests: unknown[] = [];
 const pushRequests: unknown[] = [];
 let remoteAvailable = false;
 let pushError = '';
+let baseBranches: Record<string, string> | undefined;
 
 mock.module('../../src/ui/sidebar.ts', {
   namedExports: {
@@ -67,6 +68,11 @@ mock.module('../../src/state/worktree-service.ts', {
       return { ok: true, merged: true };
     },
     openWorkspacePr: async (input: unknown) => { prRequests.push(input); return { ok: true, url: 'https://example.test/pr' }; },
+    pushIntegration: async (input: unknown) => { pushRequests.push(input); return { ok: true }; },
+    openIntegrationPr: async (input: unknown) => {
+      prRequests.push(input);
+      return { ok: true, urls: [{ repo: 'backend', url: 'https://example.test/backend/pr' }, { repo: 'frontend', url: 'https://example.test/frontend/pr' }] };
+    },
     workspaceLandingStats: async () => ({
       ok: true,
       fileCount: 3,
@@ -75,6 +81,8 @@ mock.module('../../src/state/worktree-service.ts', {
       hasRemote: remoteAvailable,
       hasGh: remoteAvailable,
       alreadyLanded: false,
+      multiRepo: Boolean(baseBranches),
+      baseBranches,
     }),
   },
 });
@@ -118,6 +126,7 @@ afterEach(() => {
   pushRequests.length = 0;
   remoteAvailable = false;
   pushError = '';
+  baseBranches = undefined;
   if (activeWindow) {
     clearAttachments();
     document.body.innerHTML = '';
@@ -266,6 +275,25 @@ describe('renderBoardReport', () => {
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(pushRequests, [{ setUpstream: true, branch: 'minnow/b1' }]);
     assert.equal((prRequests[0] as { baseBranch: string }).baseBranch, 'main');
+  });
+
+  test('multi-repository delivery opens pull requests from the board branches', async () => {
+    setupDom();
+    remoteAvailable = true;
+    baseBranches = { backend: 'main', frontend: 'release' };
+    const node = renderBoardReport(finishedBoard(), 'ok', false, {
+      dismiss: () => {}, reopen: () => {}, fixFinal: () => {}, resetTask: () => {},
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    node.querySelector<HTMLButtonElement>('.ov2-report-screen__commit-caret')!.click();
+    [...node.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent === 'Open pull requests')!.click();
+    const form = node.querySelector<HTMLFormElement>('.ov2-report-screen__destination')!;
+    assert.match(form.textContent ?? '', /backend → main, frontend → release/);
+    form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal((prRequests[0] as { branch: string }).branch, 'minnow/board/b1/integration');
+    assert.deepEqual(landingRequests, []);
+    assert.match(node.textContent ?? '', /https:\/\/example\.test\/frontend\/pr/);
   });
 
   test('retries a failed push on the branch already created', async () => {

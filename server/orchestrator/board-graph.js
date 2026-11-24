@@ -26,7 +26,7 @@ import {
   reconcileOrphanWorktrees,
   WORKTREE_DISCARDED_TYPE,
 } from './worktree-lifecycle.js';
-import { captureWorktreeDiff, detectAttemptOverflow } from './touches.js';
+import { captureBoardWorktreeDiff, detectAttemptOverflow } from './touches.js';
 import {
   defaultComplete,
   formatMechanicalReport,
@@ -250,7 +250,7 @@ export async function boardEventsForAttemptEnd(end, ctx) {
     const worktree = attempt?.worktree;
     if (worktree) {
       try {
-        const diff = await captureWorktreeDiff(worktree, integrationBranch(id));
+        const diff = await captureBoardWorktreeDiff(id, worktree, integrationBranch(id));
         if (diff) evidence = { ...(evidence ?? {}), diff };
       } catch (err) {
         console.warn(
@@ -274,6 +274,7 @@ export async function boardEventsForAttemptEnd(end, ctx) {
     if (end.outcome === 'pass' && end.role === 'builder' && end.taskId) {
       try {
         const overflow = await detectAttemptOverflow({
+          boardId: id,
           worktree: attempt?.worktree,
           declared: task?.touches ?? [],
           baseRef: integrationBranch(id),

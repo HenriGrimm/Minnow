@@ -4,6 +4,9 @@ import { runProcess } from '../process-runner.js';
 import { capDiffText } from './core/evidence.js';
 import { expandTouches, overflowPaths } from './core/plan.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import path from 'node:path';
+import { discoverWorkspaceRepos } from '../workspace/repos.js';
+import { boardRepoPathspec, boardRepoRelativePath, eachBoardRepo, readBoardRepos } from '../worktree/board-repos.js';
 
 const GIT_TIMEOUT_MS = 60_000;
 
@@ -33,12 +36,12 @@ function parseNul(stdout) {
  * @returns {Promise<string[]>}
  */
 export async function listRepoFiles(root = getEffectiveWorkspaceRoot()) {
-  const listed = await git(
-    ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
-    root,
-  );
-  if (listed.code !== 0) return [];
-  return [...new Set(parseNul(listed.stdout))].sort();
+  const repos = await discoverWorkspaceRepos(root);
+  const files = await Promise.all(repos.map(async repo => {
+    const listed = await git(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], repo.absPath);
+    return listed.code === 0 ? parseNul(listed.stdout).map(file => boardRepoRelativePath(repo, file)) : [];
+  }));
+  return [...new Set(files.flat())].sort();
 }
 
 /**
@@ -83,7 +86,7 @@ export async function listChangedFiles(worktree, baseRef) {
   if (unstaged.code === 0) {
     for (const file of parseNul(unstaged.stdout)) paths.add(file);
   }
-  const untracked = await git(['ls-files', '-z', '--others', '--exclude-standard'], worktree);
+  const untracked = await git(['ls-files', '-z', '--others', '--exclude-standard', '--', ...boardRepoPathspec()], worktree);
   if (untracked.code === 0) {
     for (const file of parseNul(untracked.stdout)) paths.add(file);
   }
@@ -116,17 +119,18 @@ async function resolveDiffBase(worktree, baseRef) {
  * @param {string} [baseRef]
  * @returns {Promise<{ files: string[], patch: string, truncated: boolean, originalLength?: number } | null>}
  */
-export async function captureWorktreeDiff(worktree, baseRef) {
+export async function captureWorktreeDiff(worktree, baseRef, prefix = '') {
   if (!worktree) return null;
   const files = await listChangedFiles(worktree, baseRef);
   const base = await resolveDiffBase(worktree, baseRef);
   /** @type {string[]} */
   const chunks = [];
+  const patchArgs = ['--unified=3', ...(prefix ? [`--src-prefix=a/${prefix}/`, `--dst-prefix=b/${prefix}/`] : [])];
   if (base) {
-    const committed = await git(['diff', '--unified=3', base, 'HEAD'], worktree);
+    const committed = await git(['diff', ...patchArgs, base, 'HEAD'], worktree);
     if (committed.code === 0 && committed.stdout) chunks.push(String(committed.stdout));
   }
-  const unstaged = await git(['diff', '--unified=3', 'HEAD'], worktree);
+  const unstaged = await git(['diff', ...patchArgs, 'HEAD'], worktree);
   if (unstaged.code === 0 && unstaged.stdout) chunks.push(String(unstaged.stdout));
   const capped = capDiffText(chunks.join('\n'));
   if (files.length === 0 && !capped.text) return null;
@@ -134,6 +138,17 @@ export async function captureWorktreeDiff(worktree, baseRef) {
   const out = { files, patch: capped.text, truncated: capped.truncated };
   if (capped.originalLength != null) out.originalLength = capped.originalLength;
   return out;
+}
+
+export async function captureBoardWorktreeDiff(boardId, worktree, baseRef) {
+  const layout = await readBoardRepos(boardId);
+  if (!layout) return captureWorktreeDiff(worktree, baseRef);
+  const rows = await eachBoardRepo(layout, repo => captureWorktreeDiff(path.join(worktree, repo.id), baseRef, repo.id === '.' ? '' : repo.id));
+  const present = rows.filter(([, diff]) => diff);
+  if (!present.length) return null;
+  const files = present.flatMap(([id, diff]) => diff.files.map(file => boardRepoRelativePath({ id }, file)));
+  const patch = capDiffText(present.map(([, diff]) => diff.patch).join('\n'));
+  return { files, patch: patch.text, truncated: patch.truncated || present.some(([, diff]) => diff.truncated) };
 }
 
 /**
@@ -150,7 +165,9 @@ export async function detectAttemptOverflow(input) {
   const worktree = input.worktree;
   const declared = input.declared ?? [];
   if (!worktree || declared.length === 0) return null;
-  const actual = await listChangedFiles(worktree, input.baseRef);
+  const actual = input.boardId
+    ? (await captureBoardWorktreeDiff(input.boardId, worktree, input.baseRef))?.files ?? []
+    : await listChangedFiles(worktree, input.baseRef);
   const extra = overflowPaths(declared, actual);
   if (extra.length === 0) return null;
   return { declared: [...declared], actual: extra };

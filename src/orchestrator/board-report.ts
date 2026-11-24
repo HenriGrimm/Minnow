@@ -1,10 +1,13 @@
+import { formatBoardRevision } from '../../server/orchestrator/core/revision.js';
 import type { Attempt, BoardState, TaskState } from '../../server/orchestrator/core/types';
 import { gitBranches, gitCommit, gitPush } from '../state/git-api.ts';
 import {
   cleanupBoardWorktrees,
   cleanupBoardBranches,
   mergeIntegrationIntoWorkspace,
+  openIntegrationPr,
   openWorkspacePr,
+  pushIntegration,
   workspaceLandingStats,
 } from '../state/worktree-service.ts';
 import { attachBoardFollowUpChip } from '../attachments/board-ref.ts';
@@ -74,6 +77,7 @@ interface GitLanding {
   hasRemote: boolean;
   hasGh: boolean;
   alreadyLanded: boolean;
+  baseBranches?: Record<string, string>;
   error?: string;
 }
 
@@ -320,7 +324,7 @@ function renderTaskBody(boardId: string, task: TaskState): HTMLElement {
 
   if (task.mergedSha) {
     body.appendChild(
-      el('p', 'ov2-report-screen__quiet', `Merged as ${task.mergedSha.slice(0, 12)}`),
+      el('p', 'ov2-report-screen__quiet', `Merged as ${formatBoardRevision(task.mergedSha, 12)}`),
     );
   }
   return body;
@@ -668,7 +672,9 @@ function buildCommitSplit(state: BoardState, markdown: string | null): HTMLEleme
   const kick = (action: CommitAction): void => {
     closeMenu();
     wrap.querySelector('.ov2-report-screen__destination')?.remove();
-    void showCommitDestination(state, markdown, action, wrap);
+    const repos = gitByBoard.get(state.boardId)?.baseBranches;
+    if (repos) showRepoDelivery(state, markdown, action, wrap, repos);
+    else void showCommitDestination(state, markdown, action, wrap);
   };
 
   primary.addEventListener('click', () => kick('commit-only'));
@@ -682,12 +688,13 @@ function buildCommitSplit(state: BoardState, markdown: string | null): HTMLEleme
     const menu = el('div', 'ov2-report-screen__commit-menu');
     const currentGit = gitByBoard.get(state.boardId) ?? git;
     menu.setAttribute('role', 'menu');
+    const multi = Boolean(currentGit?.baseBranches);
     const items: Array<{ action: CommitAction; label: string; disabled?: boolean }> = [
-      { action: 'commit-only', label: 'Commit only' },
-      { action: 'commit-push', label: 'Commit and push', disabled: currentGit?.hasRemote === false },
+      { action: 'commit-only', label: multi ? 'Merge into base branches' : 'Commit only' },
+      { action: 'commit-push', label: multi ? 'Push integration branches' : 'Commit and push', disabled: currentGit?.hasRemote === false },
       {
         action: 'commit-push-pr',
-        label: 'Commit, push, and open PR',
+        label: multi ? 'Open pull requests' : 'Commit, push, and open PR',
         disabled: currentGit?.hasRemote === false || currentGit?.hasGh === false,
       },
     ];
@@ -712,6 +719,46 @@ function buildCommitSplit(state: BoardState, markdown: string | null): HTMLEleme
   wrap.appendChild(primary);
   wrap.appendChild(caret);
   return wrap;
+}
+
+function showRepoDelivery(
+  state: BoardState, markdown: string | null, action: CommitAction, wrap: HTMLElement, repos: Record<string, string>,
+): void {
+  const form = el('form', 'ov2-report-screen__destination');
+  const label = action === 'commit-only' ? 'Merge into base branches'
+    : action === 'commit-push' ? 'Push integration branches' : 'Open pull requests';
+  const summary = el('p', 'ov2-create__hint', Object.entries(repos).map(([repo, base]) => `${repo} → ${base || 'detached HEAD'}`).join(', '));
+  const confirm = btn('board-btn board-btn--primary', label);
+  confirm.type = 'submit';
+  const cancel = btn('board-btn', 'Cancel');
+  cancel.addEventListener('click', () => form.remove());
+  form.append(summary, cancel, confirm);
+  wrap.append(form);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    confirm.disabled = true;
+    cancel.disabled = true;
+    const status = wrap.closest('.ov2-report-screen')?.querySelector('.ov2-report-screen__git-status');
+    const branch = integrationBranchName(state.boardId);
+    const boardId = state.boardId;
+    const execute = async () => {
+      const result = action === 'commit-only' ? await mergeIntegrationIntoWorkspace({ branch })
+        : action === 'commit-push' ? await pushIntegration({ boardId, branch })
+          : await openIntegrationPr({ boardId, branch, title: state.name || boardId, body: markdown?.slice(0, 4000) });
+      if (!result.ok) {
+        setGitStatus(status, result.error || result.output || 'Board delivery failed.', 'err');
+        return;
+      }
+      const urls = result.urls?.map(row => `${row.repo} ${row.url}`).join(' · ');
+      setGitStatus(status, urls || (action === 'commit-only' ? 'Merged into base branches.' : 'Integration branches pushed.'), 'ok');
+      form.remove();
+      if (action === 'commit-only') markLanded(state, wrap);
+    };
+    void execute().catch(error => setGitStatus(status, String(error), 'err')).finally(() => {
+      confirm.disabled = false;
+      cancel.disabled = false;
+    });
+  });
 }
 
 async function showCommitDestination(
@@ -1008,6 +1055,7 @@ async function hydrateGitStats(root: HTMLElement, state: BoardState): Promise<vo
       hasRemote: res.hasRemote === true,
       hasGh: res.hasGh === true,
       alreadyLanded: res.alreadyLanded === true,
+      baseBranches: res.multiRepo ? res.baseBranches : undefined,
       error: res.ok ? undefined : res.error,
     };
     gitByBoard.set(state.boardId, next);

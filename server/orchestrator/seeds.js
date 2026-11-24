@@ -1,3 +1,4 @@
+import { formatBoardRevision } from './core/revision.js';
 /** Build the prompt seed for the next attempt. */
 
 import { lastAttemptWith, lastEndedAttempt } from './core/derive.js';
@@ -261,7 +262,7 @@ function rebaseSeed(task, integrationTip, planPath) {
   const files = Array.isArray(task.mergeConflicts) ? task.mergeConflicts.filter((f) => typeof f === 'string') : [];
   const tip =
     typeof integrationTip === 'string' && integrationTip
-      ? integrationTip
+      ? formatBoardRevision(integrationTip)
       : '(unknown — rebase onto the integration branch)';
   return [
     specBlock(task, planPath),
@@ -289,7 +290,7 @@ function rebaseSeed(task, integrationTip, planPath) {
 function integrationFixSeed(task, state) {
   const merged = [...state.tasks.values()]
     .filter((item) => item.mergedSha)
-    .map((item) => `${item.id}: ${item.mergedSha.slice(0, 12)}`);
+    .map((item) => `${item.id}: ${formatBoardRevision(item.mergedSha, 12)}`);
   const prev = state.rerun?.previousFinalTest ?? null;
   const prior = alreadyDone(task);
 
@@ -307,7 +308,7 @@ function integrationFixSeed(task, state) {
       '',
       '## Integration',
       state.integrationSha
-        ? `Tip: ${state.integrationSha}`
+        ? `Tip: ${formatBoardRevision(state.integrationSha)}`
         : 'No integration commit yet.',
       '',
       'Merged tasks:',
@@ -346,7 +347,7 @@ function integrationFixSeed(task, state) {
     '',
     '## Integration',
     state.integrationSha
-      ? `Tip: ${state.integrationSha}`
+      ? `Tip: ${formatBoardRevision(state.integrationSha)}`
       : 'No integration commit yet.',
     '',
     'Merged tasks:',

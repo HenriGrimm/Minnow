@@ -215,7 +215,7 @@
     {
       "path": "documentation/manual/orchestrate/boards.md",
       "title": "Run a plan with Orchestrate",
-      "summary": "Use a board when a change can be split into tasks with their own checks and checkout boundaries. Open a Git workspace before starting. Prepare and start the board 1. Make a plan under documentation/plans/ . Describe what each task must Build , how to Test it, what to Accept , whi",
+      "summary": "Use a board when a change can be split into tasks with their own checks and checkout boundaries. Open a Git repository or a workspace folder that contains the repositories the plan needs. Prepare and start the board 1. Make a plan under documentation/plans/ . Describe what each t",
       "headings": [
         "Prepare and start the board",
         "Wave Breakdown",
@@ -224,7 +224,7 @@
         "Decide whether the result is ready"
       ],
       "section": "Orchestrate",
-      "hash": "c86b133b4d3e0391f3b8777fb6c8adb6d4cf9f72b9ea96d8ad3ab4e8cac4d5b4"
+      "hash": "2274404e31ed13361581f80cae4f6e8fbe8416d828240d3e8524d53e1605a832"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",

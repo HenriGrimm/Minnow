@@ -16,6 +16,9 @@ import {
   taskCommitTitle,
 } from './worktree-lifecycle.js';
 import { readMergeReceipt, writeMergeReceipt } from './merge-receipt.js';
+import { boardRevisionRepos, readBoardRepos } from '../worktree/board-repos.js';
+import { withBoardRecovery } from './checkpoint.js';
+import { boardExists } from './journal.js';
 
 /**
  * Git ops the queue calls.
@@ -175,6 +178,20 @@ export async function recoverHalfAppliedMerge(input) {
  * @returns {Promise<import('./engine.js').AttemptEnd>}
  */
 export async function runMerge(input) {
+  const run = async () => {
+    await input.prepare?.();
+    return runQueuedMerge(input);
+  };
+  if (await readBoardRepos(input.boardId)) {
+    return withBoardRecovery(input.boardId, async () => {
+      if (!await boardExists(input.boardId)) throw new Error('Board was deleted before the merge started.');
+      return run();
+    });
+  }
+  return run();
+}
+
+async function runQueuedMerge(input) {
   const { boardId, taskId, attemptId, state } = input;
   const ops = resolveOps(input.ops);
 
@@ -189,7 +206,7 @@ export async function runMerge(input) {
 
   await recoverHalfAppliedMerge({ boardId, ops });
 
-  const beforeSha = await ops.readIntegrationRef({ boardId, ref: 'HEAD' });
+  let beforeSha = await ops.readIntegrationRef({ boardId, ref: 'HEAD' });
   if (!beforeSha) {
     return operationalEnd({
       attemptId,
@@ -221,19 +238,35 @@ export async function runMerge(input) {
   }
 
   const fromBranch = attemptBranch(boardId, slotId);
+  const multi = Boolean(boardRevisionRepos(beforeSha));
+  let testedId = null;
   if (state.recoveryVersion) {
     const tested = [...(state.tasks.get(taskId)?.attempts ?? [])].reverse().find((attempt) => attempt.role === 'tester' && attempt.outcome === 'pass' && !attempt.retired);
     const branchSha = await ops.readIntegrationRef({ boardId, ref: fromBranch });
     if (!branchSha) return operationalEnd({ attemptId, taskId, reason: 'task-branch-unresolved', beforeSha, summary: 'The task branch could not be resolved. Retained work and checkpoints have not been discarded.' });
     const waived = state.tasks.get(taskId)?.attempts.some((attempt) => !attempt.ended && attempt.role === 'merge' && attempt.evidence?.mergeAndSkip === true);
     if (!waived && (!tested?.evidence?.verifiedSha || !branchSha || tested.evidence.verifiedSha !== branchSha)) return { attemptId, taskId, role: 'merge', outcome: 'rebased', sha: branchSha, beforeSha };
+    testedId = tested?.attemptId ?? null;
     const receipt = await readMergeReceipt(boardId, taskId);
+    if (multi && receipt?.fromBranch === fromBranch && receipt.testedId === testedId && receipt.afterSha === branchSha) {
+      const old = boardRevisionRepos(receipt.beforeSha);
+      const live = boardRevisionRepos(beforeSha);
+      const next = boardRevisionRepos(branchSha);
+      if (old && live && next && old.size === live.size && [...live].every(([id, sha]) => sha === old.get(id) || sha === next.get(id))) {
+        beforeSha = receipt.beforeSha;
+      } else {
+        return operationalEnd({ attemptId, taskId, reason: 'merge-recovery-diverged', beforeSha,
+          summary: 'An interrupted merge and the current repository tips disagree. Reconcile the integration checkouts before retrying.' });
+      }
+    }
     const already = await ops.verifyIntegrationMerge({ boardId, fromBranch });
     if (already.ok && already.verified === true) {
       await ops.refreshIntegrationDepsAfterMerge({ boardId, sinceSha: receipt?.beforeSha ?? beforeSha });
-      return { attemptId, taskId, role: 'merge', outcome: 'pass', sha: beforeSha, beforeSha: receipt?.testedId === tested?.attemptId ? receipt.beforeSha : beforeSha };
+      const sha = multi ? await ops.readIntegrationRef({ boardId, ref: 'HEAD' }) : beforeSha;
+      return { attemptId, taskId, role: 'merge', outcome: 'pass', sha,
+        beforeSha: !multi && receipt?.testedId === tested?.attemptId ? receipt.beforeSha : beforeSha };
     }
-    await writeMergeReceipt(boardId, taskId, { beforeSha, testedId: tested?.attemptId ?? null, fromBranch });
+    if (!multi) await writeMergeReceipt(boardId, taskId, { beforeSha, testedId, fromBranch });
   }
 
   const rebased = await ops.rebaseOntoIntegration({ boardId, slotId });
@@ -266,6 +299,7 @@ export async function runMerge(input) {
       return { attemptId, taskId, role: 'merge', outcome: 'rebased', sha: rebased.sha, beforeSha };
     }
   }
+  if (multi) await writeMergeReceipt(boardId, taskId, { beforeSha, testedId, fromBranch, afterSha: rebased.sha });
   const merged = await ops.mergeIntoIntegration({
     boardId,
     fromBranch,
@@ -275,8 +309,10 @@ export async function runMerge(input) {
     const files = Array.isArray(merged.conflictedFiles) ? merged.conflictedFiles : [];
     await ops.abortMerge({ boardId });
     const still = await ops.readIntegrationRef({ boardId, ref: 'MERGE_HEAD' });
-    if (still) {
-      await ops.restoreIntegration({ boardId, sha: beforeSha });
+    if (still || multi) {
+      const restored = await ops.restoreIntegration({ boardId, sha: beforeSha });
+      if (multi && !restored.ok) return operationalEnd({ attemptId, taskId, beforeSha,
+        reason: 'merge-rollback-failed', summary: restored.error || 'Could not roll back the partial merge.' });
     }
     return conflictedEnd({
       attemptId,

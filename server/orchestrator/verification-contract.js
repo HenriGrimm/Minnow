@@ -7,12 +7,9 @@ import { commitWorktree } from '../worktree/worktree-ops.js';
 
 /** A plan's Inputs section explicitly authorizes staging those exact files in
  * the isolated board. Never stage, commit or overwrite the user's workspace. */
-export async function prepareVerificationInputs({ workspace, cwd, markdown, boardId, signal }) {
-  signal?.throwIfAborted();
-  const sections = [...markdown.matchAll(/^## (?:Inputs|Reference assets)\s*\r?\n([\s\S]*?)(?=^## |$(?![\s\S]))/gm)];
-  const names = [...new Set(sections.flatMap(section => [...section[1].matchAll(/`([^`\r\n]+)`/g)].map(match => match[1])))];
+export async function copyBoardSupportFiles(workspace, cwd, names, signal, { replace = false } = {}) {
   const copied = [];
-  const declared = [];
+  if (!names.length) return copied;
   const root = await fs.realpath(workspace);
   for (const name of names) {
     signal?.throwIfAborted();
@@ -20,12 +17,11 @@ export async function prepareVerificationInputs({ workspace, cwd, markdown, boar
     try { [prerequisite] = normalizePrerequisites([{ kind: 'file', path: name }]); }
     catch { throw prerequisiteError(`Plan input must name a workspace-relative file: ${name}`, []); }
     const target = path.resolve(cwd, name);
-    declared.push(name);
     try {
       const existing = await fs.realpath(target);
       const relative = path.relative(await fs.realpath(cwd), existing);
-      if (relative.startsWith('..') || path.isAbsolute(relative) || !(await fs.stat(target)).isFile()) throw prerequisiteError(`Plan input destination is outside isolation or is not a file: ${name}`, []);
-      continue;
+      if (relative.startsWith('..') || path.isAbsolute(relative) || !(await fs.lstat(target)).isFile()) throw prerequisiteError(`Plan input destination is outside isolation or is not a file: ${name}`, []);
+      if (!replace) continue;
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
     let source;
     try { source = await fs.realpath(path.resolve(root, prerequisite.path)); }
@@ -41,12 +37,21 @@ export async function prepareVerificationInputs({ workspace, cwd, markdown, boar
     }
     await fs.mkdir(path.dirname(target), { recursive: true });
     signal?.throwIfAborted();
-    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
+    try { await fs.copyFile(source, target, replace ? 0 : fs.constants.COPYFILE_EXCL); }
+    catch (error) { if (error.code !== 'EEXIST' || !(await fs.lstat(target)).isFile()) throw error; }
     copied.push(name);
   }
-  if (declared.length) {
+  return copied;
+}
+
+export async function prepareVerificationInputs({ workspace, cwd, markdown, boardId, slotId = 'integration', signal }) {
+  signal?.throwIfAborted();
+  const sections = [...String(markdown ?? '').matchAll(/^## (?:Inputs|Reference assets)\s*\r?\n([\s\S]*?)(?=^## |$(?![\s\S]))/gm)];
+  const names = [...new Set(sections.flatMap(section => [...section[1].matchAll(/`([^`\r\n]+)`/g)].map(match => match[1])))];
+  const copied = await copyBoardSupportFiles(workspace, cwd, names, signal);
+  if (names.length) {
     // Also commit a previously copied prefix after interruption before commit.
-    const committed = await commitWorktree({ boardId, slotId: 'integration', message: 'Stage declared board inputs', paths: declared, signal });
+    const committed = await commitWorktree({ boardId, slotId, message: 'Stage declared board inputs', paths: names, signal });
     if (!committed.ok) throw prerequisiteError('Could not stage declared board inputs in the integration checkout.', []);
   }
   return copied;

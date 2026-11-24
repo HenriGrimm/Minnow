@@ -1,3 +1,4 @@
+import { formatBoardRevision } from './core/revision.js';
 /** End-of-run report writer. */
 
 import fs from 'node:fs/promises';
@@ -598,7 +599,7 @@ export async function writeEndOfRunReport(options) {
     const merged = tasks.filter((task) => task.phase === 'merged').length;
     const waived = tasks.filter((task) => task.waived).length;
     const waiting = Object.keys(state.recoveryHolds).length;
-    markdown = `Delivery: ${merged}/${tasks.length} tasks merged; ${waived} explicit waivers; ${waiting} recovery holds. Final verification: ${state.finalTest?.outcome ?? 'not completed'}. Integration: ${state.integrationSha ?? 'not merged'}.\n\n${markdown}`;
+    markdown = `Delivery: ${merged}/${tasks.length} tasks merged; ${waived} explicit waivers; ${waiting} recovery holds. Final verification: ${state.finalTest?.outcome ?? 'not completed'}. Integration: ${state.integrationSha ? formatBoardRevision(state.integrationSha) : 'not merged'}.\n\n${markdown}`;
   }
   if (!markdown.endsWith('\n')) markdown = `${markdown}\n`;
 

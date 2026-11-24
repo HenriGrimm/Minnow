@@ -1,6 +1,6 @@
 # Run a plan with Orchestrate
 
-Use a board when a change can be split into tasks with their own checks and checkout boundaries. Open a Git workspace before starting.
+Use a board when a change can be split into tasks with their own checks and checkout boundaries. Open a Git repository or a workspace folder that contains the repositories the plan needs.
 
 ## Prepare and start the board
 
@@ -10,6 +10,8 @@ Use a board when a change can be split into tasks with their own checks and chec
 4. Check the starting branch, model, and **Concurrency**, then select **Start**. Set concurrency to 1 to run tasks sequentially.
 
 The board shows the current setup step and elapsed time while it checks the model, prepares the checkout and dependencies, and checks verification requirements. Each task card also shows its worker setup step and elapsed time before a builder or tester starts. **Stop** cancels setup and waits for its processes to exit; **Stopping setup** stays visible during cleanup. Start again to retry using the retained checkout.
+
+In a workspace with several repositories, prefix **Touches** and **Inputs** with the repository path from the workspace root. Label repository-specific commands in the **Verification Checklist** with that repository’s name, such as `backend: ` followed by the command in backticks. Builders and testers see the same directory layout as the workspace, with independent Git checkouts.
 
 Here is a one-task starting point. Replace its paths and checks with ones that exist in your project. Keep each task ID in both `todos` and the task heading.
 
@@ -47,5 +49,7 @@ Choose **Pause** to hold live work at the next model or tool boundary, then **Re
 ## Decide whether the result is ready
 
 Read the task checks and the final integration report. A required check passes when the tester demonstrates it against the tested commit. A missing environment or capability leaves the result blocked. **Completed with waivers** identifies requirements skipped with explicit approval. Review the integration branch and final checks before pushing or opening a PR.
+
+A multi-repository board records and verifies an integration commit for each repository. Use the report’s delivery options to merge into the recorded base branches, push integration branches, or open a pull request in each repository with changes.
 
 See [Board work agents](agents.md) for how to read attempt results and choose a recovery action.

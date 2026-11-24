@@ -122,11 +122,11 @@ describe('multi-repo chat worktrees', () => {
     assert.doesNotMatch(git(path.join(root, 'frontend'), 'worktree', 'list'), /Conflict|c2/);
   });
 
-  test('a board refuses a folder of repos without touching the parent', async () => {
+  test('a board cannot initialize its workspace parent as a Git repository', async () => {
     const { ensureBoardWorkspaceGit } = await import('../../server/orchestrator/worktree-lifecycle.js');
     const result = await inWorkspace(() => ensureBoardWorkspaceGit());
     assert.equal(result.ok, false);
-    assert.match(result.error, /Boards run in a single repository, and this folder holds several \(backend, frontend\)/);
+    assert.match(result.error, /several git repositories \(backend, frontend\)/);
     await assert.rejects(fs.access(path.join(root, '.git')));
   });
 

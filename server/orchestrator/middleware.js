@@ -33,7 +33,9 @@ import { attachTouchesExpansion, listRepoFiles } from './touches.js';
 import { validateBoardPlan } from './validate-plan.js';
 import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
+import { boardRepoRelativePath, boardRevisionRepos, discoverBoardRepos, readBoardRepos } from '../worktree/board-repos.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { discoverWorkspaceRepos } from '../workspace/repos.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { runProcess } from '../process-runner.js';
 import { readConfigJson } from '../config/store.js';
@@ -98,7 +100,13 @@ export async function bootBoardRuntime() {
     try {
       const state = await loadState(boardId);
       if (!state.recoveryVersion || state.status !== 'running' || state.finished || !state.workspacePath) continue;
-      await runWithToolContext(() => getEngine(boardId, () => makeEffector(boardId)), { workspaceRoot: state.workspacePath });
+      await runWithToolContext(async () => {
+        const engine = await getEngine(boardId, () => makeEffector(boardId));
+        const message = state.recoveryHolds['preflight:']?.failure.message;
+        if (/^Boards (run in a single repository|require a single Git checkout)/.test(message ?? '')) {
+          await engine.checkRecovery('preflight:');
+        }
+      }, { workspaceRoot: state.workspacePath });
     } catch (error) {
       console.warn(`[orchestrator] ${boardId}: could not resume at boot:`, error.message);
     }
@@ -546,6 +554,38 @@ async function dispatch(route, req, res) {
 
       const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
       const wanted = query.get('path');
+      const revisions = boardRevisionRepos(sha);
+      if (revisions) {
+        const layout = await readBoardRepos(boardId, engine.getState().workspacePath ?? getEffectiveWorkspaceRoot());
+        const merge = (await engine.getEvents()).findLast(event => event.type === 'merge.succeeded' && event.taskId === taskId && event.sha === sha);
+        const before = boardRevisionRepos(merge?.beforeSha);
+        const stats = { files: [], additions: 0, deletions: 0, truncated: false };
+        let file = null;
+        for (const repo of layout?.repos ?? []) {
+          const head = revisions.get(repo.id);
+          const base = before?.get(repo.id);
+          if (!head || !base || head === base) continue;
+          if (wanted) {
+            const owner = layout.repos.filter(candidate => candidate.id === '.' || wanted.startsWith(candidate.id + '/'))
+              .sort((a, b) => b.id.length - a.id.length)[0];
+            if (owner?.id !== repo.id) continue;
+            const diff = await readCommitFileDiff(head, repo.id === '.' ? wanted : wanted.slice(repo.id.length + 1), repo.source, base);
+            if (diff) file = { ...diff, path: wanted };
+          } else {
+            const row = await readCommitFileStats(head, repo.source, base);
+            if (!row) continue;
+            stats.files.push(...row.files.map(value => ({ ...value, path: boardRepoRelativePath(repo, value.path) })));
+            stats.additions += row.additions;
+            stats.deletions += row.deletions;
+            stats.truncated ||= row.truncated;
+          }
+        }
+        if (stats.files.length > 400) {
+          stats.files.length = 400;
+          stats.truncated = true;
+        }
+        return json(res, 200, { ok: true, taskId, sha, source: 'merged', ...(wanted ? { file } : { files: stats }) });
+      }
       if (wanted) {
         const diff = await readCommitFileDiff(sha, wanted);
         return json(res, 200, {
@@ -877,7 +917,12 @@ async function openOrCreateBoard(body, res, cwd) {
   if (body.baseBranch !== undefined && (typeof body.baseBranch !== 'string' || !baseBranch)) {
     return json(res, 400, { ok: false, error: 'baseBranch must be a branch name' });
   }
-  if (baseBranch) {
+  const repoCandidates = await discoverWorkspaceRepos(cwd);
+  const mirrored = repoCandidates.some(repo => !repo.isRoot);
+  if (mirrored && baseBranch) {
+    try { await discoverBoardRepos(boardId, cwd, baseBranch); }
+    catch (error) { return json(res, 400, { ok: false, error: error.message }); }
+  } else if (baseBranch) {
     const checked = await runProcess('git', ['check-ref-format', `refs/heads/${baseBranch}`], { cwd });
     const resolved = checked.code === 0
       ? await runProcess('git', ['rev-parse', '--verify', '--end-of-options', `${baseBranch}^{commit}`], { cwd })
@@ -885,7 +930,7 @@ async function openOrCreateBoard(body, res, cwd) {
     if (!resolved || resolved.code !== 0) {
       return json(res, 400, { ok: false, error: `Starting branch does not exist: ${baseBranch}` });
     }
-  } else {
+  } else if (!mirrored) {
     const current = await runProcess('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd });
     if (current.code === 0) baseBranch = current.stdout.trim();
     // Detached HEAD still needs to retain its starting point across a checkout.

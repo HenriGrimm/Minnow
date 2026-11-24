@@ -20,7 +20,7 @@ const MAX_DIFF_LINES = 4_000;
  */
 export function safeSha(sha) {
   const value = String(sha ?? '').trim();
-  return /^[0-9a-fA-F]{7,40}$/.test(value) ? value : null;
+  return /^(?:[0-9a-fA-F]{7,40}|[0-9a-fA-F]{64})$/.test(value) ? value : null;
 }
 
 /**
@@ -69,11 +69,13 @@ function showArgs(sha) {
  *                     deletions: number, binary: boolean }>,
  *                     additions: number, deletions: number, truncated: boolean } | null>}
  */
-export async function readCommitFileStats(sha, cwd = getEffectiveWorkspaceRoot()) {
+export async function readCommitFileStats(sha, cwd = getEffectiveWorkspaceRoot(), beforeSha) {
   const rev = safeSha(sha);
   if (!rev || !cwd) return null;
 
-  const numstat = await git([...showArgs(rev), '--numstat'], cwd);
+  const base = safeSha(beforeSha);
+  const args = base ? ['diff', '--no-renames', base, rev] : showArgs(rev);
+  const numstat = await git([...args, '--numstat'], cwd);
   if (!numstat.trim()) return null;
 
   /** @type {Array<{ path: string, additions: number, deletions: number, binary: boolean }>} */
@@ -147,11 +149,13 @@ export function patchToDiffLines(patch) {
  * @returns {Promise<{ path: string, lines: Array<{ type: string, text: string }>,
  *                     truncated: boolean } | null>}
  */
-export async function readCommitFileDiff(sha, filePath, cwd = getEffectiveWorkspaceRoot()) {
+export async function readCommitFileDiff(sha, filePath, cwd = getEffectiveWorkspaceRoot(), beforeSha) {
   const rev = safeSha(sha);
   const target = safeRepoPath(filePath);
   if (!rev || !target || !cwd) return null;
-  const patch = await git([...showArgs(rev), '--unified=3', '--', target], cwd);
+  const base = safeSha(beforeSha);
+  const args = base ? ['diff', '--no-renames', base, rev] : showArgs(rev);
+  const patch = await git([...args, '--unified=3', '--', ':(literal)' + target], cwd);
   if (!patch.trim()) return null;
   const { lines, truncated } = patchToDiffLines(patch);
   if (lines.length === 0) return null;

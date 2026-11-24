@@ -1,3 +1,4 @@
+import { formatBoardRevision } from '../../server/orchestrator/core/revision.js';
 /**
  * One Orchestrate board: live progress, cards by column, run controls, and a
  * task sheet with specs, attempts, transcripts and changed files.
@@ -514,7 +515,7 @@ export function createBoardScreen(boardId: string): MobileScreen {
           el('h3', { className: 'm-task-sheet__title', text: task.title }),
           el('div', { className: 'm-chip-row' },
             el('span', { className: `m-pill m-pill--${tone}`, text: phase }),
-            task.mergedSha ? el('span', { className: 'm-chip m-chip--mono', text: task.mergedSha.slice(0, 7) }) : null,
+            task.mergedSha ? el('span', { className: 'm-chip m-chip--mono', text: formatBoardRevision(task.mergedSha, 7) }) : null,
             ...task.dependsOn.map((dep) => el('span', { className: 'm-chip', text: `after ${dep}` })),
           ),
           live && runningAttempt(task) ? el('p', { className: 'm-task__detail is-live', text: activityLine(live) }) : null,

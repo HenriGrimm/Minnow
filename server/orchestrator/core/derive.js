@@ -326,7 +326,7 @@ function apply(state, event) {
     case 'board.model.set': {
       if (state.recoveryVersion) {
         for (const [key, hold] of Object.entries(state.recoveryHolds)) {
-          if (hold.stage === 'preflight') state.recoveryHolds[key] = { ...hold, attention: false, probe: true, retryAt: 0 };
+          if (hold.stage === 'preflight' && hold.failure.scope !== 'workspace') state.recoveryHolds[key] = { ...hold, attention: false, probe: true, retryAt: 0 };
           else if (['quota', 'rate_limit', 'unavailable', 'authentication', 'protocol', 'capacity'].includes(hold.failure.category)) delete state.recoveryHolds[key];
         }
       }
