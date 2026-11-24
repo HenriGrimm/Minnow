@@ -58,7 +58,7 @@ export function getMtplxLoadDefaults(descriptor, defaults = {}) {
   const batching = MTPLX_BATCHING_DEFAULTS[settings.batching_preset] ?? MTPLX_BATCHING_DEFAULTS.latency;
   const values = {
     profile: 'Automatic model profile', generation_mode: 'Model recommendation (MTP fallback)',
-    paged_kv_quantization: 'off', reasoning: 'auto', reasoning_effort: 'Model default (resolved at load)',
+    paged_kv_quantization: 'off', reasoning: 'auto', reasoning_effort: descriptor.reasoning?.defaultEffort ?? 'Model default (resolved at load)',
     reasoning_parser: 'Model parser (detected at load)', preserve_thinking: 'auto (model history policy)',
     tool_prompt_mode: 'hybrid (unless model requires native)', scheduler_mode: 'serial', batching_preset: 'latency',
     ssd_session_cache: 'on', fan_mode: 'default (system managed)',

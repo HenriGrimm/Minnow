@@ -44,6 +44,10 @@ const MTPLX_INSTALLED: ManagedServerSummary = {
   installed: true,
   supported: true,
   version: '2.12.0',
+  source: 'path',
+  path: '/opt/homebrew/bin/mtplx',
+  appPath: '/Applications/MTPLX.app',
+  appVersion: '2.13.2',
   reason: null,
 };
 
@@ -244,6 +248,8 @@ describe('Models → Engine panel', () => {
     assert.match(block.textContent ?? '', /Powered by MTPLX/);
     assert.match(block.textContent ?? '', /Installed/);
     assert.match(block.textContent ?? '', /2\.12\.0/);
+    assert.match(block.textContent ?? '', /MTPLX Mac app2\.13\.2/);
+    assert.match(block.textContent ?? '', /Runtime for Minnow launchesCLI on PATH · 2\.12\.0/);
     assert.match(block.textContent ?? '', /Load settings/);
     assert.match(block.textContent ?? '', /Update MTPLX on this Mac/);
     assert.match(block.textContent ?? '', /brew upgrade youssofal\/mtplx\/mtplx/);

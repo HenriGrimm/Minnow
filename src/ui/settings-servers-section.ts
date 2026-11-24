@@ -147,7 +147,7 @@ function createServerRow(
   const headMeta = el('div', 'settings-mcp-row-head-meta');
   headMeta.append(
     createServerStatusPill(statusInfo.pill, statusInfo.ok),
-    el('span', 'settings-mcp-badge settings-mcp-badge--builtin', 'Managed'),
+    el('span', 'settings-mcp-badge settings-mcp-badge--builtin', server.id === 'mtplx' ? 'External runtime' : 'Managed'),
   );
   head.append(headMeta);
   row.append(head);
@@ -173,7 +173,7 @@ function createServerRow(
   if (server.id !== 'mtplx') toolbar.append(autoRow);
 
   const portInline = el('div', 'settings-server-port-inline');
-  const portLabel = el('label', 'settings-field-label', 'Port');
+  const portLabel = el('label', 'settings-field-label', server.id === 'mtplx' ? 'Minnow launch port' : 'Port');
   portLabel.htmlFor = `settingsServerPort-${server.id}`;
   const portInput = document.createElement('input');
   portInput.type = 'number';
@@ -193,7 +193,7 @@ function createServerRow(
   /** Shown under the toolbar when this host cannot install the runtime. */
   let installUnavailableHint: HTMLParagraphElement | null = null;
   if (server.id === 'mtplx') {
-    actions.append(el('span', 'settings-mcp-hint', server.installed ? 'Load models in Models → My Models.' : 'Install with pip install --upgrade mtplx, then refresh.'));
+    actions.append(el('span', 'settings-mcp-hint', server.installed ? 'See the runtime Minnow uses in Models → Engine.' : server.reason ?? 'Install MTPLX using its Mac app, Homebrew, or pip.'));
     const diagnostics = el('button', 'settings-inline-btn', 'Diagnostics'); diagnostics.type = 'button';
     diagnostics.addEventListener('click', () => {
       diagnostics.disabled = true;

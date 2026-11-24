@@ -11,6 +11,7 @@ import {
   teardownHappyDomAsync,
 } from '../os/dom-helpers.mts';
 import { defaultSessionState } from '../../src/config/defaults.ts';
+import { registerWorkAgentsFromServerSnapshot, resetWorkAgentRegistry } from '../../src/agents/work-agent-registry.ts';
 import { CHAT_DRAG_MIME } from '../../src/attachments/chat-drag.ts';
 import { initGraphiteWorkspace } from '../../src/os/graphite-workspace.ts';
 import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
@@ -67,6 +68,7 @@ afterEach(async () => {
   }
   setSessionStateForTests(null);
   resetWorkspaceStateForTests();
+  resetWorkAgentRegistry();
   globalThis.fetch = originalFetch;
   document.body.innerHTML = '';
 });
@@ -74,12 +76,17 @@ afterEach(async () => {
 describe('createChatWithMode workspace option', () => {
   test('pins a recovery chat to the captured checkout before its first turn', async () => {
     setup();
+    registerWorkAgentsFromServerSnapshot([{
+      id: 'builder', label: 'Builder', description: '', kind: 'work-agent', version: '1', defaultForModes: ['build'],
+      modelId: null, providerId: null, allowedTools: null,
+    }]);
     setWorkspaceFromServer(workspaceInfo(WS_A));
     seedActiveChat(WS_A);
     const result = await createChatWithMode({ modeId: 'build', workspacePath: WS_A,
       gitRecoveryTarget: { cwd: `${WS_A}/.worktrees/conflict`, branch: 'feature' } });
     assert.equal(result.ok, true);
     const created = findChatById(result.chatId!)!;
+    assert.equal(created.workAgentId, null);
     const { resolveChatToolWorkspaceRoot } = await import('../../src/state/chat-worktree.ts');
     assert.equal(resolveChatToolWorkspaceRoot(created), `${WS_A}/.worktrees/conflict`);
     assert.equal(created.gitBranch, 'feature');

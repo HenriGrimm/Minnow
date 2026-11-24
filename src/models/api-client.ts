@@ -77,6 +77,8 @@ export interface ServeRecord {
   id: string;
   runtime: string;
   ownership?: 'minnow' | 'external';
+  mtplxHost?: 'minnow' | 'app' | 'external';
+  mtplxVersion?: string;
   mtplxSettings?: MtplxServeSettings;
   mtplxDescriptor?: MtplxModelDescriptor;
   modelPath: string;
@@ -190,6 +192,7 @@ export interface CachedModelRow {
   mtplx_reason?: string;
   /** config.json declares a vision tower, so the MTPLX engine accepts images. */
   mtplx_vision?: boolean;
+  reasoning?: import('../types').LmModelRecord['reasoning'];
   repo_id: string;
   size_bytes: number;
   nb_files: number;

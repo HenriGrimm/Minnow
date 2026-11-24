@@ -2,9 +2,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { defaultMtplxCacheDir, runMtplxJson } from './mtplx-runtime.js';
 import { contextLengthFromTransformersConfig, visionFromTransformersConfig } from './mlx-context-length.js';
+import { getMtplxDescriptor } from './mtplx-descriptor.js';
+import { mtplxReasoningCatalog } from './mtplx-reasoning.js';
 
 /** The CLI owns validation; absent CLI rows remain visible but unvalidated. */
-export async function scanMtplxCache(seen, { run = runMtplxJson, fallbackDir = defaultMtplxCacheDir() } = {}) {
+export async function scanMtplxCache(seen, { run = runMtplxJson, describe = getMtplxDescriptor, fallbackDir = defaultMtplxCacheDir() } = {}) {
   let models;
   try { models = (await run(['models', '--json'])).models; }
   catch {
@@ -20,6 +22,7 @@ export async function scanMtplxCache(seen, { run = runMtplxJson, fallbackDir = d
     let config = {};
     try { config = JSON.parse(await fsp.readFile(path.join(row.path, 'config.json'), 'utf8')); } catch {}
     const validated = row.has_runtime_contract === true && row.validation?.ok === true;
+    const reasoning = validated ? mtplxReasoningCatalog(await describe(row.path)) : undefined;
     const missing = Array.isArray(row.validation?.missing_files) ? row.validation.missing_files.filter((s) => typeof s === 'string') : [];
     seen.add(row.repo_id);
     out.push({ repo_id: row.repo_id, path: row.path, size_bytes: Number(row.size_bytes) || 0,
@@ -28,6 +31,7 @@ export async function scanMtplxCache(seen, { run = runMtplxJson, fallbackDir = d
       mtplx_missing_files: missing, mtplx_reason: validated ? null : missing.length ? `Missing files: ${missing.join(', ')}` : 'MTPLX runtime contract has not been validated. Install MTPLX and refresh.',
       mlx_root: row.path, mlx_quant: config.quantization?.bits ? `mlx-${config.quantization.bits}bit` : '',
       mlx_context_length: contextLengthFromTransformersConfig(config),
+      ...(reasoning ? { reasoning } : {}),
       ...(visionFromTransformersConfig(config) ? { mtplx_vision: true } : {}),
     });
   }

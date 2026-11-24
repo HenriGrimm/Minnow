@@ -44,6 +44,7 @@ const OPTION_LABELS: Partial<Record<keyof MtplxServeSettings, Record<string, str
   scheduling_preset: { auto: 'Auto', latency: 'Fastest response', throughput: 'Handle multiple at once', agent: 'Long agent tasks' },
   paged_kv_quantization: { off: 'Off' },
   reasoning: { auto: 'Auto', on: 'On', off: 'Off' },
+  reasoning_effort: { xhigh: 'Extra high' },
   ssd_session_cache: { off: 'Off', on: 'Read + write', 'write-only': 'Write-only' },
   ssd_session_cache_max_size: { auto: 'Auto', '10GB': '10 GB', '50GB': '50 GB', '100GB': '100 GB', '250GB': '250 GB', '500GB': '500 GB', '1TB': '1 TB' },
   fan_mode: { default: 'Default', smart: 'Smart', max: 'Max' },
@@ -127,7 +128,7 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
   content.replaceChildren();
   content.append(el('p', 'models-muted', descriptor.source === 'fallback'
     ? 'Using conservative controls. MTPLX must validate this model before it can load.'
-    : 'Controls come from this model. Changes apply on the next Minnow-owned load. An existing daemon keeps its settings.'));
+    : 'These settings apply when Minnow starts this model. A model already running in the MTPLX app uses its server settings.'));
   const message = el('p', 'models-hint'); message.setAttribute('role', 'status');
   const memory = el('p', 'models-hint', 'Estimating unified memory…');
   memory.setAttribute('role', 'status'); content.append(memory);
@@ -167,6 +168,8 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
   const basicFields = advanced ? el('div', 'models-mtplx-basic-fields') : null;
   if (basicFields) content.appendChild(basicFields);
   const advancedStack = el('div', 'models-advanced-stack');
+  const effortLevels = descriptor.reasoning?.effortLevels.filter((level) =>
+    level !== 'auto' && (!descriptor.launchEffortLevels || descriptor.launchEffortLevels.includes(level))) ?? [];
   for (const [title, fields] of groups) {
     const section = el('details', 'models-advanced');
     const sectionKey = `${model.id}:${title}`;
@@ -181,24 +184,25 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
       if (key === 'paged_kv_quantization' && !descriptor.kvQuant.supported) continue;
       if (key === 'context_window' && descriptor.contextWindow.supported === false) continue;
       if (['reasoning', 'reasoning_effort', 'reasoning_parser'].includes(key) && !descriptor.reasoning?.supported) continue;
-      if (key === 'reasoning_effort' && !descriptor.reasoning?.effortLevels.length) continue;
+      if (key === 'reasoning_effort' && !effortLevels.length) continue;
       let options = Array.isArray(kind) ? kind : null;
       if (key === 'paged_kv_quantization') options = descriptor.kvQuant.modes;
       if (key === 'reasoning' && descriptor.reasoning) options = descriptor.reasoning.modes;
-      if (key === 'reasoning_effort' && descriptor.reasoning) options = ['auto', ...descriptor.reasoning.effortLevels];
+      if (key === 'reasoning_effort') options = ['auto', ...effortLevels];
       if (kind === 'boolean') options = ['on', 'off'];
       const name = key === 'depth' ? descriptor.draft.displayLabel ?? fieldName : fieldName;
       const label = el('label', 'models-field'); label.append(el('span', 'models-field__label', name));
       const input = options ? el('select', 'models-field__input') : el('input', 'models-field__input');
       const savedSettings = getLibraryLaunchSettingsForId(model.id)?.mtplx;
-      const saved = key === 'scheduling_preset' ? savedMode(savedSettings) || undefined : savedSettings?.[key];
+      const savedValue = key === 'scheduling_preset' ? savedMode(savedSettings) || undefined : savedSettings?.[key];
+      const saved = key === 'reasoning_effort' && typeof savedValue === 'string' && !options?.includes(savedValue) ? undefined : savedValue;
       const bounds: Bounds | null = key === 'depth' ? { ...descriptor.draft, step: 1 }
         : key === 'context_window' ? descriptor.contextWindow : NUMBER_BOUNDS[key] ?? null;
       const defaultValue = defaultFor(key, bounds);
       const defaultLabel = defaultText(key, defaultValue);
       if (options) {
         const inherit = el('option', undefined, defaultValue == null ? defaultLabel : `${defaultLabel} (default)`); inherit.value = ''; input.append(inherit);
-        if (typeof saved === 'string' && !options.includes(saved)) options = [...options, saved];
+        if (typeof saved === 'string' && !options.includes(saved) && key !== 'reasoning_effort') options = [...options, saved];
         for (const value of options) {
           const option = el('option', undefined, kind === 'boolean' ? (value === 'on' ? 'On' : 'Off') : optionLabel(key, value));
           option.value = value; input.append(option);

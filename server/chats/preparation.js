@@ -7,7 +7,7 @@ import { projectAgentConversationTools } from './tool-catalog.js';
 import { getAgentConversationsFeature, getOrdinaryChatExecutionFeature } from './feature.js';
 import { createChatPolicy, intersectChatPolicies } from './policy.js';
 import { normalizePermissionLevel, normalizeTurnClamp } from '../../src/lib/permissions.mjs';
-import { createAgentCatalogContext, resolveAgentModelSelection, inspectAgentModel, AGENT_POOL_PROVIDER_ID, AGENT_LIBRARY_PROVIDER_ID } from './model-selection.js';
+import { assertSupportedModelOptions, createAgentCatalogContext, resolveAgentModelSelection, inspectAgentModel, AGENT_POOL_PROVIDER_ID, AGENT_LIBRARY_PROVIDER_ID } from './model-selection.js';
 import { clampShellSandboxModeForPlatform, normalizeShellSandboxMode } from '../terminal/sandbox/mode.js';
 import { agentContextBudgetFromWorkAgent, withCompactionDefaults, normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { projectUserContent } from '../runner/user-content.js';
@@ -19,6 +19,7 @@ import { wrapUntrusted } from '../../src/lib/untrusted.mjs';
 import { isLanProviderBaseUrl } from '../../src/lib/lan-provider-host.mjs';
 import { SUB_AGENT_COMPLETION_GUIDANCE } from '../sub-agents/reporting.js';
 import { withSubAgentReportTool } from './sub-agent-report-tool.js';
+import { MTPLX_LOCAL_ID } from '../../src/models/engine-ids.mjs';
 
 const appRoot = fileURLToPath(new URL('../../', import.meta.url));
 let composerPromise;
@@ -249,10 +250,7 @@ async function policySnapshot(chat, scope, options = {}) {
   const typeId = typeof chat.agentTypeId === 'string' ? chat.agentTypeId : null;
   const type = typeId ? subAgents.types?.[typeId] : null;
   const effectiveChat = { ...chat, modeId: createChatPolicy({ modeId: chat.modeId ?? 'build' }).modeId,
-    ...(type?.workAgentId ? { workAgentId: type.workAgentId } : {}) };
-  const pinnedId = effectiveChat.workAgentId && effectiveChat.workAgentId !== 'default' ? effectiveChat.workAgentId : null;
-  const pinnedAvailable = !pinnedId || agents.some(agent => agent.id === pinnedId && !agent.disabled);
-  const typeAvailable = pinnedAvailable && (!typeId || (subAgents.enabled !== false && type && type.enabled !== false));
+    ...(type?.workAgentId ? { workAgentId: type.workAgentId, workAgentAuto: false } : {}) };
   const byName = new Map();
   for (const definition of definitions) {
     const name = definition?.function?.name;
@@ -261,6 +259,7 @@ async function policySnapshot(chat, scope, options = {}) {
   }
   const mode = composer.resolveChatModeTools({ chat: effectiveChat, workAgents: agents,
     workAgentOverrides: registry.overrides, toolNames: [...byName.keys()] });
+  const typeAvailable = mode.workAgentAvailable && (!typeId || (subAgents.enabled !== false && type && type.enabled !== false));
   // Catalog membership is capability availability; authorization comes only from
   // the global level and the active turn clamp, never legacy tools.json flags.
   const effects = composer.classifyChatBuiltinTools([...byName.keys()].filter(name => !/^(?:mcp__|plugin__)/.test(name)));
@@ -496,6 +495,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
       ? { messages: history.map(row => projectUserContent(row, { vision: true })) } : {}) } });
   const resolved = await resolveAgentModelSelection({ target: parsed.value }, catalog);
   const inspection = resolved.selection.providerId === AGENT_POOL_PROVIDER_ID ? null : await inspectAgentModel(resolved.selection, catalog);
+  let sendCapabilities = resolved.sendCapabilities ?? inspection?.support?.sendCapabilities;
   const model = { providerId: resolved.selection.providerId, id: resolved.selection.modelId,
     ...(resolved.selection.options !== undefined ? { options: resolved.selection.options } : {}),
     exactModel: resolved.selection.providerId === AGENT_POOL_PROVIDER_ID ? false
@@ -505,6 +505,13 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     const bound = await live.adapters.bindLibraryModel({ providerId: model.providerId, id: model.id }, { signal });
     if (!bound?.providerId || !bound.id || bound.providerId === AGENT_LIBRARY_PROVIDER_ID) throw new ChatContractError('model_unavailable', 'The selected My Models artifact could not be bound to a runtime');
     model.providerId = bound.providerId; model.id = bound.id; model.exactModel = true;
+    if (bound.providerId === MTPLX_LOCAL_ID) {
+      const { support } = await inspectAgentModel({ providerId: bound.providerId, modelId: bound.id }, catalog);
+      if (support.sendCapabilities.reasoningSource === 'mtplx') {
+        assertSupportedModelOptions(model.options, support);
+        sendCapabilities = support.sendCapabilities;
+      }
+    }
   }
   const cwd = scope.canonicalKey;
   const acceptedChat = { ...chat, ...(snapshot.chatSettings ?? {}) };
@@ -614,7 +621,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     ...(cli ? { cliTurnContext: (composed.cliTurnContext ?? '') + goalContext + enrichmentNotice + surfaceContext } : {}),
     tools, model, cwd, policy, contextBodies, enrichmentOmissions, checkoutIdentity,
     selectedModelSelection: resolved.selection,
-    sendCapabilities: resolved.sendCapabilities ?? inspection?.support?.sendCapabilities,
+    sendCapabilities,
     providerCapabilities: inspection?.capabilities,
     hostToolNames, limits: { contextBudget, modelContextLimit: await live.adapters.resolveModelContextLimit(model) },
     toolContext: { modeId: policy.modeId, workspaceRoot: cwd, filesystemAccess: policy.filesystemAccess,

@@ -191,7 +191,7 @@ function providerKeepsExtendedSamplers(provider) {
 /**
  * @param {Record<string, unknown>} body
  * @param {{ apiKind?: string, id?: string, supportsExtendedSamplers?: boolean, baseUrl?: string }} provider
- * @param {{ reasoning?: boolean, reasoningAllowedOptions?: string[] } | null | undefined} [modelCapabilities]
+ * @param {{ reasoning?: boolean, reasoningAllowedOptions?: string[], reasoningSource?: 'mtplx' } | null | undefined} [modelCapabilities]
  * @returns {Record<string, unknown>}
  */
 export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilities) {
@@ -202,7 +202,8 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
 
   const next = stripInternalApiMessageFields({ ...body });
   const openCodeGo = isOpenCodeGoBaseUrl(provider.baseUrl);
-  const templateKwargsReachModel = providerSupportsChatTemplateKwargs(provider);
+  const nativeMtplx = modelCapabilities?.reasoningSource === 'mtplx';
+  const templateKwargsReachModel = nativeMtplx || providerSupportsChatTemplateKwargs(provider);
   if (!providerKeepsExtendedSamplers(provider)) {
     delete next.top_k;
     delete next.min_p;
@@ -236,7 +237,7 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
   }
 
   const modelId = typeof next.model === 'string' ? next.model : '';
-  rewriteGlm53ThinkingBody(next, modelId);
+  if (!nativeMtplx) rewriteGlm53ThinkingBody(next, modelId);
   if (/^https?:\/\/api\.deepseek\.com(?:\/|$)/i.test(provider.baseUrl ?? '')) {
     delete next.reasoning;
   }

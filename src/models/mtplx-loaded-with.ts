@@ -1,5 +1,12 @@
 import type { MtplxServeSettings } from './mtplx-settings';
+import type { ServeRecord } from './api-client';
 import type { LoadedWithRow } from './mlx-loaded-with';
+
+export function mtplxHostLabel(serve: ServeRecord): string {
+  if (serve.mtplxHost === 'app') return 'MTPLX Mac app';
+  if (serve.ownership === 'external') return 'External MTPLX server';
+  return 'Started by Minnow';
+}
 
 // Titles match the MTPLX app's Settings tab and Inference popover.
 const LABELS: Record<keyof MtplxServeSettings, string> = {
@@ -24,6 +31,7 @@ const LABELS: Record<keyof MtplxServeSettings, string> = {
 
 const MODE_LABELS: Record<string, string> = {
   auto: 'Auto', on: 'On', off: 'Off', mtp: 'MTP', ar: 'Baseline',
+  minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high',
   ar_batch: 'Autoregressive batching', mtp_batch: 'MTP batching',
   turbo: 'Turbo', sustained: 'Sustained', 'performance-cold': 'Performance Cold (Burst)', 'write-only': 'Write-only',
   default: 'Default', smart: 'Smart', max: 'Max', q8: 'q8', q4: 'q4',

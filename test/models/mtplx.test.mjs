@@ -172,7 +172,7 @@ test('MTPLX app Performance and Memory settings become serve flags', () => {
 });
 test('discovery trusts CLI validation, keeps incomplete rows and deduplicates repo ids', async () => {
   const seen = new Set();
-  const rows = await scanMtplxCache(seen, { run: async () => ({ models: [
+  const rows = await scanMtplxCache(seen, { describe: async () => descriptorFromInspect(inspection()), run: async () => ({ models: [
     { repo_id: 'Org/Good', path: modelPath, has_runtime_contract: true, validation: { ok: true }, size_bytes: 123 },
     { repo_id: 'Org/Bad', path: modelPath, has_runtime_contract: true, validation: { ok: false, missing_files: ['mtp.safetensors'] } },
   ] }) });
@@ -180,9 +180,10 @@ test('discovery trusts CLI validation, keeps incomplete rows and deduplicates re
   assert.equal(rows[1].has_incomplete, true); assert.match(rows[1].mtplx_reason, /mtp.safetensors/);
   assert.equal(seen.has('Org/Good'), true);
   assert.equal(rows[0].mtplx_vision, undefined);
+  assert.deepEqual(rows[0].reasoning, { source: 'mtplx', allowed_options: ['on', 'low', 'medium'], default: 'medium' });
   const vlmPath = path.join(home, 'vlm'); await fs.mkdir(vlmPath, { recursive: true });
   await fs.writeFile(path.join(vlmPath, 'config.json'), JSON.stringify({ vision_config: { depth: 27 }, quantization: { bits: 4 } }));
-  const [vlm] = await scanMtplxCache(new Set(), { run: async () => ({ models: [{ repo_id: 'Org/Vlm', path: vlmPath, has_runtime_contract: true, validation: { ok: true } }] }) });
+  const [vlm] = await scanMtplxCache(new Set(), { describe: async () => null, run: async () => ({ models: [{ repo_id: 'Org/Vlm', path: vlmPath, has_runtime_contract: true, validation: { ok: true } }] }) });
   assert.equal(vlm.mtplx_vision, true);
   assert.deepEqual(await scanMtplxCache(seen, { run: async () => ({ models: [{ repo_id: 'Org/Good', path: modelPath }] }) }), []);
 });
@@ -210,6 +211,27 @@ test('upgrading an old health cache refreshes inspect and health without manual 
   assert.equal((await getMtplxDescriptor(modelPath, { inspect })).source, 'health');
 });
 
+test('cold controls use the dry-run preview and recheck after a runtime upgrade', async () => {
+  const levels = ['auto', 'low', 'medium', 'high', 'xhigh'];
+  const first = { path: '/app/runtime/mtplx', version: '2.13.1', launchEffortLevels: levels };
+  const updated = { ...first, version: '2.13.2' };
+  const calls = [];
+  const inspect = async (args) => {
+    calls.push(args[0]);
+    if (args[0] === 'inspect') return { compatibility: { can_run: true } };
+    assert.deepEqual(args, ['tune', '--model', modelPath, '--dry-run', '--json']);
+    return { model_controls: { reasoning: { modes: ['auto', 'on', 'off'], effort_levels: ['high', 'max'], default_effort: 'max' } } };
+  };
+  const descriptor = await getMtplxDescriptor(modelPath, { inspect, runtime: first });
+  assert.deepEqual(descriptor.reasoning.effortLevels, ['high', 'max']);
+  assert.equal(getMtplxLoadDefaults(descriptor).reasoning_effort, 'max');
+  assert.equal(buildMtplxServeLaunch({ modelPath, port: 8088, descriptor, settings: { reasoning_effort: 'max' } }).args.includes('--reasoning-effort'), false);
+  await getMtplxDescriptor(modelPath, { inspect, runtime: first });
+  assert.deepEqual(calls, ['inspect', 'tune']);
+  await getMtplxDescriptor(modelPath, { inspect, runtime: updated });
+  assert.deepEqual(calls, ['inspect', 'tune', 'inspect', 'tune']);
+});
+
 function dependencies(overrides = {}) {
   return { rows: [], status: async () => ({ installed: true, supported: true, path: '/mtplx/bin/mtplx' }),
     descriptor: async () => descriptorFromInspect(inspection()), findPort: async (port) => port + 1,
@@ -220,9 +242,11 @@ function dependencies(overrides = {}) {
 }
 test('same-model daemon is adopted without spawning or applying launch preferences', async () => {
   const row = await startMtplxServe({ modelPath, port: 8000, mtplx: { depth: 1 } }, dependencies({
-    probe: async () => health(), createRun: async () => assert.fail('must not spawn'), admit: async () => assert.fail('must not evict for adoption'),
+    probe: async () => ({ ...health(), reasoning: 'off', startup: { ...health().startup, app_parent_pid: 100 } }),
+    createRun: async () => assert.fail('must not spawn'), admit: async () => assert.fail('must not evict for adoption'),
   }));
   assert.equal(row.status, 'running'); assert.equal(row.ownership, 'external');
+  assert.equal(row.mtplxHost, 'app'); assert.equal(row.mtplxSettings.reasoning, 'off');
   assert.equal(row.mtplxSettings.depth, 2); assert.equal(row.mtplxSettings.context_window, 12288);
   assert.equal(row.modelLabel, 'actual-api-id'); assert.equal(row.runId, undefined);
 });
@@ -305,7 +329,7 @@ test('boot reconciliation upgrades a persisted running descriptor from native he
     const [row] = await listServes();
     assert.equal(row.mtplxDescriptor.mtpSupported, true); assert.equal(row.mtplxDescriptor.draft.maximum, 3);
     assert.equal(row.mtplxSettings.profile, 'turbo'); assert.equal(row.mtplxDescriptor.reasoning.parser, 'qwen3');
-    assert.equal((await getCachedMtplxDescriptor(modelPath)).source, 'health');
+    assert.equal(row.mtplxHost, 'external');
   } finally { await resetServesForTests(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
 

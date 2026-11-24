@@ -10,12 +10,14 @@ import { getRouterWorkspace } from '../../server/model-routers/store.js';
 import { invalidateRouterProvider } from '../../server/model-routers/availability.js';
 import { runRouterGeneration } from '../../server/model-routers/generation.js';
 import { resolveAgentModelSelection } from '../../server/chats/model-selection.js';
+import { mergeThinkingIntoCompletionBody } from '../../server/runner/merge-thinking-body.js';
 
 let home;
 let upstream;
 let workspace;
 let calls = [];
 let catalogs;
+let mtplx;
 
 before(async () => {
   home = setTestHome(process.env, 'minnow-test-agent-model-selection');
@@ -23,7 +25,9 @@ before(async () => {
   upstream = http.createServer(async (request, response) => {
     if (request.method === 'GET') {
       response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify({ data: catalogs }));
+      const data = request.url === '/health' && mtplx ? mtplx.health
+        : request.url === '/v1/mtplx/settings' && mtplx ? mtplx.settings : { data: catalogs };
+      response.end(JSON.stringify(data));
       return;
     }
     let raw = ''; for await (const chunk of request) raw += chunk;
@@ -56,6 +60,7 @@ before(async () => {
 
 beforeEach(() => {
   calls = [];
+  mtplx = undefined;
   catalogs = [
     { id: 'primary', reasoning: { allowed_options: ['off', 'low', 'high'], default: 'low' } },
     { id: 'backup', reasoning: { allowed_options: ['low', 'high', 'max'], default: 'low' } },
@@ -89,6 +94,29 @@ test('production direct preflight and completion preserve exact effort through u
   assert.equal(calls[0].reasoning_effort, 'high');
   assert.equal(Object.hasOwn(calls[0], 'agentModelOptions'), false);
   assert.equal(Object.hasOwn(calls[0], 'exactModel'), false);
+});
+
+test('an MTPLX connection uses the active model controls even though /v1/models omits effort', async () => {
+  const id = 'mtplx-qwen3.8-alias';
+  catalogs = [{ id, owned_by: 'mtplx' }, { id: 'other-mtplx-model', owned_by: 'mtplx' }];
+  mtplx = {
+    health: { ok: true, model_path: '/fixture/model', startup: { model_id: id, model_controls: {
+      reasoning: { modes: ['auto', 'on', 'off'], effort_levels: ['high', 'xhigh'], default_effort: 'high' },
+    } } },
+    settings: { model: id, reasoning: 'auto', reasoning_effort: 'xhigh' },
+  };
+  const resolved = await resolveAgentModelSelection({ target: { providerId: 'agent-models', modelId: id, options: { reasoningEffort: 'high' } } });
+  assert.deepEqual(resolved.sendCapabilities.reasoningAllowedOptions, ['off', 'on', 'high', 'xhigh']);
+  assert.equal(resolved.sendCapabilities.reasoningDefault, 'xhigh');
+  const body = { model: id, messages: [{ role: 'user', content: 'hello' }], stream: true };
+  mergeThinkingIntoCompletionBody(body, 'on', { apiKind: 'openai-v1' }, resolved.sendCapabilities, 'high');
+  const stream = await createCompletionStream(resolved.selection.providerId, body, {
+    chatId: 'external-mtplx', exactModel: true, modelCapabilities: resolved.sendCapabilities,
+  });
+  for await (const _chunk of stream) { /* drain the real in-process generation path */ }
+  assert.equal(calls[0].reasoning_effort, 'high');
+  assert.equal(calls[0].enable_thinking, true);
+  await assert.rejects(resolveAgentModelSelection({ target: { providerId: 'agent-models', modelId: 'other-mtplx-model', options: { reasoningEffort: 'high' } } }), /not advertised/);
 });
 
 test('a requested pool effort filters members and overrides the evaluator without leaking routing metadata', async () => {

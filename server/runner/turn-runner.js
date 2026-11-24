@@ -1123,7 +1123,7 @@ function createTurnRunner(deps) {
       await loadToolCallsMeta();
       const provider = await resolveProvider(input.providerId);
       const sendCaps = resolveSendCapabilities(input.providerId, input.modelId, provider.apiKind);
-      const turnReasoningEffort = modelUsesComposerReasoningDropdown(sendCaps) ? resolveEffectiveReasoningEffort(parentChat ?? {}, sendCaps, resolvedThinking.mode) : void 0;
+      const turnReasoningEffort = modelUsesComposerReasoningDropdown(sendCaps) ? resolveEffectiveReasoningEffort(parentChat ?? {}, sendCaps, resolvedThinking.mode, input.modelId) : void 0;
       const providerCapabilities = await readProviderCapabilities(input.providerId);
       const toolCallsMeta = getToolCallsMetaSync();
       const constrainedUserEnabled = isConstrainedDecodingEnabledForProvider(

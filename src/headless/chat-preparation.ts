@@ -6,7 +6,7 @@ import { resolveSamplerPreset } from '../agents/resolve-sampler';
 import { resolveThinkingMode, resolveThinkingBudgetTokens } from '../agents/resolve-thinking';
 import { parseSamplerGlobalBlock } from '../config/sampler-meta';
 import { clampThinkingBudgetTokens, normalizeThinkingGlobalDefault } from '../agents/thinking-types';
-import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
+import { isPassthroughWorkAgentId, pinnedWorkAgentId, resolveActiveWorkAgent } from '../agents/resolve-work-agent';
 import { normalizeModeId } from '../chat/modes/types';
 import { TOOL_GROUP_IDS } from '../chat/modes/tool-groups';
 import { getUserRulesPayloadForSend } from '../config/user-rules-compose';
@@ -66,6 +66,7 @@ export function resolveChatModeTools(input: RegistryInput & { toolNames: string[
   return {
     modeId,
     workAgent,
+    workAgentAvailable: Boolean(workAgent) || isPassthroughWorkAgentId(pinnedWorkAgentId(input.chat)),
     allowedToolNames: input.toolNames.filter(name => !allow || allow.has(name)),
   };
 }

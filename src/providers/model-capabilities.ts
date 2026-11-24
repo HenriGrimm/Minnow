@@ -139,8 +139,9 @@ function reasoningCatalogFromRow(
   const allowedRaw = Array.isArray(block.allowed_options)
     ? block.allowed_options
     : [];
-  const allowed = normalizeReasoningAllowedOptions(allowedRaw, row.id);
-  const def = normalizeReasoningCatalogValue(block.default, row.id);
+  const familyId = block.source === 'mtplx' ? undefined : row.id;
+  const allowed = normalizeReasoningAllowedOptions(allowedRaw, familyId);
+  const def = normalizeReasoningCatalogValue(block.default, familyId);
   const reasoningOnDefault = def !== undefined && def !== 'off';
   const reasoning =
     allowed.length > 0 ? true : reasoningOnDefault ? true : def === 'off' ? false : null;
@@ -189,19 +190,20 @@ export function catalogCapabilitiesFromRow(
   const vision = catalogRowHasVision(row);
   const reasoningCaps = reasoningCatalogFromRow(row);
   let reasoningAllowedOptions = reasoningCaps.reasoningAllowedOptions;
-  if (!reasoningAllowedOptions || reasoningAllowedOptions.length === 0) {
+  const nativeMtplx = row.reasoning?.source === 'mtplx';
+  if (!nativeMtplx && (!reasoningAllowedOptions || reasoningAllowedOptions.length === 0)) {
     const inferred = inferReasoningOptionsFromModelId(row.id, resolvedApi);
     if (inferred.length > 0) {
       reasoningAllowedOptions = inferred;
     }
   }
-  if (isQwen38ModelId(row.id)) {
+  if (!nativeMtplx && isQwen38ModelId(row.id)) {
     reasoningAllowedOptions = ensureQwen38ReasoningAllowedOptions(
       row.id,
       reasoningAllowedOptions ?? [],
     );
   }
-  if (isGlm53ModelId(row.id)) {
+  if (!nativeMtplx && isGlm53ModelId(row.id)) {
     reasoningAllowedOptions = ensureGlm53ReasoningAllowedOptions(
       row.id,
       reasoningAllowedOptions ?? [],
@@ -215,14 +217,16 @@ export function catalogCapabilitiesFromRow(
     tools: null,
     streaming: null,
     grammar: null,
-    reasoning: reasoningCaps.reasoning ?? (reasoningAllowedOptions?.length ? true : null),
+    reasoning: nativeMtplx ? Boolean(reasoningAllowedOptions?.some((level) => level !== 'off'))
+      : reasoningCaps.reasoning ?? (reasoningAllowedOptions?.length ? true : null),
+    ...(nativeMtplx ? { reasoningSource: 'mtplx' as const } : {}),
     reasoningAllowedOptions:
       reasoningAllowedOptions?.length
         ? reasoningAllowedOptions
         : usesAdaptiveAnthropicThinking
           ? (['off', 'low', 'medium', 'high'] as const)
           : reasoningAllowedOptions,
-    reasoningDefault: resolveCatalogReasoningDefault(
+    reasoningDefault: nativeMtplx ? reasoningCaps.reasoningDefault : resolveCatalogReasoningDefault(
       row.id,
       reasoningAllowedOptions,
       reasoningCaps.reasoningDefault,
@@ -327,7 +331,7 @@ function withFamilyReasoningLevels(
   modelId: string,
   caps: ModelCapabilities,
 ): ModelCapabilities {
-  return withGlm53ReasoningLevels(modelId, withQwen38ReasoningLevels(modelId, caps));
+  return caps.reasoningSource === 'mtplx' ? caps : withGlm53ReasoningLevels(modelId, withQwen38ReasoningLevels(modelId, caps));
 }
 
 // ── Resolve ──────────────────────────────────────────────────────────────────
@@ -360,10 +364,11 @@ export function resolveSendCapabilities(
 
   if (!cached) return withFamilyReasoningLevels(familyId, fromCatalog);
 
-  if (Array.isArray(row.reasoning?.allowed_options) && row.reasoning.allowed_options.length > 0) {
+  if (fromCatalog.reasoningSource === 'mtplx' || row.reasoning?.allowed_options?.length) {
     return withFamilyReasoningLevels(familyId, {
       ...cached,
       reasoning: fromCatalog.reasoning,
+      reasoningSource: fromCatalog.reasoningSource,
       reasoningAllowedOptions: fromCatalog.reasoningAllowedOptions,
       reasoningDefault: fromCatalog.reasoningDefault,
       sources: { ...cached.sources, reasoning: 'catalog' },
@@ -437,15 +442,15 @@ export function mergeModelCapabilities(
   preferProbe('tools', catalog.tools);
   preferProbe('streaming', catalog.streaming);
   preferProbe('grammar', catalog.grammar);
-  preferProbe('reasoning', catalog.reasoning);
-  if (Array.isArray(row.reasoning?.allowed_options) && row.reasoning.allowed_options.length > 0) {
+  if (catalog.reasoningSource !== 'mtplx') preferProbe('reasoning', catalog.reasoning);
+  if (catalog.reasoningSource === 'mtplx' || row.reasoning?.allowed_options?.length) {
     merged.reasoningAllowedOptions = [...(catalog.reasoningAllowedOptions ?? [])];
   } else if (fromFile.reasoningAllowedOptions?.length) {
     merged.reasoningAllowedOptions = [...fromFile.reasoningAllowedOptions];
   } else if (catalog.reasoningAllowedOptions?.length) {
     merged.reasoningAllowedOptions = [...catalog.reasoningAllowedOptions];
   }
-  if (Array.isArray(row.reasoning?.allowed_options) && row.reasoning.allowed_options.length > 0) {
+  if (catalog.reasoningSource === 'mtplx' || row.reasoning?.allowed_options?.length) {
     merged.reasoningDefault = catalog.reasoningDefault;
   } else if (fromFile.reasoningDefault) {
     merged.reasoningDefault = fromFile.reasoningDefault;

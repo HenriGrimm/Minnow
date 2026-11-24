@@ -20,7 +20,7 @@ import { isRouterTaskType } from '../../src/models/router-task-types.mjs';
 import { decideRoute } from './evaluator.js';
 import { allowanceContext, getAllowanceTracker, allowanceFailure } from '../generations/allowance.js';
 import { ChatContractError, validateModelOptions } from '../chats/contracts.js';
-import { assertSupportedModelOptions, modelOptionSupport } from '../chats/model-selection.js';
+import { assertSupportedModelOptions, inspectAgentModel, modelOptionSupport } from '../chats/model-selection.js';
 import { reasoningEffortToCompletionBody, thinkingToCompletionBody } from '../runner/thinking-to-body.js';
 
 function isLibraryRouterEntry(entry) {
@@ -87,12 +87,14 @@ async function resolveEntryEffort(bound, effort) {
   if (!effort) return {};
   const row = await routerCatalogModel(bound.providerId, bound.id).catch(() => null);
   const probed = (await readCapabilities(bound.providerId).catch(() => null))?.models?.[bound.id];
-  if (probed?.reasoning === false) return { reasoningStatus: 'unsupported' };
+  const nativeMtplx = row?.reasoning?.source === 'mtplx';
+  if (probed?.reasoning === false && !nativeMtplx) return { reasoningStatus: 'unsupported' };
   const raw = Array.isArray(row?.reasoning?.allowed_options) ? row.reasoning.allowed_options : [];
-  const allowed = ensureGlm53ReasoningAllowedOptions(bound.id,
+  const allowed = nativeMtplx ? normalizeReasoningAllowedOptions(raw) : ensureGlm53ReasoningAllowedOptions(bound.id,
     ensureQwen38ReasoningAllowedOptions(bound.id, normalizeReasoningAllowedOptions(raw, bound.id)));
   const level = mapEffortToLevels(effort, getComposerReasoningLevelOptions(allowed)) || (allowed.includes('on') ? 'on' : undefined);
-  return level ? { effort: level, reasoningStatus: 'applied', caps: { reasoning: true, reasoningAllowedOptions: allowed } }
+  return level ? { effort: level, reasoningStatus: 'applied', caps: { reasoning: true, reasoningAllowedOptions: allowed,
+    ...(nativeMtplx ? { reasoningSource: 'mtplx' } : {}) } }
     : { reasoningStatus: 'default' };
 }
 
@@ -109,7 +111,9 @@ async function explicitEntryOptions(entry, options, cache = {}) {
     ? { ...(await findLibraryCachedRow(entry.modelId).catch(() => null) ?? {}), id: entry.modelId }
     : await routerCatalogModel(entry.providerId, entry.modelId).catch(() => null);
   const provider = providers.find((candidate) => candidate.id === entry.providerId) ?? {};
-  const support = modelOptionSupport(row ?? { id: entry.modelId }, capabilities, provider);
+  const support = entry.providerId === MINNOW_LIBRARY_PROVIDER_ID && entry.modelId.startsWith('mtplx:')
+    ? (await inspectAgentModel({ providerId: entry.providerId, modelId: entry.modelId })).support
+    : modelOptionSupport(row ?? { id: entry.modelId }, capabilities, provider);
   const validated = assertSupportedModelOptions(options, support);
   const effort = validated.reasoningEffort ?? (validated.thinkingMode === 'off' && support.reasoningEffort.includes('off') ? 'off' : undefined);
   return { effort, caps: support.sendCapabilities, provider, options: validated, reasoningStatus: effort !== undefined ? 'applied' : validated.thinkingMode === 'off' ? 'off' : 'default' };
@@ -296,13 +300,14 @@ export async function runRouterGeneration(state) {
       if (requested?.options.fastMode === true) childBody.minnow_cli_fast_mode = true;
       if ((decision && decision.source !== 'override') || locksEffort) delete childBody.reasoning_effort;
       if (effort !== undefined) childBody.reasoning_effort = effort;
-      if (requested && explicitOptions && (locksEffort || explicitOptions.thinkingMode === 'on' || explicitOptions.thinkingBudgetTokens != null)) {
+      if ((requested && explicitOptions && (locksEffort || explicitOptions.thinkingMode === 'on' || explicitOptions.thinkingBudgetTokens != null))
+          || (effort && effortCaps?.reasoningSource === 'mtplx')) {
         // Rebuild the semantic patch for the selected provider, rather than
         // keeping a contradictory synthetic-pool reasoning/thinking object.
         for (const key of ['thinking', 'reasoning', 'reasoning_effort', 'enable_thinking', 'thinking_budget_tokens']) delete childBody[key];
-        const apiKind = requested.provider.apiKind ?? 'openai-v1';
+        const apiKind = requested?.provider.apiKind ?? 'openai-v1';
         const patch = effort !== undefined
-          ? reasoningEffortToCompletionBody(effort, apiKind, requested.caps, explicitOptions.thinkingBudgetTokens, bound.id)
+          ? reasoningEffortToCompletionBody(effort, apiKind, requested?.caps ?? effortCaps, explicitOptions?.thinkingBudgetTokens, bound.id)
           : thinkingToCompletionBody(requested.options.thinkingMode ?? 'on', apiKind, requested.caps, explicitOptions.thinkingBudgetTokens, bound.id);
         Object.assign(childBody, patch.body);
       }

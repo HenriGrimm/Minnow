@@ -65,6 +65,7 @@ import {
  * @typedef {object} SendReasoningCapabilities
  * @property {boolean} [reasoning]
  * @property {string[]} [reasoningAllowedOptions]
+ * @property {'mtplx'} [reasoningSource]
  */
 
 const EVICT_MS_EPHEMERAL = 30_000;
@@ -367,7 +368,7 @@ function scheduleEviction(state) {
  */
 function sendReasoningCapabilities(caps) {
   if (!caps || typeof caps !== 'object') return null;
-  const raw = /** @type {{ reasoning?: unknown, reasoningAllowedOptions?: unknown }} */ (caps);
+  const raw = /** @type {{ reasoning?: unknown, reasoningAllowedOptions?: unknown, reasoningSource?: unknown }} */ (caps);
   const allowed = Array.isArray(raw.reasoningAllowedOptions)
     ? raw.reasoningAllowedOptions.filter((option) => typeof option === 'string')
     : [];
@@ -375,6 +376,7 @@ function sendReasoningCapabilities(caps) {
   return {
     ...(typeof raw.reasoning === 'boolean' ? { reasoning: raw.reasoning } : {}),
     ...(allowed.length > 0 ? { reasoningAllowedOptions: allowed } : {}),
+    ...(raw.reasoningSource === 'mtplx' ? { reasoningSource: 'mtplx' } : {}),
   };
 }
 

@@ -89,6 +89,7 @@ function resolveDisplayEffort(levels: ReasoningEffortOption[]): ReasoningEffortO
     { reasoningEffort: board.reasoningEffort ?? inherit.reasoningEffort },
     caps,
     resolved.mode,
+    boardReasoningSource.resolveBinding().modelId,
   );
   if (effort && levels.includes(effort)) return effort;
   return levels.includes('medium') ? 'medium' : levels[0];

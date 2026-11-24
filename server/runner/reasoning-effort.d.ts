@@ -89,4 +89,6 @@ export declare function ensureDeepSeekV4ReasoningAllowedOptions(modelId: string 
  * Merge chat override, inherited thinking mode, catalog default, and fallbacks into one effort.
  * Resolution order: chat override → inherited on → catalog default → inherited off → first allowed.
  */
-export declare function resolveEffectiveReasoningEffort(chat: Pick<Chat, 'reasoningEffort'>, caps: ModelCapabilities | null | undefined, inheritedResolved: ThinkingResolvedMode): ReasoningEffortOption | undefined;
+export declare function resolveEffectiveReasoningEffort(chat: Pick<Chat, 'reasoningEffort'>, caps: ModelCapabilities | null | undefined, inheritedResolved: ThinkingResolvedMode, modelId?: string | null): ReasoningEffortOption | undefined;
+/** Existing Qwen 3.8 High selections already used xhigh on the wire. */
+export declare function legacyMtplxReasoningEffort(effort: ReasoningEffortOption | undefined, caps: ModelCapabilities | null | undefined, modelId?: string | null): ReasoningEffortOption | undefined;

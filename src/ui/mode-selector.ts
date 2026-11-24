@@ -1,7 +1,6 @@
 import { isActiveChatStreaming, isChatStreaming } from '../chat/streaming-state';
 import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
 import { isComposerRecoveryBlocked } from './composer-send';
-import { getDefaultWorkAgentForMode } from '../agents/work-agent-registry';
 import { syncWorkAgentDevFromActiveChat } from './work-agent-dev';
 import { listComposerModes, listModes } from '../chat/modes/registry';
 import { normalizeModeId, type ModeId } from '../chat/modes/types';
@@ -331,10 +330,6 @@ export function setChatMode(modeId: ModeId, chat = getActiveChat(), allowDuringT
   }
 
   chat.modeId = normalized;
-  if (chat.workAgentAuto !== false) {
-    const agent = getDefaultWorkAgentForMode(normalized);
-    chat.workAgentId = agent?.id ?? null;
-  }
   touchChat(chat);
   scheduleSaveSessions();
   if (chat.id === getActiveChat().id) {

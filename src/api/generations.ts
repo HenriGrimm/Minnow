@@ -157,6 +157,7 @@ export async function createGeneration(
             modelCapabilities: {
               reasoning: options.modelCapabilities.reasoning,
               reasoningAllowedOptions: options.modelCapabilities.reasoningAllowedOptions,
+              reasoningSource: options.modelCapabilities.reasoningSource,
             },
           }
         : {}),

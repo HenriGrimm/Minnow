@@ -1,7 +1,7 @@
 import { diagnoseMtplxFailure } from './mtplx-memory.js';
 import { PROVIDER_ID_BY_ENGINE, LOCAL_SERVE_PROVIDER_IDS } from '../../src/models/engine-ids.mjs';
-import { startMtplxServe, probeMtplxHealth, mtplxAuthHeaders, mtplxHealthMatchesModel, mtplxLastUsedAt } from './mtplx-serve.js';
-import { recordMtplxHealthDescriptor } from './mtplx-descriptor.js';
+import { startMtplxServe, probeMtplxHealth, mtplxAuthHeaders, mtplxHealthMatchesModel, mtplxLastUsedAt, observedMtplxHost } from './mtplx-serve.js';
+import { descriptorFromHealth } from './mtplx-descriptor.js';
 let mtplxStartQueue = Promise.resolve();
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
@@ -365,8 +365,10 @@ async function reconcileInterruptedServes() {
     if (live) {
       if (row.runtime === 'mtplx') {
         try {
-          row.mtplxDescriptor = await recordMtplxHealthDescriptor(row.modelPath, live);
+          row.mtplxDescriptor = descriptorFromHealth(live, row.modelPath);
+          if (row.ownership === 'external') row.mtplxHost = observedMtplxHost(live);
           row.mtplxSettings = { ...row.mtplxSettings, profile: row.mtplxDescriptor.recommendedProfile,
+            ...(['auto', 'on', 'off'].includes(live.reasoning) ? { reasoning: live.reasoning } : {}),
             ...(Number.isFinite(live.depth) ? { depth: live.depth } : {}),
             ...(Number.isFinite(live.context_window) ? { context_window: live.context_window } : {}) };
           changed = true;
@@ -593,6 +595,8 @@ function publicServe(row) {
     llamaSettings: row.llamaSettings ?? null,
     mlxSettings: row.mlxSettings ?? null,
     ownership: row.ownership ?? 'minnow',
+    ...(row.mtplxHost ? { mtplxHost: row.mtplxHost } : {}),
+    ...(row.mtplxVersion ? { mtplxVersion: row.mtplxVersion } : {}),
     mtplxSettings: row.mtplxSettings ?? null,
     mtplxDescriptor: row.mtplxDescriptor ?? null,
     libraryId: row.libraryId ?? null,

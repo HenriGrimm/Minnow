@@ -31,7 +31,7 @@ import {
   type LlamaGpuDevice,
 } from '../../models/llama-devices.mjs';
 import { mlxLoadedWithRows } from '../../models/mlx-loaded-with';
-import { mtplxLoadedWithRows } from '../../models/mtplx-loaded-with';
+import { mtplxHostLabel, mtplxLoadedWithRows } from '../../models/mtplx-loaded-with';
 import { applyModelSamplerPreset, recommendedSamplerFamily } from '../../models/sampler-presets';
 import type { SamplerPreset } from '../../agents/sampler-types';
 import { buildSamplerFieldInputs } from '../settings-sampler-fields';
@@ -1358,15 +1358,17 @@ function appendMtplxLoadedWithBlock(body: HTMLElement, serve: ServeRecord): void
     el('h3', 'models-block__label', 'Loaded with'),
   );
   const list = el('dl', 'models-info-list');
+  list.appendChild(infoRow('Server owner', mtplxHostLabel(serve)));
+  if (serve.mtplxVersion) list.appendChild(infoRow('Runtime version', serve.mtplxVersion));
   for (const row of mtplxLoadedWithRows(serve.mtplxSettings)) list.appendChild(infoRow(row.label, row.value));
-  block.appendChild(list.childElementCount ? list : el('p', 'models-muted', 'No launch overrides were recorded for this session.'));
+  block.appendChild(list);
   body.append(block);
 }
 
 function appendRuntimeSnapshot(body: HTMLElement, serve: ServeRecord, model: LibraryModel | null): void {
   const details = inspectorDisclosure(`${serve.id}:runtime`, 'Runtime snapshot');
   details.appendChild(el('p', 'models-details__help', serve.ownership === 'external'
-    ? 'External daemon. Eject disconnects Minnow and leaves it running.'
+    ? 'Eject disconnects Minnow and leaves the server running.'
     : 'Values used for this session. Load settings apply the next time you load the model.'));
   if (serve.runtime === 'mtplx') {
     appendMtplxLoadedWithBlock(details, serve);

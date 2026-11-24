@@ -29,6 +29,7 @@ import {
 import type { ServeActivity } from '../../models/api-client';
 import { serveActivityChipLabels } from '../../models/serve-activity-chips';
 import { activityForLoadedServe } from '../../models/mlx-serve-activity';
+import { mtplxHostLabel } from '../../models/mtplx-loaded-with';
 import {
   getInFlightPromptOverlay,
   subscribeInFlightPromptOverlay,
@@ -542,7 +543,8 @@ function loadedFacts(serve: ServeRecord, activity: ServeActivity | undefined): H
     chip(`up ${formatElapsed(serve.startedAt)}`),
   );
   if (serve.runtime === 'mtplx') {
-    meta.append(chip('Powered by MTPLX'), chip(serve.ownership === 'external' ? 'External daemon' : 'Minnow managed'));
+    meta.append(chip('Powered by MTPLX'), chip(mtplxHostLabel(serve)));
+    if (serve.mtplxVersion) meta.append(chip(serve.mtplxVersion));
     if (serve.mtplxSettings?.context_window) meta.append(chip('ctx ' + serve.mtplxSettings.context_window));
     const metrics = activity?.mtplx?.latest;
     if (metrics?.decode_tok_s != null) meta.append(chip(metrics.decode_tok_s.toFixed(1) + ' tok/s'));
@@ -744,6 +746,7 @@ function paintRuntimeSnapshot(host: HTMLElement, serve: ServeRecord | null): voi
   }
   const pairs: Array<[string, unknown]> = [
     ['Runtime', serve.runtime], ['Model', serve.modelLabel], ['Port', serve.port],
+    ['Server owner', serve.runtime === 'mtplx' ? mtplxHostLabel(serve) : undefined], ['Runtime version', serve.mtplxVersion],
     ['Context', serve.llamaSettings?.ctx ?? serve.mlxSettings?.contextLength ?? serve.mtplxSettings?.context_window],
     ['Parallel slots', serve.llamaSettings?.parallel], ['GPU layers', serve.llamaSettings?.n_gpu_layers],
     ['Cache type', serve.llamaSettings?.cache_type], ['Flash attention', serve.llamaSettings?.flash_attn],
@@ -825,6 +828,8 @@ export function render(): void {
       status: serve.status,
       runtime: serve.runtime,
       ownership: serve.ownership,
+      mtplxHost: serve.mtplxHost,
+      mtplxVersion: serve.mtplxVersion,
       modelLabel: serve.modelLabel,
       modelPath: serve.modelPath,
       port: serve.port,

@@ -29,6 +29,7 @@ export interface ModelOptionSupport {
   readonly sendCapabilities: {
     readonly reasoning: boolean;
     readonly reasoningAllowedOptions: readonly string[];
+    readonly reasoningSource?: 'mtplx';
     readonly reasoningDefault?: string;
   };
 }

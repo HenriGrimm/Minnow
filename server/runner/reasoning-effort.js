@@ -168,15 +168,22 @@ function ensureGlm53ReasoningAllowedOptions(modelId, allowed) {
 function ensureDeepSeekV4ReasoningAllowedOptions(modelId, allowed) {
   return allowed;
 }
-function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved) {
+function legacyMtplxReasoningEffort(effort, caps, modelId) {
+  const allowed = caps?.reasoningAllowedOptions ?? [];
+  return caps?.reasoningSource === "mtplx" && effort === "high" && isQwen38ModelId(modelId) &&
+    !allowed.includes("high") && allowed.includes("xhigh") ? "xhigh" : effort;
+}
+function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved, modelId) {
   const allowed = caps?.reasoningAllowedOptions ?? [];
   if (allowed.length === 0) return void 0;
-  if (chat.reasoningEffort === "off" && !modelUsesAlwaysOnReasoning(caps)) {
+  const effort = legacyMtplxReasoningEffort(chat.reasoningEffort, caps, modelId);
+  if (effort === "off" && !modelUsesAlwaysOnReasoning(caps)) {
     return "off";
   }
-  if (chat.reasoningEffort && allowed.includes(chat.reasoningEffort)) {
-    return chat.reasoningEffort;
+  if (effort && allowed.includes(effort)) {
+    return effort;
   }
+  if (caps?.reasoningSource === "mtplx" && inheritedResolved === "off" && allowed.includes("off")) return "off";
   if (inheritedResolved === "on") {
     const catalogDefault2 = caps?.reasoningDefault;
     if (catalogDefault2 && catalogDefault2 !== "off" && allowed.includes(catalogDefault2)) {
@@ -208,6 +215,7 @@ export {
   getComposerReasoningBinaryOptions,
   getComposerReasoningLevelOptions,
   inferReasoningOptionsFromModelId,
+  legacyMtplxReasoningEffort,
   isComposerReasoningLevel,
   isGlm53ModelId,
   isDeepSeekV4ModelId,

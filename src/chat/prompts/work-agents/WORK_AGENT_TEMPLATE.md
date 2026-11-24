@@ -19,7 +19,7 @@ version: "1"
 description: One-line purpose.
 providerId: null          # or openai-compatible provider id from ~/.minnow/providers
 modelId: null             # or model id on that provider
-defaultForModes:          # optional — auto when workAgentAuto is on
+defaultForModes:          # optional legacy pack metadata
   - build
 allowedTools:             # optional — null = all mode-allowed tools
   - read_file
