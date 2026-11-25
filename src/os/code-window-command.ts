@@ -50,19 +50,8 @@ async function applyCommand(command: CodeWindowCommand): Promise<void> {
     );
   } else if (command.kind === 'file' && command.path) {
     const { openFileInViewer } = await import('../ui/file-viewer');
-    await openFileInViewer(command.path);
-  } else if (command.kind === 'board' && command.issueId) {
-    const store = await import('../state/issues-store');
-    await store.refreshIssuesFromStorage();
-    const { runIssueSendToBoard } = await import('../chat/issues/pipeline');
-    const result = await runIssueSendToBoard(command.issueId);
-    if (!result.ok) throw new Error(result.error || 'Could not open board');
+    await openFileInViewer(command.path, { workspaceRoot: command.checkoutPath ?? command.workspacePath });
   } else if (command.chatId) {
-    if (command.boardGroupId) {
-      const { openBoardGroup } = await import('../state/chat-groups');
-      openBoardGroup(command.boardGroupId);
-      return;
-    }
     const { switchToCodeChat } = await import('./chat-launch');
     await switchToCodeChat(command.chatId);
     if (command.runId) {

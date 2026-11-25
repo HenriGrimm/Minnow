@@ -1,3 +1,5 @@
+import { readFactoryBranch } from './factory-checkpoint.js';
+import { armFactoryRun, factoryDependenciesPending, isCurrentFactoryCommand } from './factory-continuation.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { createChatRepository, hashChatPayload } from './repository.js';
 import { assertCaller, assertCallerCanTarget } from './caller.js';
@@ -274,8 +276,14 @@ export function createChatCommandService({
       if (caller.actor === 'human' && target.chat.chatCommandVersion !== 1) {
         failure('capability_unavailable', 'Ordinary server execution requires an idle, durably reconciled parity-ready promotion before command admission. Continue using this conversation\'s existing execution host until routing is available.');
       }
+      const explicitFactory = caller.actor === 'human' && input.intent?.skill?.id === 'factory' && input.intent.skill.source === 'slash';
+      if (explicitFactory && target.chat.activeGoal?.factoryRunId) {
+        failure('ownership_conflict', target.chat.activeGoal.achieved
+          ? 'This factory has finished. Open a new Code chat to start a separate run.'
+          : 'This thread already has a factory run. Open Factory to see its checkpoint or resume it.');
+      }
       const workspacePreparation = mode !== 'steer' && typeof captureWorkspacePreparation === 'function'
-        ? await captureWorkspacePreparation(target) : null;
+        ? await captureWorkspacePreparation(target, { factory: explicitFactory && !target.chat.worktreeRoot }) : null;
       if (!workspacePreparation && (target.chat.worktreeSetupRequired === true || target.chat.worktreeEnabled === true && !target.chat.worktreeRoot)) {
         failure('capability_unavailable', 'Finish worktree setup or explicitly choose Local before sending. Server admission cannot run in the unprepared checkout.');
       }
@@ -293,6 +301,8 @@ export function createChatCommandService({
       const nativeExecution = mode !== 'steer' && typeof captureNativeSelection === 'function'
         ? await captureNativeSelection(modelSelection) : undefined;
       const turnIntent = input.intent !== undefined ? await captureTurnIntent(input.intent, target.chat, input.message) : null;
+      const factoryBranch = turnIntent?.skillGoal && input.intent?.goalDriven && input.intent.skill?.id === 'factory'
+        && input.intent.skill.source === 'slash' && !workspacePreparation ? await readFactoryBranch(target.scope.canonicalKey) : null;
       const captureTarget = turnIntent?.uiDesigner?.active
         ? { ...target, chat: { ...target.chat, workAgentAuto: false, workAgentId: turnIntent.uiDesigner.agentId } } : target;
       const capturedSettings = (caller.actor === 'human' && mode !== 'steer' || !target.profile) && typeof captureProfile === 'function'
@@ -347,8 +357,10 @@ export function createChatCommandService({
           ...(target.profile ? { profile: target.profile } : {}),
           ...(capturedSettings ? { turnSettings: capturedSettings.snapshot } : {}),
           ...(turnIntent ? { turnIntent } : {}),
+          ...(factoryBranch && !['main', 'master'].includes(factoryBranch) ? { factoryBranch } : {}),
           ...(firstTitleSeed ? { titleUpdate: { name: firstTitleSeed.slice(0, 256), expectedName: target.chat.name } } : {}),
         } });
+        armFactoryRun(repository, admitted, turnIntent?.skillGoal);
         if (admitted.captured.titleUpdate && input.intent?.deferTitleUntilTurnEnd !== true &&
             repository.getChat(input.chatId).name === admitted.captured.titleUpdate.expectedName) {
           repository.configureChat(input.chatId, { name: admitted.captured.titleUpdate.name });
@@ -1008,10 +1020,18 @@ export function createChatCommandService({
       record.captured?.checkoutIdentity && record.captured.checkoutIdentity !== target.checkoutIdentity) {
       const held = repository.atomic(() => {
         const fresh = repository.getCommand(record.commandId);
-        return fresh && PENDING.includes(fresh.state) ? repository.updateCommand(record.commandId, { state: 'waiting_for_host', held: true,
+        return fresh && PENDING.includes(fresh.state) ? repository.updateCommand(record.commandId, { state: 'waiting_for_host', held: !record.captured?.factoryRunId,
           error: { code: 'workspace_denied', message: 'The original conversation checkout changed. Restore its registered checkout before resuming this input.', retryable: true } }) : null;
       });
       if (held) announce(held);
+      return { deferred: true, reason: 'workspace_changed' };
+    }
+    if (record.captured?.factoryBranch && await readFactoryBranch(target.scope.canonicalKey) !== record.captured.factoryBranch) {
+      const fresh = repository.getCommand(record.commandId);
+      if (fresh.revision === record.revision && PENDING.includes(fresh.state) && fresh.error?.code !== 'workspace_denied') {
+        announce(repository.updateCommand(record.commandId, { state: 'waiting_for_host',
+          error: { code: 'workspace_denied', message: 'Restore the factory branch ' + record.captured.factoryBranch + ' to continue.', retryable: true } }));
+      }
       return { deferred: true, reason: 'workspace_changed' };
     }
     const chatId = record.chatId;
@@ -1046,6 +1066,11 @@ export function createChatCommandService({
       if (active.has(chatId) || externallyOwned(chatId) || repository.getLease(chatId)?.state === 'active') { accepted = deferred('owned'); return; }
       if (repository.getLatestExecution(chatId)?.status === 'recovery_required') { accepted = deferred('recovering'); return; }
       if (hosts.get(host.id) !== host) { accepted = deferred('waiting_for_host'); return; }
+      if (record.captured.factoryRunId && factoryDependenciesPending(repository, chatId,
+        id => externallyOwned(id) || repository.getLease(id)?.state === 'active')) {
+        accepted = deferred('waiting_for_agents'); return;
+      }
+      if (!isCurrentFactoryCommand(repository, record)) { accepted = deferred('command_changed'); return; }
       if (!fresh || fresh.revision !== record.revision || firstRunnable(chatId)?.commandId !== record.commandId) { accepted = deferred('command_changed'); return; }
       if (disposedDelivery(fresh)) {
         repository.updateCommand(fresh.commandId, { state: 'cancelled', result: { disposition: 'subscription_disposed' } });
@@ -1149,7 +1174,16 @@ export function createChatCommandService({
       if (!pending) return;
       let target;
       try { target = await context.resolveTarget(chatId); }
-      catch (error) { announce(repository.updateCommand(pending.commandId, { state: 'failed', error: publicError(error) })); continue; }
+      catch (error) {
+        if (pending.captured.factoryRunId && error.code === 'workspace_denied') {
+          if (pending.error?.code !== error.code) announce(repository.updateCommand(pending.commandId, { state: 'waiting_for_host', error: publicError(error) }));
+          return;
+        }
+        announce(repository.updateCommand(pending.commandId, { state: 'failed', error: publicError(error) })); continue;
+      }
+      if (!isCurrentFactoryCommand(repository, pending)) {
+        announce(repository.updateCommand(pending.commandId, { state: 'cancelled', result: { disposition: 'factory_stopped' } })); continue;
+      }
       if (disposedDelivery(pending)) {
         announce(repository.updateCommand(pending.commandId, { state: 'cancelled', result: { disposition: 'subscription_disposed' } })); continue;
       }

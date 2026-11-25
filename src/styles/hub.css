@@ -239,19 +239,9 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   width: 100%;
 }
 
-.input-bar--hub .composer-controls__trail .view-mode-toggle-btn--to-board {
-  width: 32px;
-  height: 32px;
-}
-
 .input-bar--hub #msgInput {
   width: 100%;
   box-sizing: border-box;
-}
-
-.input-bar--hub.input-bar--orchestrate-plan .input-wrap #orchestratePlanSelect {
-  min-height: 52px;
-  font-size: 16px;
 }
 
 .hub-strip {

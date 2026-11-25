@@ -177,10 +177,11 @@ export function isGoalTurnBusy(chat: Chat): boolean {
 }
 
 async function defaultContinueGoalTurn(chat: Chat, directive: string): Promise<void> {
-  if (chat.chatCommandVersion === 1) {
-    // Server-run chats have no renderer turn to resume; continue via a managed send.
+  const requiredSkillId = getActiveGoal(chat)?.skillId;
+  if (requiredSkillId || chat.chatCommandVersion === 1) {
+    // A goal-owned skill needs its instructions on each new turn.
     const { sendProgrammaticChatText } = await import('../messaging');
-    await sendProgrammaticChatText(chat, directive, { goalDriven: true, parseSlash: false, clearComposerOnSend: false });
+    await sendProgrammaticChatText(chat, directive, { requiredSkillId, goalDriven: true, parseSlash: false, clearComposerOnSend: false });
     return;
   }
   await resumeParentChatWithMessage(chat, directive, { goalDriven: true });
@@ -199,7 +200,7 @@ function settleGoalUi(): void {
 }
 
 export async function maybeContinueGoalAfterTurn(chat: Chat): Promise<void> {
-  if (!isGoalLoopActive(chat)) return;
+  if (chat.activeGoal?.factoryRunId || !isGoalLoopActive(chat)) return;
   // One evaluation at a time, and never while the agent is still working.
   if (isGoalEvaluating(chat.id) || isGoalTurnBusy(chat)) return;
 
@@ -288,7 +289,7 @@ export function noteManagedGoalExecution(
   continueGoal: (chat: Chat) => Promise<void> = maybeContinueGoalAfterTurn,
 ): void {
   if (chat.chatCommandVersion !== 1 || !execution?.executionId) return;
-  if (!isGoalLoopActive(chat) || MANAGED_STOPPED_STATUSES.has(execution.status)) {
+  if (chat.activeGoal?.factoryRunId || !isGoalLoopActive(chat) || MANAGED_STOPPED_STATUSES.has(execution.status)) {
     managedGoalExecutions.delete(chat.id);
     return;
   }

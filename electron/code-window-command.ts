@@ -22,6 +22,8 @@ export interface CodeWindowCommand {
   modeId?: string;
   seed?: string;
   path?: string;
+  /** File checkout inside the owning project's scope. Window routing uses workspacePath. */
+  checkoutPath?: string;
   chatId?: string;
   boardGroupId?: string;
   runId?: string;

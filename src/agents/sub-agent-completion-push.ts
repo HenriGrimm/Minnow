@@ -1,4 +1,3 @@
-import { normalizeModeId } from '../chat/modes/types';
 import { buildSubAgentParentResumeMessage } from './sub-agent-resume-message';
 import { isChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { reportBackgroundError } from '../boot/report-background-error';
@@ -95,9 +94,6 @@ function adapterParentStatus(chatId: string): ParentStatus {
   const chat = findChatById(chatId);
   if (!chat) return { streaming: false, skip: 'missing_chat' };
   if (hasManagedParent(chatId)) return { streaming: true, skip: null };
-  if (normalizeModeId(chat.modeId) === 'orchestrate') {
-    return { streaming: false, skip: 'orchestrate' };
-  }
   return { streaming: isChatTurnInProgress(chatId), skip: null };
 }
 

@@ -24,7 +24,9 @@ test('a restored Source Control route mounts when the shell syncs it twice at bo
     if (url.pathname === '/api/workspace/repos') repoScopes.push(url.searchParams.get('checkout'));
     return Response.json({ ok: true, repos: [] });
   } });
-  seedMinimalSession('chat-1');
+  const factory = seedMinimalSession('factory');
+  factory.workspacePath = workspacePath;
+  factory.worktreeRoot = '/checkouts/factory';
   win.location.hash = '#/app/source-control';
   document.body.innerHTML = `
     <div id="osStage"><div id="osAppsLayer"></div></div>
@@ -43,12 +45,50 @@ test('a restored Source Control route mounts when the shell syncs it twice at bo
     assert.ok(document.querySelector('#sourceControlView.is-active #sourceControlCenterRoot'));
     assert.equal(window.location.hash, '#/app/source-control');
     assert.deepEqual(repoScopes, [workspacePath]);
+    assert.match(document.querySelector<HTMLButtonElement>('.scc-head__worktree')!.title, /Browsing the Local checkout/);
+    assert.equal(document.querySelector<HTMLButtonElement>('.scc-head__follow')!.hidden, false);
   } finally {
     resetOsRouterForTests();
     resetAppHostForTests();
     resetInstancesForTests();
     resetSourceControlCenterForTests();
     resetWorkspaceStateForTests();
+    await teardownHappyDomAsync(win);
+  }
+});
+
+test('Factory setup leaves Source Control on Local until the user opens the chat checkout', async () => {
+  const win = new Window();
+  installHappyDomGlobals(win, { fetch: async () => Response.json({ ok: true, repos: [] }) });
+  const { setWorkspaceFromServer, resetWorkspaceStateForTests } = await import('../../src/state/workspace.ts');
+  const { launchInstance, resetInstancesForTests } = await import('../../src/os/instances.ts');
+  const { notifyManagedChatMetadata } = await import('../../src/chat/managed-chat-view.ts');
+  await import('../../src/ui/chat-worktree-setup.ts');
+  const scc = await import('../../src/ui/source-control-center.ts');
+  setWorkspaceFromServer({ path: '/repo', label: 'repo', isDefault: false });
+  const chat = seedMinimalSession('factory');
+  document.body.innerHTML = '<main id="sourceControlView"></main>';
+  try {
+    launchInstance('source-control');
+    await scc.mountSourceControlCenter();
+    const checkout = document.querySelector<HTMLButtonElement>('.scc-head__worktree')!;
+    const follow = document.querySelector<HTMLButtonElement>('.scc-head__follow')!;
+    assert.equal(follow.hidden, true);
+    chat.worktreeRoot = '/checkouts/factory';
+    chat.workspacePreparation = { status: 'ready' } as typeof chat.workspacePreparation;
+    notifyManagedChatMetadata(chat.id);
+    for (let i = 0; follow.hidden && i < 100; i++) await setImmediate();
+    assert.equal(follow.hidden, false);
+    assert.match(checkout.title, /Browsing the Local checkout/);
+    follow.click();
+    for (let i = 0; !follow.hidden && i < 100; i++) await setImmediate();
+    assert.equal(follow.hidden, true);
+    await scc.mountSourceControlCenter();
+    assert.match(checkout.title, /Browsing \/checkouts\/factory/);
+  } finally {
+    scc.resetSourceControlCenterForTests();
+    resetWorkspaceStateForTests();
+    resetInstancesForTests();
     await teardownHappyDomAsync(win);
   }
 });

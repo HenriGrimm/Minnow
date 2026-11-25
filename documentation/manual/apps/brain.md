@@ -9,7 +9,7 @@ Open **Brain** from the command palette. **Memories** shows what agents can reca
 - Nothing from memory is added to your messages. Agents call `memory_search` when a task calls for it — you mention earlier work, a decision has history, an error looks familiar, or they are about to ask your preference — and read a match with `memory_read` before relying on it. Your current message, the code and checked-in docs take precedence over memory.
 - Agents save a memory with `memory_save` only when it will matter later and can't be learned quickly from the code, docs or history: a decision and its reason, a constraint, your preference or correction, or a verified gotcha. They update an existing memory instead of adding a second one, and remove memories that are wrong with `memory_forget`. Saving nothing is the usual outcome of a task.
 - Each memory has a kind (decision, constraint, gotcha, preference or reference), a short title and a body of up to 1,200 characters. There is no limit on how many memories a project or your preferences can hold. Saves that look like credentials are refused.
-- Sub-agents and board tasks can search and read memory but not change it; they report anything worth keeping to the agent that started them.
+- Sub-agents can search and read memory but not change it; they report anything worth keeping to the agent that started them.
 
 ## Explore memories in the graph
 

@@ -1,11 +1,10 @@
 import { pickIssueLaunchModel, issueLaunchModelLabel } from './issues-chat-run-target';
 /**
- * Peek Chats: linked sessions and boards, New / Existing, unlink without delete.
+ * Peek Chats: linked sessions, New / Existing, unlink without delete.
  */
 
 import { isChatStreaming, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { listIssuePeekChatRows, type IssuePeekChatRow } from '../issues/issue-peek-chats';
-import { getBoardGroupForChat, openBoardGroup } from '../state/chat-groups';
 import { appendIssueLinks, findIssueById, updateIssue } from '../state/issues-store';
 import {
   findChatById,
@@ -34,19 +33,10 @@ function refreshOpenPeek(): void {
   });
 }
 
-function boardForChatSafe(chat: Chat) {
-  try {
-    return getBoardGroupForChat(chat);
-  } catch {
-    return undefined;
-  }
-}
-
 /** Live lookup against the session store (undefined when sessions are not loaded). */
 export function issuePeekChatLookup() {
   return {
     findChat: findChatById,
-    boardForChat: boardForChatSafe,
     isStreaming: isChatStreaming,
   };
 }
@@ -54,6 +44,7 @@ export function issuePeekChatLookup() {
 /** Workspace chats not already on this issue. */
 export function eligibleIssuePeekChats(issue: IssueCard): Chat[] {
   const linked = new Set((issue.chatIds ?? []).map((id) => id.trim()).filter(Boolean));
+  if (issue.boardChatId?.trim()) linked.add(issue.boardChatId.trim());
   if (!sessionState) return [];
   try {
     return getChatsForWorkspace(issue.workspacePath).filter((chat) => !linked.has(chat.id));
@@ -104,18 +95,8 @@ async function startNewIssueChat(issueId: string): Promise<void> {
 async function openPeekChatRow(issueId: string, row: IssuePeekChatRow): Promise<void> {
   const chat = findChatById(row.chatId);
   const { routeCodeWindowCommand } = await import('../os/code-window-command');
-  if (await routeCodeWindowCommand({ kind: 'chat', chatId: row.chatId, boardGroupId: row.boardGroupId, workspacePath: chat?.workspacePath || findIssueById(issueId)?.workspacePath || '' })) return;
+  if (await routeCodeWindowCommand({ kind: 'chat', chatId: row.chatId, workspacePath: chat?.workspacePath || findIssueById(issueId)?.workspacePath || '' })) return;
   if (!row.available) return;
-  if (row.kind === 'board' && row.boardGroupId) {
-    try {
-      const { launchApp } = await import('../os/router');
-      launchApp('code', { codeSection: 'chat' });
-      openBoardGroup(row.boardGroupId);
-      return;
-    } catch {
-      // Fall through to the session when the board folder is gone.
-    }
-  }
   const { launchCodeWithChat } = await import('../os/chat-launch');
   await launchCodeWithChat(row.chatId);
 }
@@ -123,24 +104,12 @@ async function openPeekChatRow(issueId: string, row: IssuePeekChatRow): Promise<
 function buildChatRow(issueId: string, row: IssuePeekChatRow): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'issues-detail__chat';
-  if (row.kind === 'board') li.classList.add('issues-detail__chat--board');
 
   const openBtn = document.createElement('button');
   openBtn.type = 'button';
   openBtn.className = 'issues-detail__chat-open';
   openBtn.disabled = !row.available && !getAppWindowId();
-  openBtn.title = row.available
-    ? row.kind === 'board'
-      ? `Open board ${row.title}`
-      : `Open chat ${row.title}`
-    : row.title;
-
-  if (row.kind === 'board') {
-    const kindEl = document.createElement('span');
-    kindEl.className = 'issues-detail__chat-kind';
-    kindEl.textContent = 'Board';
-    openBtn.appendChild(kindEl);
-  }
+  openBtn.title = row.available ? `Open chat ${row.title}` : row.title;
 
   const titleEl = document.createElement('span');
   titleEl.className = 'issues-detail__chat-title';
@@ -150,11 +119,7 @@ function buildChatRow(issueId: string, row: IssuePeekChatRow): HTMLLIElement {
   if (row.available) {
     const statusEl = document.createElement('span');
     statusEl.className = 'issues-detail__chat-status';
-    if (row.kind === 'chat') paintLinkedChatActivity(statusEl, row.chatId);
-    else {
-      statusEl.textContent = row.running ? 'Running' : 'Done';
-      statusEl.classList.toggle('is-running', row.running);
-    }
+    paintLinkedChatActivity(statusEl, row.chatId);
     openBtn.appendChild(statusEl);
   }
 
@@ -174,8 +139,7 @@ function buildChatRow(issueId: string, row: IssuePeekChatRow): HTMLLIElement {
   const canUnlink = Boolean(row.unlinkChatId || row.unlinkBoardChat);
   if (canUnlink) {
     const name = row.title;
-    const removeLabel =
-      row.kind === 'board' ? `Remove board ${name} from this issue` : `Remove chat ${name} from this issue`;
+    const removeLabel = `Remove chat ${name} from this issue`;
     const removeBtn = createDetailIconButton({
       label: removeLabel,
       icon: 'close',
@@ -235,7 +199,7 @@ export function issueChatsSummary(issue: IssueCard): { total: number; running: n
   };
 }
 
-/** Peek section body: linked chat and board rows. Empty renders nothing. */
+/** Peek section body: linked chats. Empty renders nothing. */
 export function fillIssueChatsSection(issue: IssueCard, body: HTMLElement): void {
   ensurePeekChatStreamBind();
   peekStreamPaintKey = streamingKeyForIssue(issue.id);

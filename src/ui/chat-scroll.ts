@@ -1,7 +1,6 @@
 import { getSharedChatHost } from './shared-chat-host-state';
 import { isChatAppForeground } from './chat-mount';
 import { queryCodeMapChatHost } from './code-map/chat-state';
-import { OB_CHAT_SCROLL_SELECTOR } from './orchestrate-board-chat-state';
 import { getTranscriptScroller, transcriptBottomDistance, type TranscriptScrollAnchor } from './transcript-scroll';
 
 export const CHAT_PIN_THRESHOLD_PX = 80;
@@ -11,14 +10,13 @@ export const CHAT_APP_JUMP_CHIP_ID = 'chatAppJumpLatest';
 let chatAreaEl: HTMLElement | null = null;
 let jumpChipEl: HTMLButtonElement | null = null;
 let chatAppJumpChipEl: HTMLButtonElement | null = null;
-const BOARD_INIT_SPLIT_CHAT_TESTID = 'boardInitSplitChat';
 const DESKTOP_CHAT_TRANSCRIPT_SELECTOR = '.mn-os-chat-transcript';
 
 let frameCachedScrollRoot: HTMLElement | null | undefined;
 let frameCacheHandle = 0;
 export type ChatScrollAnchor = TranscriptScrollAnchor;
 
-/** Drop the per-frame scroll-root cache (chat switch, board/chat chrome). */
+/** Drop the per-frame scroll-root cache (chat switch). */
 export function invalidateChatScrollRootCache(): void {
   frameCachedScrollRoot = undefined;
   if (frameCacheHandle && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frameCacheHandle);
@@ -29,10 +27,6 @@ function resolveChatScrollRoot(): HTMLElement | null {
   if (getSharedChatHost()) return getSharedChatHost()!.transcript;
   const mapChatHost = queryCodeMapChatHost();
   if (mapChatHost) return mapChatHost;
-  const boardChatPane = document.querySelector<HTMLElement>(OB_CHAT_SCROLL_SELECTOR);
-  if (boardChatPane) return boardChatPane;
-  const splitPane = document.querySelector<HTMLElement>(`[data-testid="${BOARD_INIT_SPLIT_CHAT_TESTID}"]`);
-  if (splitPane) return splitPane;
   if (isChatAppForeground()) return document.getElementById('chatAppArea') ?? chatAreaEl;
   return chatAreaEl;
 }
@@ -59,9 +53,7 @@ function updateJumpChipVisibility(): void {
   const root = getChatScrollRoot();
   if (!root) return;
   const chatApp = isChatAppForeground();
-  const board = !getSharedChatHost()
-    && document.getElementById('mainColumn')?.classList.contains('main-column--board-view');
-  const show = !board && !getTranscriptScroller(root).isPinned() && root.scrollHeight > root.clientHeight;
+  const show = !getTranscriptScroller(root).isPinned() && root.scrollHeight > root.clientHeight;
   jumpChipEl?.classList.toggle('hidden', chatApp || !show);
   chatAppJumpChipEl?.classList.toggle('hidden', !chatApp || !show);
 }
@@ -142,19 +134,9 @@ export function bindDesktopChatTranscriptScroll(): void {
   bindScrollTarget(document.querySelector<HTMLElement>(DESKTOP_CHAT_TRANSCRIPT_SELECTOR));
 }
 
-export function bindOrchestrateBoardChatScroll(): void {
-  invalidateChatScrollRootCache();
-  bindScrollTarget(document.querySelector<HTMLElement>(OB_CHAT_SCROLL_SELECTOR));
-}
-
 export function bindCodeMapChatScroll(): void {
   invalidateChatScrollRootCache();
   bindScrollTarget(queryCodeMapChatHost());
-}
-
-export function bindBoardInitSplitChatScroll(): void {
-  invalidateChatScrollRootCache();
-  bindScrollTarget(document.querySelector<HTMLElement>(`[data-testid="${BOARD_INIT_SPLIT_CHAT_TESTID}"]`));
 }
 
 function bindJumpChip(chip: HTMLButtonElement | null): void {
@@ -173,7 +155,6 @@ export function initChatScroll(): void {
   bindDesktopChatTranscriptScroll();
   bindJumpChip(jumpChipEl);
   bindJumpChip(chatAppJumpChipEl);
-  bindBoardInitSplitChatScroll();
   updateJumpChipVisibility();
 }
 

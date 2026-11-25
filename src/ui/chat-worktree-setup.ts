@@ -13,6 +13,7 @@ import { scrollChatIfPinned } from './chat-scroll';
 import { teardownHub } from './hub';
 import { worktreePathsEqual } from '../lib/worktree-list-parse';
 import { reportBackgroundError } from '../boot/report-background-error';
+import { isCodeAppForeground } from './preview-restore-policy';
 
 /** Keep setup visible across chat switches and transcript repaints. */
 export function syncChatWorktreeSetup(chat: Chat, mount: HTMLElement | null): void {
@@ -100,7 +101,9 @@ subscribeManagedChatMetadata(chatId => {
   if (worktreePathsEqual(from, to)) return;
   void Promise.all([import('./git-panel'), import('./source-control-center')]).then(([panel, sourceControl]) => {
     if (sessionState?.activeId !== chatId || !worktreePathsEqual(chat.worktreeRoot || chat.workspacePath, to)) return;
-    panel.syncPanelFromActiveChat({ forceFileTree: true });
-    sourceControl.syncSourceControlChatCheckout(from);
+    if (isCodeAppForeground() || document.documentElement.classList.contains('mn-mobile-app')) {
+      panel.syncPanelFromActiveChat({ forceFileTree: true });
+    }
+    sourceControl.refreshSourceControlChatIndicator();
   }).catch(error => reportBackgroundError('chat-worktree-checkout', error));
 });

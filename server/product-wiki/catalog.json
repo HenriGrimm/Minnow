@@ -10,7 +10,7 @@
         "Find the steps for what you want to do"
       ],
       "section": "Overview",
-      "hash": "e10f9180a2e0f14b27ad773cceccef0b2fc1da060994e56c5ba3ab53bdd9e03a"
+      "hash": "55ff6df7150ba0cbc070faee1b03fec96b49c847cc092ead647d2279af5c6203"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -20,7 +20,7 @@
         "Keep work running or quit"
       ],
       "section": "Get started",
-      "hash": "af9df1fda8c2bfebe5ffce72453422c7b9ae8d8b24601e5bbd659e145253f8ab"
+      "hash": "f4d13ab1d50bdd9b903d166471a75c148ebe232fbc509437ac18a561d97cc697"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -66,12 +66,12 @@
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
       "title": "Tools and permissions",
-      "summary": "Choose how independently the agent can work using the permission control in the composer. This setting applies across chats, boards, and agent tools, including shell commands, browser actions, MCP servers, and plugins. Choose Use it for Manual Review edits, commands, and actions ",
+      "summary": "Choose how independently the agent can work using the permission control in the composer. This setting applies across chats and agent tools, including shell commands, browser actions, MCP servers, and plugins. Choose Use it for Manual Review edits, commands, and actions outside t",
       "headings": [
         "Decide on an approval"
       ],
       "section": "Core concepts",
-      "hash": "22974ad55bc4cafbb28caecd99b74a82021f888385c8118336cc05913b8f957c"
+      "hash": "f54643c67c63072e2373b857fd5ed924e345ade3e9d668d86519257fd4c31e03"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -119,7 +119,18 @@
         "Install or write a skill"
       ],
       "section": "Chat",
-      "hash": "1cc4263524a3755585bbee5fcc58a03042007fa8f9f6a2004eaea278dfe35908"
+      "hash": "b1a62a9a2a2ada186315c71339330a1718d7bec5f862ce4d343de1613fbc4868"
+    },
+    {
+      "path": "documentation/manual/chat/factory.md",
+      "title": "Build a plan unattended with /factory",
+      "summary": "Open a Code chat in your workspace. You can start with an empty folder. If you already have a saved Build plan, choose Run factory on the plan card. You can also enter a plan path or describe what to build directly. Factory initializes Git when needed. In a project with no commit",
+      "headings": [
+        "Follow the run",
+        "Resume or stop"
+      ],
+      "section": "Chat",
+      "hash": "065d35fb56404088dd05df1c4902a80885b9c7bed03a12f7972de6eda98da223"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -131,7 +142,7 @@
         "Open a full app"
       ],
       "section": "Apps",
-      "hash": "916cf5e885dd29a71c928ba6bf0be687e3a60d3e88737dbd54e5efa3139ee22e"
+      "hash": "c38c1362ba651665ad43a08da1f0414b921f608d0b855d0f3c779ff204c9effb"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -150,7 +161,7 @@
         "Code map"
       ],
       "section": "Apps",
-      "hash": "f2b8814dd64b84441c37e968f1b82b0385cfd3d6454b98e8d0c2748eaa5adfc2"
+      "hash": "3bf1ffde0fd4ce39d0eea362aa896e2013cb7d36d7ab1c5ac105f8dafba0455d"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -164,7 +175,7 @@
         "Usage and cost"
       ],
       "section": "Apps",
-      "hash": "7c0829035f407a4c9ab4130d414255db6251f940ea357d936f0833d99ae12b08"
+      "hash": "7387bc964bdeb9269fbb2009974a8827f232301a788f0e3270823b2953736d3a"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -190,7 +201,7 @@
         "Other Brain tools"
       ],
       "section": "Apps",
-      "hash": "77d3ccccd9d96eaeadfc9760a4103cad494e57a1222e45fed107bc9d69408629"
+      "hash": "cd6a8053cc07332d0be24af5332b0fe017f072926357c489798bf1f3d98dbe34"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -198,11 +209,12 @@
       "summary": "Open Automations from the command palette. Jobs run while Minnow is running, including in the tray. Scheduled runs missed while fully quit are skipped. Test a job before scheduling it 1. Select New automation , then Custom . Pick the project folder and the model the job should us",
       "headings": [
         "Test a job before scheduling it",
+        "Let a job start new chats",
         "Use a GitHub preset",
         "Diagnose a job"
       ],
       "section": "Apps",
-      "hash": "7a295ea3f98a10ec1a2fb4f3887b1587702f3f5686fd1bb2d17aa055eef9c4c9"
+      "hash": "67376a937dd15fc098b68101b48c742775a660601f561b924ea72b44076a1620"
     },
     {
       "path": "documentation/manual/apps/settings.md",
@@ -211,28 +223,6 @@
       "headings": [],
       "section": "Apps",
       "hash": "ca950248bf78b61a63f7cf75d11d9dc59c20c3e8e4b983540da1cd77f67ce669"
-    },
-    {
-      "path": "documentation/manual/orchestrate/boards.md",
-      "title": "Run a plan with Orchestrate",
-      "summary": "Use a board when a change can be split into tasks with their own checks and checkout boundaries. Open a Git repository or a workspace folder that contains the repositories the plan needs. Prepare and start the board 1. Make a plan under documentation/plans/ . Describe what each t",
-      "headings": [
-        "Prepare and start the board",
-        "Wave Breakdown",
-        "Wave 1 — Labels",
-        "Watch work and resolve a hold",
-        "Decide whether the result is ready"
-      ],
-      "section": "Orchestrate",
-      "hash": "2274404e31ed13361581f80cae4f6e8fbe8416d828240d3e8524d53e1605a832"
-    },
-    {
-      "path": "documentation/manual/orchestrate/agents.md",
-      "title": "Inspect board worker results",
-      "summary": "Open the task and choose Activity to read attempts. Compare the builder's work with the tester's evidence and the requirements under Spec . What you see What to do Pass Read the evidence and check that it covers the required behavior. If the tested changes move during a rebase, w",
-      "headings": [],
-      "section": "Orchestrate",
-      "hash": "2f33b2d16036fd52de655d9d30085bb6990286cf8ffc9ac85a7324df24e8ccd9"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -316,13 +306,13 @@
     {
       "path": "documentation/manual/reference/backup-and-restore.md",
       "title": "Back up and restore a Minnow profile",
-      "summary": "Open Settings → Data and privacy → Backups . Back up your project directories and Git worktrees separately. Board recovery can carry source checkpoints in a protected backup. Existing worktree folders still need their own copies. Create a backup 1. Select the data to keep, such a",
+      "summary": "Open Settings → Data and privacy → Backups . Back up your project directories and Git worktrees separately. Existing worktree folders need their own copies. Create a backup 1. Select the data to keep, such as chats, Brain, issues, or settings. Downloaded models are optional and c",
       "headings": [
         "Create a backup",
         "Restore on this or another computer"
       ],
       "section": "Reference",
-      "hash": "de64c8ff262da18a4b378d476b9e065dbeab39c0e826f9412c84abed9408de27"
+      "hash": "8cd5732701e89e33bf04d6eb4847012859019278f6e4d80739507510247903dd"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -343,10 +333,10 @@
         "No model, no response, or an incomplete reply",
         "Changes or files are missing",
         "The preview is blank",
-        "A thread, board, or automation is waiting"
+        "A thread or automation is waiting"
       ],
       "section": "Reference",
-      "hash": "d92af5051db8f70044ae08267f2b80ab69a77c888f4774ce4a85a025bf608e6f"
+      "hash": "9ad7a81adefb18132e790bc9781d162e63316f2dcb9bea5965406ce1d9cb370a"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -354,7 +344,7 @@
       "summary": "Term Meaning in the UI Workspace The project folder used for files, Git, and workspace context. Thread A saved conversation inside a workspace. Open the thread card to check which checkout and model it uses. Surface A tab you can open beside or below a thread, such as Files, Term",
       "headings": [],
       "section": "Reference",
-      "hash": "c13ff4cf1d720bc1dc9ddd530b7e2ef277fa5531e15a8bd8bfd5fa83f27248a3"
+      "hash": "76e09a0b9dac10b3fc38bee25241440bba858a4b2a1ceba6e9cc5d563aefd35d"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",
@@ -382,7 +372,7 @@
         "How priorities are chosen"
       ],
       "section": "Roadmap",
-      "hash": "f2db2f93b0fcb8c35637a8abe352d00128e4f217141c0e03bbe3231223247bb7"
+      "hash": "78631c8f4fefc4989df246f3f0ded91caa689e736fce4d32415ce8c9e21fa984"
     },
     {
       "path": "documentation/THIRD_PARTY_NOTICES.md",
@@ -420,7 +410,7 @@
         "Limits"
       ],
       "section": "Core concepts",
-      "hash": "303b3533154f33cde3c33c864b08188ac91613ac62a8357ec47d9f036a14fd88"
+      "hash": "5c6d3a3eab2c75ed7cb138e10b1f52a8b66750c46fd0d9ff23794aa64ff89d2c"
     }
   ]
 }

@@ -30,8 +30,6 @@ import {
   addSidebarInputPendingChatId,
   removeSidebarInputPendingChatId,
 } from './chat-item-dot';
-import { resolveOrchestratePlanScreenQuestionHost } from './orchestrate-plan-screen';
-import { resolveBoardOnboardingQuestionHost } from './orchestrate-board-onboarding-questions';
 import { resolvePromptComposerShell, resolveQuestionHost } from './prompt-host-resolve';
 import {
   acquireUserPromptLock,
@@ -269,16 +267,9 @@ function unparkQuestionModal(state: ActiveQuestionModalState): void {
   if (!state.parked) return;
   if (!isAskQuestionDomVisible(state.chatId)) return;
 
-  const planHost = resolveIssueChatQuestionHost(state.chatId) ?? resolveOrchestratePlanScreenQuestionHost(state.chatId);
-  if (planHost) {
-    attachPanelToHost(state, planHost);
-    activateEmbeddedQuestionChrome(state);
-    return;
-  }
-
-  const boardHost = resolveBoardOnboardingQuestionHost(state.chatId);
-  if (boardHost) {
-    attachPanelToHost(state, boardHost);
+  const issueHost = resolveIssueChatQuestionHost(state.chatId);
+  if (issueHost) {
+    attachPanelToHost(state, issueHost);
     activateEmbeddedQuestionChrome(state);
     return;
   }
@@ -442,19 +433,13 @@ export function showQuestionCardsModal(
     let embedded = options.embedded === true;
     let host = options.host;
     if (!host && options.chatId) {
-      const planHost = resolveIssueChatQuestionHost(options.chatId) ?? resolveOrchestratePlanScreenQuestionHost(options.chatId);
-      if (planHost) {
-        host = planHost;
+      const issueHost = resolveIssueChatQuestionHost(options.chatId);
+      if (issueHost) {
+        host = issueHost;
         embedded = true;
-      } else {
-        const boardHost = resolveBoardOnboardingQuestionHost(options.chatId);
-        if (boardHost) {
-          host = boardHost;
-          embedded = true;
-        }
       }
     }
-    // Dedicated embed hosts (plan/board) mount immediately. Composer host only
+    // Dedicated embed hosts (issue chats) mount immediately. Composer host only
     // when this chat is the visible surface — otherwise park off-DOM.
     const canShowNow =
       isAskQuestionDomVisible(chatIdForAbort) || (embedded && Boolean(host));
@@ -1039,7 +1024,7 @@ export async function runAskQuestionModal(
   return stringifyAskQuestionResult(result);
 }
 
-// Defer until after module init — ask-question-display ↔ orchestrate-plan-screen cycle.
+// Defer registration until module initialization finishes.
 queueMicrotask(() => {
   registerAskQuestionDisplayContextSync(syncAskQuestionModalOnDisplayContextChange);
 });

@@ -66,7 +66,6 @@ export function setComposerRecoveryBlocked(blocked: boolean): void {
   }
   syncComposerReadOnlyState();
   refreshModeSelectorDisabled();
-  void import('./view-mode-toggle').then((m) => m.refreshViewModeToggleDisabled());
 }
 
 export function isComposerRecoveryBlocked(): boolean {

@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { defaultToolsJson } from '../../server/config/home.js';
 import { normalizeToolConfig } from '../../server/config/validators.js';
 import { toolLoadSkill } from '../../server/skills/load-skill.js';
-import { listMergedSkills } from '../../server/skills/scan.js';
+import { getSkillById, listMergedSkills } from '../../server/skills/scan.js';
 import { BUILT_IN_TOOLS } from '../../server/tools/builtin-catalog.js';
 import { DEFAULT_HEADLESS_TOOL_IDS, BOARD_VERIFIER_TOOL_IDS } from '../../server/runner/tool-set.js';
 import { isParallelSafeTool } from '../../server/runner/parallel-tool-policy.js';
@@ -70,6 +71,20 @@ test('discovers only enabled, model-invocable skills; filters and paginates', as
   assert.equal(JSON.parse(await load({ query: 'missing' })).total, 0);
   const catalog = await listMergedSkills(appRoot);
   assert.equal(catalog.find(skill => skill.id === 'manual').disableModelInvocation, true);
+});
+
+test('explicit factory invocation delivers the shipped checks and sub-agent templates with its goal', async () => {
+  const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const skill = await getSkillById(projectRoot, 'factory');
+  const templates = await fs.readFile(path.join(projectRoot, 'src/skills/factory/templates.md'), 'utf8');
+  const catalogEntry = (await listMergedSkills(projectRoot)).find(row => row.id === 'factory');
+  assert.equal(skill.source, 'builtin');
+  assert.equal(skill.disableModelInvocation, true);
+  assert.match(skill.goal, /factory\/REPORT\.md/);
+  assert.equal(catalogEntry.goal, skill.goal);
+  assert.ok(skill.body.includes(templates));
+  assert.doesNotMatch(skill.body, /<!-- factory-templates -->/);
+  assert.match(skill.raw, /<!-- factory-templates -->/);
 });
 
 test('loads the user override and provides continuation windows and reference origin', async () => {

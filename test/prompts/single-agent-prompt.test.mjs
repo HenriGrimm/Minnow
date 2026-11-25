@@ -36,13 +36,11 @@ describe('single-agent prompt', () => {
     assert.doesNotMatch(composeSystemPrompt(baseComposeContext()), /\/ask\)|planning only/);
   });
 
-  test('legacy modes compose the same prompt; only Orchestrate adds a mode part', () => {
+  test('legacy modes compose the same prompt', () => {
     const build = composeSystemPrompt(baseComposeContext({ modeId: 'build' }));
-    for (const modeId of ['plan', 'debug', 'general']) {
+    for (const modeId of ['plan', 'debug', 'general', 'orchestrate']) {
       assert.equal(composeSystemPrompt(baseComposeContext({ modeId })), build, modeId);
     }
-    const orchestrate = composeSystemPrompt(baseComposeContext({ modeId: 'orchestrate' }));
-    assert.ok(orchestrate.length > build.length, 'orchestrate keeps its board prompt');
   });
 
   test('PR description guidance is shared without a skill or tool-specific prompt', () => {

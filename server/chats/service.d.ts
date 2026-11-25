@@ -135,7 +135,7 @@ export function createChatCommandService(options: {
   defaultOrdinaryModel?: () => ModelSelection | undefined | Promise<ModelSelection | undefined>;
   captureTurnIntent?: typeof import('./preparation.js').captureChatTurnIntent;
   captureNativeSelection?: (selection: ModelSelection) => Promise<Record<string, unknown>> | Record<string, unknown>;
-  captureWorkspacePreparation?: (target: ChatTargetContext, options?: { newChat?: boolean }) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
+  captureWorkspacePreparation?: (target: ChatTargetContext, options?: { newChat?: boolean; factory?: boolean }) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
   admitWorkspacePreparation?: (chatId: string, intent: import('./workspace-preparation.js').ChatWorkspaceIntent) => void;
   retryWorkspacePreparation?: (input: { chatId: string; expectedIntentId: string; signal?: AbortSignal }) => Promise<unknown>;
   applyWorkspaceChoice?: (caller: ChatCaller, input: Parameters<ChatCommandService['chooseWorkspace']>[1]) => Promise<{ chat: import('./repository.js').ChatShell }>;

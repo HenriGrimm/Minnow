@@ -3,7 +3,6 @@ import { listModes } from '../chat/modes/registry';
 import { clearPendingMode } from '../chat/pending-mode';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
 import { findChatById, getActiveChat } from '../state/sessions';
-import { launchBoardFromPlan } from '../ui/orchestrate-launch';
 import { createChatWithMode } from '../ui/sidebar';
 import { setChatMode } from '../ui/mode-selector';
 import { enqueueAskQuestion } from './ask-question-queue';
@@ -71,25 +70,6 @@ export async function executeCreateChatWithMode(args: Record<string, unknown>): 
       : typeof args.initialUserMessage === 'string'
         ? args.initialUserMessage.trim()
         : '';
-
-  if (modeId === 'orchestrate') {
-    if (normalizedPlan) {
-      void launchBoardFromPlan(normalizedPlan);
-    } else {
-      void import('../orchestrator/boards-view').then(async (m) => {
-        await m.openBoardsView();
-        const { navigateToCodeBoards } = await import('../os/router');
-        navigateToCodeBoards();
-      });
-    }
-    return JSON.stringify({
-      ok: true,
-      modeId: 'orchestrate',
-      ...(normalizedPlan ? { orchestratePlanPath: normalizedPlan } : {}),
-      boardLaunched: true,
-      chatCreated: false,
-    });
-  }
 
   const result = await createChatWithMode({
     modeId,

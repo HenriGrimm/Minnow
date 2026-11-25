@@ -57,7 +57,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: tasksRow } = createSettingsToggleRow('Task & sub-agent notifications', {
     checked: prefs.tasksEnabled,
-    description: 'Orchestrate board updates and sub-agent start, finish, or failure.',
+    description: 'Sub-agent start, finish, or failure.',
     searchKey: 'general.notifications.tasks',
     onChange: (next) => saveNotificationPref('tasksEnabled', next),
   });

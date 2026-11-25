@@ -45,12 +45,6 @@ mock.module('../../src/ui/main-column-overlay.ts', { namedExports: {
   },
 } });
 mock.module('../../src/os/instances.ts', { namedExports: { getForegroundAppId: () => 'code' } });
-mock.module('../../src/ui/orchestrate-board-init-split.ts', { namedExports: {
-  getOrchestrateChatMountElement: () => document.getElementById('chatArea'),
-} });
-mock.module('../../src/ui/orchestrate-board-chat-state.ts', { namedExports: {
-  isBoardChatEmbedOpen: () => false, queryBoardChatTranscriptHost: () => null,
-} });
 const { openCodeMapChat, closeCodeMapChat, teardownCodeBrainMapBeforeChatPaint } =
   await import('../../src/ui/code-brain-map.ts');
 const { queryCodeMapChatHost } = await import('../../src/ui/code-map/chat-state.ts');

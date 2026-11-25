@@ -4,7 +4,7 @@ Open a workspace from the picker. Code opens the project's threads. If there is 
 
 ## Find a command or a conversation
 
-- Press **Ctrl+K** / **Cmd+K** outside the editor to open the command palette. Search by task or app name. For example, search **Models**, **Source Control**, **Settings**, **Open boards**, or **Open Minnow wiki**.
+- Press **Ctrl+K** / **Cmd+K** outside the editor to open the command palette. Search by task or app name. For example, search **Models**, **Source Control**, **Settings**, or **Open Minnow wiki**.
 - Use **Ctrl+F** / **Cmd+F** outside the editor in Code to search threads, messages, and issues. Open the thread list to switch between conversations in the active workspace. Use **Archive** to find archived threads.
 - Select **This thread** in the header or press **Ctrl+.** / **Cmd+.** to check the thread's model, permissions, and checkout before asking it to act.
 
@@ -26,6 +26,6 @@ Drag a divider to resize a panel. Right-click a tab to move it to the other pane
 
 ## Open a full app
 
-The sidebar lists **Issues**, **Boards**, **Source control**, **Brain**, and **Automations**. Open **Models**, **Settings**, or the manual from the icons along the bottom of the sidebar. The command palette also opens these destinations. If the sidebar is hidden, select **Show sidebar** next to the workspace header.
+The sidebar lists **Issues**, **Source control**, **Brain**, and **Automations**. Open **Models**, **Settings**, or the manual from the icons along the bottom of the sidebar. The command palette also opens these destinations. If the sidebar is hidden, select **Show sidebar** next to the workspace header.
 
 Before editing an issue, file, or branch, check the workspace name. A thread can also have its own worktree within that workspace.

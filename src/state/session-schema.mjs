@@ -4,7 +4,7 @@ import { validateAgentConversationMeta, validateAgentProfileReference, validateC
 
 // ── Plan paths ───────────────────────────────────────────────────────────────
 
-/** Inline copy of server/config/orchestrate-plan-path.js (avoid server→client coupling). */
+/** Preserve valid plan paths from older sessions. */
 const ORCHESTRATE_PLANS_PREFIX = 'documentation/plans/';
 const ORCHESTRATE_PLANS_PREFIX_LEN = ORCHESTRATE_PLANS_PREFIX.length;
 
@@ -866,8 +866,16 @@ export function ensureActiveGoal(raw) {
   const conditionText =
     typeof goal.conditionText === 'string' ? goal.conditionText.trim() : '';
   if (!conditionText) return undefined;
+  const progress = goal.factoryProgress;
   return {
+    ...(goal.skillId === 'factory' && progress && typeof progress.phase === 'string' &&
+      Number.isSafeInteger(progress.total) && Number.isSafeInteger(progress.completed) &&
+      progress.completed >= 0 && progress.total >= progress.completed
+      ? { factoryProgress: { phase: progress.phase.slice(0, 180), completed: progress.completed, total: progress.total } } : {}),
     conditionText: conditionText.slice(0, MAX_GOAL_CONDITION_CHARS),
+    ...(goal.skillId === 'factory' && typeof goal.factoryRunId === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(goal.factoryRunId)
+      ? { factoryRunId: goal.factoryRunId } : {}),
+    ...(typeof goal.skillId === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(goal.skillId) ? { skillId: goal.skillId } : {}),
     startedAt:
       typeof goal.startedAt === 'number' && Number.isFinite(goal.startedAt)
         ? goal.startedAt

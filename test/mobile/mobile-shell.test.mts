@@ -1,6 +1,6 @@
 /**
  * Phone app (src/mobile/): boot decision, tab/stack navigation with the back
- * gesture, and the pure helpers behind the board, file and chat lists.
+ * gesture, and the pure helpers behind the file and chat lists.
  */
 
 import assert from 'node:assert/strict';
@@ -374,20 +374,6 @@ test('changing workspaces retires file and issue screens, stale history and pend
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-test('board status reads in plain words', async () => {
-  const { boardStatus, outcomeText } = await import('../../src/mobile/board-status.ts');
-  const base = { stopReason: null, finished: false, finalTestFailed: false, attentionCount: 0 };
-  assert.deepEqual(boardStatus({ ...base, status: 'running' }), { label: 'Running', tone: 'live' });
-  assert.equal(boardStatus({ ...base, status: 'created' }).label, 'Not started');
-  assert.equal(boardStatus({ ...base, status: 'stopped', stopReason: 'paused' }).label, 'Paused');
-  assert.equal(boardStatus({ ...base, status: 'stopped', stopReason: 'quota' }).label, 'Out of usage');
-  assert.equal(boardStatus({ ...base, status: 'stopped', finished: true }).label, 'Done');
-  assert.equal(boardStatus({ ...base, status: 'stopped', finished: true, attentionCount: 2 }).label, 'Needs attention');
-  assert.equal(boardStatus({ ...base, status: 'stopped', finished: true, finalTestFailed: true }).label, 'Final test failed');
-  assert.equal(outcomeText('no_report'), 'No report');
-  assert.equal(outcomeText('some_new_outcome'), 'some new outcome');
-});
-
 test('folder listings derive from the file index', async () => {
   const { listFromIndex, fuzzyScore } = await import('../../src/mobile/file-index.ts');
   const files = ['README.md', 'src/a.ts', 'src/lib/b.ts', 'src/lib/c.ts', 'docs/plans/x.md'];
@@ -445,7 +431,7 @@ test('phone Threads opens on Active and can browse and search Archive', async (t
 
     archiveButton.click();
     assert.equal(archiveButton.getAttribute('aria-pressed'), 'true');
-    assert.deepEqual(ids(), [archived.id, child.id].sort());
+    assert.deepEqual(ids(), [archived.id, child.id, boardChat.id].sort());
     rows().find(row => row.dataset.chatId === archived.id)!.click();
     assert.deepEqual(opened, [archived.id]);
 

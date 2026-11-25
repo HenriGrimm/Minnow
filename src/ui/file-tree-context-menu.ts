@@ -258,22 +258,10 @@ export function buildFileMenuItems(ctx: FileTreeMenuContext): MenuItemDef[] {
       ]
     : [];
 
-  const orchestrateItem: MenuItemDef[] = isPlan
-    ? [
-        {
-          label: 'Open in orchestrator',
-          disabled: offline,
-          action: () =>
-            void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(ctx.path)),
-        },
-      ]
-    : [];
-
   return [
     ...openItems,
     ...buildRunItem(ctx, offline),
     ...previewItem,
-    ...orchestrateItem,
     ...legacyCaptureMenuItems({ kind: CAPTURE_MENU_KINDS.file, path: ctx.path }),
     buildOpenInSystemExplorerItem(ctx.path, offline),
     buildCopyPathItem(ctx.path),

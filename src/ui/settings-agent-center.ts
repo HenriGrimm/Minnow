@@ -2,9 +2,9 @@ import '../styles/settings-general.css';
 import '../styles/settings-agent-center.css';
 
 /**
- * Settings → Agents. One agent runs every chat, sub-agent and board task, so
+ * Settings → Agents. One agent runs every chat and sub-agent, so
  * this page edits that agent: its prompts (base, tool usage, local-model
- * guidance), the /ask, /plan and /debug skill prompts, the Boards prompt, and
+ * guidance), workflow skill prompts, and
  * sub-agent limits, and the global permission level.
  */
 
@@ -47,7 +47,7 @@ import { schedulePromptTokenEstimateRefresh } from './settings-prompt-estimate';
 import { createSettingsSwitch } from './settings-switch';
 import { setStatus } from './status';
 
-export type AgentCenterSectionId = 'prompts' | 'skills' | 'boards';
+export type AgentCenterSectionId = 'prompts' | 'skills';
 
 export interface AgentCenterCard {
   id: string;
@@ -145,6 +145,7 @@ function openSkillPromptLightbox(skillId: string, title: string, subtitle: strin
     subtitle,
     badge: 'Skill',
     render: (body) => {
+      if (skillId === 'plan') appendAgentCenterSection(body, 'Planning', panel => { void mountPlanGranularityField(panel); });
       appendAgentCenterSection(body, 'SKILL.md', (panel) => {
         const skill = getAllSkillCatalog().find((row) => row.id === skillId);
         if (!skill) {
@@ -176,7 +177,7 @@ async function mountPlanGranularityField(container: HTMLElement): Promise<void> 
   const { row } = createSettingsSelectRow('Plan granularity', {
     select,
     description:
-      'How finely /plan and Boards break work into tasks. Can be overridden per session.',
+      'How finely /plan breaks work into tasks. Can be overridden per session.',
   });
   container.appendChild(row);
   const meta = await loadPromptMetaSettings();
@@ -193,6 +194,7 @@ async function mountPlanGranularityField(container: HTMLElement): Promise<void> 
 const SKILL_PROMPTS: { id: string; title: string; description: string; icon: IconName; access: string }[] = [
   { id: 'ask', title: '/ask', description: 'Answers questions without changing anything.', icon: 'modeGeneral', access: 'Read-only turn' },
   { id: 'plan', title: '/plan', description: 'Investigates and writes a plan under documentation/plans/.', icon: 'modePlan', access: 'Plans-only turn' },
+  { id: 'factory', title: '/factory', description: 'Builds a plan against executable acceptance checks.', icon: 'fileCode', access: 'Normal permissions' },
   { id: 'debug', title: '/debug', description: 'Reproduces, isolates and fixes a bug with evidence.', icon: 'modeDebug', access: 'Normal permissions' },
 ];
 
@@ -209,7 +211,7 @@ export function loadAgentCenterCards(): AgentCenterCard[] {
       searchKey: 'agents.prompting.base',
       open: () => openPromptFileLightbox({
         title: 'System prompt',
-        subtitle: 'Sent first in every chat, sub-agent and board task. {{cwd}}, {{date}}, {{os}} and {{permission_line}} are filled in at send time.',
+        subtitle: 'Sent first in every chat and sub-agent. {{cwd}}, {{date}}, {{os}} and {{permission_line}} are filled in at send time.',
         badge: 'Prompt',
         family: 'base',
         entityId: 'default',
@@ -265,25 +267,6 @@ export function loadAgentCenterCards(): AgentCenterCard[] {
     });
   }
 
-  cards.push({
-    id: 'mode:orchestrate',
-    kind: 'boards',
-    title: 'Boards',
-    description: 'The coordinator prompt for Orchestrate boards, plus plan granularity.',
-    icon: 'boardView',
-    meta: 'Orchestrate',
-    searchKey: 'agents.boards',
-    open: () => openPromptFileLightbox({
-      title: 'Boards',
-      subtitle: 'Used by the board coordinator chat. Board tasks run as the same agent.',
-      badge: 'Prompt',
-      family: 'modes',
-      entityId: 'orchestrate',
-      extra: (body) => appendAgentCenterSection(body, 'Planning', (panel) => {
-        void mountPlanGranularityField(panel);
-      }),
-    }),
-  });
   return cards;
 }
 
@@ -326,12 +309,6 @@ const AGENT_CENTER_CARD_SECTIONS: {
     title: 'Workflow skills',
     hint: 'Slash commands that replace the old modes. /ask and /plan also restrict what the turn may change.',
     searchKey: 'agents.skills',
-  },
-  {
-    id: 'boards',
-    title: 'Boards',
-    hint: 'Orchestrate boards coordinate several tasks; each task runs as the same agent.',
-    searchKey: 'agents.boards',
   },
 ];
 
@@ -493,7 +470,7 @@ export async function renderAgentCenterPanel(
   const safeguards = el('div', 'settings-permissions__safeguards');
   const safeguardsText = el('span');
   safeguardsText.append(
-    'The same level covers chats, boards and Scheduler runs. ',
+    'The same level covers chats and Scheduler runs. ',
     el('code', '', '~/.minnow/.key'),
     ' and secret stores stay protected at every level.',
   );

@@ -46,7 +46,7 @@ Call with a **`questions`** array. Each item must use **`prompt`** (question tex
 
 ## Mode-handoff presets (`propose_mode_switch`)
 
-When offering **Plan → Orchestrate** or **Build ↔ Plan** choices, prefer **`propose_mode_switch`** with:
+When offering **Build ↔ Plan** choices, prefer **`propose_mode_switch`** with:
 
 | `situation` | When |
 |-------------|------|

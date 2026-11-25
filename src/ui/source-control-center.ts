@@ -186,13 +186,9 @@ export function refreshSourceControlCenter(): void {
   void mountSourceControlCenter();
 }
 
-/** Carry a view following the chat to its newly prepared checkout. */
-export function syncSourceControlChatCheckout(previous: string): void {
-  if (!isSourceControlCenterOpen()) return;
-  const next = activeChatCheckout();
-  if (next !== null && worktreePathsEqual(viewingCheckout() ?? getWorkspacePath(), previous)) {
-    void showCheckoutScope(next, false, selectedRepoId);
-  } else paintHeader();
+/** A chat can acquire a worktree while the user is inspecting a different checkout. */
+export function refreshSourceControlChatIndicator(): void {
+  if (isSourceControlCenterOpen()) paintHeader();
 }
 
 // ── Shell ────────────────────────────────────────────────────────────────────
@@ -1472,7 +1468,7 @@ export async function mountSourceControlCenter(): Promise<void> {
   const options = pendingOpenOptions;
   pendingOpenOptions = undefined;
   const workspaceChanged = checkoutWorkspace && checkoutWorkspace !== getWorkspacePath();
-  const currentCheckout = root && !workspaceChanged ? viewingCheckout() : activeChatCheckout() ?? undefined;
+  const currentCheckout = root && !workspaceChanged ? viewingCheckout() : undefined;
   const next = await loadWorkspaceRepos(options?.cwd ?? currentCheckout);
   if (!next) return;
   changeCwd(next.cwd, next.repoId);

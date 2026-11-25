@@ -56,7 +56,6 @@ import {
   isIssuesStoreLoaded,
   listIssueProjects,
   listIssueViews,
-  queueIssueAgent,
   quickCaptureIssue,
   updateIssue,
   type CollectIssuesOptions,
@@ -2877,28 +2876,6 @@ function declineFocusedTriage(): void {
   renderIssuesPanel();
 }
 
-/** `A` on the focused issue: the whole dispatch loop in one keystroke. */
-function dispatchFocusedAgent(): void {
-  const issue = focusedIssue();
-  if (!issue) return;
-
-  if (issue.agent?.phase === 'awaiting_input') {
-    void openIssueAgentChat(issue.id);
-    return;
-  }
-
-  queueIssueAgent(issue.id);
-  renderIssuesPanel();
-
-  void import('../chat/issues/agent-dispatch').then(async (m) => {
-    const result = await m.dispatchIssueToAgent(issue.id);
-    if (!result.ok && result.error) {
-      void import('./toast').then((t) => t.showToast(result.error!, 'error'));
-    }
-    renderIssuesPanel();
-  });
-}
-
 /** Answer an agent's question from the row. */
 async function openIssueAgentChat(issueId: string): Promise<void> {
   const issue = findIssueById(issueId);
@@ -2997,11 +2974,6 @@ function onIssuesKeydown(event: KeyboardEvent): void {
     openMenuForFocused(openProjectMenu);
     return;
   }
-  if (event.key === 'A' || (event.key === 'a' && event.shiftKey)) {
-    event.preventDefault();
-    dispatchFocusedAgent();
-    return;
-  }
   if (event.key === 'Y' || event.key === 'y') {
     event.preventDefault();
     acceptFocusedTriage();
@@ -3064,7 +3036,6 @@ function bindIssuesCommands(): void {
         },
         acceptTriage: acceptFocusedTriage,
         declineTriage: declineFocusedTriage,
-        queueAgent: dispatchFocusedAgent,
         listUserViews: () =>
           listIssueViews()
             .filter((view) => !view.builtIn)

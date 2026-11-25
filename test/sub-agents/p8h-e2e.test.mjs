@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 
 import { createFakeModelServer } from '../../scripts/fake-model-server.mjs';
-import { FAKE_MODEL_ID } from '../../server/orchestrate/board-testing/fake-model-ids.js';
+import { FAKE_MODEL_ID } from '../../scripts/fake-model-server.mjs';
 import { setTestHome, rmTestHome } from '../config/test-helpers.js';
 import { ensureMinnowLayout, resetMinnowHomeCache } from '../../server/config/home.js';
 import { readConfigJson, writeConfigJson } from '../../server/config/store.js';

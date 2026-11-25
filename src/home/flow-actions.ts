@@ -164,7 +164,7 @@ async function runHomeTurn(issue: IssueCard, chat: Chat, text: string, first = f
 }
 
 export async function replyHomeIssue(issue: IssueCard, text: string, build = false): Promise<void> {
-  if (issue.agent?.home?.boardId) throw new Error('Open the orchestrator board to continue this work.');
+  if (issue.agent?.home?.boardId) throw new Error('This work ran on an Orchestrate board, which Minnow no longer runs. Start a new chat for the issue to continue.');
   if (issue.agent?.home?.state === 'done') throw new Error('This work is merged. Start a new issue or open the chat in Code for further changes.');
   const chat = issueChat(issue, sessionState?.chats ?? []);
   if (!chat) throw new Error('Open the linked chat to continue this issue.');
@@ -234,41 +234,17 @@ export async function addToHomeChat(issues: IssueCard[], chat: Chat): Promise<st
   return accepted.map(i => i.id);
 }
 
-/** Approve the saved format, retaining the project as the board's workspace. */
+/** Approve the saved plan: the issue's chat implements it in its worktree. */
 export async function approveHomePlan(issue: IssueCard): Promise<void> {
   const home = issue.agent?.home;
   const chat = issueChat(issue, sessionState?.chats ?? []);
   if (!home || home.mode !== 'plan' || !chat || !['planned', 'ready'].includes(home.state)) throw new Error('Finish planning before approving the plan.');
   if (!workspacePathsEqual(issue.workspacePath, getWorkspacePath())) throw new Error('Open this issue’s project before approving the plan.');
-  if (home.boardId) {
-    const { openBoardsView, showBoard } = await import('../orchestrator/boards-view');
-    const { navigateToCodeBoards } = await import('../os/router');
-    await openBoardsView();
-    navigateToCodeBoards();
-    showBoard(home.boardId);
-    return;
-  }
+  if (home.boardId) throw new Error('This plan ran on an Orchestrate board, which Minnow no longer runs. Retry the issue to build it in a chat.');
   if (streamingChatIds.has(chat.id)) throw new Error('Wait for the planning turn to finish.');
   const plan = await readSavedIssuePlan(issue);
-  if (plan.type === 'invalid') throw new Error('The saved plan has an invalid planType. Revise it to Build or Orchestrate.');
-  if (plan.type === 'build') {
-    await replyHomeIssue(issue, `The plan in \`${plan.path}\` is approved. Implement it, run checks, commit the work, and stop for review. Do not merge.`, true);
-    return;
-  }
-  if (!workspacePathsEqual(plan.workspaceRoot, issue.workspacePath)) {
-    const { executeTool } = await import('../tools/client');
-    const saved = await executeTool('save_file', { path: plan.path, content: plan.markdown }, { workspaceRoot: issue.workspacePath, modeId: 'plan' });
-    if (saved.content.startsWith('Error:')) throw new Error(saved.content);
-  }
-  const { launchBoardFromPlan } = await import('../ui/orchestrate-launch');
-  const launched = await launchBoardFromPlan(plan.path, { baseBranch: home.baseBranch, providerId: chat.providerId, id: chat.modelId });
-  if (!launched) throw new Error('Could not create the orchestrator board. The plan is preserved; try again.');
-  for (const item of members(issue)) {
-    updateIssueAgentRun(item.id, { home: { ...item.agent!.home!, boardId: launched.boardId }, phase: 'queued' });
-    updateIssue(item.id, { status: requireIssueStatusForRole('in_progress') });
-  }
-  await saveIssuesNow();
-  notify();
+  if (plan.type === 'invalid') throw new Error('The saved plan has an invalid planType. Revise it to a Build plan.');
+  await replyHomeIssue(issue, `The plan in \`${plan.path}\` is approved. Implement it, run checks, commit the work, and stop for review. Do not merge.`, true);
 }
 
 export async function approveHomeIssue(issue: IssueCard): Promise<void> {

@@ -162,7 +162,7 @@ describe('mountPlanPreviewContent', () => {
 
     const host = document.createElement('div');
     mountPlanPreviewContent(host, '');
-    assert.ok(host.querySelector('.orchestrate-plan-screen__preview-empty'));
+    assert.ok(host.querySelector('.plan-preview__empty'));
   });
 });
 

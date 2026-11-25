@@ -73,24 +73,6 @@ jobs:
       - name: Architecture registry inventory
         run: npm run architecture:check
 
-  board-scenario-contract:
-    name: board scenario contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Validate deterministic board scenario contracts
-        run: npm run board:scenario-contract
-
   performance-budgets:
     name: performance budgets
     runs-on: ubuntu-latest

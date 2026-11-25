@@ -59,7 +59,8 @@ test('Graphite panels open before the first message and restore each thread', as
     render: () => null,
     availability: () => ({ available: false, reason: 'No linked issue' }),
   });
-  mountSurfacePanels(stage);
+  let fileBrowseChat: string | undefined;
+  mountSurfacePanels(stage, { setFileBrowseChat: chat => { fileBrowseChat = chat?.id; } });
   mountGraphiteThreadHeader();
   const mainColumn = document.getElementById('mainColumn')!;
   assert.ok(mainColumn.classList.contains('graphite-new-thread'));
@@ -95,6 +96,7 @@ test('Graphite panels open before the first message and restore each thread', as
   side.querySelector<HTMLButtonElement>('[aria-label="Open workspace diff"]')!.click();
   assert.equal(side.contains(diff), true);
   assert.deepEqual(diffTarget, { kind: 'workspace' });
+  assert.equal(fileBrowseChat, undefined);
   dismissSurface('changes');
   diffStats = { additions: 6375, deletions: 402 };
   refreshSurfacePanels();
@@ -130,6 +132,7 @@ test('Graphite panels open before the first message and restore each thread', as
   assert.equal(side.querySelector('[data-resource="preview-instance"]'), preview);
   assert.equal(requestGraphiteSurface('terminal', 'show'), true);
   assert.equal(bottom.querySelector('[data-resource="pty-instance"]'), terminal);
+  assert.equal(fileBrowseChat, first.id);
 
   moveActiveSurface('bottom');
   assert.equal(side.querySelector('[data-resource="pty-instance"]'), terminal);
@@ -174,11 +177,13 @@ test('Graphite panels open before the first message and restore each thread', as
   sessions.activeId = second.id;
   refreshSurfacePanels();
   await Promise.resolve();
+  assert.equal(fileBrowseChat, undefined);
   assert.equal(side.hidden, true);
   assert.equal(bottom.hidden, true);
   sessions.activeId = first.id;
   refreshSurfacePanels();
   await Promise.resolve();
+  assert.equal(fileBrowseChat, first.id);
   assert.equal(side.querySelector('[aria-selected="true"]')?.textContent, 'Terminal');
   assert.equal(side.querySelector('[data-resource="pty-instance"]'), terminal);
 
@@ -187,6 +192,26 @@ test('Graphite panels open before the first message and restore each thread', as
   await Promise.resolve();
   assert.equal(mainColumn.classList.contains('graphite-new-thread'), false);
   assert.equal(side.querySelector('[data-resource="pty-instance"]'), terminal);
+
+  first.activeGoal = { factoryRunId: 'factory-run', skillId: 'factory', conditionText: 'Ship the app',
+    startedAt: 1, tokenBaseline: 0, turnCount: 3, lastReason: 'Checking the build',
+    factoryProgress: { phase: 'Verifying', completed: 2, total: 2 } };
+  win.dispatchEvent(new win.Event('hashchange'));
+  const factoryButton = [...document.querySelectorAll<HTMLButtonElement>('.graphite-thread-header__actions button')].find(b => b.textContent === 'Factory')!;
+  assert.ok(factoryButton);
+  Object.defineProperty(factoryButton, 'getClientRects', { value: () => [{}] });
+  factoryButton.click();
+  const factoryCard = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Factory"]')!;
+  assert.match(factoryCard.textContent!, /Verifying/);
+  assert.match(factoryCard.textContent!, /2 of 2 features passed/);
+  assert.match(factoryCard.textContent!, /Pause factory/);
+  first.activeGoal.paused = true;
+  const { notifyManagedChatMetadata } = await import('../../src/chat/managed-chat-view');
+  notifyManagedChatMetadata(first.id);
+  assert.match(factoryCard.textContent!, /Resume factory/);
+  factoryCard.querySelector<HTMLButtonElement>('[aria-label="Close factory details"]')!.click();
+  delete first.activeGoal;
+  win.dispatchEvent(new win.Event('hashchange'));
 
   // Canonical tool results arrive without the renderer-owned totals. The
   // thread's Diff entry must survive that, and change counts on navigation.

@@ -202,7 +202,7 @@ describe('sub-agent completion push', () => {
     assert.deepEqual(notified, [{ chatId: CHAT_ID, runId: FIXED_RUN_ID }]);
   });
 
-  test('skips push for orchestrate mode chats', async () => {
+  test('delivers to legacy Orchestrate chats', async () => {
     setSessionStateForTests({
       version: 2,
       activeId: CHAT_ID,
@@ -210,6 +210,6 @@ describe('sub-agent completion push', () => {
     });
     seedCompletedRun();
     await flushSubAgentCompletionPushForChat(CHAT_ID);
-    assert.equal(deliveries.length, 0);
+    assert.equal(deliveries.length, 1);
   });
 });

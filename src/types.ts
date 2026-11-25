@@ -179,6 +179,15 @@ export interface UserMessage {
   superPlanStage?: string;
   /** Programmatic resume prompt (sub-agent completion, onboarding kickoff, etc.). */
   hiddenFromTranscript?: boolean;
+  /** Scheduled activity from the server journal, included only in transcript views. */
+  factoryTools?: {
+    id: string;
+    name: 'spawn_sub_agent' | 'execute_command';
+    args: Record<string, unknown>;
+    result?: string;
+    failed?: boolean;
+    interrupted?: 'paused' | 'stopped';
+  }[];
 }
 
 /** One build-agent progress item (todo_write). */
@@ -192,6 +201,11 @@ export interface ActiveGoalState {
   /** Completion condition text (max 4000 chars). */
   conditionText: string;
   startedAt: number;
+  /** Originating managed factory command. The server owns this goal. */
+  factoryRunId?: string;
+  factoryProgress?: { phase: string; completed: number; total: number };
+  /** Explicitly invoked skill to load again on automatic continuation turns. */
+  skillId?: string;
   /** Evaluator passes after each goal-driven turn (display only). */
   turnCount: number;
   /** Ledger total at goal start — for "tokens since goal" display. */
@@ -568,8 +582,7 @@ export type BoardCategory = 'build' | 'fix' | 'test' | 'research';
 
 /**
  * Leftover V1 board blob persisted on {@link ChatGroup}.
- * The V1 engine is gone; V2 boards live in `server/orchestrator/` and do not
- * write this. Kept so old sessions still hydrate. Autonomy is the V2 pair
+ * Kept so old sessions still hydrate. Autonomy is the pair
  * (MIN-718): {@link OrchestrateBoardState.status} plus {@link OrchestrateBoardState.maxConcurrentTasks}.
  */
 export interface OrchestrateBoardState {
@@ -657,13 +670,13 @@ export interface ChatGroup {
   collapsed: boolean;
   order: number;
   createdAt: number;
-  /** Kanban + waves for Orchestrate plans owned by this folder. */
+  /** Board data preserved when reading older folders. */
   orchestrateBoard?: OrchestrateBoardState;
   /** Workspace-relative plan path (documentation/plans/*.md). */
   orchestratePlanPath?: string;
-  /** Main-column chat vs board rendering for this folder. */
+  /** Legacy view preference stored with older folders. */
   viewMode?: 'chat' | 'board';
-  /** Leftover V1 planner chat id (hydrate only — V2 boards have no planner chat). */
+  /** Legacy planner chat id. */
   plannerChatId?: string;
 }
 
@@ -1287,7 +1300,7 @@ export interface Chat {
   modeId?: ModeId;
   /** Sidebar group membership (optional). */
   groupId?: string;
-  /** Workspace-relative plan path for Orchestrate mode (documentation/plans/*.md). */
+  /** Workspace-relative plan path stored by older sessions. */
   orchestratePlanPath?: string;
   /** @deprecated Legacy picker — use expertId on expert chats. */
   expertSelection?: ExpertSelection;

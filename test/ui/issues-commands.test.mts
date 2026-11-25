@@ -27,7 +27,6 @@ describe('issues command source', () => {
           expandFocused: () => {},
           acceptTriage: () => {},
           declineTriage: () => {},
-          queueAgent: () => {},
           listUserViews: () => [{ id: 'view-1', name: 'Bugs' }],
         }),
       { order: 20 },
@@ -62,7 +61,6 @@ describe('issues command source', () => {
         expandFocused: () => {},
         acceptTriage: () => {},
         declineTriage: () => {},
-        queueAgent: () => {},
         listUserViews: () => [],
       }),
     );

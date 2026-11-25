@@ -197,6 +197,7 @@ export interface RunTurnOptions {
   nudgeToolUse?: boolean;
   finalizeStructuredOutcome?: boolean;
   summarySchema?: string;
+  shouldFinishAfterTools?: () => Promise<boolean>;
   onRoundBoundary?: () => TranscriptMessage[] | { messages: TranscriptMessage[]; rowIds: Array<number | null> } | null;
   refreshRoundConfig?: () => Promise<{ systemPrompt: string; cliTurnContext?: string; tools: TurnToolDefinition[] } | null>;
   execute?: (

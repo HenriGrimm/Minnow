@@ -6,7 +6,7 @@
 
 To relocate an existing project, close it and select **Move project** on its row in the workspace picker. Choose an existing destination folder on the same drive, then confirm. Minnow moves the entire project folder, including uncommitted and ignored files, and keeps its chats, chat groups, issues, and project memory. Open the project again from its new location in the list.
 
-Minnow does not replace an existing folder. Stop running work before moving. Projects with linked Git worktrees, saved boards, or automations that still point at the project cannot be moved with this action.
+Minnow does not replace an existing folder. Stop running work before moving. Projects with linked Git worktrees or automations that still point at the project cannot be moved with this action.
 
 If you downloaded an unsigned Windows build and Windows shows **More info**, verify the source and file before choosing **Run anyway**. On macOS, follow the release notes for the specific build if macOS blocks opening it.
 

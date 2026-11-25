@@ -29,7 +29,7 @@ test('sidebar marks and composer actions stay centered, separated and reachable'
   if (!browser.available) return t.skip(browser.detail);
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-control-spacing-'));
   const styles = await Promise.all([
-    'tokens', 'global', 'sidebar', 'input', 'mode-selector', 'view-mode-toggle',
+    'tokens', 'global', 'sidebar', 'input', 'mode-selector',
     'composer-model-trigger', 'composer-expand', 'composer-overflow', 'mobile-app',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const icon = (name: Parameters<typeof iconHtml>[0]) => iconHtml(name);

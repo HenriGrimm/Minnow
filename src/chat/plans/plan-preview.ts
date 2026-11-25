@@ -168,8 +168,8 @@ export function planMarkdownForDisplay(markdown: string): string {
   return parts.join('\n\n');
 }
 
-/** Placeholder class when a plan file has no readable body (shared with plan screen + hub). */
-export const PLAN_PREVIEW_EMPTY_CLASS = 'orchestrate-plan-screen__preview-empty';
+/** Placeholder class when a plan file has no readable body. */
+export const PLAN_PREVIEW_EMPTY_CLASS = 'plan-preview__empty';
 
 // ── Read ─────────────────────────────────────────────────────────────────────
 

@@ -54,5 +54,6 @@ export function createServerChatExecutionHost(options: {
   authorizeResponse?: Parameters<typeof import('./requests').createChatRequestService>[0]['authorizeResponse'];
   onEvent?: (event: ChatHostEvent) => void;
   onStatus?: (event: { chatId: string; executionId: string; status: import('./contracts').ChatExecutionState }) => void;
+  onFactoryActivity?: (chatId: string) => void;
   now?: () => number;
 }): ServerChatExecutionHost;

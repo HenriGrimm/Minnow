@@ -9,6 +9,6 @@
 | **Provider** | The connection to a local model server, hosted API, or supported agent CLI. |
 | **Model pool** | A named group of models with configured concurrency. Select it from the model picker. |
 | **Skill** | Instructions attached to a turn from the slash picker. Some skills also narrow what the agent can write. |
-| **Board** | An Orchestrate plan with tasks, dependencies, and test results. |
+| **Factory run** | A `/factory` build of a plan on its own branch, with its spec, checks, decisions and report under `factory/`. |
 | **Brain** | The notes, memories, and code index you maintain. |
 | **Minnow home** | The [profile directory](configuration.md) with chats, credentials, models, and preferences. |

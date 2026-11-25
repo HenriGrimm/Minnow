@@ -8,10 +8,8 @@ import { findChatById, getActiveChat } from '../state/sessions';
 import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome';
 import type { Chat, PersistedSubAgentRun } from '../types';
 import { getActiveChatMountElement, appendChatTranscriptNode } from './chat-mount';
-import { isBoardChatEmbedOpenForChat } from './orchestrate-board-chat-state';
 import { isHubMounted } from './hub';
 import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
-import { isOrchestrateHubMounted } from './orchestrate-hub';
 import { scrollBottom } from './input';
 import { createIcon } from './icon';
 import { subAgentTitle } from './sub-agent-title';
@@ -59,7 +57,7 @@ function scheduleScrollBottom(): void {
 
 /** Empty-chat landing pages (Vibe / Orchestrate hub) — not the transcript. */
 function isEmptyChatLandingMounted(): boolean {
-  return isHubMounted() || isOrchestrateHubMounted();
+  return isHubMounted();
 }
 
 /** Clears the card registry when the chat DOM is rebuilt from history. */
@@ -361,7 +359,7 @@ export function upsertSubAgentCardForRun(
   ) {
     return null;
   }
-  if (!isBoardChatEmbedOpenForChat(chatId) && isMainColumnOverlaySuppressingChatDom()) {
+  if (isMainColumnOverlaySuppressingChatDom()) {
     return null;
   }
   if (isEmptyChatLandingMounted()) return null;
@@ -485,12 +483,14 @@ export function initSubAgentUi(): void {
   subscribeManagedChatMetadata(changedId => {
     try {
       const chat = getActiveChat(), area = getActiveChatMountElement();
-      if (!area.isConnected || isEmptyChatLandingMounted() || (!isBoardChatEmbedOpenForChat(chat.id) && isMainColumnOverlaySuppressingChatDom())) return;
+      if (!area.isConnected || isEmptyChatLandingMounted() || isMainColumnOverlaySuppressingChatDom()) return;
       const child = findChatById(changedId);
       const relation = child?.agentConversation;
       const runId = child?.agentExecution?.runId ?? child?.agentPendingCommand?.runId ?? relation?.initialRunId;
-      if (relation?.parentChatId === chat.id && runId && !getSubAgentRun(runId)) {
-        void hydrateSubAgentRunsForParentChat(relation.journalOwnerId, { force: true });
+      if (relation?.parentChatId === chat.id) {
+        const initial = relation.initialRunId && getSubAgentRun(relation.initialRunId);
+        if (initial && initial.completionPolicy?.kind === 'local_only') upsertSubAgentCardForRun(initial, chat.id);
+        if (runId && !getSubAgentRun(runId)) void hydrateSubAgentRunsForParentChat(relation.journalOwnerId, { force: true });
       }
       refreshPersistentAgentActivity(chat.id, area); syncAgentConversationHeader(chat, area);
     } catch { /* No chat mount is visible during workspace teardown. */ }

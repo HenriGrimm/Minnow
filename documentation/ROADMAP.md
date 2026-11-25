@@ -8,7 +8,7 @@ This is the one page that talks about work not yet shipped. The manual describes
 
 - **Code workspace** — chat beside the repo, CodeMirror, LSP, terminal, source control, browser preview, and agent undo.
 - **Source Control Center** — changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI.
-- **Planning and delivery** — Plan mode, Orchestrator boards, work agents, isolated worktrees, and test/fix loops.
+- **Planning and delivery** — Build plans and restartable `/factory` runs with one writer, executable acceptance checks and a committed report.
 - **Knowledge** — Brain, official Minnow wiki, chat retrieval, code index, and web RAG.
 - **Operations** — Models, providers, routing, Scheduler, Issues, settings, diagnostics, skills, MCP, and local tool plugins.
 - **Local-first foundations** — encrypted secrets, on-disk state, optional phone access (home network or anywhere), and Electron packaging.
@@ -17,7 +17,7 @@ This is the one page that talks about work not yet shipped. The manual describes
 
 | Area | Direction |
 |---|---|
-| Build loop | Make plan-to-board-to-tested-change reliable across local and cloud models. |
+| Build loop | The [maintenance factory](plans/maintenance-factory.md) is deferred. |
 | Agent conversations | Persistent child chats, explicit per-agent model selection, chat coordination, and integrated parent/child navigation. See the [implementation plan](plans/persistent-agent-chats.md). |
 | Documentation | Keep the in-app and GitHub wikis generated from the versioned documentation source. |
 | Model runtime | Improve local model setup, routing, constrained tool use, and hardware-aware recommendations. |

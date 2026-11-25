@@ -11,7 +11,7 @@ test('Graphite titlebar layout and hit targets across sidebar states and platfor
   if (!browser.available) return t.skip(browser.detail);
   const styles = await Promise.all(['tokens', 'minnowos-tokens', 'minnowos-shell', 'minnowos-rail', 'sidebar', 'graphite-workspace', 'thread-card',
     'settings-page', 'source-control-center', 'models-page', 'brain-page', 'brain-memories', 'scheduler-page',
-    'issues', 'dev-server-screen', 'orchestrator-boards', 'product-wiki', 'graphite-apps', 'surfaces'].map(name =>
+    'issues', 'dev-server-screen', 'product-wiki', 'graphite-apps', 'surfaces'].map(name =>
     readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-sidebar-'));
   const server = http.createServer((_request, response) => {
@@ -121,14 +121,7 @@ test('Graphite titlebar layout and hit targets across sidebar states and platfor
                   <strong>Dev servers</strong><button>Add server</button>
                 </header></div>
               </div>
-              <div class="mn-os-app-layer" id="boards">
-                <div class="chat-area--orchestrator-boards">
-                  <div class="ov2"><header class="ov2__stage-header" data-app-titlebar><h1>Boards</h1><button>New board</button></header>
-                    <aside class="ov2__list"><div class="ov2__list-head">Boards</div></aside>
-                    <section class="ov2__board"><header class="board-header">Selected board</header></section>
-                  </div>
-                </div>
-              </div>
+
             </div>
             <section class="product-wiki hidden" id="wiki">
               <header class="product-wiki__header" data-app-titlebar>
@@ -315,7 +308,7 @@ test('Graphite titlebar layout and hit targets across sidebar states and platfor
     }));
     workbench.hidden = true;
     document.getElementById('code').classList.remove('is-active');
-    const appHeaders = ['settingsApp', 'issuesView', 'sourceControl', 'models', 'scheduler', 'brain', 'devServers', 'boards', 'wiki'].flatMap(id => [true, false].map(sidebarOpen => {
+    const appHeaders = ['settingsApp', 'issuesView', 'sourceControl', 'models', 'scheduler', 'brain', 'devServers', 'wiki'].flatMap(id => [true, false].map(sidebarOpen => {
       const app = document.getElementById(id);
       document.documentElement.classList.toggle('mn-graphite-sidebar-open', sidebarOpen);
       app.classList.toggle(id === 'wiki' ? 'hidden' : 'is-active', id !== 'wiki');

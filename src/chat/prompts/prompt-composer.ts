@@ -28,8 +28,8 @@ export const PART_ORDER: PromptPartId[] = [
 
 const PART_SEPARATOR = '\n\n---\n\n';
 
-/** The only mode that still carries its own prompt part (the Boards surface). */
-const MODE_PART_IDS = new Set(['orchestrate']);
+/** No mode carries its own prompt part since Orchestrate boards were retired. */
+const MODE_PART_IDS = new Set<string>();
 
 // ── Gates ────────────────────────────────────────────────────────────────────
 

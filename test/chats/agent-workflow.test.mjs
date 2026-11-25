@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test, before, after } from 'node:test';
 import { createProductionRuntimeTestEnvironment } from './production-runtime-fixture.mjs';
+import { withFactoryActivity } from '../../server/chats/factory-activity.js';
 
 let environment, modules;
 before(async () => {
@@ -191,4 +193,98 @@ test('production delegation runs two independent durable child requests, coalesc
   assert.ok(questionLedger.entries.every(entry => entry.modelId === 'question-model'));
   assert.ok(approvalLedger.entries.every(entry => entry.modelId === 'approval-model'));
   assert.deepEqual(f.installation.errors, []);
+});
+
+test('a plan in the source checkout builds through a managed factory builder and reviewer and ends with launch instructions', { timeout: 75000 }, async t => {
+  const config = { enabled: true, types: { generalPurpose: { enabled: true } } };
+  const plan = 'documentation/plans/demo.md';
+  const calls = [];
+  const builderGate = deferred();
+  t.after(() => builderGate.resolve());
+  const f = await environment.fixture(t, { chats: { 'factory-family': {} }, subAgentTypes: config,
+    toolNames: ['execute_command', 'spawn_sub_agent', 'read_file'],
+    loadSkill: async id => (await import('../../server/skills/scan.js')).getSkillById(process.cwd(), id),
+    async install(runtime, adapters) {
+      const cwd = adapters.workspace;
+      const git = (...args) => execFileSync('git', args, { cwd, windowsHide: true });
+      git('init', '-b', 'main');
+      // The provider fixture uses real tools in the thread worktree for each stage.
+      await fs.writeFile(path.join(cwd, 'fixture.cjs'), [
+        "const fs = require('node:fs'), { execFileSync } = require('node:child_process');",
+        "const step = process.argv[2];",
+        "if (step === 'implement') { fs.writeFileSync('app.txt', 'works'); process.exit(0); }",
+        "if (step === 'check') { process.exit(fs.existsSync('app.txt') ? 0 : 1); }",
+        "const check = 'node fixture.cjs check';",
+        "fs.mkdirSync('factory', { recursive: true });",
+        "fs.writeFileSync('factory/spec.md', 'Deliver the demo app.');",
+        "const feature = { id: 'F1', title: 'Build demo', passes: step !== 'contract', checks: [check] };",
+        "fs.writeFileSync('factory/factory.json', JSON.stringify({ gates: [check], full: [check] }));",
+        "fs.writeFileSync('factory/progress.json', JSON.stringify({ features: [feature], reviews: step === 'review' ? [{ afterFeature: 'F1' }] : [] }));",
+        "if (step === 'review') fs.writeFileSync('factory/REPORT.md', '## How to run\\nRead app.txt\\n## Next steps\\nMerge the branch.');",
+        "execFileSync('git', ['add', '.']);",
+        "execFileSync('git', ['-c','user.name=Test','-c','user.email=test@example.invalid','-c','commit.gpgsign=false','commit','-m','factory: ' + step]);",
+      ].join('\n'));
+      git('add', 'fixture.cjs');
+      git('-c','user.name=Test','-c','user.email=test@example.invalid','-c','commit.gpgsign=false','commit','-m','Initial project');
+      await fs.mkdir(path.join(cwd, 'documentation/plans'), { recursive: true });
+      await fs.writeFile(path.join(cwd, plan), 'Untracked plan: deliver the demo app.');
+      return installFamily(runtime, adapters, config);
+    },
+    async respond(body) {
+      const input = lastUser(body);
+      const shell = step => [tool('execute_command', { command: 'node fixture.cjs ' + step }, step)];
+      if (input.includes('Implement only feature')) {
+        await builderGate.promise;
+        if (body.messages.at(-1).role !== 'tool') return shell('implement');
+        return [tool('report_outcome', { outcome: 'pass', summary: 'Wrote app.txt', evidence: ['app.txt'] }, 'builder-result')];
+      }
+      if (input.includes('Review the committed changes')) {
+        return [tool('report_outcome', { outcome: 'pass', summary: 'No blockers', evidence: ['app.txt'] }, 'review-result')];
+      }
+      if (input.includes('assigned builder result')) {
+        calls.push('build');
+        if (calls.filter(stage => stage === 'build').length === 1) return 'Builder finished; checkpoint was not committed.';
+        return shell('feature');
+      }
+      if (input.includes('assigned reviewer result')) { calls.push('review'); return shell('review'); }
+      if (input.includes('Verify the completed factory contract')) { calls.push('verify'); return 'Reviewed the delivery.\nYES'; }
+      assert.match(JSON.stringify(body.messages), /Untracked plan: deliver the demo app/);
+      calls.push('setup'); return shell('contract');
+    },
+  });
+  f.settings.meta.toolSecurity.permissionLevel = 'full';
+  const accepted = await f.request('/api/chats/factory-family/commands', { action: 'send', text: plan, clientRequestId: 'start-build',
+    intent: { version: 1, goalDriven: true, skill: { id: 'factory', source: 'slash', input: plan } } });
+  assert.equal(accepted.status, 202, JSON.stringify(accepted.body));
+  const get = () => f.repository.getChat('factory-family');
+  const publishedTools = [];
+  const projectId = f.repository.getCommand(accepted.body.receipt.commandId).captured.projectId;
+  const unsubscribe = f.runtime.presentation.subscribe({ projectId, chatId: 'factory-family',
+    send: event => { for (const msg of event.frame?.history?.messages ?? []) publishedTools.push(...(msg.factoryTools ?? [])); } });
+  try {
+    const pending = await until(() => publishedTools.find(tool => tool.name === 'spawn_sub_agent'), 'live builder call before its result', 20000);
+    assert.equal(pending.args.title, 'Builder · F1');
+    assert.equal(pending.result, undefined);
+  } finally { unsubscribe(); builderGate.resolve(); }
+  const deadline = Date.now() + 52000;
+  while (Date.now() < deadline && !get().activeGoal?.achieved && !get().activeGoal?.paused) await new Promise(r => setTimeout(r, 70));
+  assert.ok(get().activeGoal?.achieved, JSON.stringify({ run: get().factoryRun, calls, receipts: f.db.prepare('SELECT tool_name,result_json FROM chat_tool_invocations').all().map(r => [r.tool_name,r.result_json?.slice(-350)]) }));
+  assert.deepEqual(calls, ['setup', 'build', 'build', 'review', 'verify']);
+  const children = f.repository.listCommands().filter(r => r.runId && r.command.provenance.sourceChatId === 'factory-family');
+  assert.equal(children.length, 2, 'An unfinished parent checkpoint reuses the completed child');
+  const history = f.repository.readTranscript('factory-family').messages;
+  assert.ok(history.every(message => !message.factoryTools), 'display data stays out of the model transcript');
+  const activity = withFactoryActivity(f.db, 'factory-family', history).flatMap(message => message.factoryTools ?? []);
+  const assignments = activity.filter(tool => tool.name === 'spawn_sub_agent');
+  assert.deepEqual(assignments.map(tool => tool.args.title), ['Builder · F1', 'Reviewer · F1']);
+  assert.deepEqual(new Set(assignments.map(tool => JSON.parse(tool.result).runId)), new Set(children.map(row => row.runId)));
+  const checks = activity.filter(tool => tool.name === 'execute_command');
+  assert.ok(checks.length >= 2 && checks.every(tool => tool.result.startsWith('node fixture.cjs check (exit 0)')));
+  assert.equal(new Set(activity.map(tool => tool.id)).size, activity.length);
+  assert.equal(f.repository.listCommands({ chatId: 'factory-family' }).filter(row => row.command.provenance.source === 'task_delivery').length, 0);
+  assert.ok(children.every(r => path.resolve(f.repository.getChat(r.chatId).worktreeRoot).toLowerCase() === path.resolve(get().worktreeRoot).toLowerCase()));
+  assert.equal(children.find(r => r.command.message.startsWith('Review')).captured.policy.turnClamp, 'read-only');
+  assert.equal(await fs.readFile(path.join(get().worktreeRoot, 'app.txt'), 'utf8'), 'works');
+  assert.equal(await fs.stat(path.join(get().workspacePath, 'app.txt')).catch(() => null), null);
+  assert.match(f.repository.readTranscript('factory-family').messages.at(-1).content, /How to run[\s\S]*Next steps/);
 });

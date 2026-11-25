@@ -170,7 +170,6 @@ import {
   finalizeRun,
   findRunById,
 } from '../state/runs-store';
-import { isBoardOwnedChat, isBoardTaskChat } from '../state/chat-groups';
 import type {
   Chat,
   ChatStopReason,
@@ -2059,7 +2058,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           toolCount: painted.toolCallCount,
           sourceExcerpt: buildSynthesisExcerpt(chat),
           assistantText,
-          boardChat: isBoardOwnedChat(chat) || isBoardTaskChat(chat),
           ...(chat.kind === 'expert' && chat.expertId?.trim()
             ? { expertId: chat.expertId.trim() }
             : {}),

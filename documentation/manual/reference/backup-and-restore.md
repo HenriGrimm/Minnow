@@ -1,6 +1,6 @@
 # Back up and restore a Minnow profile
 
-Open **Settings → Data and privacy → Backups**. Back up your project directories and Git worktrees separately. Board recovery can carry source checkpoints in a protected backup. Existing worktree folders still need their own copies.
+Open **Settings → Data and privacy → Backups**. Back up your project directories and Git worktrees separately. Existing worktree folders need their own copies.
 
 ## Create a backup
 

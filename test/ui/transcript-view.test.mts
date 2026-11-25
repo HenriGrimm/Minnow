@@ -10,7 +10,7 @@ import DOMPurify from 'dompurify';
 import { MULTIMODAL_PROBE_PROMPT } from '../../src/benchmark/fixtures/multimodal-probe.ts';
 import { appendTranscriptLiveTail, renderTranscriptView } from '../../src/ui/transcript-view.ts';
 import { subAgentTranscriptLiveFromRun } from '../../src/ui/sub-agent-live-status.ts';
-import { adaptAttemptTranscript } from '../../src/orchestrator/transcript-adapter.ts';
+import { adaptAttemptTranscript } from '../fixtures/attempt-transcript-adapter.ts';
 
 function setupDom(): Window {
   const window = new Window();

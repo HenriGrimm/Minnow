@@ -33,7 +33,7 @@ describe('settings agent center', () => {
     document.body.replaceChildren();
   });
 
-  test('lists the one agent\'s prompts, workflow skills and boards — no modes or agent types', async () => {
+  test('lists the one agent\'s prompts and workflow skills', async () => {
     const { loadAgentCenterCards } = await import('../../src/ui/settings-agent-center.ts');
     const cards = loadAgentCenterCards();
     assert.deepEqual(
@@ -44,8 +44,8 @@ describe('settings agent center', () => {
         ['prompts', 'Local model guidance'],
         ['skills', '/ask'],
         ['skills', '/plan'],
+        ['skills', '/factory'],
         ['skills', '/debug'],
-        ['boards', 'Boards'],
       ],
     );
   });

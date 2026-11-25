@@ -31,11 +31,11 @@ export function isModeId(value: string): value is ModeId {
 
 /** Normalize persisted or unknown values to a valid ModeId. */
 export function normalizeModeId(value: string | null | undefined): ModeId {
-  // One agent: every chat mode collapses to the single agent ('build'). Only
-  // Orchestrate survives, as the Boards surface. Old ids stay valid in the
-  // persisted schema so existing records load; /ask, /plan and /debug are
-  // skills now.
-  if (value === 'orchestrate') return 'orchestrate';
+  // One agent: every chat mode collapses to the single agent ('build'),
+  // including the retired Orchestrate boards. Old ids stay valid in the
+  // persisted schema so existing records load; /ask, /plan, /debug and
+  // /factory are skills now.
+  void value;
   return DEFAULT_MODE_ID;
 }
 

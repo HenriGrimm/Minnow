@@ -101,25 +101,11 @@ describe('undo-turn', () => {
     assert.equal(elig.reason, 'streaming');
   });
 
-  test('getUndoEligibility blocks orchestrate mode', () => {
-    const chat = makeChat({ modeId: 'orchestrate' });
+  test('legacy Orchestrate chats support ordinary turn undo', () => {
+    const chat = makeChat({ modeId: 'orchestrate', boardGroupId: 'old-group', boardTaskId: 'task' });
     installChat(chat);
     seedCompletedTurn(chat, 0, 'reply A');
-    const elig = getUndoEligibility(chat);
-    assert.equal(elig.ok, false);
-    assert.equal(elig.reason, 'orchestrate');
-  });
-
-  test('getUndoEligibility blocks board-linked chats', () => {
-    const chat = makeChat({ boardTaskId: 'task-1' });
-    installChat(chat);
-    seedCompletedTurn(chat, 0, 'reply A');
-    assert.equal(getUndoEligibility(chat).reason, 'board');
-
-    const planner = makeChat({ id: 'chat-board', boardGroupId: 'grp-1' });
-    installChat(planner);
-    seedCompletedTurn(planner, 0, 'reply A');
-    assert.equal(getUndoEligibility(planner).reason, 'board');
+    assert.equal(getUndoEligibility(chat).ok, true);
   });
 
   test('getUndoEligibility blocks worktree-isolated chats', () => {

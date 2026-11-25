@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import { test } from 'node:test';
 import { readPlanType } from '../../server/orchestrator/core/plan-format.js';
 import { validateBuildPlan } from '../../server/tools/validate-build-plan.js';
-import { parsePlan, isParseErrors } from '../../server/orchestrator/core/parse-plan.js';
 
 import { buildPlan } from '../helpers/build-plan.mjs';
 
@@ -39,14 +38,6 @@ test('Build validator rejects missing sections, verification, outcomes, and brok
     assert.ok(result.errors.length > 0, invalid);
     assert.ok(result.errors.every((error) => error.line > 0 && error.hint));
   }
-});
-
-test('board intake rejects Build plans even when their body contains a valid task graph', () => {
-  const board = fs.readFileSync(new URL('../fixtures/orchestrator-v2-p2g/plan.md', import.meta.url), 'utf8');
-  assert.equal(isParseErrors(parsePlan(board)), false);
-  const marked = board.replace(/^---/, '---\nplanType: build');
-  assert.match(parsePlan(marked)[0].message, /Build plan/);
-  assert.match(parsePlan(marked.replace('planType: build', 'planType: unknown'))[0].message, /Invalid planType/);
 });
 
 test('all shipped Build templates validate with the same schema', () => {

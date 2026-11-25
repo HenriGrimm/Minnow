@@ -459,7 +459,6 @@
       <button type="button" class="settings-nav__item" data-area-jump="injection" data-settings-nav-area="injection"><span class="settings-nav__item-label">Chat context</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="rules" data-settings-nav-area="rules"><span class="settings-nav__item-label">Rules</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="tools" data-settings-nav-area="tools"><span class="settings-nav__item-label">Tools</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
-      <button type="button" class="settings-nav__item" data-area-jump="autopilot" data-settings-nav-area="autopilot"><span class="settings-nav__item-label">Autopilot</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="watchdog" data-settings-nav-area="watchdog"><span class="settings-nav__item-label">Timeouts and recovery</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="integrations">
@@ -607,10 +606,6 @@
         <h2>Agent packs</h2>
         <p class="settings-lead">Bundled agent definitions you can enable for a workspace or session.</p>
         <div id="settingsAgentPacksBody" class="settings-section-body"></div>
-      </section>
-      <section id="settingsSection-autopilot" class="settings-section settings-area settings-area--title-suppressed" data-area="autopilot">
-        <h2>Autopilot</h2>
-        <div id="settingsAutopilotBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-watchdog" class="settings-section settings-area settings-area--title-suppressed" data-area="watchdog">
         <h2>Timeouts and recovery</h2>
@@ -1195,7 +1190,6 @@
                 <input type="number" id="brainSynthesisThrottle" class="settings-input settings-input--narrow" min="1" value="4">
               </label>
               <p id="brainSynthesisThrottleHint" class="brain-form-hint">Runs after every 4 completed user+assistant turns.</p>
-              <label><input type="checkbox" id="brainSynthesisIncludeBoards"> Also look for skills on every Orchestrate board turn</label>
               <p class="brain-form-hint">Off by default. Turning this on adds the throttled per-turn pass for planner, builder, tester and fixer chats.</p>
               <div class="brain-settings-subsection" aria-labelledby="brainSkillProposalTitle">
                 <h4 class="brain-settings-subsection__title" id="brainSkillProposalTitle">When to propose</h4>
@@ -1453,11 +1447,6 @@
         <i class="fi fi-rr-sitemap icon-svg" aria-hidden="true"></i>
         <span class="code-views__label-track"><span class="code-views__label">Code map</span></span>
       </button>
-      <!-- Super Plan is disabled for release; planning happens in Plan mode. -->
-      <button type="button" class="code-views__btn" id="btnOrchestrate" aria-pressed="false" aria-expanded="false" title="Orchestrate">
-        <i class="fi fi-rr-network icon-svg" aria-hidden="true"></i>
-        <span class="code-views__label-track"><span class="code-views__label">Orchestrate</span></span>
-      </button>
       <!-- Narrow only: the file sidebar is an off-canvas drawer there, and its own header
            (Files / Browser / Source control) is inside it, so it needs an opener out here. -->
       <button type="button" class="code-views__btn code-views__btn--files" id="btnCodeViewsFiles" aria-pressed="false" aria-label="Open file tree" title="Open file tree">
@@ -1551,14 +1540,6 @@
               aria-label="Context usage breakdown"
             ></div>
           </div>
-          <div id="orchestratePlanStrip" class="composer-control orchestrate-plan-control hidden" aria-live="polite">
-            <label class="composer-control-label" for="orchestratePlanSelect">Plan</label>
-            <select id="orchestratePlanSelect" aria-label="Orchestrate plan file" disabled>
-              <option value="">Select plan…</option>
-            </select>
-            <button type="button" class="orchestrate-plan-refresh" id="orchestratePlanRefresh" aria-label="Refresh plan list" title="Refresh plan list">↻</button>
-            <span id="orchestratePlanHint" class="orchestrate-plan-hint hidden" role="status"></span>
-          </div>
           <div id="workAgentDev" class="composer-control work-agent-dev hidden" aria-hidden="true">
             <label class="composer-control-label" for="workAgentSelect">Work agent (dev)</label>
             <select id="workAgentSelect" aria-label="Work agent"></select>
@@ -1570,9 +1551,6 @@
           <div class="composer-controls__trail">
             <!-- Model controls stay in the footer. -->
             <div id="codeComposerModelAnchor" class="composer-model-trigger-anchor"></div>
-            <button class="icon-btn view-mode-toggle-btn view-mode-toggle-btn--to-board hidden" type="button" id="btnViewModeToggleBoard" aria-label="Board view" title="Board view (Orchestrate mode only)" disabled hidden>
-              <i class="fi fi-rr-layout-fluid icon-svg view-mode-toggle-btn__icon" aria-hidden="true"></i>
-            </button>
 
             <!-- Compact overflow: extra composer settings live in this cog sheet -->
             <div class="composer-overflow-anchor" id="composerOverflowAnchor">

@@ -17,7 +17,7 @@
   }
 }
 
-.mn-graphite-apps :is(.settings-page, .models-page, .brain-page, .scheduler-page, .scc-root, .issues-page, .ov2) {
+.mn-graphite-apps :is(.settings-page, .models-page, .brain-page, .scheduler-page, .scc-root, .issues-page) {
   background: var(--mn-graphite-sheet, var(--mn-bg));
   color: var(--mn-graphite-text, var(--mn-fg));
   font-size: 13px;
@@ -33,7 +33,7 @@
   background: var(--mn-graphite-sheet, var(--mn-bg));
 }
 
-.mn-graphite-apps :is(.models-page-header__title, .settings-page-header h1, .brain-rail__title, .brain-page-header__title, .scheduler-header__title, .issues-header__titles h1, .graphite-thread-title, .scc-head__title, .scc-changes__heading, .ov2__list-title) {
+.mn-graphite-apps :is(.models-page-header__title, .settings-page-header h1, .brain-rail__title, .brain-page-header__title, .scheduler-header__title, .issues-header__titles h1, .graphite-thread-title, .scc-head__title, .scc-changes__heading) {
   color: var(--mn-graphite-text, var(--mn-fg));
   font-size: var(--mn-type-md);
   font-weight: var(--mn-weight-medium);
@@ -41,12 +41,12 @@
   letter-spacing: var(--mn-tracking-title);
 }
 
-.mn-graphite-apps :is(.models-nav, .brain-rail.brain-overlay-surface, .settings-nav, .scc-rail, .ov2__list) {
+.mn-graphite-apps :is(.models-nav, .brain-rail.brain-overlay-surface, .settings-nav, .scc-rail) {
   background: var(--mn-graphite-sheet, var(--mn-bg));
   border-inline-end-color: var(--mn-graphite-line, var(--mn-border));
 }
 
-.mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item, .ov2__board-btn) {
+.mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item) {
   min-height: var(--mn-density-nav-row);
   padding: var(--mn-space-1) var(--mn-workbench-rail-inset);
   border: 0;
@@ -56,13 +56,13 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item, .ov2__board-btn):hover {
+  .mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item):hover {
     background: var(--mn-graphite-hover, var(--mn-surface-elevated));
     color: var(--mn-graphite-text, var(--mn-fg));
   }
 }
 
-.mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item, .ov2__board-btn):is([aria-current='page'], .is-active, .is-selected),
+.mn-graphite-apps :is(.models-nav button, .brain-page .brain-rail__btn, .settings-nav-group > .settings-nav__item, .scc-rail .scc-rail__item):is([aria-current='page'], .is-active, .is-selected),
 .mn-graphite-apps .models-library .models-row.is-selected {
   background: var(--mn-sel, var(--mn-surface-2));
   color: var(--mn-graphite-text, var(--mn-fg));
@@ -81,8 +81,7 @@
   font-weight: var(--mn-weight-medium);
 }
 
-.mn-graphite-apps :is(.issues-btn--primary, .scheduler-btn--primary, .scc-btn--primary),
-.mn-graphite-apps .ov2 .board-btn--primary {
+.mn-graphite-apps :is(.issues-btn--primary, .scheduler-btn--primary, .scc-btn--primary) {
   background: var(--mn-graphite-button, var(--mn-accent));
   border-color: var(--mn-graphite-line-2, var(--mn-border-strong));
   color: var(--mn-graphite-button-text, var(--mn-fg-on-accent));
@@ -90,8 +89,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mn-graphite-apps :is(.issues-btn--primary, .scheduler-btn--primary, .scc-btn--primary):hover:not(:disabled),
-  .mn-graphite-apps .ov2 .board-btn--primary:hover:not(:disabled) {
+  .mn-graphite-apps :is(.issues-btn--primary, .scheduler-btn--primary, .scc-btn--primary):hover:not(:disabled) {
     background: color-mix(in srgb, var(--mn-graphite-button) 90%, var(--mn-surface-0));
     border-color: transparent;
     filter: none;
@@ -1013,72 +1011,6 @@
 
 .mn-graphite-apps .scc-filerow:is(.is-selected, .is-diff-current) {
   background: var(--mn-sel, var(--mn-surface-2));
-}
-
-/* Boards */
-.mn-graphite-apps .ov2 {
-  --ob-gutter: 24px;
-  grid-template-columns: minmax(186px, 232px) minmax(0, 1fr);
-}
-
-.mn-graphite-apps .ov2__list {
-  padding: 12px 10px;
-}
-
-.mn-graphite-apps .ov2__list-head {
-  padding-inline-start: 10px;
-}
-
-.ov2__graphite-help {
-  display: none;
-}
-
-.mn-graphite-apps .ov2__graphite-help {
-  display: block;
-  margin-top: auto;
-  padding: 10px 12px;
-  border: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 8px;
-  background: var(--mn-graphite-raised, var(--mn-surface-1));
-  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  font-size: 12px;
-}
-
-.mn-graphite-apps .ov2__graphite-help strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--mn-graphite-text, var(--mn-fg));
-  font-weight: 500;
-}
-
-.mn-graphite-apps .ov2__graphite-help p {
-  margin: 5px 0 0;
-}
-
-.mn-graphite-apps .ov2__board-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
-.mn-graphite-apps .ov2__board-name::before {
-  flex: 0 0 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--mn-fg-subtle);
-  content: '';
-}
-
-.mn-graphite-apps .ov2__board-btn[data-status='running'] .ov2__board-name::before { background: var(--mn-accent); }
-.mn-graphite-apps .ov2__board-btn[data-status='paused'] .ov2__board-name::before { background: var(--mn-warning); }
-.mn-graphite-apps .ov2__board-btn[data-status='finished'] .ov2__board-name::before { background: var(--mn-success); }
-
-.mn-graphite-apps .ov2 .board-header__title {
-  font-size: 18px;
-  font-weight: 500;
 }
 
 /* Issues and Projects */

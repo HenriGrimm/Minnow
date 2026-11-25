@@ -168,13 +168,17 @@ test('Changes targets the chosen repository while the file explorer stays at the
   }
 });
 
-test('Graphite opens workspace changes from a worktree thread and loads history on demand', async () => {
+test('Graphite opens workspace changes from a worktree thread and loads history on demand', async t => {
+  const instances = await import('../../src/os/instances.ts');
+  instances.launchInstance('code');
+  t.after(instances.resetInstancesForTests);
   const chat = sessions.createEmptyChatObject('fixture', '/workspace');
   chat.worktreeRoot = '/selected-worktree';
   sessions.setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
   statusResult = { ok: true, unstaged: [{ path: 'src/edited.ts', status: 'M' }] };
   panel.setGitSurfaceVisible(true, chat);
   await panel.openGitSurfaceTarget(chat, 'workspace');
+  await panel.browseThreadFiles(chat);
   panel.syncPanelFromActiveChat();
   await waitForPanel(() => Boolean(document.querySelector('.git-panel-file-path')));
 

@@ -169,7 +169,7 @@ describe('orchestrator core purity guard', () => {
   it('finds core modules to check', () => {
     const modules = coreModules();
     assert.ok(modules.length > 0, 'no .js modules found under server/orchestrator/core');
-    assert.ok(modules.includes('index.js'), 'core/index.js barrel is missing');
+    assert.ok(modules.includes('plan.js'), 'core planner is missing');
   });
 
   it('every core module is pure', () => {

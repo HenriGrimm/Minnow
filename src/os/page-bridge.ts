@@ -92,15 +92,6 @@ export function osOnAppClose(appId: AppId): void {
   if (appId === 'brain') {
     void import('../ui/brain-page').then((m) => m.suspendBrainAppSurface());
   }
-  if (appId === 'code') {
-    void import('../state/sessions').then(({ sessionState }) => {
-      const activeId = sessionState?.activeId;
-      if (!activeId) return;
-      void import('../ui/orchestrate-plan-screen').then(({ suspendOrchestratePlanScreenOnAppLeave }) => {
-        suspendOrchestratePlanScreenOnAppLeave(activeId);
-      });
-    });
-  }
   if (document.documentElement.dataset.osApp === appId) {
     delete document.documentElement.dataset.osApp;
   }

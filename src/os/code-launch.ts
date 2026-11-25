@@ -19,10 +19,10 @@ import { syncComposerFromStreamingState } from '../ui/composer-send';
 import { hasCurrentChatSurface } from '../ui/chat-surface-state';
 
 /** Repoint file tree / git panel to the Code project workspace. */
-async function syncCodeFileTreeChrome(): Promise<void> {
+async function syncCodeFileTreeChrome(resetBrowse = true): Promise<void> {
   const { clearPanelCwdUserOverride, syncPanelFromActiveChat } = await import('../ui/git-panel');
-  clearPanelCwdUserOverride();
-  syncPanelFromActiveChat({ forceFileTree: true });
+  if (resetBrowse) clearPanelCwdUserOverride();
+  syncPanelFromActiveChat({ forceFileTree: resetBrowse });
 }
 
 /** Restore stale transcripts; app-to-app navigation retains an unchanged mounted view. */
@@ -37,7 +37,6 @@ async function refreshCodeChatSurface(): Promise<void> {
   const { renderSidebar } = await import('../ui/sidebar');
   const { syncModeSelectorFromActiveChat } = await import('../ui/mode-selector');
   const { syncComposerReasoningEffortFromActiveChat } = await import('../ui/composer-reasoning-effort');
-  const { syncViewModeToggleFromActiveChat } = await import('../ui/view-mode-toggle');
   const { refreshChatJumpChipVisibility } = await import('../ui/chat-scroll');
 
   const area = document.getElementById('chatArea');
@@ -46,11 +45,10 @@ async function refreshCodeChatSurface(): Promise<void> {
   renderStatsForChat(chat);
   syncModeSelectorFromActiveChat();
   syncComposerReasoningEffortFromActiveChat();
-  syncViewModeToggleFromActiveChat();
   syncComposerFromStreamingState();
   renderSidebar();
   refreshChatJumpChipVisibility();
-  if (!preserved) await syncCodeFileTreeChrome();
+  await syncCodeFileTreeChrome(!preserved);
   const { refreshContextUsageRing } = await import('../ui/context-usage-ring');
   refreshContextUsageRing();
   void import('../tools/stream-chat-dom').then((m) => m.remountStreamDomForChat(chat.id));

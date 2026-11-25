@@ -19,7 +19,7 @@ For models with reasoning levels, the model menu lists them under **Reasoning**.
 
 ## Routing
 
-Open **Routing** to assign a different model to utility tasks or sub-agents. Utility tasks include titles, prompt or issue expansion, and commit messages. Without a fixed utility binding, the originating model supplies that role. Sub-agents inherit the parent model unless the delegation, agent type, or routing sets an override. Boards have model controls of their own.
+Open **Routing** to assign a different model to utility tasks or sub-agents. Utility tasks include titles, prompt or issue expansion, and commit messages. Without a fixed utility binding, the originating model supplies that role. Sub-agents inherit the parent model unless the delegation, agent type, or routing sets an override.
 
 Use **Sampling and thinking** when you need to adjust inference settings. Change one setting and repeat the same test prompt so you can tell which adjustment helped.
 

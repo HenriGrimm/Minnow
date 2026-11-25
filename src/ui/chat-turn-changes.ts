@@ -1,6 +1,4 @@
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
-import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
-import { readPlanType } from '../../server/orchestrator/core/plan-format.js';
 import type { Chat } from '../types';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createIcon, type IconName } from './icon';
@@ -242,31 +240,28 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
     if (host?.openPlan && host.transcript.contains(actions)) { host.openPlan(planPath); return; }
     void import('./file-viewer').then((m) => m.openFileInViewer(planPath));
   });
-  const orchestrate = button('Orchestrate', 'boardView', 'Create a board from this plan', () => {
-    void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(planPath));
-  });
-  orchestrate.hidden = true;
-  const build = button('Build here', 'fileCode', 'Implement the saved plan in this chat', async () => {
+  const sendPlanText = async (text: string, failure: string, requiredSkillId?: string): Promise<void> => {
     const [{ sendProgrammaticChatText }, { scheduleSaveSessions, touchChat }, { setStatus }] = await Promise.all([
       import('../chat/messaging'), import('../state/sessions'), import('./status'),
     ]);
-    if (chat.pinnedSkill?.id === 'plan') {
+    if (!requiredSkillId && chat.pinnedSkill?.id === 'plan') {
       delete chat.pinnedSkill;
       touchChat(chat);
       scheduleSaveSessions();
     }
     try {
-      await sendProgrammaticChatText(chat, `Implement the plan in \`${planPath}\`.`, { clearComposerOnSend: false });
+      await sendProgrammaticChatText(chat, text, { clearComposerOnSend: false, requiredSkillId });
     } catch (error) {
-      setStatus('err', error instanceof Error ? error.message : 'Could not start building the plan');
+      setStatus('err', error instanceof Error ? error.message : failure);
     }
+  };
+  const build = button('Build here', 'fileCode', 'Implement the saved plan in this chat', () => {
+    void sendPlanText(`Implement the plan in \`${planPath}\`.`, 'Could not start building the plan');
   });
-  void readWorkspaceTextFile(planPath, chat.workspacePath, Date.now()).then((markdown) => {
-    const type = readPlanType(markdown);
-    orchestrate.hidden = type !== 'orchestrate';
-    orchestrate.classList.toggle('chat-turn-changes__action--primary', type === 'orchestrate');
-    build.classList.toggle('chat-turn-changes__action--primary', type === 'build');
-  }).catch(() => {});
+  build.classList.add('chat-turn-changes__action--primary');
+  button('Run factory', 'boardView', 'Build the plan unattended with /factory: contract-first checks, one feature at a time, in this thread’s worktree', () => {
+    void sendPlanText(planPath, 'Could not start the factory', 'factory');
+  });
   return bar;
 }
 

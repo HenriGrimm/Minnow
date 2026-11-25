@@ -18,7 +18,6 @@ const SUMMARIES: Partial<Record<SettingsSectionId, string>> = {
   injection: 'What every thread can see.',
   rules: 'Instructions every agent reads.',
   tools: 'Tool families and limits.',
-  autopilot: 'How far agents go without you.',
   watchdog: 'Stalls, retries and crash recovery.',
   plugins: 'Tools, panels and skills from plugin packages.',
   skills: 'Slash skills that ship with Minnow.',

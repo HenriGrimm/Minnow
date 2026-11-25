@@ -14,26 +14,17 @@ import { stopGeneration } from '../chat/stop-generation';
 import {
   createGroup,
   deleteGroup,
-  findBoardGroupForPlanner,
   findGroupById,
-  getActiveBoardGroup,
-  getBoardGroupForChat,
   buildSortedWorkspaceSidebarEntries,
   getGroupActivityAt,
   getGroupsForWorkspace,
-  isBoardOwnedChat,
-  isBoardOwnedGroup,
   isChatPinned,
-  listBoardGroupChatIds,
-  openBoardGroup,
   renameGroup,
-  resolveBoardRestoreGroupOnSwitch,
   setChatPinned,
   splitPinnedChats,
   toggleGroupCollapsed,
 } from '../state/chat-groups';
 import { appConfirm } from './app-dialog';
-import { createBoardCategoryIcon } from './board-category-icons';
 import { createIcon } from './icon';
 import { agentMarkStateFromLabel, fillProducerLogo, type AgentMarkState } from './agent-model-mark';
 import { chatGitState, initSidebarGitState, isChatWorkFinished, subscribeSidebarGitState, syncChatGitState } from './sidebar-git-state';
@@ -73,7 +64,7 @@ import { getCurrentRoute } from '../os/router';
 import { getChatLastMessageAt } from '../state/session-workspace-scope';
 import { normalizeModeId, workflowSkillForMode, type ModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
-import type { BoardCategory, Chat, ChatGroup, LeftoverBoardTask, Message } from '../types';
+import type { Chat, ChatGroup, Message } from '../types';
 import {
   applySidebarVisuals,
   closeMobileSidebar,
@@ -96,7 +87,6 @@ import {
 import { updateWorkspaceCodeChangeDisplay } from './workspace-code-change';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
 import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
-import { syncOrchestratePlanStripFromActiveChat } from './orchestrate-plan-selector';
 import { syncComposerPinnedSkillFromActiveChat } from './composer-pinned-skill';
 import { syncChatLinkChipsFromActiveChat } from './chat-link-chips';
 import { syncComposerRunTargetFromActiveChat } from './composer-run-target';
@@ -111,19 +101,6 @@ import {
   dismissDevServerScreenForNavigation,
   isDevServerScreenOpen,
 } from './dev-server-screen';
-import { isBoardViewActive, syncViewModeToggleFromActiveChat } from './view-mode-toggle';
-import {
-  isOrchestrateHubMounted,
-  refreshOrchestrateHubBoardList,
-  refreshOrchestrateHubPlanList,
-  teardownOrchestrateHub,
-} from './orchestrate-hub';
-import {
-  isOrchestratePlanScreenSuspendedForChat,
-  suspendOrchestratePlanScreenOnLeave,
-} from './orchestrate-plan-screen';
-import { exitBoardViewForNavigation } from './exit-board-view';
-import { isBoardChatEmbedOpenForChat } from './orchestrate-board-chat-state';
 import { onModelRoutingActiveChatChanged } from './settings-model-routing';
 import { syncWorkAgentDevFromActiveChat } from './work-agent-dev';
 import { updateModelLoadUnloadButtons } from '../api/models';
@@ -173,112 +150,8 @@ import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 import { isShellOverlayOpen } from './shell-overlay-state';
 import { isTypingTarget } from './a11y/typing-target';
 
-// ── Board waves ──────────────────────────────────────────────────────────────
-
 /** Pointer dwell on a chat row before its transcript is prefetched. */
 const HOVER_PREFETCH_DELAY_MS = 150;
-
-/** True when every task in a wave is complete (sidebar auto-collapse). */
-function isWaveComplete(tasks: LeftoverBoardTask[], waveId: number | string): boolean {
-  const wt = tasks.filter((t) => t.wave === waveId);
-  return wt.length > 0 && wt.every((t) => t.status === 'complete');
-}
-
-function toggleSidebarWaveCollapsed(group: ChatGroup, waveId: number | string): void {
-  const wave = group.orchestrateBoard?.waves.find((w) => w.id === waveId);
-  if (!wave) return;
-  wave.collapsed = !(wave.collapsed ?? false);
-  scheduleSaveSessions();
-}
-
-function appendWaveSubgroupHeader(
-  container: HTMLElement,
-  waveId: number | string,
-  collapsed: boolean,
-  onToggle: () => void,
-): void {
-  const head = document.createElement('div');
-  head.className = 'chat-wave-subgroup-header';
-  head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-
-  const caret = document.createElement('button');
-  caret.type = 'button';
-  caret.className = 'chat-wave-subgroup-header__caret';
-  caret.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  caret.setAttribute(
-    'aria-label',
-    collapsed ? `Expand wave ${waveId} chats` : `Collapse wave ${waveId} chats`,
-  );
-  caret.textContent = collapsed ? '▸' : '▾';
-  caret.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onToggle();
-    renderSidebar();
-  });
-
-  const label = document.createElement('span');
-  label.textContent = `Wave ${waveId}`;
-
-  head.appendChild(caret);
-  head.appendChild(label);
-  container.appendChild(head);
-}
-
-function appendBoardGroupWaveMembers(
-  membersEl: HTMLElement,
-  group: ChatGroup,
-  members: Chat[],
-  highlightChatId: string | null,
-): void {
-  const board = group.orchestrateBoard;
-  if (!board) return;
-
-  const plannerId = group.plannerChatId?.trim();
-  const taskById = new Map(board.tasks.map((t) => [t.id, t]));
-  const rendered = new Set<string>();
-
-  if (plannerId) {
-    const planner = members.find((c) => c.id === plannerId);
-    if (planner) {
-      appendChatRow(membersEl, planner, highlightChatId, { inGroup: true, group });
-      rendered.add(planner.id);
-    }
-  }
-
-  for (const wave of board.waves) {
-    const waveChats = members.filter((c) => {
-      if (rendered.has(c.id)) return false;
-      const taskId = c.boardTaskId?.trim();
-      if (!taskId) return false;
-      const task = taskById.get(taskId);
-      return task?.wave === wave.id;
-    });
-    if (waveChats.length === 0) continue;
-
-    const collapsed = isWaveComplete(board.tasks, wave.id) || (wave.collapsed ?? false);
-    appendWaveSubgroupHeader(membersEl, wave.id, collapsed, () => {
-      toggleSidebarWaveCollapsed(group, wave.id);
-    });
-
-    for (const chat of waveChats) rendered.add(chat.id);
-
-    if (!collapsed) {
-      const waveMembersEl = document.createElement('div');
-      waveMembersEl.className = 'chat-wave-members';
-      for (const chat of waveChats) {
-        appendChatRow(waveMembersEl, chat, highlightChatId, { inGroup: true, group });
-      }
-      membersEl.appendChild(waveMembersEl);
-    }
-  }
-
-  for (const chat of members) {
-    if (rendered.has(chat.id)) continue;
-    if (plannerId && chat.id === plannerId) continue;
-    if (chat.boardTaskId?.trim()) continue;
-    appendChatRow(membersEl, chat, highlightChatId, { inGroup: true, group });
-  }
-}
 
 const selectedChatIds = new Set<string>();
 let lastSelectedChatId: string | null = null;
@@ -377,7 +250,6 @@ export async function applyWorkspaceScopedSession(
 ): Promise<void> {
   clearChatSelection();
   setSidebarChatView('working');
-  exitBoardViewForNavigation();
   invalidateComposerUndoGitCache();
   const { activeChat, activeChanged } = await onWorkspaceChanged(newPath, previousPath);
   if (activeChanged) {
@@ -388,12 +260,10 @@ export async function applyWorkspaceScopedSession(
     renderStatsForChat(activeChat);
     syncModeSelectorFromActiveChat();
     syncComposerReasoningEffortFromActiveChat();
-    void syncOrchestratePlanStripFromActiveChat();
     syncComposerPinnedSkillFromActiveChat();
     syncChatLinkChipsFromActiveChat();
     syncComposerRunTargetFromActiveChat();
     syncComposerUndoFromActiveChat();
-    syncViewModeToggleFromActiveChat();
     if (!options?.skipFileTreeSync) {
       clearPanelCwdUserOverride();
       syncPanelFromActiveChat({ forceFileTree: true });
@@ -412,7 +282,7 @@ interface AppendChatRowOptions {
   inGroup?: boolean;
   /** Offer Pin / Unpin in the row menu (main sidebar workspace chats only). */
   pinnable?: boolean;
-  /** Board folder for resolving task category icons on in-group rows. */
+  /** Folder the row is listed under. */
   group?: import('../types').ChatGroup;
   /** Override default switchChat activation (e.g. Experts hub before shell opens). */
   onActivate?: (chat: Chat) => void;
@@ -420,22 +290,9 @@ interface AppendChatRowOptions {
   onDelete?: (chat: Chat) => void;
 }
 
-/** Board task category for a chat row (from group board state, not stored on Chat). */
-function boardCategoryForChat(
-  chat: Chat,
-  group?: import('../types').ChatGroup,
-): import('../types').BoardCategory | undefined {
-  const taskId = chat.boardTaskId?.trim();
-  if (!taskId || !group?.orchestrateBoard) return undefined;
-  return group.orchestrateBoard.tasks.find((t) => t.id === taskId)?.category;
-}
-
-/** Sidebar row highlight id; suppressed while a board folder owns the main column. */
+/** Sidebar row highlight id. */
 function sidebarHighlightChatId(): string | null {
-  if (!sessionState) return null;
-  const boardGroup = getActiveBoardGroup();
-  if (boardGroup?.viewMode === 'board') return null;
-  return sessionState.activeId;
+  return sessionState?.activeId ?? null;
 }
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
@@ -501,7 +358,7 @@ function syncChatItemTrailing(row: HTMLElement, chat: Chat): void {
   const git = trailing?.querySelector<HTMLElement>('.chat-item-git');
   if (git) syncChatGitState(git, chatGitState(chat, chat.workspacePath || getWorkspacePath()));
   const archived = isChatArchived(chat);
-  const archivable = !chat.agentConversation && !isBoardOwnedChat(chat);
+  const archivable = !chat.agentConversation;
   let action = row.querySelector<HTMLButtonElement>('.chat-item-archive');
   let select = row.querySelector<HTMLButtonElement>('.chat-item-select');
   if (!archivable || !titleRow || !trailing) {
@@ -719,8 +576,6 @@ function buildChatRow(
   const titleRow = document.createElement('div');
   titleRow.className = 'chat-item-title-row';
 
-  const boardCategory = inGroup ? boardCategoryForChat(chat, options?.group) : undefined;
-
   const dotCtx = getChatItemDotContext(sessionState?.activeId ?? null);
   const dotState = resolveChatItemDotState(chat, dotCtx);
   const logo = document.createElement('span');
@@ -744,10 +599,6 @@ function buildChatRow(
     nameSpan.title = 'Unsent draft';
   }
 
-  if (boardCategory) {
-    const catIcon = createBoardCategoryIcon(boardCategory, 'chat-item-board-cat-icon');
-    if (catIcon) titleRow.appendChild(catIcon);
-  }
   titleRow.appendChild(nameSpan);
 
   const loopIcon = createChatItemLoopIcon();
@@ -778,7 +629,6 @@ function buildChatRow(
   row.appendChild(head);
   syncChatItemTrailing(row, chat);
   row.dataset.rowLayout = inGroup ? 'group' : 'flat';
-  row.dataset.boardCategory = boardCategory ?? '';
   syncChatItemWorktreeIcon(row, chat);
   return row;
 }
@@ -791,27 +641,12 @@ function appendGroupHeader(
 ): HTMLElement {
   const head = document.createElement('div');
   head.className = 'chat-group-header';
-  const isActiveBoardFolder =
-    Boolean(group.orchestrateBoard) &&
-    sessionState?.activeBoardGroupId === group.id &&
-    group.viewMode === 'board';
-  if (group.orchestrateBoard) {
-    head.classList.add('chat-group-header--has-board');
-  }
-  if (isActiveBoardFolder) {
-    head.classList.add('active');
-    head.setAttribute('aria-current', 'true');
-  }
   head.dataset.groupId = group.id;
-  head.dataset.hasBoard = group.orchestrateBoard ? '1' : '0';
   head.title = group.name;
   const membersHidden = group.collapsed;
   head.setAttribute('aria-expanded', membersHidden ? 'false' : 'true');
 
-  const icon = createIcon(
-    group.orchestrateBoard ? 'modeOrchestrate' : 'folder',
-    { className: 'chat-group-header__icon', size: 14 },
-  );
+  const icon = createIcon('folder', { className: 'chat-group-header__icon', size: 14 });
 
   const caret = document.createElement('button');
   caret.type = 'button';
@@ -849,15 +684,6 @@ function appendGroupHeader(
     showGroupContextMenu(e.clientX, e.clientY, group.id, nameSpan);
   });
 
-  if (group.orchestrateBoard) {
-    head.addEventListener('click', (e) => {
-      if ((e.target as Element).closest('.chat-group-header__caret')) return;
-      openBoardGroup(group.id);
-      renderSidebar();
-      syncViewModeToggleFromActiveChat();
-    });
-  }
-
   return head;
 }
 
@@ -893,29 +719,7 @@ function showGroupContextMenu(
     e.stopPropagation();
     menu.remove();
     void (async () => {
-      const group = findGroupById(groupId);
-      const isBoardGroup = Boolean(group?.orchestrateBoard);
-      if (isBoardGroup) {
-        const chatCount = group ? listBoardGroupChatIds(group, sessionState?.chats ?? []).length : 0;
-        const chatLabel = chatCount === 1 ? '1 chat' : `${chatCount} chats`;
-        if (
-          !(await appConfirm(
-            `Delete this board and ${chatLabel} inside it? This cannot be undone.`,
-            { confirmLabel: 'Delete', danger: true },
-          ))
-        ) {
-          return;
-        }
-        if (sessionState?.activeBoardGroupId === groupId) {
-          exitBoardViewForNavigation();
-        }
-        if (!group) return;
-        for (const chatId of listBoardGroupChatIds(group, sessionState?.chats ?? [])) {
-          if (isChatStreaming(chatId)) {
-            stopGeneration(chatId, 'system');
-          }
-        }
-      } else if (
+      if (
         !(await appConfirm('Delete this group? Chats will stay in the list, ungrouped.', {
           confirmLabel: 'Delete',
           danger: true,
@@ -923,16 +727,8 @@ function showGroupContextMenu(
       ) {
         return;
       }
-      const { modelId } = readDefaultModelBinding();
-      const result = deleteGroup(groupId, { fallbackModelId: modelId });
-      if (result.chatRemoval) {
-        onChatRemoved({ ...result.chatRemoval, activeChanged: result.activeChanged });
-      } else {
-        refreshSessionListUIs();
-        if (isOrchestrateHubMounted()) {
-          refreshOrchestrateHubBoardList();
-        }
-      }
+      deleteGroup(groupId);
+      refreshSessionListUIs();
     })();
   });
 
@@ -1062,9 +858,7 @@ function chatRowReusable(
   const inGroup = options?.inGroup === true;
   if (row.dataset.rowLayout !== (inGroup ? 'group' : 'flat')) return false;
   const wantDrag = options?.draggable !== false;
-  if (row.classList.contains('chat-item-row--draggable') !== wantDrag) return false;
-  const boardCategory = inGroup ? boardCategoryForChat(chat, options?.group) : undefined;
-  return (row.dataset.boardCategory ?? '') === (boardCategory ?? '');
+  return row.classList.contains('chat-item-row--draggable') === wantDrag;
 }
 
 function syncChatRow(
@@ -1109,14 +903,6 @@ function syncGroupHeader(
   members: Chat[],
   memberCount: number,
 ): void {
-  const isActiveBoardFolder =
-    Boolean(group.orchestrateBoard) &&
-    sessionState?.activeBoardGroupId === group.id &&
-    group.viewMode === 'board';
-  head.classList.toggle('chat-group-header--has-board', Boolean(group.orchestrateBoard));
-  head.classList.toggle('active', isActiveBoardFolder);
-  if (isActiveBoardFolder) head.setAttribute('aria-current', 'true');
-  else head.removeAttribute('aria-current');
   head.title = group.name;
   const membersHidden = group.collapsed;
   head.setAttribute('aria-expanded', membersHidden ? 'false' : 'true');
@@ -1537,11 +1323,9 @@ export function renderSidebar(): void {
     !isChatsWorkspacePath(chat.workspacePath ?? '');
   const workspaceCandidates = getChatsForWorkspace(ws, sessionState)
     .filter((c) => !isHiddenFromMainSidebar(c))
-    .filter((c) => !isBoardOwnedChat(c))
     .filter(excludeAssistantChats);
   const unassignedCandidates = getUnassignedChats(sessionState)
     .filter((c) => !isHiddenFromMainSidebar(c))
-    .filter((c) => !isBoardOwnedChat(c))
     .filter(excludeAssistantChats);
   const candidates = [...workspaceCandidates, ...unassignedCandidates];
   const family = projectChatRelationships(candidates);
@@ -1564,7 +1348,7 @@ export function renderSidebar(): void {
   // A pinned chat lists once, up top — lifted out of its group until it is unpinned.
   const { pinned, rest: unpinnedChats } = splitPinnedChats(workspaceChats);
   const sidebarEntries = buildSortedWorkspaceSidebarEntries(
-    getGroupsForWorkspace(ws).filter((g) => !isBoardOwnedGroup(g)),
+    getGroupsForWorkspace(ws),
     unpinnedChats,
   );
 
@@ -1630,9 +1414,8 @@ export function renderSidebar(): void {
     if (entry.kind === 'group') {
       const { group, members } = entry;
       const prevHead = existingHeaders.get(group.id);
-      const wantBoard = Boolean(group.orchestrateBoard);
       let head: HTMLElement;
-      if (prevHead && prevHead.dataset.hasBoard === (wantBoard ? '1' : '0')) {
+      if (prevHead) {
         syncGroupHeader(prevHead, group, members, members.length);
         existingHeaders.delete(group.id);
         head = prevHead;
@@ -1642,9 +1425,7 @@ export function renderSidebar(): void {
       }
       desired.push(head);
 
-      const hideMembersInIconRail =
-        sessionState!.sidebarCollapsed === true && Boolean(group.orchestrateBoard);
-      if (!group.collapsed && members.length > 0 && !hideMembersInIconRail) {
+      if (!group.collapsed && members.length > 0) {
         let membersEl = existingMembers.get(group.id);
         if (!membersEl) {
           membersEl = document.createElement('div');
@@ -1654,15 +1435,10 @@ export function renderSidebar(): void {
         existingMembers.delete(group.id);
         membersEl.dataset.groupMembers = group.id;
         membersEl.setAttribute('aria-label', `${group.name} chats`);
-        if (group.orchestrateBoard) {
-          membersEl.replaceChildren();
-          appendBoardGroupWaveMembers(membersEl, group, members, highlightChatId);
-        } else {
-          const memberRows = members.flatMap((chat) =>
-            takeBranch(chat, { inGroup: true, group, pinnable: true }),
-          );
-          reconcileChildren(membersEl, memberRows);
-        }
+        const memberRows = members.flatMap((chat) =>
+          takeBranch(chat, { inGroup: true, group, pinnable: true }),
+        );
+        reconcileChildren(membersEl, memberRows);
         desired.push(membersEl);
       }
       return;
@@ -1683,7 +1459,7 @@ export function renderSidebar(): void {
     const finished = entries
       .filter((entry): entry is Extract<typeof entry, { kind: 'chat' }> => entry.kind === 'chat')
       .map(entry => entry.chat)
-      .filter(chat => !isBoardOwnedChat(chat) && isChatWorkFinished(chatGitState(chat, cwd)));
+      .filter(chat => isChatWorkFinished(chatGitState(chat, cwd)));
     const head = takeSectionHead(title);
     syncSectionFinishedAction(head, finished);
     desired.push(head);
@@ -1745,7 +1521,7 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
   menu.appendChild(label);
   markPreviewOccluder(menu, 'menu');
 
-  const archivable = chats.filter((chat) => !isBoardOwnedChat(chat));
+  const archivable = chats.filter((chat) => !chat.agentConversation);
   if (archivable.length) {
     const restore = archivable.every(isChatArchived);
     const archiveItem = document.createElement('button');
@@ -1821,12 +1597,10 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
   }, 0);
 }
 
-/** Extra behaviour for callers outside the sidebar (Orchestrate's chat rail). */
+/** Extra behaviour for callers outside the sidebar. */
 export interface ChatItemContextMenuOptions {
   /** Override default deleteChat (e.g. Experts hub detail list refresh). */
   onDelete?: (chat: Chat) => void;
-  /** Drop "Open in orchestrator". */
-  hideOrchestrateEntry?: boolean;
   /** Repaint after an inline rename commits. Defaults to the sidebar. */
   onRenamed?: (chat: Chat) => void;
   /** Offer Pin to top / Unpin. */
@@ -1892,28 +1666,6 @@ export function showChatItemContextMenu(
   }
 
 
-  const isPlannerChat = normalizeModeId(chat.modeId) === 'orchestrate';
-  let orchestrateItem: HTMLButtonElement | null = null;
-  if (isPlannerChat && !options?.hideOrchestrateEntry) {
-    orchestrateItem = document.createElement('button');
-    orchestrateItem.type = 'button';
-    orchestrateItem.textContent = 'Open in orchestrator';
-    orchestrateItem.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeMenu();
-      const group = getBoardGroupForChat(chat) ?? findBoardGroupForPlanner(chat.id);
-      if (group && group.orchestrateBoard) {
-        void import('../state/chat-groups').then((m) => m.openBoardGroup(group.id));
-        return;
-      }
-      if (sessionState && sessionState.activeId !== chat.id) {
-        switchChat(chat.id);
-      }
-      void import('./orchestrate-hub').then((m) => m.renderOrchestrateHub());
-    });
-  }
-
   const deleteItem = document.createElement('button');
   deleteItem.type = 'button';
   deleteItem.textContent = 'Delete';
@@ -1929,7 +1681,7 @@ export function showChatItemContextMenu(
     void deleteChat(chat.id);
   });
 
-  if (!isBoardOwnedChat(chat)) {
+  if (!chat.agentConversation) {
     const archived = isChatArchived(chat);
     const archiveItem = document.createElement('button');
     archiveItem.type = 'button';
@@ -1978,7 +1730,6 @@ export function showChatItemContextMenu(
     });
     menu.appendChild(item);
   }
-  if (orchestrateItem) menu.appendChild(orchestrateItem);
   menu.appendChild(deleteItem);
   document.body.appendChild(menu);
 
@@ -2064,10 +1815,6 @@ function onChatRemoved(result: RemoveChatResult): void {
     syncComposerFromStreamingState();
   }
   refreshSessionListUIs();
-  if (isOrchestrateHubMounted()) {
-    refreshOrchestrateHubBoardList();
-    void refreshOrchestrateHubPlanList();
-  }
   closeMobileSidebar();
 }
 
@@ -2149,19 +1896,12 @@ export async function switchChat(id: string, isCurrent: () => boolean = () => tr
   void import('../agents/orchestrator')
     .then((m) => m.hydrateSubAgentRunsForParentChat(target?.agentConversation?.journalOwnerId ?? id))
     .catch((err) => reportBackgroundError('sub-agent-hydrate', err));
-  if (!sharedHost && isOrchestrateHubMounted()) {
-    teardownOrchestrateHub();
-  }
-  if (sessionState?.activeId) {
-    suspendOrchestratePlanScreenOnLeave(sessionState.activeId);
-  }
   if (!sessionState) {
     closeMobileSidebar();
     applySidebarVisuals();
     return;
   }
 
-  const boardChatEmbedOpen = isBoardChatEmbedOpenForChat(id);
   const issuesEmbedded = !sharedHost && document.getElementById('chatArea')?.classList.contains('chat-area--issues');
   if (issuesEmbedded) {
     const { teardownIssuesEmbedBeforeChatPaint } = await import('./issues-page');
@@ -2169,41 +1909,14 @@ export async function switchChat(id: string, isCurrent: () => boolean = () => tr
     teardownIssuesEmbedBeforeChatPaint();
   }
 
-  const boardRestoreGroup = boardChatEmbedOpen || sharedHost
-    ? undefined
-    : resolveBoardRestoreGroupOnSwitch(id);
-  if (boardRestoreGroup) {
-    const prevActiveId = sessionState.activeId;
-    if (prevActiveId !== id) {
-      clearAttachments();
-      const leaving = sessionState.chats.find((c) => c.id === prevActiveId);
-      if (leaving) maybeMarkChatUnreadAfterLeave(leaving);
-    }
-    acknowledgeChatViewed(id);
-    openBoardGroup(boardRestoreGroup.id);
-    syncViewModeToggleFromActiveChat();
-    clearPanelCwdUserOverride();
-    syncPanelFromActiveChat({ forceFileTree: true });
-    syncComposerFromStreamingState();
-    closeMobileSidebar();
-    applySidebarVisuals();
-    return;
-  }
-
-  const boardWasOpen = boardChatEmbedOpen || sharedHost ? false : exitBoardViewForNavigation();
-
   if (id === sessionState.activeId) {
     acknowledgeChatViewed(id);
     const sameChat = sessionState.chats.find((c) => c.id === id);
-    const planScreenSuspendedForSameChat =
-      sameChat != null && isOrchestratePlanScreenSuspendedForChat(sameChat);
     const codeOverviewOpen = isCodeOverviewOpen();
     const devServerScreenOpen = isDevServerScreenOpen();
     const chatSurfaceEmpty = document.getElementById('chatArea')?.childElementCount === 0;
     if (
       sharedHost ||
-      boardWasOpen ||
-      planScreenSuspendedForSameChat ||
       codeOverviewOpen ||
       devServerScreenOpen ||
       issuesEmbedded ||
@@ -2225,7 +1938,6 @@ export async function switchChat(id: string, isCurrent: () => boolean = () => tr
           void resumeIncompleteToolBatchOnChatSwitch(sameChat);
         }
         renderChatInForegroundShell(sameChat);
-        syncViewModeToggleFromActiveChat();
         syncComposerFromStreamingState();
         renderSidebar();
         scheduleSaveSessions();
@@ -2273,12 +1985,10 @@ export async function switchChat(id: string, isCurrent: () => boolean = () => tr
   renderStatsForChat(chat);
   syncModeSelectorFromActiveChat();
   syncComposerReasoningEffortFromActiveChat();
-  void syncOrchestratePlanStripFromActiveChat();
   syncComposerPinnedSkillFromActiveChat();
   syncChatLinkChipsFromActiveChat();
   syncComposerRunTargetFromActiveChat();
   syncComposerUndoFromActiveChat();
-  syncViewModeToggleFromActiveChat();
   clearPanelCwdUserOverride();
   syncPanelFromActiveChat();
   syncWorkAgentDevFromActiveChat();
@@ -2322,22 +2032,14 @@ export interface CreateChatWithModeOptions {
 
 // ── Create ───────────────────────────────────────────────────────────────────
 
-/** Board planners must not be repurposed when New chat requests a different mode. */
-function isBoardAnchorChat(chat: Chat): boolean {
-  if (findBoardGroupForPlanner(chat.id)) return true;
-  return Boolean(chat.boardGroupId?.trim() && !chat.boardTaskId?.trim());
-}
-
 /** Sync composer chrome after reusing or retargeting the active chat row. */
 function syncCreateChatChrome(chatId: string): void {
   syncModeSelectorFromActiveChat();
   syncComposerReasoningEffortFromActiveChat();
-  void syncOrchestratePlanStripFromActiveChat();
   syncComposerPinnedSkillFromActiveChat();
   syncChatLinkChipsFromActiveChat();
   syncComposerRunTargetFromActiveChat();
   syncComposerUndoFromActiveChat();
-  syncViewModeToggleFromActiveChat();
   syncWorkAgentDevFromActiveChat();
   onModelRoutingActiveChatChanged(chatId);
 }
@@ -2395,14 +2097,6 @@ export async function createChatWithMode(
   if (document.getElementById('codeMapChatSidebar')) {
     teardownCodeBrainMapBeforeChatPaint();
   }
-  if (isOrchestrateHubMounted()) {
-    teardownOrchestrateHub();
-  }
-  if (sessionState?.activeId) {
-    suspendOrchestratePlanScreenOnLeave(sessionState.activeId);
-  }
-  exitBoardViewForNavigation();
-
   const active = getActiveChat();
   flushActiveComposerDraftBeforeNewChat();
   setSidebarChatView('working');
@@ -2421,13 +2115,11 @@ export async function createChatWithMode(
     isEphemeralEmptyChat(active) &&
     !isChatArchived(active) &&
     sameWorkspace &&
-    !isMainColumnOverlaySuppressingChatDom() &&
-    !isBoardAnchorChat(active);
+    !isMainColumnOverlaySuppressingChatDom();
 
   if (canReuseEphemeral) {
     const activeMode = normalizeModeId(active.modeId);
-    const needsNewChat = requestedMode !== activeMode && isBoardAnchorChat(active);
-    if (!needsNewChat) {
+    {
       if (requestedMode !== activeMode) {
         active.modeId = requestedMode;
       }
@@ -2534,10 +2226,8 @@ export async function createChatWithMode(
 
 export async function createChat(drop?: ComposerDrop): Promise<void> {
   const active = getActiveChat();
-  const leavingOrchestrate =
-    isBoardViewActive() || normalizeModeId(active.modeId) === 'orchestrate';
   const result = await createChatWithMode({
-    modeId: leavingOrchestrate ? 'general' : normalizeModeId(active.modeId),
+    modeId: normalizeModeId(active.modeId),
     forceNewChat: Boolean(drop),
   });
   if (!result.ok) {

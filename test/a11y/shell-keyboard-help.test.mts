@@ -10,13 +10,13 @@ import {
 } from '../../src/ui/shell-keyboard-help.ts';
 
 describe('shell keyboard help', () => {
-  test('visible catalog includes shell, chat, and board sections', () => {
+  test('visible catalog includes shell and chat shortcuts', () => {
     const sections = new Set(
       getVisibleKeyboardShortcuts().map((row) => row.section).filter(Boolean),
     );
     assert.ok(sections.has('Shell'));
     assert.ok(sections.has('Chat'));
-    assert.ok(sections.has('Orchestrate board'));
+    assert.ok(!sections.has('Orchestrate board'));
     assert.ok(sections.has('Issues'));
   });
 

@@ -9,7 +9,6 @@ import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub'
 import { mountHistoryPager } from './history-pager';
 import { chatHistoryAppendStart, forgetChatSurface, rememberChatSurface, retainedChatHistoryStart } from './chat-surface-state';
 import { getTranscriptScroller } from './transcript-scroll';
-import { isOrchestrateHubMounted, teardownOrchestrateHub } from './orchestrate-hub';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { queryCodeMapChatHost } from './code-map/chat-state';
 import { teardownIssuesEmbedBeforeChatPaint } from './issues-page';
@@ -17,17 +16,6 @@ import {
   isMainColumnOverlaySuppressingChatDom,
   stripMainColumnOverlayClasses,
 } from './main-column-overlay';
-import {
-  getOrchestratePlanScreenSession,
-  isOrchestratePlanScreenMounted,
-  isOrchestratePlanScreenSessionActive,
-  isOrchestratePlanScreenSuppressingChatDom,
-  isOrchestratePlanScreenSuspendedForChat,
-  removeOrchestratePlanScreenSuspendedBanner,
-  showOrchestratePlanScreenSuspendedBanner,
-  teardownOrchestratePlanScreen,
-  teardownOrchestratePlanScreenDom,
-} from './orchestrate-plan-screen';
 import { extractInlineThinkingFromContent } from '../api/inline-thinking';
 import { apiMessageContentToText } from '../api/message-content';
 import { normalizeModeId } from '../chat/modes/types';
@@ -58,15 +46,6 @@ import { isActiveChatStreaming, isChatStreaming, isStreamDomVisible } from '../c
 import { STREAMING_CARET_CLASS, STREAMING_CARET_SELECTOR, setAssistantBubbleContent } from '../markdown/renderer';
 import { syncComposerMessageQueue } from './composer-message-queue';
 import { getPendingTranscriptMessages } from '../chat/message-queue';
-import {
-  getActiveBoardGroup,
-  getBoardGroupForChat,
-  isBoardOwnedChat,
-} from '../state/chat-groups';
-import {
-  isBoardChatEmbedOpenForChat,
-  queryBoardChatTranscriptHost,
-} from './orchestrate-board-chat-state';
 import {
   clearActiveGoal,
   clearActiveLoops,
@@ -105,7 +84,6 @@ import {
 import { dismissCodeOverviewForNavigation } from './code-overview';
 import { dismissDevServerScreenForNavigation } from './dev-server-screen';
 import { closeSubAgentDrawer } from './sub-agent-drawer';
-import { isBoardViewActive, syncBoardViewChrome } from './view-mode-toggle';
 import { closeDrawer } from './settings';
 import { appConfirm } from './app-dialog';
 import { refreshMetricsStripForChat } from './stats';
@@ -223,29 +201,20 @@ function buildChatHistoryPendingMarker(): HTMLElement {
 
 /** Clear the transcript mount and show a pending marker synchronously so a switch never leaves another chat's bubbles visible during the history GET. */
 export function paintChatTranscriptHistoryPending(mount?: string | HTMLElement): void {
-  const boardChatHost =
-    mount == null && isBoardChatEmbedOpenForChat(getActiveChat().id)
-      ? queryBoardChatTranscriptHost()
-      : null;
   const mapChatHost = mount == null ? queryCodeMapChatHost(getActiveChat().id) : null;
   const sharedHost = mount == null ? getSharedChatHost(getActiveChat().id)?.transcript : null;
-  const embeddedHost = sharedHost ?? boardChatHost ?? mapChatHost;
+  const embeddedHost = sharedHost ?? mapChatHost;
   const area = embeddedHost ?? resolveChatMount(mount);
   if (!area) return;
   forgetChatSurface(area);
   disposeChatWorkView(area);
-  const codeMount = boardChatHost != null || isCodeChatMount(mount);
+  const codeMount = isCodeChatMount(mount);
 
   if (codeMount && !embeddedHost && isMainColumnOverlaySuppressingChatDom()) {
     return;
   }
 
   notifyManagedChatView(getActiveChat().id);
-
-  const boardGroup = codeMount && !embeddedHost ? getActiveBoardGroup() : null;
-  if (boardGroup?.viewMode === 'board') {
-    return;
-  }
 
   cancelChatHistoryBackfill();
   runWithChatMount(area, () => {
@@ -278,24 +247,6 @@ export function renderStatsForChat(chat: Chat): void {
   refreshMetricsStripForChat(chat);
   refreshContextUsageRing();
   if (isHubMounted()) refreshHubLiveData();
-}
-
-/** Empty transcript for a board task that has not run yet. */
-function buildBoardChatEmptyState(): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.className = 'ob-chat__empty';
-  wrap.setAttribute('role', 'status');
-
-  const title = document.createElement('p');
-  title.className = 'ob-chat__empty-title';
-  title.textContent = 'This task has not started.';
-
-  const hint = document.createElement('p');
-  hint.className = 'ob-chat__empty-hint';
-  hint.textContent = 'Its transcript appears here once the board runs it.';
-
-  wrap.append(title, hint);
-  return wrap;
 }
 
 type ToolResultLookup = Map<
@@ -525,6 +476,17 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
   if (msg.role === 'user') {
     const userMsg = msg;
     if (isHiddenTranscriptUserMessage(userMsg)) {
+      if (userMsg.provenance?.source === 'factory' && Array.isArray(userMsg.factoryTools)) {
+        for (const tool of userMsg.factoryTools) {
+          const row = renderToolCall(tool.name, tool.args, { standalone: true });
+          row.dataset.toolCallId = tool.id;
+          row.dataset.historyIndex = String(i);
+          row.dataset.turnKind = 'assistant-tools';
+          if (tool.result !== undefined) renderToolResult(row, tool.result, undefined, tool.args, undefined, { showFailure: true, failed: tool.failed });
+          if (tool.interrupted) renderToolInterruption(row, tool.interrupted);
+          host.append(row);
+        }
+      }
       return;
     }
     if (isAttributedAgentMessage(userMsg)) { host.append(createAttributedAgentMessage(chat, userMsg, i)); return; }
@@ -754,17 +716,13 @@ function showGraphiteThreadSummary(area: HTMLElement, chat: Chat): void {
 }
 
 export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement): void {
-  const boardChatHost =
-    mount == null && isBoardChatEmbedOpenForChat(chat.id)
-      ? queryBoardChatTranscriptHost()
-      : null;
   const mapChatHost = mount == null ? queryCodeMapChatHost(chat.id) : null;
   const sharedHost = mount == null ? getSharedChatHost(chat.id)?.transcript : null;
-  const embeddedHost = sharedHost ?? boardChatHost ?? mapChatHost;
+  const embeddedHost = sharedHost ?? mapChatHost;
   const area = embeddedHost ?? resolveChatMount(mount);
   // Mode changes and background updates can arrive without a mounted chat surface.
   if (!area) return;
-  const codeMount = boardChatHost != null || isCodeChatMount(mount);
+  const codeMount = isCodeChatMount(mount);
   const retainedStart = retainedChatHistoryStart(area, chat);
   const appendStart = chatHistoryAppendStart(area, chat);
   if (appendStart === undefined) forgetChatSurface(area);
@@ -789,50 +747,6 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     stripMainColumnOverlayClasses();
   }
   updateCodeChangeStrip(chat);
-  if (codeMount && isOrchestrateHubMounted()) {
-    teardownOrchestrateHub();
-  }
-  const suspendedPlanChat = codeMount && isOrchestratePlanScreenSuspendedForChat(chat);
-  if (suspendedPlanChat) {
-    teardownHub();
-    if (!chat.history.length) {
-      area.innerHTML = '';
-      showOrchestratePlanScreenSuspendedBanner(area, chat);
-      renderPersistedSubAgentCardsForChat(chat);
-      refreshContextUsageRing();
-      return;
-    }
-  } else if (codeMount && !isOrchestratePlanScreenSessionActive(chat)) {
-    const foreignSuspendedPlan = (() => {
-      const session = getOrchestratePlanScreenSession();
-      return Boolean(
-        session?.planScreenSuspended && session.chatId !== chat.id,
-      );
-    })();
-    if (!foreignSuspendedPlan) {
-      teardownOrchestratePlanScreen();
-    } else {
-      removeOrchestratePlanScreenSuspendedBanner();
-    }
-  } else if (codeMount && isOrchestratePlanScreenMounted()) {
-    teardownOrchestratePlanScreenDom();
-  }
-  const boardGroup = codeMount && !embeddedHost ? getActiveBoardGroup() : null;
-  if (boardGroup?.viewMode === 'board') {
-    teardownHub();
-    syncBoardViewChrome();
-    void import('./orchestrate-board-setup-banner').then((m) => m.removeBoardSetupReturnBanner());
-    void import('../os/router').then((m) => m.navigateToCodeBoards());
-    return;
-  }
-  if (codeMount && !embeddedHost && isBoardOwnedChat(chat)) {
-    const owner = getBoardGroupForChat(chat);
-    if (owner?.viewMode === 'board') {
-      void import('../state/chat-groups').then((m) => m.openBoardGroup(owner.id));
-      return;
-    }
-  }
-  void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   if (appendStart === undefined) clearSubAgentCardDomRegistry();
   const pending = getPendingTranscriptMessages(chat);
   if (!chat.history.length && !pending.length && !isChatStreaming(chat.id)) {
@@ -844,8 +758,6 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
       area.replaceChildren();
     } else if (mapChatHost || sharedHost) {
       area.replaceChildren();
-    } else if (boardChatHost) {
-      area.replaceChildren(buildBoardChatEmptyState());
     } else if (codeMount) {
       // Graphite keeps the composer outside the transcript on the starter page.
       if (document.querySelector('#mainColumn > .graphite-new-thread__intro')) {
@@ -918,10 +830,6 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   syncSendingStatus(chat, area, pending);
   if (tailStart === 0) showGraphiteThreadSummary(area, chat);
   installChatWorkView(area, chat, () => isChatStreaming(chat.id));
-  if (suspendedPlanChat) {
-    // Floats over the viewport rather than living in the transcript, so it is order-independent.
-    showOrchestratePlanScreenSuspendedBanner(area, chat);
-  }
   backfillChatHistory(area, renderCtx, tailStart, () => {
     if (area.dataset.historyStart === '0') showGraphiteThreadSummary(area, chat);
     // Cards anchor to their spawn tool row; re-place now that the older rows exist.
@@ -984,28 +892,6 @@ export interface AppendUserBubbleOptions extends UserBubbleRenderOptions {
 }
 
 // ── Notices ──────────────────────────────────────────────────────────────────
-
-/** True when board view should suppress chat bubbles (user can jump to Chat view). */
-function shouldStubOrchestrateBoardStreamDom(chat: Chat): boolean {
-  if (isBoardChatEmbedOpenForChat(chat.id)) return false;
-  return isBoardViewActive();
-}
-
-/** True when plan authoring screen suppresses chat bubble DOM. */
-function shouldStubOrchestratePlanScreenStreamDom(chat: Chat): boolean {
-  const modeId = normalizeModeId(chat.modeId);
-  if (modeId !== 'plan' && modeId !== 'super-plan' && modeId !== 'orchestrate') {
-    return false;
-  }
-  return isOrchestratePlanScreenSuppressingChatDom(chat.id);
-}
-
-function shouldStubOrchestrateStreamDom(chat: Chat): boolean {
-  return (
-    shouldStubOrchestrateBoardStreamDom(chat) ||
-    shouldStubOrchestratePlanScreenStreamDom(chat)
-  );
-}
 
 function resolveBubbleTargetChat(meta?: BubbleRenderMeta): Chat {
   const active = getActiveChat();
@@ -1194,7 +1080,6 @@ export function appendInjectionNoticesDom(
     historyIndex: startHistoryIndex,
     turnKind: 'user',
   });
-  if (shouldStubOrchestrateStreamDom(chat)) return;
   const mount = getActiveChatMountElement();
   clearTranscriptEmptyState(mount);
   const insertBefore = mount.querySelector('.msg.assistant.msg--awaiting-prose');
@@ -1237,9 +1122,6 @@ export function appendBubble(
     return bubbleDomStub();
   }
   const chat = embeddedHistoryChat ?? resolveBubbleTargetChat(meta);
-  if (!embeddedHistoryPaint && shouldStubOrchestrateStreamDom(chat)) {
-    return bubbleDomStub();
-  }
   const mount = getActiveChatMountElement();
   if (!embeddedHistoryPaint) clearTranscriptEmptyState(mount);
   if (!embeddedHistoryPaint && isHubMounted()) {
@@ -1437,9 +1319,6 @@ export function appendStreamingAssistantRow(forChatId?: string): StreamingAssist
     targetId === active.id
       ? active
       : sessionState?.chats.find((c) => c.id === targetId) ?? active;
-  if (shouldStubOrchestrateStreamDom(targetChat)) {
-    return streamingAssistantRowStub();
-  }
   const mount = getActiveChatMountElement();
   clearTranscriptEmptyState(mount);
   if (isHubMounted()) {
@@ -1593,7 +1472,11 @@ export function clearChat(): void {
       return;
     }
     const chat = getActiveChat();
-    clearActiveGoal(chat);
+    if (chat.activeGoal?.factoryRunId) {
+      const { controlFactoryGoal } = await import('../chat/goal/factory-control');
+      try { await controlFactoryGoal(chat, 'clear'); }
+      catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); return; }
+    } else clearActiveGoal(chat);
     clearActiveLoops(chat);
     clearFollowupChain(chat);
     clearChatTodos(chat);

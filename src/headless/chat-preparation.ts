@@ -17,6 +17,7 @@ import type { WorkAgentUserOverride } from '../agents/work-agent-types';
 import type { SubAgentTypeConfig } from '../agents/types';
 import type { UserRulesSettings } from '../config/user-rules';
 import type { Chat } from '../types';
+export { isGoalEvalVerificationTool } from '../chat/goal/verification-tools';
 export { resolveContextDocumentsBlock } from '../chat/context-documents/resolve-block';
 export { defaultEnabledPresetIds } from '../chat/context-documents/catalog';
 export { extractCodeMapFocusHints } from '../brain/code-map-focus';

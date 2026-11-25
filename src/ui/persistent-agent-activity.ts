@@ -27,7 +27,11 @@ export function batchPersistentAgentActivity(update: () => void): void {
 
 export function persistentAgentActivityOwner(run: ActivityRun, fallbackChatId?: string): string | null {
   if (!run.childChatId) return null;
-  if (run.completionPolicy?.kind === 'local_only') return null;
+  if (run.completionPolicy?.kind === 'local_only') {
+    // Factory collects the result itself. Only the original delegation belongs in the parent timeline.
+    const relation = findChatById(run.childChatId)?.agentConversation;
+    return relation?.origin === 'delegated' && relation.initialRunId === run.runId ? relation.parentChatId : null;
+  }
   return run.completionPolicy?.kind === 'wake_delegator' ? run.completionPolicy.recipientChatId :
     findChatById(run.childChatId)?.agentConversation?.parentChatId ?? ('parentChatId' in run ? run.parentChatId : fallbackChatId ?? null);
 }
@@ -198,13 +202,17 @@ function sourceAnchor(calls: Map<string, HTMLElement>, receipts: Map<string, HTM
 function fill(entry: Entry): void {
   const { run, row } = entry;
   const status = stateLabel(run), { model, options } = modelParts(run), modelId = agentModelId(run), duration = settledDuration(run);
+  const factory = run.completionPolicy?.kind === 'local_only' && findChatById(entry.chatId)?.activeGoal;
+  const statusText = factory && factory.factoryRunId && !factory.paused && !factory.achieved && (run.status === 'queued' || run.status === 'running')
+    ? status + ' · Factory is waiting for the result' : status;
   const startError = (run as SubAgentRun).startError;
   const generating = ['Working', 'Loading model'].includes(status);
   const activityText = generating ? (status === 'Loading model' ? 'Loading model…' : subAgentLiveStatusLine(run, true) || 'Working…') : '';
   const changes = runFileChanges(run, generating);
-  const key = JSON.stringify([run.title, run.type, run.status, run.parentToolCallId, status, model, options, modelId, duration, run.startedAt, activityText, changes, run.summary, run.error, startError?.message, startError?.consecutive]);
+  const key = JSON.stringify([run.title, run.type, run.status, run.parentToolCallId, statusText, model, options, modelId, duration, run.startedAt, activityText, changes, run.summary, run.error, startError?.message, startError?.consecutive]);
   if (entry.key === key) return;
   entry.key = key;
+  row.toggleAttribute('data-factory-assignment', run.completionPolicy?.kind === 'local_only');
   row.dataset.parentToolCallId = run.parentToolCallId ?? '';
   row.classList.toggle('sub-agent-card--active', generating);
   row.setAttribute('aria-busy', String(generating));
@@ -220,11 +228,11 @@ function fill(entry: Entry): void {
   link.querySelector('.sub-agent-card__type')!.textContent = run.type.replace(/[-_]/g, ' ').replace(/^./, letter => letter.toUpperCase());
   link.querySelector('.sub-agent-card__task')!.textContent = subAgentTitle(run);
   link.querySelector<HTMLElement>('.sub-agent-card__task')!.title = subAgentTitle(run);
-  link.querySelector('.sub-agent-card__status')!.textContent = status;
+  link.querySelector('.sub-agent-card__status')!.textContent = statusText;
   const clock = link.querySelector<HTMLElement>('.sub-agent-card__clock')!;
   clock.textContent = markState === 'running' ? liveElapsed(run) : duration;
   if (markState === 'running' && clock.textContent) startClock();
-  link.setAttribute('aria-label', `${subAgentTitle(run)}, ${run.type} agent on ${model}, ${status}. Open agent chat`);
+  link.setAttribute('aria-label', `${subAgentTitle(run)}, ${run.type} agent on ${model}, ${statusText}. Open agent chat`);
   const selection = panel.querySelector<HTMLElement>(':scope > .sub-agent-card__selection')!;
   syncAgentModelChip(selection.querySelector<HTMLElement>('.agent-model-chip')!, modelId, model);
   selection.querySelector<HTMLElement>('.sub-agent-card__options')!.textContent = options.join(' · ');

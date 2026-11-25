@@ -225,6 +225,53 @@ test('old task results remain immutable when the same child continues, and local
   assert.equal(area.querySelectorAll('.sub-agent-card').length, 1);
 });
 
+test('Factory cards stay visible with their scheduled checks in a stopped lead chat after remount', () => {
+  const parent = shell('factory'), children = ['F1', 'F2', 'F3'].map(id => shell(id, parent.id));
+  const area = setup([parent, ...children]);
+  parent.chatCommandVersion = 1;
+  parent.activeGoal = { factoryRunId: 'factory-run', startedAt: 1, turnCount: 1, tokenBaseline: 0, conditionText: 'Build the app.' };
+  parent.history = [{ role: 'user', content: '/factory Build the app.' }];
+  for (const [i, child] of children.entries()) {
+    const runId = child.agentConversation!.initialRunId!;
+    const task = { ...run(runId, child.id, 'execution-' + i), parentChatId: parent.id, title: 'Builder · ' + child.id,
+      status: i === 2 ? 'cancelled' as const : 'completed' as const, completionPolicy: { version: 1 as const, kind: 'local_only' as const } };
+    const input: UserMessage = { role: 'user', content: 'Hidden scheduler instructions', hiddenFromTranscript: true,
+      commandId: 'command-' + i, provenance: { version: 1, actor: 'system', source: 'factory', kind: 'goal_continuation' },
+      factoryTools: [{ id: task.parentToolCallId!, name: 'spawn_sub_agent', args: { title: task.title },
+        result: i === 2 ? 'Error: Conversation stopped' : JSON.stringify({ runId }) }] };
+    if (i < 2) input.factoryTools!.push({ id: 'check-' + i, name: 'execute_command', args: { command: 'npm test' }, result: 'npm test (exit 0)' });
+    parent.history.push(input);
+    if (i < 2) parent.history.push({ role: 'assistant', content: child.id + ' checkpoint committed.' });
+    if (i === 2) {
+      const spawn = input.factoryTools![0]!;
+      delete spawn.result;
+      renderChatFromHistory(parent);
+      const row = upsertPersistentAgentActivity({ ...task, status: 'running' }, parent.id, area)!;
+      assert.equal(row.previousElementSibling?.getAttribute('data-tool-call-id'), spawn.id);
+      assert.match(row.textContent!, /Factory is waiting for the result/);
+      assert.equal(row.dataset.status, 'running');
+      parent.activeGoal.paused = true;
+      spawn.result = 'Error: Conversation stopped';
+      spawn.failed = true;
+    }
+    persistSubAgentRunSnapshot(task);
+  }
+  for (let paint = 0; paint < 2; paint++) {
+    area.replaceChildren();
+    renderChatFromHistory(parent);
+    const cards = [...area.querySelectorAll<HTMLElement>('.sub-agent-card')];
+    assert.deepEqual(cards.map(card => card.dataset.status), ['completed', 'completed', 'cancelled']);
+    assert.equal(area.querySelectorAll('[data-tool-name="execute_command"]').length, 2);
+    assert.ok(!area.textContent?.includes('Hidden scheduler instructions'));
+    for (const [i, card] of cards.entries()) {
+      assert.ok(card.previousElementSibling?.classList.contains('tool-call-msg--delegated'));
+      assert.equal(card.previousElementSibling?.getAttribute('data-tool-call-id'), 'spawn-task-' + children[i]!.id);
+      assert.ok(!card.classList.contains('chat-work-hidden'));
+      assert.equal(card.querySelector('a')?.getAttribute('href'), '#/app/code/chat?chatId=' + children[i]!.id);
+    }
+  }
+});
+
 test('pool-backed activity distinguishes the captured pool, actual member and semantic options', () => {
   const parent = shell('pool-parent'), child = shell('pool-child', parent.id); const area = setup([parent, child]);
   const task = { ...run('pool-task', child.id), parentChatId: parent.id, providerId: 'minnow-router', modelId: 'review-pool',

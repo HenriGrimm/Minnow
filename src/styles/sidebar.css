@@ -173,24 +173,6 @@
   color: var(--mn-fg);
 }
 
-/* Orchestrate board folder: click header to open kanban in main column. */
-.chat-group-header--has-board {
-  cursor: pointer;
-}
-
-.chat-group-header--has-board:hover:not(.active) {
-  background: var(--mn-surface-2);
-  color: var(--mn-fg);
-}
-
-/* Board folder open in the main column (matches .chat-item-row.active). */
-.chat-group-header--has-board.active {
-  background: var(--mn-accent-soft);
-  outline: 1px solid var(--mn-accent);
-  outline-offset: -1px;
-  color: var(--mn-fg);
-}
-
 /* Nested chats under a group header (indent + tight vertical rhythm). */
 .chat-group-members {
   display: flex;
@@ -239,11 +221,6 @@
   --mn-icon-size: 14px;
   flex-shrink: 0;
   opacity: 0.9;
-}
-
-/* Orchestrate board folders: solid network glyph. */
-.chat-group-header--has-board .chat-group-header__icon {
-  display: block;
 }
 
 .chat-group-header__caret {

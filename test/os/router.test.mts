@@ -149,7 +149,7 @@ describe('parseOsHash', () => {
     assert.deepEqual(parseOsHash('#/app/code/orchestrate'), {
       view: 'app',
       appId: 'code',
-      codeSection: 'orchestrate',
+      codeSection: 'chat',
     });
     assert.deepEqual(parseOsHash('#/app/code/map'), {
       view: 'app',
@@ -234,7 +234,7 @@ describe('os router navigation', () => {
     setWorkspaceFromServer({ path: workspace, label: 'repo', isDefault: false });
     setSessionStateForTests(state);
     launchApp('code');
-    launchApp('code', { codeSection: 'boards' });
+    launchApp('code', { codeSection: 'map' });
     setSessionStateForTests({ ...state, activeId: other.id });
     launchApp('models', { modelsSection: 'providers' });
     launchApp('settings', { settingsSection: 'general' });
@@ -255,7 +255,6 @@ describe('os router navigation', () => {
     navigateToCodeOverview();
     assert.equal(parseOsHash('#/app/code/chat').codeSection, 'chat');
     assert.equal(hashForCodeSection('super-plan'), '#/app/code/super-plan');
-    assert.equal(hashForCodeSection('orchestrate'), '#/app/code/orchestrate');
     assert.equal(hashForCodeSection('map'), '#/app/code/map');
   });
 

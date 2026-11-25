@@ -69,9 +69,6 @@ export function initShellHandlers(): void {
   wireClick('fileSidebarBackdrop', closeMobileFileSidebar);
 
   wireClickAll('.chat-new-wide', () => { void createChat(); });
-  wireClick('btnOrchestrate', () => {
-    void import('./orchestrate-hub').then((m) => m.toggleOrchestrateHubFromTopbar());
-  });
 
   wireClick('sendBtn', handleComposerPrimaryAction);
 

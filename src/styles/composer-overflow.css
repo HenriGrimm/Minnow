@@ -127,8 +127,7 @@
 
 .composer-overflow-page--settings > .composer-control,
 .composer-overflow-page--settings > .composer-run-target-wrap,
-.composer-overflow-page--settings > .work-agent-dev,
-.composer-overflow-page--settings > .view-mode-toggle-btn {
+.composer-overflow-page--settings > .work-agent-dev {
   flex: 0 0 auto;
   width: 100%;
   min-width: 0;
@@ -303,36 +302,6 @@
 
 .composer-overflow-page--settings .thinking-toggle-btn:focus-visible {
   border-color: var(--mn-accent);
-}
-
-.composer-overflow-page--settings > .view-mode-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  width: 100%;
-  height: auto;
-  min-height: 40px;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  transition:
-    background 0.12s var(--ease-out),
-    border-color 0.12s var(--ease-out);
-}
-
-.composer-overflow-page--settings > .view-mode-toggle-btn::after {
-  content: 'Board view';
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--mn-fg);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .composer-overflow-page--settings > .view-mode-toggle-btn:hover:not(:disabled) {
-    border-color: var(--mn-border);
-    background: var(--mn-surface-elevated);
-  }
 }
 
 /* Wide row keeps the native select; the sheet uses Low / Medium / High segments. */

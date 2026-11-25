@@ -9,9 +9,13 @@ export interface MirrorSource {
   path: string; checkoutIdentity: string; repos: Array<CheckoutBinding & { id: string }>;
 }
 export interface MirrorBinding extends MirrorSource { branch: string }
+export interface InitialWorkspaceSource {
+  path: string; checkoutIdentity: string; head: null;
+  commonIdentity?: string; gitIdentity?: string; branch?: string;
+}
 export interface ChatWorkspaceIntent {
   version: 1; kind: 'automatic'; id: string; chatId: string; projectId: string;
-  source: CheckoutBinding | MirrorSource; sourceWorkspaceId: string; slotPath: string; title: string;
+  source: CheckoutBinding | MirrorSource | InitialWorkspaceSource; sourceWorkspaceId: string; slotPath: string; title: string;
 }
 export interface ChatWorkspaceState {
   intent: ChatWorkspaceIntent; status: 'pending' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'local';
@@ -30,7 +34,7 @@ export function createChatWorkspacePreparation(options: {
     onCheckout: (result: { path: string; branch: string }) => Promise<void> }) => Promise<{ ok: boolean; path?: string; branch?: string; error?: string }>;
   onChange?: (chatId: string) => unknown; id?: () => string;
 }): {
-  capture(target: ChatTargetContext, choice?: { kind: 'automatic' | 'local' }, options?: { newChat?: boolean }): Promise<ChatWorkspaceIntent | null>;
+  capture(target: ChatTargetContext, choice?: { kind: 'automatic' | 'local' }, options?: { newChat?: boolean; factory?: boolean }): Promise<ChatWorkspaceIntent | null>;
   /** Call inside the same repository.atomic transaction as admitCommand. */
   admit(chatId: string, intent: ChatWorkspaceIntent | null): void;
   prepare(input: WorkspacePreparationInput): Promise<{ execution: ExecutionRecord; target: ChatTargetContext }>;

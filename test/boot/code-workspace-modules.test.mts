@@ -1,7 +1,7 @@
 /**
  * Code workspace boot must survive one bad module.
  *
- * The steps are independent surfaces (file tree, terminal, orchestrate hub, …).
+ * The steps are independent surfaces (file tree, terminal, change strip, …).
  * A single `await` chain meant one throw stranded every step after it, and the
  * rejected promise stayed memoized so that window never retried — which is how
  * one window ended up with no file tree and no terminal for a whole session
@@ -56,14 +56,16 @@ mock.module('../../src/ui/terminal-panel.ts', {
     },
   },
 });
-mock.module('../../src/ui/shell-run-ui.ts', { namedExports: stub('initShellRunUi') });
 mock.module('../../src/ui/code-brain-map.ts', { namedExports: stub('initCodeBrainMap') });
+mock.module('../../src/ui/surfaces/code-surfaces.ts', { namedExports: stub('initCodeGraphiteSurfaces') });
+mock.module('../../src/ui/shell-run-ui.ts', { namedExports: stub('initShellRunUi') });
+mock.module('../../src/ui/thread-card.ts', { namedExports: stub('mountGraphiteThreadHeader') });
+mock.module('../../src/ui/surfaces/graphite-context-surfaces.ts', { namedExports: stub('mountGraphiteContextSurfaces') });
 mock.module('../../src/ui/code-overview.ts', { namedExports: stub('initCodeOverview') });
 mock.module('../../src/ui/dev-server-screen.ts', { namedExports: stub('initDevServerScreen') });
 mock.module('../../src/ui/code-views-chats-toggle.ts', {
   namedExports: stub('initCodeViewsChatsToggle'),
 });
-mock.module('../../src/ui/orchestrate-hub.ts', { namedExports: stub('initOrchestrateHub') });
 mock.module('../../src/ui/code-change-strip.ts', { namedExports: stub('initCodeChangeStrip') });
 
 const { ensureCodeWorkspaceModules, resetCodeWorkspaceModulesForTests } = await import(
@@ -86,7 +88,6 @@ describe('code workspace module boot', { concurrency: false }, () => {
     // Everything downstream of the failure must still be wired.
     for (const later of [
       'initTerminalPanel',
-      'initOrchestrateHub',
       'initCodeChangeStrip',
       'registerTerminalKeyboardShortcut',
     ]) {
@@ -110,8 +111,8 @@ describe('code workspace module boot', { concurrency: false }, () => {
     await ensureCodeWorkspaceModules();
 
     assert.deepEqual(
-      calls.filter((c) => c === 'initOrchestrateHub'),
-      ['initOrchestrateHub'],
+      calls.filter((c) => c === 'initCodeChangeStrip'),
+      ['initCodeChangeStrip'],
     );
     assert.equal(calls[0], 'detectLocalServer');
     assert.equal(calls.at(-1), 'registerTerminalKeyboardShortcut');

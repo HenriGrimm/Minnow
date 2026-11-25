@@ -5,7 +5,7 @@
 import { makeEvent } from './core/events.js';
 import { isQuotaExhaustedText } from '../generations/quota-error.js';
 import { boardFailure } from './failure.js';
-import { recoveryHold, recoverySpent } from './core/recovery.js';
+import { isRecoveryBudgetHold, recoveryHold, recoverySpent, taskRepairFailures } from './core/recovery.js';
 import { acquireBoardOwner } from './owner.js';
 import { resetTargets, rewindCascade } from './core/rewind.js';
 import { diffTaskChanges, taskEditBlocker } from './core/task-edit.js';
@@ -1107,11 +1107,13 @@ export function createEngine(options) {
       if (disposed || revision !== state.recoveryRevision || state.recoveryHolds[key] !== hold) return false;
       const preflightEvents = graph.eventsForPreflight?.(prepared) ?? [];
       if (preflightEvents.length) await append(preflightEvents);
-      // Budget exhaustion requires changed scope/resources, not an unlimited Retry button.
-      if (/budget-exhausted/.test(hold.failure.message)) {
+      if (isRecoveryBudgetHold(hold)) {
         if (!limits) return false;
-        const taskFailures = hold.taskId ? state.tasks.get(hold.taskId)?.attempts.filter((attempt) => attempt.ended && !attempt.retired && attempt.outcome !== 'pass').length ?? 0 : 0;
-        const eligible = hold.stage === 'budget' ? limits.board > recoverySpent(state) : hold.role === 'final' ? limits.final > state.finalRepairs.length : limits.task > taskFailures;
+        const task = hold.taskId ? state.tasks.get(hold.taskId) : undefined;
+        const taskFailures = task ? taskRepairFailures(task).length : 0;
+        const eligible = hold.stage === 'budget' ? limits.board > recoverySpent(state)
+          : hold.role === 'final' ? limits.final > state.finalRepairs.length
+          : limits.task > taskFailures;
         if (!eligible) return false;
         await append([makeEvent('board.started', { concurrency: state.concurrency, recoveryVersion: state.recoveryVersion, recoveryLimits: limits })]);
       }

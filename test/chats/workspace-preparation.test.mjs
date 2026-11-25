@@ -28,7 +28,7 @@ async function fixture(t, options = {}) {
   const git = (args, cwd = repo) => exec('git', args, { cwd, windowsHide: true });
   await fs.mkdir(repo);
   const repos = options.multiRepo ? [['backend', 'main'], ['apps/frontend', 'develop']] : [['.', 'main']];
-  for (const [location, branch] of repos) {
+  for (const [location, branch] of options.fresh ? [] : repos) {
     const cwd = path.join(repo, location);
     await fs.mkdir(cwd, { recursive: true });
     await git(['init', '-b', branch], cwd);
@@ -53,9 +53,9 @@ async function fixture(t, options = {}) {
   const makeAdapter = extra => createChatWorkspacePreparation({ repository, context,
     enableWorktree: args => { setupCalls++; return (options.enableWorktree ?? enableChatWorktree)(args); }, ...extra });
   let adapter = makeAdapter();
-  async function admit() {
+  async function admit(options) {
     const target = await context.resolveTarget('ordinary');
-    const intent = await adapter.capture(target);
+    const intent = await adapter.capture(target, undefined, options);
     const commandId = 'command-' + (++sequence);
     const command = { version: 1, commandId, chatId: 'ordinary', kind: 'send', message: 'Test setup', mode: 'auto',
       requestedAt: Date.now(), clientRequestId: commandId, modelSelection: { providerId: 'fixture', modelId: 'fixture' },
@@ -91,6 +91,47 @@ async function fixture(t, options = {}) {
   return { root, repo, git, db, repository, context, admit, reserve, release, setupCalls: () => setupCalls,
     get adapter() { return adapter; }, reload(extra) { adapter = makeAdapter(extra); return adapter; } };
 }
+
+test('an unborn branch keeps one initial commit when factory setup resumes after interruption', async t => {
+  let interrupted = false;
+  const f = await fixture(t, { fresh: true, enableWorktree(args) {
+    if (interrupted) return enableChatWorktree(args);
+    interrupted = true;
+    throw new Error('interrupted before allocating worktree');
+  } });
+  await f.git(['init', '-b', 'develop']);
+  await fs.writeFile(path.join(f.repo, '.gitignore'), 'private.txt\n');
+  await fs.writeFile(path.join(f.repo, 'private.txt'), 'ignored');
+  await fs.writeFile(path.join(f.repo, 'file.txt'), 'project');
+  const first = f.reserve(await f.admit({ factory: true }));
+  const queued = await f.admit();
+  await assert.rejects(f.git(['rev-parse', '--verify', 'HEAD']));
+  await assert.rejects(f.adapter.prepare(first), /interrupted before allocating/);
+  f.release(first);
+  const head = (await f.git(['rev-parse', 'HEAD'])).stdout.trim();
+  const next = f.reserve(queued);
+  const ready = await f.reload().prepare(next);
+  f.release(next, 'completed');
+  assert.equal(ready.target.chat.workspacePreparation.intent.source.head, head);
+  assert.equal((await f.git(['branch', '--show-current'])).stdout.trim(), 'develop');
+  assert.equal((await f.git(['rev-list', '--count', 'HEAD'])).stdout.trim(), '1');
+  const checkout = ready.target.chat.worktreeRoot;
+  assert.equal(await fs.readFile(path.join(checkout, 'file.txt'), 'utf8'), 'project');
+  assert.equal(await fs.readFile(path.join(f.repo, '.gitignore'), 'utf8'), 'private.txt\n');
+  assert.equal((await f.git(['show', 'HEAD:.gitignore'], checkout)).stdout.trim(), 'private.txt');
+  await assert.rejects(fs.access(path.join(checkout, 'private.txt')), { code: 'ENOENT' });
+});
+
+test('factory admission leaves a fresh directory alone and cannot initialize its replacement', async t => {
+  const f = await fixture(t, { fresh: true });
+  const input = f.reserve(await f.admit({ factory: true }));
+  await assert.rejects(fs.access(path.join(f.repo, '.git')), { code: 'ENOENT' });
+  await fs.rename(f.repo, path.join(f.root, 'original'));
+  await fs.mkdir(f.repo);
+  await assert.rejects(f.adapter.prepare(input), /workspace or its repository changed/);
+  await assert.rejects(fs.access(path.join(f.repo, '.git')), { code: 'ENOENT' });
+  f.release(input);
+});
 
 test('an ordinary chat uses both registered checkouts and can deliver each repo to its original branch', async t => {
   const f = await fixture(t, { multiRepo: true });

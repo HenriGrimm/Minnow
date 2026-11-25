@@ -137,7 +137,6 @@ export const PATH_RUNNER_RULES = [
   { pattern: 'test/config/*.test.js', runner: 'tsx-mocks' },
   { pattern: 'test/providers/fetch-chat-shim.test.mjs', runner: 'tsx-mocks' },
   // Both use mock.module and transitively pull in UI code that imports CSS.
-  { pattern: 'test/ui/orchestrate-plan-screen.test.mts', runner: 'tsx-mocks-loader' },
   { pattern: 'test/ui/settings-layout-links.test.mjs', runner: 'tsx-mocks-loader' },
   { pattern: 'test/server/**/*.test.mjs', runner: 'tsx-mocks' },
   { pattern: 'test/brain/synthesis-run-route.test.mjs', runner: 'tsx-mocks' },
@@ -306,8 +305,6 @@ export const SCOPED_SUITES = {
       'test/orchestrator/**/*.test.mts',
       'test/dev/**/*.test.mts',
       'test/dev/**/*.test.mjs',
-      // Plan-listing keeper ported from V1 list-plans (lives next to src/chat/plans/).
-      'test/chat/plans/list-plans.test.mts',
     ],
   },
   runner: {

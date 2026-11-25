@@ -5,7 +5,7 @@ import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { resetAppDialogForTests } from '../../src/ui/app-dialog.ts';
 import { getViewerTab, openViewerTab, resetViewerTabStoreForTests, snapshotViewerTabEditorContent } from '../../src/ui/file-viewer-tab-store.ts';
-import { executeWorkspaceSwitch, setV2WorkspaceSwitchDepsForTests } from '../../src/ui/workspace-switch-guard.ts';
+import { executeWorkspaceSwitch } from '../../src/ui/workspace-switch-guard.ts';
 
 const source = '/source';
 const destination = '/destination';
@@ -26,7 +26,6 @@ beforeEach(() => {
     return new Response('{}', { status: 503 });
   } });
   setWorkspaceFromServer({ path: source, label: 'source', isDefault: false });
-  setV2WorkspaceSwitchDepsForTests({ listBoards: async () => [] });
   window.minnow = { window: { switchWorkspace: async (path: string) => {
     switches.push(path);
     return { ok: true };
@@ -37,7 +36,6 @@ afterEach(() => {
   resetAppDialogForTests();
   resetViewerTabStoreForTests();
   resetWorkspaceStateForTests();
-  setV2WorkspaceSwitchDepsForTests(null);
   globalThis.fetch = originalFetch;
   win.close();
 });
@@ -86,20 +84,13 @@ test('a failed save leaves both the window binding and cold-boot default intact'
   assert.equal(getViewerTab('save.ts')?.isDirty, true);
 });
 
-test('explicit discard allows a single retarget and leaves its running board alone', async () => {
-  let stopped = false;
-  setV2WorkspaceSwitchDepsForTests({
-    listBoards: async () => [{ boardId: 'board', name: 'Board', status: 'running', planPath: 'p.md', concurrency: 1, taskCount: 1, finished: false }],
-    stopBoard: async () => { stopped = true; },
-  });
+test('explicit discard allows a single retarget', async () => {
   await openViewerTab('file.ts', { content: 'base' });
   snapshotViewerTabEditorContent('file.ts', 'unsaved', true);
   const pending = executeWorkspaceSwitch(destination);
   assert.equal(await executeWorkspaceSwitch('/another'), null);
-  await choice('confirm', /keep running/);
   await choice('discard', /file\.ts/);
   assert.equal((await pending)?.path, destination);
   assert.equal(writes.length, 1);
   assert.deepEqual(switches, [destination]);
-  assert.equal(stopped, false);
 });

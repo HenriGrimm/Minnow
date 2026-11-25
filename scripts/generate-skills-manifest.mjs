@@ -53,6 +53,7 @@ async function main() {
         version: meta.version?.trim() || undefined,
         disableModelInvocation: meta['disable-model-invocation'] === 'true',
         ...(meta.access === 'read-only' || meta.access === 'plans' ? { access: meta.access } : {}),
+        ...(meta.goal?.trim() ? { goal: meta.goal.trim().slice(0, 4000) } : {}),
       });
     } catch (err) {
       console.warn(`Skip ${entry.name}:`, err.message);

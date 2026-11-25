@@ -70,7 +70,7 @@ export async function renderShellSandboxSettings(mount: HTMLElement): Promise<vo
   const intro = el(
     'p',
     'settings-field-hint settings-filesystem-hint',
-    'Applies to all chats, including orchestrate boards. macOS uses Seatbelt; Linux uses Landlock; Windows uses WSL2 + Landlock inside your distro (not native cmd/PowerShell). On Windows, install node, python3, and git inside WSL — host-only toolchains are not used for sandboxed agent shells.',
+    'Applies to all chats. macOS uses Seatbelt; Linux uses Landlock; Windows uses WSL2 + Landlock inside your distro (not native cmd/PowerShell). On Windows, install node, python3, and git inside WSL — host-only toolchains are not used for sandboxed agent shells.',
   );
   section.appendChild(intro);
 

@@ -13,7 +13,7 @@ import {
 } from '../../src/state/file-panel.ts';
 import { affectedDirsFromTool } from '../../src/ui/file-tree-invalidation.ts';
 import { setFileTreeServerAvailable } from '../../src/ui/file-tree-server.ts';
-import { resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
+import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
 
 let testWindow: Window | null = null;
@@ -87,6 +87,34 @@ describe('renderFileTree scroll preservation', () => {
 
     assert.equal(host.scrollTop, 120);
   });
+});
+
+test('a late Factory listing cannot overwrite the Local files after switching chats', { timeout: 5000 }, async t => {
+  setupDom();
+  launchInstance('code');
+  setWorkspaceFromServer({ path: '/repo', label: 'Repo', isDefault: false });
+  setFileTreeServerAvailable(true);
+  const tree = await import('../../src/ui/file-tree.ts');
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const pending = Promise.withResolvers<Response>();
+  const started = Promise.withResolvers<void>();
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('/api/tools/workspace-files')) return Response.json({ ok: true });
+    if (JSON.parse(String(init?.body)).workspaceRoot === '/checkouts/factory') {
+      started.resolve();
+      return pending.promise;
+    }
+    return Response.json({ result: '[file] local.txt' });
+  };
+  const old = tree.syncFileTreeToPanelWorktree('/checkouts/factory');
+  await started.promise;
+  await tree.syncFileTreeToPanelWorktree('/repo');
+  pending.resolve(Response.json({ result: '[file] factory.txt' }));
+  await old;
+  tree.renderFileTree();
+  assert.ok(document.querySelector('[data-path="local.txt"]'));
+  assert.equal(document.querySelector('[data-path="factory.txt"]'), null);
 });
 
 test('the visible tree picks up external files without a manual refresh', async (t) => {

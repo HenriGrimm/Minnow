@@ -160,7 +160,12 @@ export function createChatDelegation({ repository, context, service, getEngine, 
       sourcePolicy = projectChatPolicyToWorkspace(intersectChatPolicies(caller.policy, currentTarget.policy), workspace.scope, currentTarget.registry);
       if (!sourcePolicy.capabilities.includes('agent.spawn')) fail('policy_denied', 'Delegation permission was revoked during preparation');
       const intersection = intersectChatPolicies(sourcePolicy, assertChatPolicy(snapshot.policy));
+      const parent = repository.getExecution(caller.executionId)?.captured;
+      const scheduledFactory = parent?.factoryAssignment && parent.factoryRunId && intent.wait &&
+        toolCallId === intent.requestKey && /^factory-[a-f0-9]{40}$/.test(toolCallId);
+      const reviewingFactory = scheduledFactory && parent.factoryAssignment.role === 'reviewer';
       const policy = createChatPolicy({ ...intersection,
+        ...(reviewingFactory ? { turnClamp: 'read-only' } : {}),
         toolPermissions: Object.fromEntries(Object.entries(intersection.toolPermissions).map(([name, value]) => [name, disabledChildTools.has(name) ? 'off' : value])),
         capabilities: intersection.capabilities.filter(value => value !== 'agent.spawn') });
       shell.modeId = policy.modeId;
@@ -169,16 +174,18 @@ export function createChatDelegation({ repository, context, service, getEngine, 
       const journalOwnerId = repository.getRelation(caller.chatId)?.journalOwnerId ?? caller.chatId;
       const rootChatId = repository.getRelation(caller.chatId)?.rootChatId ?? caller.chatId;
       const stamp = now();
-      const completionPolicy = { version: 1, kind: 'wake_delegator', recipientChatId: caller.chatId,
+      // The factory controller reads the durable child result. A second wake-up send would
+      // start an unrelated lead turn after a checkpoint, particularly after a restart.
+      const completionPolicy = scheduledFactory ? { version: 1, kind: 'local_only' } : { version: 1, kind: 'wake_delegator', recipientChatId: caller.chatId,
         subscriptionId: stableId('wake', identity), cancellationEpoch: epoch };
       const causal = inheritCausality?.(caller) ?? { causalRootId: repository.getExecution(caller.executionId)?.captured?.causalRootId ?? caller.executionId, causalDepth: 1 };
       const command = { version: 1, commandId, chatId: childChatId, requestedAt: stamp, kind: 'send', mode: 'auto', message: intent.task,
         modelSelection: model.selection, profileReference, provenance: { version: 1, actor: 'agent', source: 'agent_tool', kind: 'peer_message',
           sourceChatId: caller.chatId, sourceTurnId: caller.executionId, commandId, runId, causalRootId: causal.causalRootId } };
-      const captured = { spawnIntentHash, runId, modelSelection: model.selection, modelSource: model.source,
+      const captured = { spawnIntentHash, runId, ...(scheduledFactory ? { factoryParentRunId: parent.factoryRunId } : {}), modelSelection: model.selection, modelSource: model.source,
         exactModel: model.exactModel, policy, completionPolicy, journalOwnerId, profileReference,
         parentTurnId: caller.executionId, ...(toolCallId ? { parentToolCallId: toolCallId } : {}),
-        ...(intent.wait ? { inlineWait: { chatId: caller.chatId, executionId: caller.executionId, toolCallId } } : {}),
+        ...(intent.wait && !scheduledFactory ? { inlineWait: { chatId: caller.chatId, executionId: caller.executionId, toolCallId } } : {}),
         sourceCancellationEpoch: epoch, scope: workspace.scope, projectId: workspace.scope.projectId, ...causal,
         ...(intent.category ? { category: intent.category } : {}), ...(intent.boardTaskId ? { boardTaskId: intent.boardTaskId } : {}) };
       const relation = { version: 1, childChatId, parentChatId: caller.chatId, rootChatId, journalOwnerId, origin: 'delegated',

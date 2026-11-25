@@ -159,38 +159,8 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
     refreshAreas: ['agent-center'],
   }),
   'agents.skills': section(['agent-center']),
-  'agents.boards': section(['agent-center']),
   'agents.agentPacks': section(['agent-packs']),
   'agents.subAgents': section(['agent-center']),
-  'agents.autopilot': section(['autopilot']),
-  'agents.autopilot.defaultStatus': meta('autopilot.defaultStatus', 'enum', {
-    allowedValues: ['running', 'stopped'],
-    refreshAreas: ['autopilot'],
-  }),
-  'agents.autopilot.isolation': meta('autopilot.defaultIsolationMode', 'enum', {
-    allowedValues: ['auto', 'off', 'per-board', 'per-task', 'per-wave'],
-    refreshAreas: ['autopilot'],
-  }),
-  'agents.autopilot.concurrency': meta('autopilot.maxConcurrentTasks', 'number', {
-    refreshAreas: ['autopilot'],
-  }),
-  'agents.autopilot.plannerModel': section(['autopilot']),
-  'agents.autopilot.selfHeal': section(['autopilot']),
-  'agents.autopilot.selfHealMaxRounds': meta('autopilot.selfHealMaxRounds', 'number', {
-    refreshAreas: ['autopilot'],
-  }),
-  'agents.autopilot.infraProvisionTimeout': meta('autopilot.infraProvisionTimeoutMs', 'number', {
-    refreshAreas: ['autopilot'],
-  }),
-  'agents.autopilot.autoProvisionInfra': meta('autopilot.autoProvisionInfra', 'boolean', {
-    refreshAreas: ['autopilot'],
-  }),
-  'agents.autopilot.afkAutoRestartStalls': meta('autopilot.afkAutoRestartStalls', 'boolean', {
-    refreshAreas: ['autopilot'],
-  }),
-  'agents.autopilot.guardCdOutsideWorktree': meta('autopilot.guardCdOutsideWorktree', 'boolean', {
-    refreshAreas: ['autopilot'],
-  }),
   'agents.prompting': section(['agent-center']),
   'agents.prompting.profiles': section(['agent-center']),
   'agents.prompting.hub': section(['agent-center']),

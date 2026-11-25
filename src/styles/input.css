@@ -105,6 +105,9 @@
 }
 
 .input-bar .input-bar-send-stack {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
   grid-column: 2;
   order: 2;
   align-self: stretch;

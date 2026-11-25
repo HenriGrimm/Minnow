@@ -1,9 +1,13 @@
-import type { BoardState, RecoveryHold, RecoveryFailure } from './types';
+import type { Attempt, BoardState, RecoveryHold, RecoveryFailure, Role, TaskState } from './types';
 export const RECOVERY_VERSION: number;
 export const FINAL_REPAIR_LIMIT: number;
 export const TASK_REPAIR_LIMIT: number;
 export const OPERATIONAL_CATEGORIES: string[];
 export function recoveryKey(taskId: string | null, role: string): string;
 export function recoverySpent(state: BoardState): number;
+export function lastEndedAttempt(task: TaskState): Attempt | undefined;
+export function taskRepairFailures(task: TaskState, role?: Role): Attempt[];
+export function isRecoveryBudgetHold(hold: RecoveryHold): boolean;
+export function taskRecoveryHold(state: BoardState, taskId: string): RecoveryHold | undefined;
 export function held(state: BoardState, taskId: string | null, role: string): boolean;
 export function recoveryHold(state: BoardState, input: { taskId?: string | null; role: string; failure: RecoveryFailure; now: number; stage?: string; attemptId?: string }): RecoveryHold;

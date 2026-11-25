@@ -202,12 +202,30 @@ export async function captureChatTurnIntent(intent, chat, message, options = {})
   const adapters = createChatPreparationAdapters(options.adapters);
   try { return await runWithDeadline(async signal => {
     const value = parsed.value;
-    let skillBody = null, uiDesigner = null, turnClamp = null;
+    let skillBody = null, uiDesigner = null, turnClamp = null, skillGoal;
     if (value.skill) {
       const userText = value.skill.input ?? message;
       const composer = await adapters.loadComposer();
       const skill = await adapters.loadSkill(value.skill.id);
       skillBody = skill.body;
+      skillGoal = skill.goal?.trim().slice(0, 4000);
+      // A plan saved by /plan may still be untracked when Git creates the worktree.
+      const planPath = userText.trim().replaceAll('\\', '/');
+      if (value.skill.id === 'factory' && value.skill.source === 'slash' &&
+          /^documentation\/plans\/.+\.md$/i.test(planPath) &&
+          !/[\x00-\x1f:]/.test(planPath) && !planPath.split('/').some(part => !part || part === '.' || part === '..')) {
+        const root = await fs.realpath(chat.worktreeRoot || chat.workspacePath);
+        const filename = path.join(root, planPath);
+        const actual = await fs.realpath(filename).catch(() => { throw new ChatContractError('invalid_request', 'The selected factory plan could not be found in this checkout.'); });
+        const file = await fs.stat(actual);
+        if (path.relative(filename, actual) !== '' || !file.isFile()) {
+          throw new ChatContractError('workspace_denied', 'The selected plan must be a file inside this checkout.');
+        }
+        if (file.size > 400000) throw new ChatContractError('invalid_request', 'The factory plan exceeds 100,000 characters.');
+        const plan = await fs.readFile(actual, 'utf8');
+        if (plan.length > 100000) throw new ChatContractError('invalid_request', 'The factory plan exceeds 100,000 characters.');
+        value.context = [value.context, 'Saved factory plan from ' + userText.trim(), plan].filter(Boolean).join('\n\n');
+      }
       turnClamp = normalizeTurnClamp(skill.access);
       if (composer.shouldComposeImpeccableBody(value.skill.id, userText)) skillBody = await adapters.composeImpeccable(skillBody, userText, composer);
       if (value.skill.id === 'caveman') skillBody = composer.augmentCavemanSkillBody(skillBody, { userText, pinnedIntensity: value.skill.intensity });
@@ -221,7 +239,7 @@ export async function captureChatTurnIntent(intent, chat, message, options = {})
     }
     signal.throwIfAborted();
     if (skillBody && Buffer.byteLength(skillBody) > 256 * 1024) throw new ChatContractError('capability_unavailable', 'The selected skill exceeds 256 KiB');
-    return { intent: value, skillBody, uiDesigner, ...(turnClamp ? { turnClamp } : {}) };
+    return { intent: value, skillBody, uiDesigner, ...(skillGoal ? { skillGoal } : {}), ...(turnClamp ? { turnClamp } : {}) };
   }, { timeoutMs: options.timeoutMs ?? 10000 }); }
   catch (error) {
     if (error?.name === 'TimeoutError') throw new ChatContractError('capability_unavailable', 'Required skill preparation exceeded its deadline. Retry after checking the selected skill.');
@@ -485,9 +503,16 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     policy = createChatPolicy({ ...policy, toolPermissions: Object.fromEntries(Object.entries(policy.toolPermissions)
       .map(([name, permission]) => [name, allowed.has(name) ? permission : 'off'])) });
   }
-  const selected = execution.captured?.modelSelection ?? command.modelSelection ?? snapshot.modelSelection ??
+  const verifyingFactory = execution.captured?.factoryPhase === 'verify';
+  if (verifyingFactory) {
+    const inspect = live.composer.isGoalEvalVerificationTool;
+    tools = tools.filter(tool => inspect(tool.function.name));
+    policy = createChatPolicy({ ...policy, toolPermissions: Object.fromEntries(Object.entries(policy.toolPermissions)
+      .map(([name, permission]) => [name, inspect(name) ? permission : 'off'])) });
+  }
+  const originalModel = execution.captured?.modelSelection ?? command.modelSelection ?? snapshot.modelSelection ??
     { providerId: chat.providerId, modelId: chat.modelId };
-  const parsed = validateModelSelection(selected);
+  const parsed = validateModelSelection(originalModel);
   if (!parsed.ok) throw new ChatContractError(parsed.error.code, parsed.error.message, parsed.error);
   const history = transcript?.messages ?? chat.history ?? [];
   const catalog = createAgentCatalogContext({ adapters: options.modelAdapters, signal, workspacePath: scope.canonicalKey,
@@ -607,7 +632,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     }
   }));
   const hostToolNames = tools.filter((_, index) => !hostAvailability[index]).map(row => row.function.name);
-  const delegated = execution?.captured?.completionPolicy?.kind === 'wake_delegator';
+  const delegated = execution?.captured?.completionPolicy?.kind === 'wake_delegator' || Boolean(execution?.captured?.factoryParentRunId);
   const taskGuidance = delegated ? '\n\n' + SUB_AGENT_ENVELOPE + '\n' + SUB_AGENT_COMPLETION_GUIDANCE : '';
   if (delegated) tools = withSubAgentReportTool(tools);
   const enrichmentNotice = enrichmentOmissions.length
@@ -616,7 +641,8 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const surfaceData = intent && Object.fromEntries(['context', 'issue', 'codeMap'].filter(key => intent[key] !== undefined).map(key => [key, intent[key]]));
   const surfaceContext = surfaceData && Object.keys(surfaceData).length
     ? '\n\n' + wrapUntrusted(JSON.stringify(surfaceData), { source: 'send-context' }) : '';
-  const goalContext = intent?.goalDriven ? '\n\nThis is a continuation toward the user\'s active goal. Verify completion before reporting success.' : '';
+  const factory = execution.captured?.factoryRunId || command.intent?.skill?.id === 'factory';
+  const goalContext = factory ? '\n\nMinnow owns factory continuation. Work on the assigned checkpoint in the bound checkout. End the turn when it is recorded.' : intent?.goalDriven ? '\n\nThis is a continuation toward the user\'s active goal. Verify completion before reporting success.' : '';
   const prepared = { systemPrompt: composed.systemPrompt + taskGuidance + (cli ? '' : goalContext + enrichmentNotice + surfaceContext),
     ...(cli ? { cliTurnContext: (composed.cliTurnContext ?? '') + goalContext + enrichmentNotice + surfaceContext } : {}),
     tools, model, cwd, policy, contextBodies, enrichmentOmissions, checkoutIdentity,

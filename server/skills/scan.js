@@ -21,6 +21,12 @@ function skillAccess(meta) {
   return access ? { access } : {};
 }
 
+/** `goal:` front matter is the `/goal` condition invoking the skill arms (same cap as `/goal`). */
+function skillGoal(meta) {
+  const goal = typeof meta.goal === 'string' ? meta.goal.trim().slice(0, 4000) : '';
+  return goal ? { goal } : {};
+}
+
 
 /** Skill id: lowercase alphanumeric with hyphens. */
 export const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -130,7 +136,7 @@ export async function scanSkillDir(rootDir, source) {
         source: source === 'user' ? userRootSkillSource(path.join(rootDir, entry.name)) : source,
         path: skillPath,
         version: meta.version?.trim() || undefined,
-        disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta),
+        disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta), ...skillGoal(meta),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -194,7 +200,7 @@ async function readPackageSkill(file) {
   try {
     const raw = await fs.readFile(file.path, 'utf8');
     const { meta, body } = parseSkillFrontmatter(raw);
-    return { id: file.id, label: meta.label?.trim() || `${file.pluginName}: ${defaultSkillLabel(file.id)}`, description: meta.description, source: 'user', path: file.path, body, raw, disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta) };
+    return { id: file.id, label: meta.label?.trim() || `${file.pluginName}: ${defaultSkillLabel(file.id)}`, description: meta.description, source: 'user', path: file.path, body, raw, disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta), ...skillGoal(meta) };
   } catch { return null; }
 }
 
@@ -238,8 +244,17 @@ export async function getSkillById(projectRoot, id) {
   }
 
   try {
-    const { meta, body } = parseSkillFrontmatter(raw);
+    const parsed = parseSkillFrontmatter(raw);
+    const { meta } = parsed;
+    let instructions = parsed.body;
     if (meta.name.trim() !== id) return null;
+    // Explicit-only skills cannot fetch references through load_skill during their turn.
+    // Keep raw editable and expand the shipped factory template only where requested.
+    const marker = '<!-- factory-templates -->';
+    if (id === 'factory' && instructions.includes(marker)) {
+      const templates = await fs.readFile(path.join(builtinRoot, id, 'templates.md'), 'utf8');
+      instructions = instructions.replace(marker, () => templates);
+    }
 
     return {
       id,
@@ -248,9 +263,9 @@ export async function getSkillById(projectRoot, id) {
       source,
       path: skillPath,
       version: meta.version?.trim() || undefined,
-      body,
+      body: instructions,
       raw,
-      disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta),
+      disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta), ...skillGoal(meta),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

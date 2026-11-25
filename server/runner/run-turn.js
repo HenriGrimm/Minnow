@@ -1021,6 +1021,7 @@ export async function runTurn(options) {
         if (event.type === 'response_restart') { lastDelta = ''; lastThinking = ''; lastStreamingTool = ''; }
         publish(event);
       },
+      shouldFinishAfterTools: options.shouldFinishAfterTools,
       onRoundBoundary:
         typeof options.onRoundBoundary === 'function'
           ? () => {

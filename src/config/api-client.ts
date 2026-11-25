@@ -33,7 +33,7 @@ export function managedChatPresentationForWire(chat: Chat): Chat | null {
     if (chat[key] !== undefined) presentation[key] = chat[key];
   }
   // Renderer-owned /goal state; null clears it because omitted fields mean preserve.
-  presentation.activeGoal = chat.activeGoal ?? null;
+  if (!chat.activeGoal?.factoryRunId) presentation.activeGoal = chat.activeGoal ?? null;
   // Like an unloaded legacy history, the omitted canonical fields mean preserve.
   return presentation as unknown as Chat;
 }

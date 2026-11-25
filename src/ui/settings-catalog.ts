@@ -41,7 +41,7 @@ export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> 
   apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
   appearance: 'Interface zoom, color mode, accent colors, and fonts.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
-  agents: 'The one agent: its prompts, workflow skills, sub-agent limits, rules, and boards.',
+  agents: 'The one agent: its prompts, workflow skills, sub-agent limits, and rules.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
   advanced: 'Local health probes and diagnostics.',
 };
@@ -55,7 +55,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   apps: ['plugins', 'external-connections', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
-  agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
+  agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'watchdog'],
   integrations: [
     'search',
     'servers',
@@ -382,28 +382,11 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.skills', 'Workflow skills', 'agents', 'agent-center', {
     keywords: ['/ask', '/plan', '/debug', 'modes'],
   }),
-  field('agents.boards', 'Boards prompt', 'agents', 'agent-center', {
-    keywords: ['orchestrate', 'board', 'plan granularity'],
-  }),
   field('agents.agentPacks', 'Agent packs', 'agents', 'agent-packs', {
     keywords: ['template', 'download', 'default pack', 'builtin', 'manifest', 'work agent'],
   }),
   field('agents.subAgents', 'Sub-agents', 'agents', 'agent-center', {
     keywords: ['spawn', 'subagent'],
-  }),
-  field('agents.autopilot', 'Orchestrator autopilot', 'agents', 'autopilot', {
-    keywords: ['orchestrate', 'board', 'autopilot', 'concurrency', 'isolation'],
-    description: 'Global defaults for orchestrate board concurrency, planner model, and retries.',
-  }),
-  field('agents.autopilot.defaultStatus', 'New boards start', 'agents', 'autopilot', {
-    keywords: ['running', 'stopped', 'start', 'unattended'],
-  }),
-  field('agents.autopilot.isolation', 'Default isolation mode', 'agents', 'autopilot'),
-  field('agents.autopilot.concurrency', 'Max concurrent tasks', 'agents', 'autopilot'),
-  field('agents.autopilot.plannerModel', 'Default planner model', 'agents', 'autopilot'),
-  field('agents.autopilot.attemptWallClock', 'Attempt time limit', 'agents', 'autopilot', {
-    keywords: ['timeout', 'wall clock', 'timer', 'board', 'task', 'attempt', 'minutes'],
-    description: 'Wall-clock cap for one board builder or tester attempt (default 240 minutes).',
   }),
   field('agents.watchdog', 'Watchdog', 'agents', 'watchdog', {
     keywords: ['timeout', 'generation', 'streaming', 'idle'],
@@ -419,25 +402,6 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['sub-agent', 'timeout', 'crash', 'retry', 'reconcile', 'journal'],
     description:
       'Crashed or timed-out sub-agents retry from the journal. Wall-clock budget is Sub-agents default/per-type timeout.',
-  }),
-  field('agents.autopilot.selfHeal', 'Self-heal & provisioning', 'agents', 'autopilot', {
-    keywords: ['self-heal', 'provision', 'quarantine', 'infra', 'worktree', 'stall'],
-    description: 'Configure self-heal rounds, infra provisioning, and worktree cd-guard.',
-  }),
-  field('agents.autopilot.selfHealMaxRounds', 'Max self-heal rounds', 'agents', 'autopilot', {
-    keywords: ['self-heal', 'rounds', 'quarantine'],
-  }),
-  field('agents.autopilot.infraProvisionTimeout', 'Infra provision timeout', 'agents', 'autopilot', {
-    keywords: ['infra', 'provision', 'timeout'],
-  }),
-  field('agents.autopilot.autoProvisionInfra', 'Auto-provision infra', 'agents', 'autopilot', {
-    keywords: ['provision', 'infra', 'docker'],
-  }),
-  field('agents.autopilot.afkAutoRestartStalls', 'Auto-restart stalled tasks', 'agents', 'autopilot', {
-    keywords: ['stall', 'restart', 'quarantine', 'afk'],
-  }),
-  field('agents.autopilot.guardCdOutsideWorktree', 'Guard cd outside worktree', 'agents', 'autopilot', {
-    keywords: ['worktree', 'cd', 'guard', 'isolation'],
   }),
   field('agents.prompting', 'System prompt settings', 'agents', 'agent-center', {
     keywords: ['prompt', 'system prompt', 'estimate'],

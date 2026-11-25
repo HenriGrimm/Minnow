@@ -18,7 +18,6 @@ export type IssuesCommandHost = {
   expandFocused: () => void;
   acceptTriage: () => void;
   declineTriage: () => void;
-  queueAgent: () => void;
   listUserViews: () => Array<{ id: string; name: string }>;
 };
 
@@ -101,13 +100,6 @@ export function buildIssuesCommands(host: IssuesCommandHost): Command[] {
       shortcut: 'N',
       keywords: 'cancel reject',
       run: () => host.declineTriage(),
-    },
-    {
-      id: 'issues.agent.queue',
-      title: 'Queue agent on selected issue',
-      group: 'Issues',
-      shortcut: 'A',
-      run: () => host.queueAgent(),
     },
   ];
 

@@ -93,6 +93,14 @@
       "disableModelInvocation": false
     },
     {
+      "id": "factory",
+      "label": "Factory",
+      "description": "Builds working software from a plan or goal without the user: hardens the spec, writes failing acceptance checks first, then builds one feature at a time on its own branch until every check and gate passes. Never asks the user; logs every decision instead. Use when the user asks to run a plan, build an app or feature end to end, run the factory, or orchestrate a plan.",
+      "source": "builtin",
+      "disableModelInvocation": true,
+      "goal": "The factory run is finished: factory/progress.json exists, every feature in it has \"passes\": true, every gate command in factory/factory.json exits 0 on the current tree, all feature checks and the full check command pass, frozen checks match their last authorized contract or amendment, and factory/REPORT.md exists and is committed. Verify by reading the files and running the gates; do not accept the agent's claim."
+    },
+    {
       "id": "fix-ci",
       "label": "Fix CI",
       "description": "Investigates GitHub Actions CI failures for the latest commit on the current branch, fixes scoped issues using subagents, re-runs failing tests locally, and commits fixes. Use when CI is red, checks failed, GitHub Actions failed, or the user asks to fix CI, fix the build, or green the branch.",
@@ -116,7 +124,7 @@
     {
       "id": "git-setup",
       "label": "Git & GitHub Setup",
-      "description": "Initialize git in the workspace and connect a GitHub remote. Use for /git-setup when starting orchestration or when the user asks to set up version control.",
+      "description": "Initialize git in the workspace and connect a GitHub remote. Use for /git-setup before a /factory run or when the user asks to set up version control.",
       "source": "builtin",
       "disableModelInvocation": true
     },
@@ -149,13 +157,6 @@
       "disableModelInvocation": true
     },
     {
-      "id": "orchestrate-plan",
-      "label": "Orchestrate Plan",
-      "description": "Runs multi-phase plans by delegating each phase to sub-agents and gating progress on a dedicated verification pass after every phase. The lead agent does not implement product code. Use when the user asks to orchestrate a plan, execute a plan via sub-agents, delegate phases, or run plan-and-verify loops.",
-      "source": "builtin",
-      "disableModelInvocation": true
-    },
-    {
       "id": "partymode",
       "label": "Partymode",
       "description": "Party mode — Bird Man, your local party animal. Cool-dude persona with maximum vibes. Invoke with /partymode. Stays pinned until dismissed or the user says stop party.",
@@ -173,7 +174,7 @@
     {
       "id": "plan-work",
       "label": "Plan Work",
-      "description": "Produces implementation plans in documentation/plans/ through discovery, codebase research via sub-agents, and a review pass before handoff. The lead agent does not write product code. Use when the user asks for a plan, roadmap, phased breakdown, implementation spec, or to plan a feature before building; choose Build for one chat or Orchestrate for board execution.",
+      "description": "Produces implementation plans in documentation/plans/ through discovery, codebase research via sub-agents, and a review pass before handoff. The lead agent does not write product code. Use when the user asks for a plan, roadmap, phased breakdown, implementation spec, or to plan a feature before building; the plan runs in one chat or unattended with /factory.",
       "source": "builtin",
       "disableModelInvocation": true
     },

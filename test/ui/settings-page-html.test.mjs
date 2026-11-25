@@ -27,7 +27,6 @@ const SETTINGS_SECTION_IDS = [
   'injection',
   'rules',
   'agent-packs',
-  'autopilot',
   'watchdog',
   'search',
   'servers',
@@ -173,8 +172,8 @@ describe('settings page HTML', () => {
     assert.doesNotMatch(html, /class="settings-category-subnav"/);
   });
 
-  test('SETTINGS_SECTION_IDS matches canonical section count', () => {
-    assert.equal(SETTINGS_SECTION_IDS.length, 30);
+  test('settings has no board testing destination', () => {
+    assert.doesNotMatch(html, /id="settingsSection-board-testing"|data-area-jump="board-testing"/);
   });
 
   test('agents center mount exists in index.html', () => {

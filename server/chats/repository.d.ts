@@ -139,6 +139,7 @@ export interface ChatRepository {
   readMessageByIdentity(chatId: string, messageId: string): { rowId: number; message: TranscriptMessage; rowHash: string } | null;
   readTranscript(chatId: string): TranscriptSnapshot | null;
   /** Trusted system-result admission, only while the managed transcript is quiescent. */
+  appendFactoryReport(commandId: string, content: string): void;
   appendAdmittedResult(commandId: string): MessageAppendResult;
   importContext(chatId: string, input: { messageId: string; content: string; createdAt: number; sourceParentChatId: string; sourceRunId: string }): MessageAppendResult;
   readExecutionFinalAssistant(executionId: string): string;

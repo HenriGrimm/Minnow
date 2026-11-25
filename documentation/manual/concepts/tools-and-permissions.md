@@ -1,6 +1,6 @@
 # Tools and permissions
 
-Choose how independently the agent can work using the permission control in the composer. This setting applies across chats, boards, and agent tools, including shell commands, browser actions, MCP servers, and plugins.
+Choose how independently the agent can work using the permission control in the composer. This setting applies across chats and agent tools, including shell commands, browser actions, MCP servers, and plugins.
 
 | Choose | Use it for |
 | --- | --- |

@@ -1,3 +1,4 @@
+import { createFactoryContinuation } from './factory-continuation.js';
 import { createHash } from 'node:crypto';
 import { createChatRepository } from './repository.js';
 import { createChatContext } from './context.js';
@@ -49,7 +50,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
   preparationAdapters, modelAdapters, prepare = prepareChatExecution, createRunnerDeps = createChatRunnerDeps,
   generations = listGenerationStates, enableChatWorktree } = {}) {
   let ready = false, taskAdapter, taskDelivery, causality, questionRecovery;
-  let removeLegacyDelivery;
+  let removeLegacyDelivery, factory;
   let releaseReady;
   const startupReady = new Promise(resolve => { releaseReady = resolve; });
   async function awaitReady({ signal }) {
@@ -161,7 +162,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       return { version: 1, requestedMode: requested ? 'native' : 'minnow', effectiveMode: requested ? 'native' : 'minnow',
         providerId: selection.providerId, modelId: selection.modelId, cliVersion: '0.166.0', networkAccess: 'off' };
     },
-    captureWorkspacePreparation: (target, options) => workspacePreparation.capture(target, undefined, options),
+    captureWorkspacePreparation: (target, options) => workspacePreparation.capture(target, options?.factory ? { kind: 'automatic' } : undefined, options),
     admitWorkspacePreparation: (chatId, intent) => workspacePreparation.admit(chatId, intent),
     applyWorkspaceChoice: (caller, input) => workspacePreparation.applyChoice(caller, input),
     retryWorkspacePreparation: input => workspacePreparation.retry(input),
@@ -200,6 +201,8 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     onEvent: event => {
       presentation.onServiceEvent(event);
       taskDelivery?.onServiceEvent(event);
+      if (ready && event.type === 'configuration') factory?.notify(event.chatId);
+      if (ready && ['settled', 'completed', 'cancelled', 'failed', 'stopped', 'recovery_required'].includes(event.status)) factory?.notify(event.chatId);
       if (ready && ['execution', 'execution_error'].includes(event.type) && repository.getLatestExecution(event.chatId)?.status === 'recovery_required') {
         scheduleInterruptedRecovery(event.chatId);
       }
@@ -225,7 +228,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       const prepared = await prepare(input, { resolveTarget: async (chatId, options) =>
         assertExecutionScope(input.execution, await context.resolveTarget(chatId, options)), adapters: preparationAdapters,
         modelAdapters, createRunnerDeps });
-      prepared.runOptions = { ...prepared.runOptions, injectReportTool: input.execution.captured?.completionPolicy?.kind === 'wake_delegator',
+      prepared.runOptions = { ...prepared.runOptions, injectReportTool: input.execution.captured?.completionPolicy?.kind === 'wake_delegator' || Boolean(input.execution.captured?.factoryParentRunId),
         nudgeToolUse: false, finalizeStructuredOutcome: false };
       prepared.hostToolNames = (prepared.hostToolNames ?? []).filter(name => !['set_chat_mode', 'create_chat_with_mode', 'propose_mode_switch', 'todo_write'].includes(name) && !toolHandlers.has(name));
       return prepared;
@@ -234,6 +237,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     executeHostTool: input => capabilities.executeHostTool(input),
     onEvent: event => { presentation.onEvent(event); observePersistentAgentTurn(event); taskDelivery?.onHostEvent(event); },
     onStatus: event => { service.notifyExecution(event); presentation.changed(event.chatId); },
+    onFactoryActivity: chatId => presentation.changed(chatId),
     createToolDispatch: async (prepared, executionContext) => {
       const { command, execution, fence, signal, runtimeOwner } = executionContext;
       const base = createInProcessToolDispatch({ cwd: prepared.cwd, modeId: prepared.policy.modeId,
@@ -444,10 +448,12 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       removeLegacyDelivery?.();
       removeLegacyDelivery = setProductionCanonicalDelivery(runtime.legacyResultDelivery.deliver);
       await taskDelivery.start();
+      factory.start();
       for (const chatId of new Set(repository.listCommands({ states: ['accepted', 'queued', 'waiting_for_host'], limit: 1000 }).map(row => row.chatId))) void service.kick(chatId).catch(() => {});
     },
     async dispose() {
       disposing = true;
+      await factory.dispose();
       for (const timer of recoveryTimers.values()) clearTimeout(timer);
       recoveryTimers.clear();
       ready = false; removeLegacyDelivery?.(); await runtime.legacyResultDelivery.dispose();
@@ -484,6 +490,10 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     onChange: chatId => presentation.changed(chatId),
   });
   runtime.taskDelivery = taskDelivery;
+  factory = createFactoryContinuation({ repository, resolveTarget: chatId => context.resolveTarget(chatId),
+    kick: chatId => service.kick(chatId), changed: chatId => presentation.changed(chatId),
+    isBusy: chatId => runtime.hasExternalExecution(chatId) || repository.getLease(chatId)?.state === 'active' });
+  runtime.factory = factory;
   runtime.recovery = createChatRecovery({ repository, service, requests, taskDelivery,
     getTaskAdapter: () => taskAdapter,
     beforeExecutionRecovery: input => runtime.questionRecovery?.beforeExecutionRecovery(input),

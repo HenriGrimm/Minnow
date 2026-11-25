@@ -3,7 +3,7 @@ name: git-setup
 label: Git & GitHub Setup
 description: >-
   Initialize git in the workspace and connect a GitHub remote. Use for /git-setup
-  when starting orchestration or when the user asks to set up version control.
+  before a /factory run or when the user asks to set up version control.
 disable-model-invocation: true
 ---
 

@@ -85,27 +85,6 @@ describe('main-column-overlay', () => {
     assert.equal(isCodeStageOverlayMounted(), true);
   });
 
-  test('V2 Boards root hides the chat sidebar as a stage overlay', () => {
-    setupDom();
-    stripMainColumnOverlayClasses();
-    const root = document.createElement('div');
-    root.id = 'orchestratorBoardsRoot';
-    document.getElementById('chatArea')!.appendChild(root);
-    assert.equal(isCodeStageViewHidingChatSidebar(), true);
-    assert.equal(isCodeStageOverlayMounted(), true);
-  });
-
-  test('orchestrate board page hides the chat sidebar without blocking kanban refresh', () => {
-    setupDom();
-    stripMainColumnOverlayClasses();
-    const page = document.createElement('div');
-    page.id = 'orchestrateBoardPage';
-    document.getElementById('chatArea')!.appendChild(page);
-    assert.equal(isCodeStageViewHidingChatSidebar(), true);
-    // Board refresh keys off overlay roots, not the board page itself.
-    assert.equal(isCodeStageOverlayMounted(), false);
-  });
-
   test('stripMainColumnOverlayClasses removes chat-area--dev-server', () => {
     setupDom();
     const area = document.getElementById('chatArea')!;

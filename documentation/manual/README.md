@@ -17,7 +17,7 @@
 | Choose what an agent can do or answer an approval | [Tools and permissions](concepts/tools-and-permissions.md) |
 | Give an agent more context, steer it, or recover a turn | [Work in a thread](chat/chatting.md) |
 | Capture a bug and give it to an agent | [Issues](apps/issues.md) |
-| Check delegated work or run a plan in worktrees | [Agent conversations](chat/persistent-agent-chats.md) · [Orchestrate](orchestrate/boards.md) |
+| Check delegated work or build a plan unattended | [Agent conversations](chat/persistent-agent-chats.md) · [Factory](chat/factory.md) |
 | Save a project decision or find it again | [Brain](apps/brain.md) |
 | Run a recurring check while Minnow is running | [Automations](apps/scheduler.md) |
 | Use the same thread on my phone | [Connect a device](extend/companion.md) |

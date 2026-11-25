@@ -135,7 +135,7 @@ async function startProjectIssues(issues: IssueCard[], mode: 'build' | 'plan'): 
     body.append(remaining);
   }
   if (!await appConfirm(planning
-    ? `Start a chat to prepare an Orchestrate plan for ${count}? You can review the plan in Issues before approving it.`
+    ? `Start a chat to prepare a Build plan for ${count}? You can review the plan in Issues before approving it.`
     : `Send ${count} to agents in isolated worktrees?`, { title, confirmLabel: planning ? 'Start planning' : 'Start issues', body })) return;
 
   try {
@@ -153,7 +153,7 @@ async function startProjectIssues(issues: IssueCard[], mode: 'build' | 'plan'): 
       ...model,
       mode,
       baseBranch: branch,
-      instructions: planning ? 'Create an executable Orchestrate board plan for these issues using the orchestrate-plan skill.' : undefined,
+      instructions: planning ? 'Write a Build plan for these issues using the plan-work skill.' : undefined,
     });
     showToast(started.length ? `${started.length} issue${started.length === 1 ? '' : 's'} sent to ${planning ? 'planning' : 'agents'}` : 'Those issues are no longer ready');
   } catch (error) {

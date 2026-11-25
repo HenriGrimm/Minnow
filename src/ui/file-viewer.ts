@@ -18,8 +18,8 @@ import { mountEditableMarkdownPreview } from './markdown-preview-edit';
 import { scrollMarkdownHeading, takePendingMarkdownHeading } from '../markdown/links';
 import { executeWorkspaceFileAction, getLocalServerAvailable } from '../tools/client';
 import { resolveDocumentHtmlLoadUrl, resolvePreviewLoadUrl } from './preview-load-url';
-import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
-import { getWorkspacePath } from '../state/workspace';
+import { fileTreeListingRootsEqual, getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
+import { getCurrentWorkspaceInfo, getWorkspacePath } from '../state/workspace';
 import { getActivePreviewTabId, listPreviewTabs } from './preview-tab-store';
 import { fetchLspConfig } from '../lsp/config-client';
 import { notifyLspDocument } from '../lsp/completion-client';
@@ -143,7 +143,7 @@ let primaryRenderKey: string | null = null;
 /** Path of an async editor mount that has not attached its EditorView yet. */
 let pendingMountPath: string | null = null;
 /** Paths with an in-flight content load — both panes can ask for the same tab. */
-const loadsInFlight = new Set<string>();
+const loadsInFlight = new WeakSet<ViewerTabState>();
 const savingTabs = new Set<ViewerTabState>();
 let viewerControlsBound = false;
 let viewerContextMenuBound = false;
@@ -976,8 +976,8 @@ async function loadFileContent(path: string, workspaceRoot?: string): Promise<Lo
 export async function ensureViewerTabLoaded(path: string): Promise<void> {
   const tab = getViewerTab(path);
   if (!tab || tab.loadStatus !== 'loading' || tab.kind === 'attachment') return;
-  if (loadsInFlight.has(path)) return;
-  loadsInFlight.add(path);
+  if (loadsInFlight.has(tab)) return;
+  loadsInFlight.add(tab);
 
   if (primarySlotViewerPath() === path) setViewerLoading(path);
   try {
@@ -999,7 +999,7 @@ export async function ensureViewerTabLoaded(path: string): Promise<void> {
     }
     const loaded = await loadFileContent(path, tab.workspaceRoot);
     const still = getViewerTab(path);
-    if (!still || still.loadStatus !== 'loading') return;
+    if (still !== tab || still.loadStatus !== 'loading') return;
     const viewMode = still.viewMode === 'markdown-preview' ? 'markdown-preview' : 'editor';
     setViewerTabLoadState(path, 'ready', {
       content: loaded.content,
@@ -1010,7 +1010,7 @@ export async function ensureViewerTabLoaded(path: string): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const still = getViewerTab(path);
-    if (!still || still.loadStatus !== 'loading') return;
+    if (still !== tab || still.loadStatus !== 'loading') return;
     setViewerTabLoadState(path, 'error', { error: message });
     if (primarySlotViewerPath() === path) {
       setViewerError(message || 'Could not open file');
@@ -1018,7 +1018,7 @@ export async function ensureViewerTabLoaded(path: string): Promise<void> {
       renderViewerSlotsForPath(path);
     }
   } finally {
-    loadsInFlight.delete(path);
+    loadsInFlight.delete(tab);
   }
 }
 
@@ -1036,7 +1036,7 @@ export function renderViewerEmptyState(): void {
 function noteRecentViewerOpen(path: string): void {
   if (isAttachmentViewerPath(path)) return;
   recordRecentViewerFile(path, {
-    workspaceRoot: getFileTreeListingWorkspaceRoot(),
+    workspaceRoot: getViewerTab(path)?.workspaceRoot ?? getFileTreeListingWorkspaceRoot(),
   });
 }
 
@@ -1685,6 +1685,16 @@ export interface OpenFileInViewerOptions {
   initialLineRange?: { startLine: number; endLine: number };
 }
 
+/** Give files from a second checkout distinct tab keys even when their relative paths match. */
+function checkoutFileTabPath(path: string, checkout?: string): string {
+  if (!checkout || /^(?:[A-Za-z]:[\\/]|[\\/])/.test(path)) return path;
+  const absolute = checkout.replace(/\\/g, '/').replace(/\/+$/, '') + '/' + path;
+  const existingRoot = getViewerTab(path)?.workspaceRoot;
+  if (!fileTreeListingRootsEqual(checkout, getFileTreeListingWorkspaceRoot()) ||
+      (existingRoot && !fileTreeListingRootsEqual(checkout, existingRoot)) || getViewerTab(absolute)) return absolute;
+  return path;
+}
+
 /** Open a Git review in a regular CodeMirror file tab. Staged/deleted versions are snapshots. */
 export async function openGitFileInEditor(options: {
   path: string; cwd?: string; staged: boolean; before: string; after: string; deleted?: boolean;
@@ -1694,12 +1704,14 @@ export async function openGitFileInEditor(options: {
   const ownsFocus = captureEditorFocusRequest(document);
   snapshotOutgoingEditorTab();
   const snapshot = options.staged || options.deleted;
+  const checkout = options.cwd ?? getWorkspacePath();
   const path = snapshot
     ? `.minnow/attachments/git/${encodeURIComponent(options.cwd ?? getWorkspacePath())}/${options.staged ? 'staged' : 'deleted'}/${options.path}`
-    : options.path;
+    : checkoutFileTabPath(options.path, checkout);
   pendingEditorFocus = { path, ownsFocus };
   const result = await openViewerTab(path, {
     kind: snapshot ? 'attachment' : 'workspace',
+    workspaceRoot: snapshot ? undefined : checkout,
     displayName: `${options.path.split('/').pop()}${options.staged ? ' (staged)' : options.deleted ? ' (deleted)' : ''}`,
     content: options.after,
     viewMode: 'editor', asCode: true,
@@ -1823,12 +1835,15 @@ export async function openFileInViewer(
   relativePath: string,
   options?: OpenFileInViewerOptions,
 ): Promise<void> {
-  requestEditorFocus(relativePath);
+  const workspace = getCurrentWorkspaceInfo().path;
+  const checkout = options?.workspaceRoot || getFileTreeListingWorkspaceRoot() || workspace;
   if (window.minnow?.viewContext?.appId) {
     const { routeCodeWindowCommand } = await import('../os/code-window-command');
-    const { getWorkspacePath } = await import('../state/workspace');
-    if (await routeCodeWindowCommand({ kind: 'file', path: relativePath, workspacePath: options?.workspaceRoot || getFileTreeListingWorkspaceRoot() || getWorkspacePath() })) return;
+    if (await routeCodeWindowCommand({ kind: 'file', path: relativePath, workspacePath: workspace, checkoutPath: checkout })) return;
   }
+  relativePath = checkoutFileTabPath(relativePath, checkout);
+  options = { ...options, workspaceRoot: checkout };
+  requestEditorFocus(relativePath);
   if (isImageFilePath(relativePath)) {
     await openWorkspaceImageInViewer(relativePath, options);
     return;
@@ -1946,6 +1961,26 @@ export async function dismissFileViewerForPreview(): Promise<boolean> {
 /** Close all tabs without unsaved prompt (paths removed on disk). */
 export function closeFileViewerForce(): void {
   resetAllViewerTabs();
+}
+
+/** Keep unsaved buffers addressable in the checkout where they were edited. */
+export function leaveFileViewerCheckout(previousRoot: string): void {
+  snapshotOutgoingEditorTab();
+  if (!isAnyViewerTabDirty()) {
+    closeFileViewerForce();
+    return;
+  }
+  destroyEditor();
+  for (const tab of listViewerTabs()) {
+    if (!tab.isDirty) {
+      removeViewerTab(tab.path);
+      continue;
+    }
+    tab.workspaceRoot ||= previousRoot;
+    const path = checkoutFileTabPath(tab.path, tab.workspaceRoot);
+    if (path !== tab.path && !getViewerTab(path)) retargetViewerTab(tab.path, path);
+  }
+  renderViewerSlots();
 }
 
 /** Update open path after rename/move without reloading editor content. */

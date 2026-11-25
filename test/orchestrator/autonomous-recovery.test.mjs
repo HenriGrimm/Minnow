@@ -313,6 +313,7 @@ test('snapshot plus tail and complete replay agree for held and resumed recovery
 
 test('historical shapes preserve category, reset timezone and request-versus-host capacity', () => {
   assert.equal(boardFailure({ message: 'Upstream HTTP 503: Endpoint unavailable' }).category, 'unavailable');
+  assert.equal(boardFailure({ outcome: 'crashed', error: 'Upstream HTTP 500: Internal Server Error' }).category, 'unavailable');
   assert.equal(boardFailure({ message: 'Upstream HTTP 429: Endpoint unavailable' }).category, 'rate_limit');
   assert.equal(boardFailure({ message: 'Upstream HTTP 403: invalid JSON' }).category, 'unknown');
   assert.equal(boardFailure({ message: 'Generation request exceeds host memory budget', failure: { status: 413 } }).category, 'context');
@@ -320,6 +321,29 @@ test('historical shapes preserve category, reset timezone and request-versus-hos
   const now = Date.parse('2026-10-22T22:00:00Z');
   assert.equal(parseAllowanceResetTime("You've hit your session limit · resets 11pm (America/Los_Angeles)", now), Date.parse('2026-10-23T06:00:00Z'));
   assert.equal(parseAllowanceResetTime('resets 11pm (invalid-zone)', now), undefined);
+});
+
+test('a tester verdict describing a project HTTP 500 sends the worktree back to the builder', async () => {
+  const h = await harness({ events: [created([task('A')])] });
+  await h.engine.startBoard(1, { recovery: true });
+  await h.end('A', 'pass', { summary: 'Build completed' });
+  assert.equal(h.starts.at(-1).role, 'tester');
+
+  const summary = 'Coltiva returned HTTP 500 when reusing a legacy task retry_id after deleting the original task.';
+  await h.end('A', 'fail', { summary, evidence: { blockers: [summary] } });
+
+  const state = h.engine.getState();
+  const verdict = state.tasks.get('A').attempts.find((attempt) => attempt.role === 'tester');
+  assert.equal(verdict.evidence.failure.category, 'implementation');
+  assert.equal(verdict.evidence.failure.scope, 'task');
+  assert.equal(verdict.evidence.failure.status, undefined);
+  assert.equal(verdict.summary, summary);
+  assert.equal(state.recoveryHolds['tester:A'], undefined);
+  assert.equal(state.recoveryFailures.length, 1);
+  assert.equal(h.starts.length, 3);
+  assert.equal(h.starts.at(-1).role, 'builder');
+  assert.equal(h.starts.at(-1).seedKind, 'fix');
+  assert.equal(h.starts.at(-1).sameWorktree, true);
 });
 
 test('a proven optional request-field rejection gets one automatic adaptation, without weakening tools', async () => {
@@ -352,6 +376,21 @@ test('repeated code failures diagnose once, preserve work and stop at a bounded 
   await h.advance(86_400_000);
   assert.equal(h.starts.length, 5);
   assert.equal(await h.engine.checkRecovery('builder:A'), false);
+});
+
+test('a higher repair limit releases a held task without charging an earlier provider outage', async () => {
+  const h = await harness({ events: [created([task('A')])] });
+  const limits = { task: 1, final: 3, board: 100 };
+  await h.engine.startBoard(1, { recovery: true, limits });
+  await h.end('A', 'crashed', { summary: 'Upstream HTTP 503: Endpoint is unavailable.' });
+  await h.advance(6001);
+  await h.end('A', 'fail', { summary: 'One assertion still fails' });
+  assert.match(h.engine.getState().recoveryHolds['builder:A'].failure.message, /^repair-budget-exhausted:/);
+  assert.equal(await h.engine.checkRecovery('builder:A', limits), false);
+  assert.equal(await h.engine.checkRecovery('builder:A', { ...limits, task: 2 }), true);
+  assert.equal(h.engine.getState().recoveryHolds['builder:A'], undefined);
+  assert.equal(h.starts.length, 3);
+  assert.equal(h.starts.at(-1).sameWorktree, true);
 });
 
 test('typecheck then lint final failures repair and complete without Reopen', async () => {

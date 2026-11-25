@@ -160,6 +160,16 @@ export function summarizeTurn(
   for (let i = fork; i <= end; i++) {
     const msg = history[i];
     if (!msg) continue;
+    if (msg.role === 'user' && msg.provenance?.source === 'factory' && Array.isArray(msg.factoryTools)) {
+      for (const tool of msg.factoryTools) {
+        if (tool.result === undefined || tool.failed || isToolResultFailure(tool.result)) continue;
+        const kind = tool.name === 'spawn_sub_agent' ? 'agents' : 'run';
+        const tally = tallies.get(kind) ?? { targets: new Set<string>(), weight: 0 };
+        tally.targets.add(str(tool.args, 'command') ?? tool.id);
+        tallies.set(kind, tally);
+      }
+      continue;
+    }
     if (isCompactionRow(msg)) {
       if (!activeCompactions.has(i)) compacted++;
       continue;

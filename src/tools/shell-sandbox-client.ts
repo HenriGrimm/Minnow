@@ -4,8 +4,6 @@ import {
   type ShellSandboxMode,
 } from '../config/tool-security-meta';
 import { loadAutopilotMeta } from '../config/autopilot-meta';
-import { findChatById } from '../state/sessions';
-import { getBoardGroupForChat } from '../state/chat-groups.ts';
 
 export interface SandboxStatusPayload {
   available: boolean;
@@ -45,23 +43,9 @@ function clampShellSandboxForClient(mode: ShellSandboxMode): ShellSandboxMode {
   return mode;
 }
 
-/** Resolve effective shell sandbox mode for a chat (boards use General setting). */
-export function resolveShellSandboxModeForChat(chatId?: string): ShellSandboxMode {
-  const globalMode = getToolSecurityMetaCached().shellSandbox;
-  const id = chatId?.trim();
-  let mode = globalMode;
-  if (id) {
-    const chat = findChatById(id);
-    const group = chat ? getBoardGroupForChat(chat) : undefined;
-    const board = group?.orchestrateBoard;
-    if (board) {
-      const boardMode = board.shellSandboxMode;
-      if (boardMode === 'off' || boardMode === 'prefer' || boardMode === 'require') {
-        mode = boardMode;
-      }
-    }
-  }
-  return clampShellSandboxForClient(mode);
+/** Resolve the configured shell sandbox mode on this platform. */
+export function resolveShellSandboxModeForChat(_chatId?: string): ShellSandboxMode {
+  return clampShellSandboxForClient(getToolSecurityMetaCached().shellSandbox);
 }
 
 /** Warm caches used by the permission gate. */

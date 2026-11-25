@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createPollingTask } from '../../src/lib/polling-task.ts';
-import { createBoardListClient } from '../../src/orchestrator/client.ts';
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 function deferred() {
@@ -52,34 +51,4 @@ test('read failures release the guard and remain visible to the caller', async (
   await assert.rejects(task.run(), /offline/);
   await task.run();
   assert.equal(calls, 2);
-});
-
-test('a slow board list coalesces refreshes and stop discards its late response', async () => {
-  let finish!: (value: any[]) => void;
-  let signal!: AbortSignal;
-  let calls = 0, notifications = 0;
-  const list = createBoardListClient({ fetchBoards: nextSignal => {
-    calls++; signal = nextSignal!; return new Promise(resolve => { finish = resolve; });
-  } });
-  list.subscribe(() => { notifications++; });
-  const pending = list.refresh();
-  for (let i = 0; i < 30; i++) void list.refresh();
-  await settle();
-  assert.equal(calls, 1);
-  list.stop();
-  assert.equal(signal.aborted, true);
-  finish([{ boardId: 'old' }]); await pending;
-  assert.deepEqual(list.getBoards(), []);
-  assert.equal(notifications, 0);
-});
-
-test('stopping and restarting a board list cannot accept the previous lifetime response', async () => {
-  const reads: ((value: any[]) => void)[] = [];
-  const list = createBoardListClient({ intervalMs: 60_000, fetchBoards: () => new Promise(resolve => reads.push(resolve)) });
-  try {
-    const old = list.refresh(); await settle(); list.stop(); list.start(); await settle();
-    reads[1]([{ boardId: 'current' }]); await settle();
-    reads[0]([{ boardId: 'old' }]); await old;
-    assert.equal(list.getBoards()[0].boardId, 'current');
-  } finally { list.stop(); }
 });

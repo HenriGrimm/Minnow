@@ -4,8 +4,8 @@ export const ORDINARY_CHAT_EXECUTION_CAPABILITY: 'ordinaryChatExecutionV1';
 
 export type ChatActor = 'human' | 'agent' | 'system';
 export type ChatMessageSource = 'composer' | 'agent_tool' | 'task_delivery'
-  | 'scheduler' | 'cli' | 'device' | 'migration';
-export type ChatMessageKind = 'human_message' | 'peer_message' | 'delegation_result';
+  | 'scheduler' | 'cli' | 'device' | 'migration' | 'factory';
+export type ChatMessageKind = 'human_message' | 'peer_message' | 'delegation_result' | 'goal_continuation';
 export type ChatCommandKind = 'send' | 'steer' | 'stop' | 'edit_queued'
   | 'remove_queued' | 'push_queued';
 export type ChatCommandState = 'accepted' | 'queued' | 'waiting_for_host'

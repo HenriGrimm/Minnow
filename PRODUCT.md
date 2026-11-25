@@ -8,14 +8,14 @@ product
 
 **The solo developer and the hobbyist.** The tinkerer up at 2am building whatever they felt like building. One person, one machine, one repo, models they supply.
 
-- **Solo builders, indie devs, and hobbyists** shipping software with agents: plans, boards, code, and git in one workspace. **This is the primary audience.** Design for one person with no team, no budget for six subscriptions, and no interest in a seat licence.
+- **Solo builders, indie devs, and hobbyists** shipping software with agents: plans, code, and git in one workspace. **This is the primary audience.** Design for one person with no team, no budget for six subscriptions, and no interest in a seat licence.
 - **Power users** with serious local-AI stacks: multi-model routing, sub-agents, encrypted credentials, and privacy-sensitive workflows.
 
 **Not the audience:** teams needing multiplayer, orgs needing admin and SSO, enterprises needing a support contract. Single-player is a design decision, not a gap to fill later. Where a feature has a solo shape and a team shape, build the solo one.
 
 Local model hosting is a **capability of the workspace**, not a separate audience. The Models app exists so the agents have something to run on and so you can pick what runs where — not as a place to sit and chat with a model on your hardware. Design for the developer with a repo open; do not add paths that only serve model tinkering.
 
-**Growth direction:** depth in the build loop. Pick a repo root, work in Code, grow into plans, boards, and Brain from there. Minnow Shell is the packaged Electron runtime, not a separate chat home. Primary references: the Code workspace (editor, terminal, git, chat rail), workspace picker (`#/workspaces`), and multi-agent delivery (Orchestrator boards), not a standalone chat box or cloud dashboard.
+**Growth direction:** depth in the build loop. Pick a repo root, work in Code, grow into plans, unattended builds, and Brain from there. Minnow Shell is the packaged Electron runtime, not a separate chat home. Primary references: the Code workspace (editor, terminal, git, chat rail), workspace picker (`#/workspaces`), and unattended delivery (`/factory`), not a standalone chat box or cloud dashboard.
 
 **Scope discipline:** the shipped surface is deliberately narrow: Code, Source Control, Models, Brain, Issues, Scheduler, Settings (released apps per `app-registry.ts`). Anything that is not finished stays behind a release gate rather than landing half-built on the app rail. Breadth is earned one surface at a time; depth in the build loop comes first.
 
@@ -45,7 +45,7 @@ The reference point is **Blender**, not a SaaS product: one complete suite cover
 | **Workspace picker** | Choose the folder root for tools, git, and Brain indexing before you build. |
 | **Code** | The product. File tree, CodeMirror + LSP, terminal, git, dev servers, preview, chat rail beside the repo, inline completion and Quick Edit. First on the app rail and the default after choosing a project. Existing sessions stay selected; empty chats show the build hub. |
 | **Source Control Center** | Dedicated Source Control app on the navigation rail: changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI. No stored tokens. |
-| **Orchestrator boards** | Plan → kanban → Builder/Tester work agents → worktree isolation → merge and ship. Manual through AFK autonomy. |
+| **Factory** | Build a plan in one chat and branch, one feature at a time. Frozen acceptance checks and project gates verify the finished work. |
 | **Issues** | Capture, triage, list and board, wired to `issue_*` tools and Debug mode. The agent files and tracks its own work. Single-player. |
 | **Brain** | Local knowledge engine: markdown wiki, semantic recall, code index (`repo_map`, symbols), memory adapter, archive policy for long threads. |
 | **Models** | What the agents run on: hardware-fit recommendations, downloads, local serve, per-role provider routing, sampler and thinking defaults, usage and cost. |
@@ -63,13 +63,13 @@ The sanctioned mapping for positioning copy. Nothing outside this table may be c
 | **Models** | LM Studio | Hardware-fit scoring, HF downloads, `llama-server` serving, providers, per-role routing, usage and cost |
 | **Brain** | Notion or Obsidian, for project notes | Markdown wiki, semantic recall, code index, memories, agent read/write |
 | **Scheduler**, `/loop`, `/goal` | Ad-hoc cron and shell scripts | Recurring agent jobs with run history, scoped to the workspace |
-| **Orchestrator boards** | A hand-rolled CI or agent-runner pipeline | Plan → waves of Builder/Tester agents in isolated worktrees → merge |
+| **Factory** | A hand-rolled CI or agent-runner pipeline | Build plans, checked features and a committed run report |
 
 The integration is the argument. Each row's second sentence in any copy should be what the shared spine buys — not price, not a feature count.
 
 ### Platform capabilities
 
-- **Four composer modes**: General, Build, Plan, Debug (Issues workflows), plus Orchestrate from the Code sidebar. Each has tuned prompts and tool policy.
+- **One agent** with workflow skills for questions, planning, debugging and unattended delivery.
 - **Agent layer**: built-in tools ([registry inventory](documentation/contributor/architecture-inventory.md)), sub-agents, work agents, skills (`/commands`), tool permissions (Full / Ask / Off), MCP and local plugins.
 - **Workspace tools**: memory synthesis, voice I/O, browser CDP automation (Electron), webhooks, semantic embeddings.
 
@@ -83,7 +83,7 @@ The integration is the argument. Each row's second sentence in any copy should b
 - Write like project documentation, not like a landing page: short declaratives, real nouns, second person. Assume the reader is capable and busy.
 - Open source is the premise, not a badge. Say "free and open source" once, plainly, and let the license and the extension points do the arguing.
 - Invite participation. The reader is a potential contributor and a potential builder-of-their-own. Mention the seams they can open (skills, tools, prompts, themes, the fork) rather than only the features they can consume.
-- Technical credibility through capability (tools, boards, LSP), not neon chrome or dashboard theater.
+- Technical credibility through capability (tools, acceptance checks, LSP), not neon chrome or dashboard theater.
 - Privacy and local control are assumed defaults, stated plainly when relevant. Not fear-marketed.
 
 ## Anti-references
@@ -105,11 +105,11 @@ The integration is the argument. Each row's second sentence in any copy should b
 
 ## Design principles
 
-1. **One workspace for the whole build loop.** Code, chat, plans, boards, git and knowledge share one shell, not a bundle of disconnected apps.
+1. **One workspace for the whole build loop.** Code, chat, plans, git and knowledge share one shell, not a bundle of disconnected apps.
    **Corollary:** fewer surfaces, each finished. A gated-off app beats a shipped half-app.
 2. **Free forever, local-first, open source.** AGPL-3.0-or-later; state on disk; encrypted secrets; LAN access opt-in. Strategic constraint, not a footnote. No feature is ever withheld to create a paid tier. Funding comes from the people who use it, the way Blender's does.
 3. **Open at the seams.** Anything the app can do, a user can extend or replace without permission: skills as `SKILL.md` files, tools as local plugins, prompts as editable markdown in the repo, themes as tokens, and the whole thing as a fork. A closed extension point is a bug.
-4. **Agent-native.** Tools, sub-agents, skills, and boards are core product, not plugins bolted onto a chat box.
+4. **Agent-native.** Tools, sub-agents, skills, and verification are core product, not plugins bolted onto a chat box.
 5. **Plain voice.** Documentation register, not marketing register. Approachable copy and real community presence; capable internals without intimidating chrome.
 6. **Calm instrumentation.** Metrics and status read as bench gauges (TPS, TTFT, tokens), not marketing KPIs. Conversation stays readable where chat is the surface.
 7. **Earned familiarity.** Consistent controls and navigation across apps; surprise reserved for moments, not every screen.

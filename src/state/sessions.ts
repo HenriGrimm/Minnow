@@ -1888,6 +1888,18 @@ export function applySharedChatFrame(
   }
   for (const [name, value] of Object.entries(fields ?? {})) {
     if (['id', 'history', 'historyLoaded', 'composerDraft', 'agentPresentationRevision', '__proto__', 'constructor'].includes(name)) continue;
+    if (name === 'factoryGoal') {
+      if (value && typeof value === 'object') {
+        const incoming = value as ActiveGoalState;
+        if (chat.activeGoal && chat.activeGoal.factoryRunId === incoming.factoryRunId) {
+          delete chat.activeGoal.paused;
+          delete chat.activeGoal.achieved;
+          Object.assign(chat.activeGoal, incoming);
+        } else chat.activeGoal = incoming;
+      }
+      else if (chat.activeGoal?.factoryRunId) delete chat.activeGoal;
+      continue;
+    }
     if (localShellEdit && ['name', 'groupId', 'pinned', 'pinnedAt'].includes(name)) continue;
     if (value === null) delete (chat as unknown as Record<string, unknown>)[name];
     else (chat as unknown as Record<string, unknown>)[name] = value;
@@ -1963,17 +1975,23 @@ export function markChatDirty(chat: Chat): void {
 }
 
 /** Store a new /goal completion condition on the chat. */
-export function setActiveGoal(chat: Chat, conditionText: string): void {
+export function setActiveGoal(chat: Chat, conditionText: string, skillId?: string): void {
   const trimmed = conditionText.trim().slice(0, MAX_GOAL_CONDITION_CHARS);
   if (!trimmed) return;
   chat.activeGoal = {
     conditionText: trimmed,
+    ...(skillId ? { skillId } : {}),
     startedAt: Date.now(),
     turnCount: 0,
     tokenBaseline: chat.tokenLedger?.totals.totalTokens ?? chat.tokenLedgerTotals?.totalTokens ?? 0,
   };
   touchChat(chat);
   scheduleSaveSessions();
+}
+
+/** An explicitly invoked skill may own continuation only while the chat has no other driver. */
+export function canArmSkillGoal(chat: Chat): boolean {
+  return !getActiveGoal(chat) && !hasActiveLoops(chat) && !chat.followupChain?.remaining;
 }
 
 /** Remove goal state from the chat (/goal clear, /clear, etc.). */

@@ -30,7 +30,6 @@ import { appConfirm } from '../app-dialog';
 import { createEmbeddedChatTranscript } from '../embedded-chat-transcript';
 import { findChatById, loadSessionsFromStorage, sessionState } from '../../state/sessions';
 import { setWorkspacePath } from '../../config/workspace-api';
-import { confirmAndStopBoardsForWorkspaceSwitch, dismissBoardViewOutsideWorkspace } from '../workspace-switch-guard';
 import { getWorkspacePath, setWorkspaceFromServer } from '../../state/workspace';
 import { launchApp } from '../../os/router';
 import { applyWorkspaceScopedSession, switchChat } from '../sidebar';
@@ -88,9 +87,7 @@ async function openRunChatInCode(chatId: string, notify: JobViewOptions['notify'
   const chatWorkspace = chat.workspacePath?.trim();
   if (chatWorkspace && chatWorkspace !== getWorkspacePath()) {
     try {
-      if (!await confirmAndStopBoardsForWorkspaceSwitch(chatWorkspace)) return;
       setWorkspaceFromServer(await setWorkspacePath(chatWorkspace));
-      await dismissBoardViewOutsideWorkspace(chatWorkspace);
       await applyWorkspaceScopedSession(chatWorkspace);
     } catch (err) {
       notify('err', err instanceof Error ? err.message : String(err));

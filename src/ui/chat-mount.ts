@@ -1,11 +1,6 @@
 import { getSharedChatHost } from './shared-chat-host-state';
 import { getForegroundAppId } from '../os/instances';
 import { queryCodeMapChatHost } from './code-map/chat-state';
-import { getOrchestrateChatMountElement } from './orchestrate-board-init-split';
-import {
-  isBoardChatEmbedOpen,
-  queryBoardChatTranscriptHost,
-} from './orchestrate-board-chat-state';
 
 /** True when desktop chat or the legacy Chat app is the active UI. */
 export function isChatAppForeground(): boolean {
@@ -24,11 +19,11 @@ export function setTurnChatMount(mount: HTMLElement | null): void {
   turnMount = mount;
 }
 
-/** Resolve a mount selector or element; falls back to orchestrate / #chatArea. */
+/** Resolve a mount selector or element; falls back to #chatArea. */
 export function resolveChatMount(mount?: string | HTMLElement): HTMLElement {
   if (mount instanceof HTMLElement) return mount;
   const id = (typeof mount === 'string' ? mount : 'chatArea').replace(/^#/, '');
-  return document.getElementById(id) ?? getOrchestrateChatMountElement();
+  return document.getElementById(id) ?? document.getElementById('chatArea')!;
 }
 
 /** True when rendering into the Code app main transcript (#chatArea or split pane). */
@@ -58,14 +53,12 @@ export function resolveSubAgentOverlayMount(): HTMLElement | null {
   return document.getElementById('mainColumn');
 }
 
-/** Active transcript root: override, desktop column, Chat app column, or Code orchestrate mount. */
+/** Active transcript root: override, desktop column, Chat app column, or Code #chatArea. */
 export function getActiveChatMountElement(): HTMLElement {
   if (mountOverride) return mountOverride;
   if (getSharedChatHost()) return getSharedChatHost()!.transcript;
   const mapChatHost = queryCodeMapChatHost();
   if (mapChatHost) return mapChatHost;
-  const boardChatHost = isBoardChatEmbedOpen() ? queryBoardChatTranscriptHost() : null;
-  if (boardChatHost) return boardChatHost;
   if (turnMount?.isConnected) return turnMount;
   if (isChatAppForeground()) {
     const col = getChatAppMessageCol();
@@ -73,7 +66,7 @@ export function getActiveChatMountElement(): HTMLElement {
     const chatAppArea = document.getElementById('chatAppArea');
     if (chatAppArea) return chatAppArea;
   }
-  return getOrchestrateChatMountElement();
+  return document.getElementById('chatArea')!;
 }
 
 /** Append a node to the active transcript. */

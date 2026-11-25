@@ -97,7 +97,7 @@ export function syncAgentConversationHeader(chat: Chat, mount: HTMLElement): voi
 export function isAttributedAgentMessage(message: UserMessage): boolean {
   const provenance = message.provenance;
   return provenance?.version === 1 && ((provenance.actor === 'agent' && provenance.kind === 'peer_message') ||
-    (provenance.actor === 'system' && provenance.kind === 'delegation_result'));
+    (provenance.actor === 'system' && (provenance.kind === 'delegation_result' || provenance.kind === 'goal_continuation')));
 }
 
 /** Typed authorship is visibly distinct from the human's own instruction. */
@@ -105,6 +105,7 @@ export function createAttributedAgentMessage(chat: Chat, message: UserMessage, h
   const content = apiMessageContentToText(message.content);
   const provenance = message.provenance!;
   const result = provenance.kind === 'delegation_result';
+  const factory = provenance.kind === 'goal_continuation';
   const assignment = !result && provenance.runId && provenance.runId === chat.agentConversation?.initialRunId;
   const run = provenance.runId ? getSubAgentRun(provenance.runId) ?? chat.subAgentRuns?.find(row => row.runId === provenance.runId) : undefined;
   const sourceId = provenance.sourceChatId;
@@ -115,12 +116,13 @@ export function createAttributedAgentMessage(chat: Chat, message: UserMessage, h
   row.open = messageDisclosures.get(key) ?? false;
   row.addEventListener('toggle', () => { messageDisclosures.set(key, row.open); if (messageDisclosures.size > 1024) messageDisclosures.delete(messageDisclosures.keys().next().value!); });
   const summary = document.createElement('summary');
-  const heading = document.createElement('span'); heading.className = 'agent-message__title'; heading.textContent = result ? sourceId ? 'Agent result from ' : 'Agent results' : assignment ? 'Assignment from ' : 'Message from ';
+  const heading = document.createElement('span'); heading.className = 'agent-message__title'; heading.textContent = factory ? 'Factory' : result ? sourceId ? 'Agent result from ' : 'Agent results' : assignment ? 'Assignment from ' : 'Message from ';
   if (sourceId) heading.append(chatAnchor(sourceId, source?.name || 'Unavailable chat'));
-  else if (!result) heading.append(document.createTextNode('another chat'));
+  else if (!result && !factory) heading.append(document.createTextNode('another chat'));
   const preview = document.createElement('span'); preview.className = 'agent-message__preview'; preview.textContent = content.trim().split('\n').find(Boolean)?.slice(0, 160) ?? '';
   const received = document.createElement('span'); received.className = 'agent-message__delivery'; received.textContent = result ? 'Published result' : 'Received';
-  summary.append(heading, preview, received);
+  summary.append(heading, preview);
+  if (!factory) summary.append(received);
   if (typeof message.createdAt === 'number' && Number.isFinite(new Date(message.createdAt).getTime())) {
     const time = document.createElement('time'); time.dateTime = new Date(message.createdAt).toISOString(); time.title = new Date(message.createdAt).toLocaleString();
     time.textContent = new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); summary.append(time);

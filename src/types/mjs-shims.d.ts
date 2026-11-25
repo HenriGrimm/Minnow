@@ -16,7 +16,6 @@
  * - src/lib/anthropic-thinking-style.d.mts
  * - src/lib/fetch-web-content.d.mts
  * - src/product-wiki/nav-order.d.mts
- * - server/orchestrate/board-testing/constants.d.ts
  */
 
 export type * from '../lib/untrusted.d.mts';

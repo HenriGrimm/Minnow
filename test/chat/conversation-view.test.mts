@@ -2,7 +2,7 @@ import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createConversationView } from '../../src/chat/conversation-view.ts';
-import { adaptAttemptConversation } from '../../src/orchestrator/transcript-adapter.ts';
+import { adaptAttemptConversation } from '../fixtures/attempt-transcript-adapter.ts';
 import { sessionState } from '../../src/state/sessions.ts';
 import type { TurnEvent } from '../../server/runner/run-turn';
 
