@@ -1,5 +1,4 @@
 import { reportBackgroundError } from '../boot/report-background-error';
-import { normalizeModeId } from './modes/types';
 import {
   gitSnapshotCreate,
   type GitOpResult,
@@ -24,10 +23,7 @@ export function setSnapshotCreateForTests(fn: SnapshotCreateFn | null): void {
 }
 
 export function shouldCaptureTurnSnapshots(chat: Chat): boolean {
-  if (normalizeModeId(chat.modeId) === 'orchestrate') return false;
-  if (chat.boardTaskId?.trim() || chat.boardGroupId?.trim()) return false;
-  if (chat.worktreeRoot?.trim()) return false;
-  return true;
+  return !chat.worktreeRoot?.trim();
 }
 
 export function resolveTurnSnapshotCwd(chat: Chat): string | undefined {

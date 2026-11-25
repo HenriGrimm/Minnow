@@ -6,21 +6,17 @@ description: >-
   codebase research via sub-agents, and a review pass before handoff. The lead
   agent does not write product code. Use when the user asks for a plan, roadmap,
   phased breakdown, implementation spec, or to plan a feature before building;
-  choose Build for one chat or Orchestrate for board execution.
+  the plan runs in one chat or unattended with /factory.
 disable-model-invocation: true
 ---
 
 # Plan work (discover → draft → review)
 
-You are the **planner**. Your deliverable is a **durable plan document** under `documentation/plans/`, ready for the selected Build or Orchestrate workflow.
+You are the **planner**. Your deliverable is a **durable plan document** under `documentation/plans/`, ready to build in one chat or unattended with `/factory`.
 
-## Choose the execution format first
+## One plan format
 
-For a **new planning request**, before scope questions or exploration, call **`ask_question`** with one card: **"How would you like to build this?"** Options: **Build** (one agent works through the steps in this chat) and **Orchestrate** (several agents share the work on a task board). Wait for the answer before drafting. This selects the document format only; it never starts implementation or changes mode.
-
-Ask once per plan. Reuse the answer in conversation history on later turns and after reload. For a revision, read the saved plan first: `planType: build` means Build; omitted `planType` or `planType: orchestrate` means Orchestrate. Preserve its type unless the user explicitly requests conversion. Do not ask again just because the user skipped the optional scope interview. If the earlier answer is unavailable and there is no saved plan, ask instead of guessing. Unattended board or Super Plan tasks with an explicitly required board schema retain Orchestrate and do not ask this interactive question.
-
-The existing **waves, task ids, front-matter todos, Touches, dependency rules, and fresh-agent handoff requirements below apply only to Orchestrate**. Keep that format unchanged. For **Build**, use the Build schema below instead, including when revising. Apply the active granularity setting to sequential step size; write shared context once, without waves, task graph, write-ownership globs, duplicated todos, or agent orchestration instructions.
+Every plan uses the **Build** schema in [plan-template.md](plan-template.md) (`planType: build`). It runs either in one chat or unattended with `/factory <plan path>`, which turns each step's acceptance into failing checks before building, so write acceptance criteria that can be checked: observable behaviour, concrete commands, and finite lists of cases instead of "every" or "any". When revising an older plan without `planType: build`, convert it. Apply the active granularity setting to step size.
 
 ## Hard rules (planner)
 
@@ -54,7 +50,7 @@ Plan work:
 - [ ] 3. Research sub-agent(s) — codebase / constraints
 - [ ] 4. Draft plan (template + phase table with verify hooks)
 - [ ] 5. Review sub-agent — plan quality gate
-- [ ] 6. Revise + present handoff to user (or /orchestrate-plan)
+- [ ] 6. Revise + present handoff to user (Build here or /factory)
 ```
 
 ---
@@ -103,8 +99,8 @@ Templates: [prompt-templates.md](prompt-templates.md)
 ## Step 4: Draft the plan
 
 1. Choose a **slug** (`kebab-case`, issue id prefix if applicable): `documentation/plans/<slug>.md`.
-2. Follow the selected format in [plan-template.md](plan-template.md). Preserve an existing plan's type when revising.
-3. Build uses sequential numbered steps with Changes, Verify, and progress checkboxes; share context once. Orchestrate uses the current Planner board schema with waves, task ids, Build/Test/Accept/Touches, explicit dependencies, and matching front-matter todos.
+2. Follow the Build schema in [plan-template.md](plan-template.md).
+3. Use sequential numbered steps with Changes, Verify, and progress checkboxes; share context once.
 4. Keep verification concrete: scoped commands, expected outcomes, and browser interactions for UI changes. Respect the active granularity setting.
 5. Run `check_plan`, fix errors, and rerun before finalizing.
 
@@ -136,10 +132,10 @@ Prompt template: [prompt-templates.md](prompt-templates.md)
 Tell the user:
 
 - Plan path(s)
-- Recommended next step: **Build** in one chat for Build plans; **Orchestrate** for board plans
+- Recommended next step: **Build here** in one chat for small work, or **`/factory <plan path>`** to build it unattended
 - Any decisions still open (short list)
 
-Do not start implementation or orchestration unless the user asks.
+Do not start implementation unless the user asks.
 
 ---
 
@@ -157,4 +153,4 @@ Ask the user when:
 
 - Plan file skeleton: [plan-template.md](plan-template.md)
 - Research/review prompts: [prompt-templates.md](prompt-templates.md)
-- Execution: [orchestrate-plan](../orchestrate-plan/SKILL.md)
+- Unattended execution: [factory](../factory/SKILL.md)

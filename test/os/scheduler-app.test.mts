@@ -190,7 +190,7 @@ describe('scheduler workspace shell', () => {
     assert.ok(mount.querySelector('.auto-gallery'));
     const presets = [...mount.querySelectorAll('.auto-preset__name')].map(node => node.textContent);
     assert.ok(presets.includes('PR Reviewer'));
-    assert.ok(presets.includes('Issue Watcher'));
+    assert.ok(!presets.includes('Issue Watcher'));
     assert.ok(presets.includes('Custom'));
   });
 

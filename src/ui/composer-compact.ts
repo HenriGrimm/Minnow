@@ -16,9 +16,7 @@ const SETTINGS_ITEM_IDS = [
   'composerCursorFast',
   'composerContextDocumentsWrap',
   'composerCodeMapWrap',
-  'orchestratePlanStrip',
   'workAgentDev',
-  'btnViewModeToggleBoard',
 ] as const;
 
 /** Footer-row controls that only park when the row is too narrow to hold them. */
@@ -353,13 +351,6 @@ function restoreElement(el: HTMLElement): void {
   }
   const row = getRow();
   const trail = row?.querySelector('.composer-controls__trail');
-  if (el.id === 'btnViewModeToggleBoard') {
-    const overflowAnchor = document.getElementById('composerOverflowAnchor');
-    if (overflowAnchor?.parentElement) {
-      overflowAnchor.parentElement.insertBefore(el, overflowAnchor);
-      return;
-    }
-  }
   if (trail && row) {
     row.insertBefore(el, trail);
   } else {

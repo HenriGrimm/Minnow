@@ -247,10 +247,9 @@ function maybeClearScopeChangePending(): void {
 }
 
 /** Align terminal cwd with the file explorer / git panel root (MIN-349). */
-export function syncTerminalFromFileExplorer(): void {
+export function syncTerminalFromFileExplorer(cwd = resolveFileExplorerTerminalCwd()): void {
   getElements();
 
-  const cwd = resolveFileExplorerTerminalCwd();
   const prevCwd = terminalTargetCwd;
   const cwdChanged =
     prevCwd !== undefined && !terminalCwdsEqual(prevCwd, cwd);
@@ -633,7 +632,8 @@ export function toggleTerminalPanel(): void {
   setPanelOpen(!isTerminalPanelOpen());
 }
 
-export function setTerminalSurfaceVisible(visible: boolean): void {
+export function setTerminalSurfaceVisible(visible: boolean, cwd?: string): void {
+  if (visible) syncTerminalFromFileExplorer(cwd);
   setPanelOpen(visible, { surface: true });
   if (visible) {
     requestAnimationFrame(onTerminalPanelResize);

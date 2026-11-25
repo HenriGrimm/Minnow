@@ -26,7 +26,7 @@ export async function createProductionRuntimeTestEnvironment() {
   const raw = (kind, id, body) => '---\nid: ' + id + '\nkind: ' + kind + '\nlabel: ' + id + '\nversion: 1\n---\n' + body;
   return {
     modules, root,
-    async fixture(t, { respond, toolNames, chats, install, agentMiddleware, runtimeOptions, subAgentTypes, usage } = {}) {
+    async fixture(t, { respond, toolNames, chats, install, loadSkill, agentMiddleware, runtimeOptions, subAgentTypes, usage } = {}) {
       const workspace = await fs.mkdtemp(path.join(root, 'workspace-'));
       const foreign = await fs.mkdtemp(path.join(root, 'foreign-'));
       modules.openWorkspace(workspace); modules.openWorkspace(foreign);
@@ -81,6 +81,7 @@ export async function createProductionRuntimeTestEnvironment() {
         userRaw: {} }),
         loadSkill: async id => {
           loadedSkills.push(id);
+          if (loadSkill) return loadSkill(id);
           return { body: `Workflow skill: ${id}`, access: id === 'plan' ? 'plans' : null };
         },
         resolveModelContextLimit: async () => 32000,

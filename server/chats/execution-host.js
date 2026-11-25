@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFactoryLedger } from './factory-checkpoint.js';
+import { runFactoryStage } from './factory-stage.js';
 import { runTurn } from '../runner/run-turn.js';
 import { createInProcessToolDispatch } from '../runner/tool-dispatch.js';
 import { ChatContractError, validateChatCommand } from './contracts.js';
@@ -34,7 +36,7 @@ const denialNote = answer => (typeof answer?.feedback === 'string' ? answer.feed
  */
 export function createServerChatExecutionHost({
   repository, prepareExecution, resolveCurrentPolicy, createToolDispatch, executeHostTool,
-  requestService, authorizeResponse, onEvent, onStatus, hydrateRecoveredQuestions, beforeInference, prepareCheckpoint, prepareWorkspace, prepareNativeExecution, now = Date.now,
+  requestService, authorizeResponse, onEvent, onStatus, onFactoryActivity, hydrateRecoveredQuestions, beforeInference, prepareCheckpoint, prepareWorkspace, prepareNativeExecution, now = Date.now,
 } = {}) {
   if (!repository || typeof prepareExecution !== 'function' || typeof resolveCurrentPolicy !== 'function') {
     throw new TypeError('A chat host requires its repository, production preparation and live policy resolver');
@@ -192,7 +194,7 @@ export function createServerChatExecutionHost({
         if (execution.captured?.nativeExecution?.requestedMode === 'native') {
           if (typeof prepareNativeExecution !== 'function' || !checkpoint) throw new ChatContractError('capability_unavailable', 'This host cannot enforce the accepted native-tool selection. No fallback was started.');
           nativeExecution = await prepareNativeExecution({ command, execution, fence, prepared, checkpoint, signal: combinedSignal,
-            resolveCurrentPolicy: livePolicy, waitForApproval: (request, signal) => waitForHuman(request, signal) });
+            resolveCurrentPolicy: livePolicy });
         }
         const runnerDeps = { ...prepared.deps,
           postChatCompletions: (provider, body, signal, options) => prepared.deps.postChatCompletions(provider, body,
@@ -271,6 +273,7 @@ export function createServerChatExecutionHost({
               if (intent.state === 'settled') return intent.result;
               throw recovery(new ChatContractError('recovery_required', 'This tool effect has no confirmed result; it cannot be repeated'));
             }
+            if (ctx.factoryStage) present(onFactoryActivity, chatId);
             effectsStarted++;
             try {
               let committed = false;
@@ -301,6 +304,7 @@ export function createServerChatExecutionHost({
           } catch (error) {
             throw error?.checkpointUncertain ? recovery(error) : error;
           } finally {
+            if (ctx.factoryStage) present(onFactoryActivity, chatId);
             const remaining = pendingEffects.get(executionId) - 1;
             if (remaining) pendingEffects.set(executionId, remaining);
             else pendingEffects.delete(executionId);
@@ -328,7 +332,15 @@ export function createServerChatExecutionHost({
           browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'chat' });
         }
         const providerStarted = timing.start();
-        const result = await runTurn({
+        const stage = execution.captured?.factoryRunId && await runFactoryStage({
+          repository, chatId, command, execution, prepared, transcript, signal: combinedSignal,
+          execute: (name, args, ctx) => execute(name, args, { ...ctx, factoryStage: true }),
+        });
+        const scheduledLead = execution.captured?.factoryPhase === 'build' ||
+          command.intent?.skill?.id === 'factory' && repository.getChat(chatId).factoryRun?.id === command.commandId;
+        const startingLedger = scheduledLead && !stage ? await readFactoryLedger(prepared.cwd) : null;
+        const result = stage || await runTurn({
+          ...(scheduledLead ? { shouldFinishAfterTools: async () => await readFactoryLedger(prepared.cwd) !== startingLedger } : {}),
           ...(prepared.runOptions ?? {}),
           // The accepted input is already canonical, including image policy
           // projection that may differ from command.message on the wire.

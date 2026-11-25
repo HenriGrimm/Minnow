@@ -10,10 +10,10 @@ export const ORDINARY_CHAT_EXECUTION_CAPABILITY = 'ordinaryChatExecutionV1';
 
 export const CHAT_ACTORS = Object.freeze(['human', 'agent', 'system']);
 export const CHAT_MESSAGE_SOURCES = Object.freeze([
-  'composer', 'agent_tool', 'task_delivery', 'scheduler', 'cli', 'device', 'migration',
+  'composer', 'agent_tool', 'task_delivery', 'scheduler', 'cli', 'device', 'migration', 'factory',
 ]);
 export const CHAT_MESSAGE_KINDS = Object.freeze([
-  'human_message', 'peer_message', 'delegation_result',
+  'human_message', 'peer_message', 'delegation_result', 'goal_continuation',
 ]);
 export const CHAT_COMMAND_KINDS = Object.freeze([
   'send', 'steer', 'stop', 'edit_queued', 'remove_queued', 'push_queued',
@@ -226,6 +226,10 @@ function provenance(value, path) {
     kind: member(row.kind, at(path, 'kind'), CHAT_MESSAGE_KINDS),
   };
   for (const key of keys.slice(4)) optional(row, key, path, id, output);
+  if ((output.kind === 'goal_continuation' || output.source === 'factory') &&
+      !(output.kind === 'goal_continuation' && output.source === 'factory' && output.actor === 'system' && output.causalRootId)) {
+    invalid(path, 'A factory continuation requires its originating command');
+  }
   if (output.kind === 'human_message' && output.actor !== 'human') {
     invalid(path, 'A human message must have a human actor');
   }

@@ -5,7 +5,7 @@
  * setup screen edits, and instructions written from that config. Three engines
  * run them:
  *   - 'pr-review'    — the server's PR Reviewer engine (claims, parallel reviewer runs, verdict)
- *   - 'github-watch' — the existing GitHub issue watcher (planner → board → PR)
+ *   - 'github-watch' — the retired GitHub issue watcher (existing jobs only; no preset)
  *   - 'prompt'       — an ordinary headless job whose prompt is written from the config
  *
  * Pure and dependency-free so both Node and the renderer import it.
@@ -48,13 +48,6 @@ export const AUTOMATION_PRESETS = Object.freeze([
     trigger: 'New PRs · every 2m', can: ['comment', 'merge'],
     schedule: { kind: 'interval', value: '2m' }, modeId: 'build',
     fields: [],
-  },
-  {
-    id: 'issue-watch', name: 'Issue Watcher', group: 'github', engine: 'github-watch', icon: 'appIssues',
-    summary: 'Plans and fixes issues labeled minnow on a board, then opens a PR for you to review.',
-    trigger: 'Labeled issues · every 5m', can: ['comment', 'open PRs'],
-    schedule: { kind: 'interval', value: '5m' }, modeId: 'build',
-    fields: [GITHUB_REPO_FIELD],
   },
   {
     id: 'ci-fixer', name: 'CI Fixer', group: 'github', engine: 'prompt', icon: 'tools',

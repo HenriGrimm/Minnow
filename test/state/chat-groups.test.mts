@@ -9,17 +9,10 @@ import {
   buildSortedWorkspaceSidebarEntries,
   createGroup,
   deleteGroup,
-  dismissActiveBoardView,
-  findBoardGroupForPlanner,
-  findBoardGroupForPlanPath,
-  getBoardGroupForChat,
   getGroupActivityAt,
   getGroupsForWorkspace,
-  getOrCreateBoardGroup,
   isChatPinned,
-  listBoardGroupChatIds,
   renameGroup,
-  resolveBoardRestoreGroupOnSwitch,
   setChatPinned,
   splitPinnedChats,
   toggleGroupCollapsed,
@@ -28,11 +21,10 @@ import {
   createEmptyChatObject,
   ensureChatShape,
   flushScheduledSessionSaveForTests,
-  removeChatById,
   sessionState,
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
-import type { Chat, ChatGroup, OrchestrateBoardState } from '../../src/types.ts';
+import type { ChatGroup, OrchestrateBoardState } from '../../src/types.ts';
 
 const WS = 'C:\\workspace\\demo';
 const PLANNER_ID = '11111111-1111-1111-1111-111111111111';
@@ -53,13 +45,6 @@ function attachLeftoverBoard(
     waves: [{ id: 'W1' }],
     tasks,
   };
-}
-
-/** Sidebar list helpers hide ephemeral empty chats; seed one turn for fixtures. */
-function markSidebarListed(chat: Chat): void {
-  if (chat.history.length === 0 && !chat.composerDraft?.trim()) {
-    chat.history.push({ role: 'user', content: 'fixture' });
-  }
 }
 
 afterEach(() => {
@@ -90,142 +75,17 @@ describe('chat groups', () => {
     assert.equal(getGroupsForWorkspace(WS).length, 0);
   });
 
-  test('group holds board and planner link', () => {
-    const planner = createEmptyChatObject('', WS);
-    planner.id = PLANNER_ID;
-    planner.modeId = 'orchestrate';
-    planner.orchestratePlanPath = PLAN_PATH;
-    setSessionStateForTests({
-      version: 5,
-      activeId: planner.id,
-      sidebarCollapsed: false,
-      groups: [],
-      chats: [planner],
-    });
-    const group = getOrCreateBoardGroup(planner);
-    assert.equal(planner.name, 'Orchestrator - demo-plan');
-    attachLeftoverBoard(group, [{ id: 'W1-A', title: 'A', wave: 'W1', category: 'build', status: 'planned' }]);
-    assert.equal(planner.boardGroupId, group.id);
-    assert.equal(planner.groupId, group.id);
-    assert.equal(findBoardGroupForPlanner(planner.id)?.id, group.id);
-    assert.equal(getBoardGroupForChat(planner)?.orchestrateBoard?.tasks.length, 1);
-    group.viewMode = 'board';
-    if (!sessionState) throw new Error('Session not loaded');
-    sessionState.activeBoardGroupId = group.id;
-    assert.equal(group.viewMode, 'board');
-    assert.equal(sessionState.activeBoardGroupId, group.id);
-  });
-
-  test('findBoardGroupForPlanPath matches normalized plan in workspace', () => {
-    const planner = createEmptyChatObject('', WS);
-    planner.id = PLANNER_ID;
-    planner.modeId = 'orchestrate';
-    planner.orchestratePlanPath = PLAN_PATH;
-    setSessionStateForTests({
-      version: 5,
-      activeId: planner.id,
-      sidebarCollapsed: false,
-      groups: [],
-      chats: [planner],
-    });
-    const group = getOrCreateBoardGroup(planner);
-    group.orchestratePlanPath = PLAN_PATH;
-
-    assert.equal(
-      findBoardGroupForPlanPath(WS, 'documentation/plans/demo-plan.md')?.id,
-      group.id,
-    );
-    assert.equal(findBoardGroupForPlanPath(WS, 'documentation/plans/other.md'), undefined);
-    assert.equal(findBoardGroupForPlanPath('/other/workspace', PLAN_PATH), undefined);
-  });
-
-  test('resolveBoardRestoreGroupOnSwitch returns group when leaving task chat for planner', () => {
-    const planner = createEmptyChatObject('', WS);
-    planner.id = PLANNER_ID;
-    planner.modeId = 'orchestrate';
-    planner.orchestratePlanPath = PLAN_PATH;
-    const taskChat = createEmptyChatObject('', WS);
-    taskChat.id = '22222222-2222-2222-2222-222222222222';
-    taskChat.boardTaskId = 'W1-A';
-    setSessionStateForTests({
-      version: 5,
-      activeId: taskChat.id,
-      sidebarCollapsed: false,
-      groups: [],
-      chats: [planner, taskChat],
-    });
-    const group = getOrCreateBoardGroup(planner);
-    attachLeftoverBoard(group, [
-      { id: 'W1-A', title: 'A', wave: 'W1', category: 'build', status: 'planned', chatId: taskChat.id },
-    ]);
-    taskChat.groupId = group.id;
-    taskChat.boardGroupId = group.id;
-
-    assert.equal(resolveBoardRestoreGroupOnSwitch(planner.id)?.id, group.id);
-    assert.equal(resolveBoardRestoreGroupOnSwitch(taskChat.id), undefined);
-  });
-
-  test('delete board group removes folder and all member chats', () => {
-    const planner = createEmptyChatObject('', WS);
-    planner.id = PLANNER_ID;
-    planner.modeId = 'orchestrate';
-    planner.orchestratePlanPath = PLAN_PATH;
-    const taskChat = createEmptyChatObject('', WS);
-    taskChat.id = '22222222-2222-2222-2222-222222222222';
-    const other = createEmptyChatObject('', WS);
-    other.id = '33333333-3333-3333-3333-333333333333';
-    markSidebarListed(other);
-    setSessionStateForTests({
-      version: 5,
-      activeId: planner.id,
-      sidebarCollapsed: false,
-      groups: [],
-      chats: [planner, taskChat, other],
-    });
-    const group = getOrCreateBoardGroup(planner);
-    attachLeftoverBoard(group, [
-      { id: 'W1-A', title: 'A', wave: 'W1', category: 'build', status: 'planned', chatId: taskChat.id },
-    ]);
-    taskChat.groupId = group.id;
-    taskChat.boardGroupId = group.id;
-    taskChat.boardTaskId = 'W1-A';
-    assert.equal(listBoardGroupChatIds(group, sessionState!.chats).length, 2);
-
-    const result = deleteGroup(group.id, { fallbackModelId: '' });
-    assert.equal(result.ok, true);
-    assert.equal(result.activeChanged, true);
-    assert.equal(result.chatRemoval?.activeChat?.id, other.id);
-    assert.equal(getGroupsForWorkspace(WS).length, 0);
-    assert.equal(sessionState!.chats.length, 1);
-    assert.equal(sessionState!.chats[0]?.id, other.id);
-    assert.equal(sessionState!.activeId, other.id);
-  });
-
-  test('removeChatById preserves board group when planner chat deleted', () => {
-    const planner = createEmptyChatObject('', WS);
-    planner.id = PLANNER_ID;
-    planner.modeId = 'orchestrate';
-    planner.orchestratePlanPath = PLAN_PATH;
-    const other = createEmptyChatObject('', WS);
-    other.id = '22222222-2222-2222-2222-222222222222';
-    markSidebarListed(other);
-    setSessionStateForTests({
-      version: 5,
-      activeId: planner.id,
-      sidebarCollapsed: false,
-      groups: [],
-      chats: [planner, other],
-    });
-    const group = getOrCreateBoardGroup(planner);
-    attachLeftoverBoard(group, [{ id: 'W1-A', title: 'A', wave: 'W1', category: 'build', status: 'planned' }]);
-    const result = removeChatById(planner.id, '');
-    assert.equal(result.ok, true);
-    assert.equal(result.activeChanged, true);
-    assert.equal(result.activeChat.id, other.id);
-    assert.equal(group.plannerChatId, undefined);
-    assert.equal(group.orchestratePlanPath, PLAN_PATH);
-    assert.equal(group.orchestrateBoard?.tasks.length, 1);
-    assert.equal(findBoardGroupForPlanner(planner.id), undefined);
+  test('deleting a legacy board folder keeps its chats and the active conversation', () => {
+    const chat = createEmptyChatObject('', WS);
+    setSessionStateForTests({ version: 5, activeId: chat.id, sidebarCollapsed: false, groups: [], chats: [chat] });
+    const group = createGroup('Imported plan', WS);
+    attachLeftoverBoard(group, []);
+    chat.boardGroupId = chat.groupId = group.id;
+    deleteGroup(group.id);
+    assert.equal(sessionState?.activeId, chat.id);
+    assert.deepEqual(sessionState?.chats.map(member => member.id), [chat.id]);
+    assert.equal(chat.groupId, undefined);
+    assert.equal(chat.boardGroupId, undefined);
   });
 
   test('getGroupActivityAt uses newest member message time', () => {
@@ -283,70 +143,6 @@ describe('chat groups', () => {
       ordered.map((entry) => (entry.kind === 'group' ? entry.group.id : entry.chat.id)),
       [freshChat.id, midGroup.id, staleGroup.id],
     );
-  });
-
-  test('buildSortedWorkspaceSidebarEntries pins planner chat first in board folder', () => {
-    const boardGroup = {
-      id: 'grp_board',
-      name: 'demo-plan',
-      workspacePath: WS,
-      collapsed: false,
-      order: 0,
-      createdAt: 1000,
-      plannerChatId: PLANNER_ID,
-      orchestrateBoard: {
-        planPath: PLAN_PATH,
-        tasks: [],
-        waves: [],
-        startedAt: 1,
-        lastUpdatedAt: 1,
-        timerAccumulatedMs: 0,
-        maxConcurrentTasks: 3,
-        maxConcurrentTasks: 1,
-      },
-    };
-    const planner = createEmptyChatObject('', WS);
-    planner.id = PLANNER_ID;
-    planner.groupId = boardGroup.id;
-    planner.lastMessageAt = 1000;
-    planner.updatedAt = 1000;
-    const taskChat = createEmptyChatObject('', WS);
-    taskChat.id = '22222222-2222-2222-2222-222222222222';
-    taskChat.groupId = boardGroup.id;
-    taskChat.lastMessageAt = 9000;
-    taskChat.updatedAt = 9000;
-
-    const ordered = buildSortedWorkspaceSidebarEntries(
-      [boardGroup],
-      [taskChat, planner],
-    );
-    const groupEntry = ordered.find((e) => e.kind === 'group');
-    assert.ok(groupEntry && groupEntry.kind === 'group');
-    assert.deepEqual(
-      groupEntry.members.map((c) => c.id),
-      [PLANNER_ID, taskChat.id],
-    );
-  });
-
-  test('dismissActiveBoardView clears focus and folder viewMode', () => {
-    const planner = createEmptyChatObject('', WS);
-    planner.id = PLANNER_ID;
-    planner.modeId = 'orchestrate';
-    setSessionStateForTests({
-      version: 5,
-      activeId: planner.id,
-      sidebarCollapsed: false,
-      groups: [],
-      chats: [planner],
-    });
-    const group = createGroup('Board folder', WS);
-    group.viewMode = 'board';
-    if (!sessionState) throw new Error('Session not loaded');
-    sessionState.activeBoardGroupId = group.id;
-    assert.equal(dismissActiveBoardView(), true);
-    assert.equal(group.viewMode, 'chat');
-    assert.ok(!sessionState.activeBoardGroupId);
-    assert.equal(dismissActiveBoardView(), false);
   });
 
   test('setChatPinned stamps pinnedAt without touching activity, and unpin clears it', () => {

@@ -46,7 +46,6 @@
     "test:skills-impeccable": "node test/run-all.mjs --suite skills-impeccable",
     "test:impeccable": "node test/run-all.mjs --suite impeccable",
     "fake-model": "node scripts/fake-model-server.mjs",
-    "board:scenario-contract": "node --import tsx scripts/run-board-scenario-contract.mjs",
     "preview": "vite preview",
     "electron:build": "node scripts/build-electron.mjs",
     "headless:build": "node scripts/build-headless-runner.mjs",

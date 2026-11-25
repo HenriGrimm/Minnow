@@ -17,7 +17,7 @@ Turn on **Start new chats without asking** under **Permissions** in a custom job
 
 ## Use a GitHub preset
 
-Connect GitHub and select a checkout whose `origin` matches the repository. In **New automation**, choose the preset and review its generated instructions and options before starting it. A **PR Reviewer** can post a review and, if configured, merge eligible PRs. Check the selected action when you only need comments. **Issue Watcher** picks up issues with its configured label, runs implementation on a board, and can publish a PR after verification.
+Connect GitHub and select a checkout whose `origin` matches the repository. In **New automation**, choose the preset and review its generated instructions and options before starting it. A **PR Reviewer** can post a review and, if configured, merge eligible PRs. Check the selected action when you only need comments.
 
 ## Diagnose a job
 

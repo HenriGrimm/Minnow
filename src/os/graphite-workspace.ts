@@ -13,7 +13,7 @@ import { getInFlightPromptOverlay } from '../models/in-flight-prompt';
 import { localModelPhase, type LocalModelPhase } from '../models/local-model-phase';
 import { runtimeDisplayName } from '../models/runtime-names';
 import { getOsView, subscribeInstances } from './instances';
-import { launchApp, navigateToCodeChat, navigateToCodeDevServers, navigateToCodeMap, navigateToCodeOrchestrate } from './router';
+import { launchApp, navigateToCodeChat, navigateToCodeDevServers, navigateToCodeMap } from './router';
 import { syncWorkspaceMenubarPlacement } from './workspace-menubar';
 
 const SPARK_SLOTS = 32;
@@ -258,7 +258,6 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     { id: 'graphite-code-chat', title: 'Open Code chats', group: 'Code', keywords: 'threads conversations', run: navigateToCodeChat },
     { id: 'graphite-code-servers', title: 'Open Dev servers', group: 'Code', keywords: 'preview ports local server', run: navigateToCodeDevServers },
     { id: 'graphite-code-map', title: 'Open Code map', group: 'Code', keywords: 'workspace architecture graph', run: navigateToCodeMap },
-    { id: 'graphite-code-orchestrate', title: 'Open Orchestrate', group: 'Code', keywords: 'board plan agents', run: navigateToCodeOrchestrate },
     {
       id: 'graphite-model-quick-controls',
       title: 'Quick model controls',

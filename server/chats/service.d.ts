@@ -55,11 +55,12 @@ export interface ReservedChatTask {
 }
 export interface DeferredChatTask { deferred: true; reason: string }
 export interface OrdinaryChatConsentProof { requestId: string; toolCallId: string; signal?: AbortSignal }
+type OrdinaryChatWriteAuthorization = OrdinaryChatConsentProof | { signal: AbortSignal | undefined };
 export interface OrdinaryChatCreateInput {
-  name: string; message?: string; selection?: ModelSelection; workspaceId?: string; enableWorktree?: boolean; reportBack?: boolean; clientRequestId: string;
+  name: string; message?: string; selection?: ModelSelection; reasoningEffort?: NonNullable<ModelSelection['options']>['reasoningEffort']; workspaceId?: string; enableWorktree?: boolean; reportBack?: boolean; clientRequestId: string;
 }
 export interface OrdinaryChatCreateReceipt {
-  chatId: string; link: string; commandId?: string; disposition: 'created' | 'queued'; replayed: boolean;
+  chatId: string; link: string; commandId?: string; modelSelection?: ModelSelection; disposition: 'created' | 'queued'; replayed: boolean;
 }
 type OrdinaryPeerAction = { chatId: string } & Record<string, unknown>;
 type OrdinaryPeerOperation = 'send' | 'stop' | 'read';
@@ -76,8 +77,10 @@ export interface ChatCommandService {
   } | null>;
   verifyOrdinaryAction(caller: ChatCaller, operation: OrdinaryPeerOperation, input: OrdinaryPeerAction, target: ChatTargetContext, proof?: OrdinaryChatConsentProof): void;
   ordinaryReport(caller: ChatCaller, target: ChatTargetContext): string | null;
+  ordinaryAssignment(caller: ChatCaller, source: ChatTargetContext, target: ChatTargetContext, operation: 'read' | 'send' | 'stop' | 'retry'): { commandId: string } | null;
+  retryAssignedWorktree(caller: ChatCaller, input: { chatId: string; expectedIntentId: string }, signal?: AbortSignal): Promise<{ chatId: string; commandId: string; status: 'ready' | 'failed' | 'cancelled' }>;
   replayAgentAction(caller: ChatCaller, operation: 'send' | 'stop', input: ChatSendInput | ChatStopInput): Promise<ChatCommandReceipt | null>;
-  send(caller: ChatCaller, input: ChatSendInput, proof?: OrdinaryChatConsentProof): Promise<ChatCommandReceipt>;
+  send(caller: ChatCaller, input: ChatSendInput, proof?: OrdinaryChatWriteAuthorization): Promise<ChatCommandReceipt>;
   chooseWorkspace(caller: ChatCaller, input: { chatId: string; action: 'retry' | 'local'; expectedIntentId: string | null; clientRequestId?: string }): Promise<{ chat: import('./repository.js').ChatShell }>;
   recoverMissingWorktree(chatId: string, workspacePath: string): Promise<boolean>;
   fork(caller: ChatCaller, input: {
@@ -96,7 +99,7 @@ export interface ChatCommandService {
   admitLegacyCompletion(caller: ChatCaller, input: Pick<ChatSendInput, 'chatId' | 'message' | 'clientRequestId'> & {
     delivery: NonNullable<ChatSendInput['delivery']>; retainOnly?: boolean;
   }, options?: { canAdmit?: () => boolean }): Promise<ChatCommandReceipt>;
-  stop(caller: ChatCaller, input: ChatStopInput, proof?: OrdinaryChatConsentProof): Promise<ChatCommandReceipt>;
+  stop(caller: ChatCaller, input: ChatStopInput, proof?: OrdinaryChatWriteAuthorization): Promise<ChatCommandReceipt>;
   /** Trusted task-runtime cancellation, pinned to an already admitted execution. */
   stopExecution(executionId: string): boolean;
   waitExecution(executionId: string): Promise<unknown>;
@@ -132,8 +135,9 @@ export function createChatCommandService(options: {
   defaultOrdinaryModel?: () => ModelSelection | undefined | Promise<ModelSelection | undefined>;
   captureTurnIntent?: typeof import('./preparation.js').captureChatTurnIntent;
   captureNativeSelection?: (selection: ModelSelection) => Promise<Record<string, unknown>> | Record<string, unknown>;
-  captureWorkspacePreparation?: (target: ChatTargetContext, options?: { newChat?: boolean }) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
+  captureWorkspacePreparation?: (target: ChatTargetContext, options?: { newChat?: boolean; factory?: boolean }) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
   admitWorkspacePreparation?: (chatId: string, intent: import('./workspace-preparation.js').ChatWorkspaceIntent) => void;
+  retryWorkspacePreparation?: (input: { chatId: string; expectedIntentId: string; signal?: AbortSignal }) => Promise<unknown>;
   applyWorkspaceChoice?: (caller: ChatCaller, input: Parameters<ChatCommandService['chooseWorkspace']>[1]) => Promise<{ chat: import('./repository.js').ChatShell }>;
   detachMissingWorktree?: (observed: import('./repository.js').ChatShell) => boolean;
   admitCausality?: (input: { caller: ChatCaller; command: ChatCommand }) => { causalRootId: string; causalDepth: number; agentCoordination?: boolean };

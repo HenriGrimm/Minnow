@@ -12,8 +12,6 @@ import {
 } from '../state/sessions';
 import { renderChatFromHistory } from './messages';
 import { setStatus } from './status';
-import { syncOrchestratePlanStripFromActiveChat } from './orchestrate-plan-selector';
-import { syncViewModeToggleFromActiveChat } from './view-mode-toggle';
 import { refreshComposerRunTargetDisabled } from './composer-run-target';
 import { createIcon } from './icon';
 import { createModeMaskIcon, syncModeIconInDom } from './mode-icons';
@@ -322,21 +320,12 @@ export function setChatMode(modeId: ModeId, chat = getActiveChat(), allowDuringT
     };
   }
 
-  if (normalizeModeId(normalized) === 'orchestrate') {
-    void import('./orchestrate-hub').then((m) => m.openOrchestrateLanding());
-    const mode = listModes().find((m) => m.id === 'orchestrate');
-    if (mode) showModeStatusPill(mode.label);
-    return { ok: true, modeId: 'orchestrate', label: mode?.label };
-  }
-
   chat.modeId = normalized;
   touchChat(chat);
   scheduleSaveSessions();
   if (chat.id === getActiveChat().id) {
     if (!isChatStreaming(chat.id)) renderChatFromHistory(chat);
     syncModeSelectorFromActiveChat();
-    void syncOrchestratePlanStripFromActiveChat();
-    syncViewModeToggleFromActiveChat();
     syncWorkAgentDevFromActiveChat();
 
     const mode = listModes().find((m) => m.id === normalized);

@@ -23,7 +23,6 @@ import {
   buildIssueForegroundModeSeed,
   buildIssuePlanSeed,
   canRunIssueWorkflow,
-  canSendIssueToBoard,
   issueActivityTarget,
   issueCodeRefsToLaunch,
   resolveIssuePlanPath,
@@ -31,7 +30,6 @@ import {
 } from './workflow-seeds.ts';
 
 export { buildIssueExpandTask, canExpandIssueWithAgent } from './expand-task.ts';
-export { markIssuesReviewForBoardComplete } from './board-review.ts';
 export {
   buildIssueContextBlock,
   buildIssueDebugSeed,
@@ -39,7 +37,6 @@ export {
   buildIssuePlanSeed,
   ISSUE_FOREGROUND_CHAT_MODES,
   canRunIssueWorkflow,
-  canSendIssueToBoard,
   issueActivityChip,
   issueActivityTarget,
   issueCodeRefsToLaunch,
@@ -130,7 +127,7 @@ export async function openIssueActivity(issue: IssueCard): Promise<boolean> {
 
   const { switchChat } = await import('../../ui/sidebar.ts');
 
-  if (target.kind === 'board_chat') {
+  if (target.kind === 'chat') {
     if (await routeCodeWindowCommand({ kind: 'chat', chatId: target.chatId, workspacePath: issue.workspacePath })) return true;
     switchChat(target.chatId);
     return true;
@@ -308,40 +305,6 @@ function issueMessageSnapshot(issue: IssueCard): IssueMessageSnapshot {
 }
 
 // ── Board ────────────────────────────────────────────────────────────────────
-
-/**
- * Send to board: requires planPath; launchBoardFromPlan; store boardChatId; status → in_progress.
- */
-export async function runIssueSendToBoard(
-  issueId: string,
-): Promise<{ ok: boolean; error?: string; boardChatId?: string }> {
-  const issue = findIssueById(issueId);
-  if (!issue) return { ok: false, error: 'Issue not found' };
-  if (!canSendIssueToBoard(issue)) {
-    return { ok: false, error: 'Save a plan first (Send to chat in Plan mode)' };
-  }
-
-  const planPath = issue.planPath!.trim();
-
-  try {
-    if (await routeCodeWindowCommand({ kind: 'board', issueId, workspacePath: issue.workspacePath })) return { ok: true };
-    const { launchApp } = await import('../../os/router.ts');
-    launchApp('code', { codeSection: 'chat', workspacePath: issue.workspacePath });
-    await new Promise((r) => setTimeout(r, 0));
-
-    const { launchBoardFromPlan } = await import('../../ui/orchestrate-launch.ts');
-    const launched = await launchBoardFromPlan(planPath);
-
-    updateIssue(issueId, {
-      status: requireIssueStatusForRole('in_progress'),
-    });
-
-    return { ok: Boolean(launched) };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message };
-  }
-}
 
 export async function openIssuePlanInEditor(
   planPath: string,

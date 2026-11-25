@@ -59,7 +59,7 @@ Flags (`minnow run --help` for the authoritative list):
 | `--prompt <text>` / `--stdin` | The user message (or read from stdin). |
 | `--workspace <dir>` | Workspace root for file/git tools. |
 | `--agent <id>` | Work agent to use. |
-| `--mode <id>` | `general` / `build` / `plan` / `orchestrate` / `debug`. |
+| `--mode <id>` | `general` / `build` / `plan` / `debug`. |
 | `--model <id>` / `--provider <id>` | Override model / provider. |
 | `--base-url <url>` | Server origin (default detected; e.g. `http://127.0.0.1:9473`). |
 | `--start-server` | Start a tool server for the run. |
@@ -150,7 +150,7 @@ Scoped suites (each delegates to `node test/run-all.mjs --suite <name>`):
 | `npm run test:terminal-pty` | Terminal PTY session (live server) |
 | `npm run test:ui-designer` | UI Designer agent |
 | `npm run test:settings` | Settings registry |
-| `npm run test:orchestrator` / `test:board` | Orchestrator V2 journal suite — see [orchestrate-board-testing.md](orchestrate-board-testing.md) |
+| `npm run test:orchestrator` | Journal engine suite (`test/orchestrator/`), shared with sub-agents |
 | `npm run test:check-coverage` | Orphan test detection (also in CI) |
 
 Most TS/UI suites run under `tsx` with `--import ./test/test-loader.mjs` (stubs `.css` + xterm); some use `--experimental-test-module-mocks`.
@@ -168,14 +168,9 @@ Most TS/UI suites run under `tsx` with `--import ./test/test-loader.mjs` (stubs 
 | `npm run report:bundle-size` | Print production chunk sizes from `dist/assets` (run after `npm run build`). |
 | `npm run report:bundle-size:ci` | Same as above; exits non-zero when entry chunk exceeds 1500 KB or data packs ship as JS. |
 
-## Orchestrate board dev tools
+## Fake model server
 
-| Command | Description |
-|---------|-------------|
-| `npm run test:orchestrator` / `test:board` | V2 journal suite (`test/orchestrator/` + scenario catalog). See [orchestrate-board-testing.md](orchestrate-board-testing.md). |
-| `npm run board:scenario-contract` | Validate the Settings board-testing catalog (PR gate). |
-| `npm run fake-model` | Local OpenAI-v1 stub for manual board runs. `npm run fake-model -- --register` adds provider `fake-board`. |
-| `npm run check:board-log` | Retired (exit 1). V1 JSONL invariants were deleted in MIN-713. V2 history is the journal under `~/.minnow/boards/`. |
+`npm run fake-model` starts a local OpenAI-compatible stub. The optional `--register` flag adds the provider to the dev profile.
 
 ## Smoke scripts
 
@@ -203,7 +198,7 @@ Other `scripts/*.mjs` cover stepwise feature smokes, Electron launch, token/CSS 
 | `MINNOW_NETWORK` | `lan` forces the home-network listener on at boot (Settings → Devices toggles it live). The desktop server always binds loopback. On Windows, allow inbound TCP on the home-network port in Firewall if phones cannot connect. See [remote-devices.md](remote-devices.md). |
 | `MINNOW_LAN_PORT` | Home-network listener port (default 9480). It never falls back to another port. |
 | `MINNOW_TAILNET_BIN` | Path to the built-in Tailscale helper (or a `.mjs` stand-in in tests). |
-| `MINNOW_DEBUG` | Verbose server logging; enables Settings → Advanced → Board testing and `/api/orchestrate/board-testing/*` (with `MINNOW_TEST=1` for CI harnesses). |
+| `MINNOW_DEBUG` | Enables verbose logging and development diagnostics. |
 | `MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION` | Allow UI-only tools in headless runs. |
 | `MINNOW_PLUGIN_UNSAFE` | Allow unsigned/unsafe tool plugins. |
 | `MINNOW_TTS_USE_COMPILE` | Opt into compiled TTS path. |

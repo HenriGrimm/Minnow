@@ -45,15 +45,9 @@ async function check() {
   return (await executeServerTool('check_plan', { path: planPath }, { workspaceRoot: workspace })).result;
 }
 
-test('check_plan uses the board parser for saved plans and reports repairable errors', async () => {
+test('check_plan directs legacy plans to the Build format', async () => {
   await fs.writeFile(path.join(workspace, planPath), validPlan);
-  assert.match(await check(), /Plan parses successfully: 1 task\(s\) across 1 wave\(s\)/);
-
-  await fs.writeFile(path.join(workspace, planPath), validPlan.replace('- **Test:** Run the widget test.\n', ''));
-  const result = await check();
-  assert.match(result, /Plan does not parse:/);
-  assert.match(result, /line \d+:\d+/);
-  assert.match(result, /hint:/);
+  assert.match(await check(), /planType: build/);
 });
 
 test('check_plan requires a path inside the workspace', async () => {
@@ -69,5 +63,5 @@ test('check_plan validates Build plans and reports step repairs', async () => {
   await fs.writeFile(path.join(workspace, planPath), buildPlan.replace('- Verify:', '- Missing:'));
   assert.match(await check(), /Step 1 needs Verify/);
   await fs.writeFile(path.join(workspace, planPath), buildPlan.replace('planType: build', 'planType: unknown'));
-  assert.match(await check(), /Invalid planType/);
+  assert.match(await check(), /planType: build/);
 });

@@ -14,7 +14,7 @@ export interface ChatTools {
 }
 export interface ChatToolsOptions {
   repository: ChatRepository; context: Pick<ChatContext, 'resolveTarget'>; service: Pick<ChatCommandService,
-    'send' | 'stop' | 'createOrdinary' | 'describeOrdinaryAction' | 'verifyOrdinaryAction' | 'ordinaryReport' | 'replayAgentAction'>;
+    'send' | 'stop' | 'createOrdinary' | 'describeOrdinaryAction' | 'verifyOrdinaryAction' | 'ordinaryReport' | 'ordinaryAssignment' | 'retryAssignedWorktree' | 'replayAgentAction'>;
   validateCaller(caller: ChatCaller): boolean;
   coordinationLimits?(): { maxPeerCommands: number; maxHops: number; maxPendingPeerInputs: number };
   capabilitiesContext?(caller: ChatCaller, source: ChatTargetContext, signal?: AbortSignal): AgentCapabilitiesContext | Promise<AgentCapabilitiesContext>;

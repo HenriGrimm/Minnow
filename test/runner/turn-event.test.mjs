@@ -257,16 +257,8 @@ describe('isHighFrequencyTurnEvent', () => {
     assert.match(transcripts, /isHighFrequencyTurnEvent/);
     assert.equal(transcripts.includes('shouldEmitSubAgentLiveTurnEvent'), false);
 
-    // Boards take the same live filter as sub-agents. `phase` is the only frame
-    // that says the model went back to writing, and without it a card held the
-    // tool it had just finished and read as stuck.
-    for (const dir of ['orchestrator', 'sub-agents']) {
-      const source = fs.readFileSync(
-        path.join(PROJECT_ROOT, 'server', dir, 'effector-runner.js'),
-        'utf8',
-      );
-      assert.match(source, /shouldEmitSubAgentLiveTurnEvent/, dir);
-    }
+    const effector = fs.readFileSync(path.join(PROJECT_ROOT, 'server', 'sub-agents', 'effector-runner.js'), 'utf8');
+    assert.match(effector, /shouldEmitSubAgentLiveTurnEvent/);
   });
 });
 

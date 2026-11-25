@@ -617,7 +617,7 @@ function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory, { repla
     }
     // /goal loop state is renderer-owned controller metadata, not a presentation
     // edit: it never advances the presentation revision. Explicit null clears it.
-    if (Object.prototype.hasOwnProperty.call(rawChat, 'activeGoal')) {
+    if (Object.prototype.hasOwnProperty.call(rawChat, 'activeGoal') && !meta.activeGoal?.factoryRunId && !rawChat.activeGoal?.factoryRunId) {
       const goal = ensureActiveGoal(rawChat.activeGoal);
       if (goal) meta.activeGoal = goal;
       else delete meta.activeGoal;

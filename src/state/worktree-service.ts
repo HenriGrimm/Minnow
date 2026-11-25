@@ -64,6 +64,9 @@ export interface WorktreeOpResult {
   dirtyWorkspace?: boolean;
   untrackedCount?: number;
   currentBranch?: string | null;
+  multiRepo?: boolean;
+  baseBranches?: Record<string, string>;
+  urls?: Array<{ repo: string; url: string }>;
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────

@@ -1452,6 +1452,12 @@ function createTurnRunner(deps) {
           input.tools = updatedConfig.tools;
           hasAskQuestionTool = input.tools.some((t) => t.function.name === "ask_question");
         }
+        if (toolTurns > 0 && input.shouldFinishAfterTools && await input.shouldFinishAfterTools()) {
+          emitProgress(void 0, true);
+          return { summary: '', toolTurns, messages, budgetEvents,
+            usage: usageSegments.length ? sumUsageSegments(usageSegments) : void 0,
+            stats: statsSegments.length ? averageStatsSegments(statsSegments) : void 0 };
+        }
         spliceRoundBoundaryRows();
         if (!await enforceContextBudget(turn)) {
           return {

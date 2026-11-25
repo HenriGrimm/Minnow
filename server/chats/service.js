@@ -1,13 +1,15 @@
+import { readFactoryBranch } from './factory-checkpoint.js';
+import { armFactoryRun, factoryDependenciesPending, isCurrentFactoryCommand } from './factory-continuation.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { createChatRepository, hashChatPayload } from './repository.js';
 import { assertCaller, assertCallerCanTarget } from './caller.js';
-import { createChatPolicy, intersectChatPolicies, assertChatPolicyWithinCeiling } from './policy.js';
+import { createChatPolicy, intersectChatPolicies, assertChatPolicyWithinCeiling, assertChatToolAllowed } from './policy.js';
 import { ChatContractError, validateChatCommand, validateChatId, validateModelSelection, validateChatTaskResult, validateChatError, validateChatSendIntent } from './contracts.js';
 import { captureChatTurnIntent } from './preparation.js';
 import { getAgentConversationsFeature, getOrdinaryChatExecutionFeature } from './feature.js';
 import { resolveAgentModelSelection } from './model-selection.js';
 import { ordinaryChatScopeBlocker, ordinaryChatHistoryBlocker } from './ordinary-routing.js';
-import { assertOrdinaryChatConsent } from './ordinary-consent.js';
+import { assertOrdinaryChatConsent, ordinaryChatConsentHash } from './ordinary-consent.js';
 import { createOrdinaryRootAdmission } from './ordinary-create.js';
 
 const ACTIVE = new Set(['running', 'waiting', 'waiting_for_model', 'loading_model', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_approval']);
@@ -55,7 +57,7 @@ function receipt(record, replayed = false) {
  */
 export function createChatCommandService({
   repository = createChatRepository(), context, resolveModelSelection, captureProfile, captureTurnIntent = captureChatTurnIntent,
-  captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice, detachMissingWorktree,
+  captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice, retryWorkspacePreparation, detachMissingWorktree,
   captureNativeSelection, defaultOrdinaryModel,
   feature = getAgentConversationsFeature, ordinaryFeature = getOrdinaryChatExecutionFeature, now = Date.now, id = randomUUID,
   hasExternalOwner = () => false, getExternalOwner, stopExternalOwner, isExternalExecutionActive, cancelTree, admitChildTask, admitCausality,
@@ -101,14 +103,22 @@ export function createChatCommandService({
     }
     return caller;
   }
-  async function authorize(caller, chatId, operation) {
+  async function authorizeWithSource(caller, chatId, operation, allowAssignment = false) {
     requireCaller(caller); checked(validateChatId(chatId));
-    const source = caller.actor === 'agent' ? await context.resolveTarget(caller.chatId) : null;
-    const target = await context.resolveTarget(chatId, source && operation === 'read' ? { project: source.project } : {});
-    assertCallerCanTarget(caller, { chatId, scope: target.scope, policy: target.policy }, {
-      operation, currentPolicy: source?.currentPolicy ?? caller.policy, registry: target.registry,
-    });
-    return target;
+    // Writes recheck the live source after resolving the destination, which can
+    // involve slow checkout verification. Reads need the source project first.
+    const readSource = caller.actor === 'agent' && operation === 'read' ? await context.resolveTarget(caller.chatId) : null;
+    const target = await context.resolveTarget(chatId, readSource ? { project: readSource.project } : {});
+    const source = readSource ?? (caller.actor === 'agent' ? await context.resolveTarget(caller.chatId) : null);
+    if (!allowAssignment || !ordinaryRoot.ordinaryAssignment(caller, source, target, operation)) {
+      assertCallerCanTarget(caller, { chatId, scope: target.scope, policy: target.policy }, {
+        operation, currentPolicy: source?.currentPolicy ?? caller.policy, registry: target.registry,
+      });
+    }
+    return { target, source };
+  }
+  async function authorize(caller, chatId, operation) {
+    return (await authorizeWithSource(caller, chatId, operation)).target;
   }
   function enabled(caller, input) {
     if (disposed) failure('capability_unavailable', 'The conversation service is stopping');
@@ -151,7 +161,7 @@ export function createChatCommandService({
     const previous = repository.findCommandReceipt(producer(caller), key);
     if (!previous) return null;
     if (previous.captured.requestIntentHash !== intent) failure('idempotency_conflict', 'Request identity was reused with different input');
-    await authorize(caller, previous.chatId, 'read');
+    await authorizeWithSource(caller, previous.chatId, 'read', true);
     return receipt(previous, true);
   }
   function serialized(chatId, work) {
@@ -195,29 +205,39 @@ export function createChatCommandService({
     return checked(validateModelSelection(resolved?.selection ?? resolved));
   }
   const ordinaryPeer = (caller, target) => caller.actor === 'agent' && target.chat.id !== caller.chatId && !target.chat.agentConversation;
+  const fullOrdinaryWrite = (caller, source) => caller.policy.permissionLevel === 'full' && source?.policy.permissionLevel === 'full';
   const ordinaryAction = (operation, input, target) => ({ operation, input, target: [
     target.scope.workspaceId, target.checkoutIdentity ?? null, target.chat.name ?? '', target.chat.providerId ?? '',
     target.chat.modelId ?? '', hashChatPayload(target.policy),
   ] });
   async function describeOrdinaryAction(caller, operation, input) {
     if (!['send', 'stop', 'read'].includes(operation)) failure('invalid_request', 'Unsupported chat action');
-    const target = await authorize(caller, input.chatId, operation);
+    const { target, source } = await authorizeWithSource(caller, input.chatId, operation, operation !== 'read');
     if (!ordinaryPeer(caller, target)) return null;
-    if (operation === 'send' && Buffer.byteLength(input.message) > 24_000) failure('invalid_request', 'An ordinary chat message must fit in its confirmation (24 KB)');
+    if (operation === 'send' && Buffer.byteLength(input.message) > 24_000) failure('invalid_request', 'An ordinary chat message must be at most 24 KB');
     if (operation !== 'read' && target.chat.chatCommandVersion !== 1) failure('capability_unavailable', 'Open and use the target in Code before operating it from another chat');
     if (operation === 'stop' && (input.scope !== 'turn' || !input.executionId)
         || operation === 'send' && input.mode === 'steer' && !input.executionId) {
       failure('invalid_request', 'Choose turn scope and the exact execution ID to stop or steer');
     }
+    if (operation !== 'read' && fullOrdinaryWrite(caller, source)) {
+      ordinaryChatConsentHash(repository, caller, null); // Still a human-started turn.
+      return null;
+    }
     return { action: ordinaryAction(operation, input, target), preview: {
       chat: target.chat.name, checkout: target.scope.canonicalKey, ...input,
     } };
   }
-  function verifyOrdinaryAction(caller, operation, input, target, proof) {
+  function verifyOrdinaryAction(caller, operation, input, target, proof, source) {
     requireCaller(caller);
     proof?.signal?.throwIfAborted();
     if (!ordinaryPeer(caller, target)) return;
     if (operation !== 'read' && target.chat.chatCommandVersion !== 1) failure('capability_unavailable', 'The target is not a managed ordinary chat');
+    if (operation !== 'read' && !proof?.requestId && fullOrdinaryWrite(caller, source)) {
+      assertChatToolAllowed(caller.policy, 'chat_' + operation, input, { currentPolicy: source.policy });
+      ordinaryChatConsentHash(repository, caller, null);
+      return;
+    }
     assertOrdinaryChatConsent(repository, caller, ordinaryAction(operation, input, target), proof, now());
   }
   async function sendCommand(caller, input, legacyCompletion = null, proof) {
@@ -250,14 +270,20 @@ export function createChatCommandService({
       const previous = await replay(caller, input, key, intent);
       if (previous) return previous;
       enabled(caller, input);
-      let target = await authorize(caller, input.chatId, 'send');
-      verifyOrdinaryAction(caller, 'send', input, target, proof);
+      let { target, source } = await authorizeWithSource(caller, input.chatId, 'send', true);
+      verifyOrdinaryAction(caller, 'send', input, target, proof, source);
       const epoch = repository.getCancellationEpoch(input.chatId);
       if (caller.actor === 'human' && target.chat.chatCommandVersion !== 1) {
         failure('capability_unavailable', 'Ordinary server execution requires an idle, durably reconciled parity-ready promotion before command admission. Continue using this conversation\'s existing execution host until routing is available.');
       }
+      const explicitFactory = caller.actor === 'human' && input.intent?.skill?.id === 'factory' && input.intent.skill.source === 'slash';
+      if (explicitFactory && target.chat.activeGoal?.factoryRunId) {
+        failure('ownership_conflict', target.chat.activeGoal.achieved
+          ? 'This factory has finished. Open a new Code chat to start a separate run.'
+          : 'This thread already has a factory run. Open Factory to see its checkpoint or resume it.');
+      }
       const workspacePreparation = mode !== 'steer' && typeof captureWorkspacePreparation === 'function'
-        ? await captureWorkspacePreparation(target) : null;
+        ? await captureWorkspacePreparation(target, { factory: explicitFactory && !target.chat.worktreeRoot }) : null;
       if (!workspacePreparation && (target.chat.worktreeSetupRequired === true || target.chat.worktreeEnabled === true && !target.chat.worktreeRoot)) {
         failure('capability_unavailable', 'Finish worktree setup or explicitly choose Local before sending. Server admission cannot run in the unprepared checkout.');
       }
@@ -275,21 +301,23 @@ export function createChatCommandService({
       const nativeExecution = mode !== 'steer' && typeof captureNativeSelection === 'function'
         ? await captureNativeSelection(modelSelection) : undefined;
       const turnIntent = input.intent !== undefined ? await captureTurnIntent(input.intent, target.chat, input.message) : null;
+      const factoryBranch = turnIntent?.skillGoal && input.intent?.goalDriven && input.intent.skill?.id === 'factory'
+        && input.intent.skill.source === 'slash' && !workspacePreparation ? await readFactoryBranch(target.scope.canonicalKey) : null;
       const captureTarget = turnIntent?.uiDesigner?.active
         ? { ...target, chat: { ...target.chat, workAgentAuto: false, workAgentId: turnIntent.uiDesigner.agentId } } : target;
       const capturedSettings = (caller.actor === 'human' && mode !== 'steer' || !target.profile) && typeof captureProfile === 'function'
         ? await captureProfile({ target: captureTarget, selection: modelSelection, caller, input }) : null;
       const capturedProfile = !target.profile ? capturedSettings : null;
       if (capturedProfile) target = { ...target, profile: { ...capturedProfile, chatId: input.chatId } };
-      const currentTarget = await authorize(caller, input.chatId, 'send');
+      const { target: currentTarget, source: currentSource } = await authorizeWithSource(caller, input.chatId, 'send', true);
       if (currentTarget.scope.projectId !== target.scope.projectId || currentTarget.scope.canonicalKey !== target.scope.canonicalKey ||
           target.checkoutIdentity && currentTarget.checkoutIdentity !== target.checkoutIdentity) {
         failure('workspace_denied', 'The conversation checkout changed before admission');
       }
       target = { ...target, policy: intersectChatPolicies(target.policy, currentTarget.policy) };
-      verifyOrdinaryAction(caller, 'send', input, currentTarget, proof);
+      verifyOrdinaryAction(caller, 'send', input, currentTarget, proof, currentSource);
       if (mode === 'steer' && ordinaryPeer(caller, target) && (active.get(input.chatId) !== live || live.controller.signal.aborted)) {
-        failure('steer_unsupported', 'The confirmed execution is no longer available for steering');
+        failure('steer_unsupported', 'The requested execution is no longer available for steering');
       }
       assertLegacyAdmission();
       if (!legacyCompletion && epoch !== repository.getCancellationEpoch(input.chatId)) failure('ownership_conflict', 'Input setup was stopped before admission');
@@ -329,8 +357,10 @@ export function createChatCommandService({
           ...(target.profile ? { profile: target.profile } : {}),
           ...(capturedSettings ? { turnSettings: capturedSettings.snapshot } : {}),
           ...(turnIntent ? { turnIntent } : {}),
+          ...(factoryBranch && !['main', 'master'].includes(factoryBranch) ? { factoryBranch } : {}),
           ...(firstTitleSeed ? { titleUpdate: { name: firstTitleSeed.slice(0, 256), expectedName: target.chat.name } } : {}),
         } });
+        armFactoryRun(repository, admitted, turnIntent?.skillGoal);
         if (admitted.captured.titleUpdate && input.intent?.deferTitleUntilTurnEnd !== true &&
             repository.getChat(input.chatId).name === admitted.captured.titleUpdate.expectedName) {
           repository.configureChat(input.chatId, { name: admitted.captured.titleUpdate.name });
@@ -797,11 +827,11 @@ export function createChatCommandService({
       if (PENDING.includes(previous.state)) await drainControls(input.chatId);
       return receipt(repository.getCommand(previous.commandId), true);
     }
-    const target = await authorize(caller, input.chatId, 'stop');
+    const { target, source } = await authorizeWithSource(caller, input.chatId, 'stop', true);
     if (ordinaryPeer(caller, target) && (scope !== 'turn' || !input.executionId)) {
       failure('invalid_request', 'Stopping an ordinary chat requires turn scope and its exact execution ID');
     }
-    verifyOrdinaryAction(caller, 'stop', input, target, proof);
+    verifyOrdinaryAction(caller, 'stop', input, target, proof, source);
     if (subtree && typeof cancelTree !== 'function') {
       failure('capability_unavailable', 'Stopping an agent subtree requires the task cancellation adapter');
     }
@@ -990,10 +1020,18 @@ export function createChatCommandService({
       record.captured?.checkoutIdentity && record.captured.checkoutIdentity !== target.checkoutIdentity) {
       const held = repository.atomic(() => {
         const fresh = repository.getCommand(record.commandId);
-        return fresh && PENDING.includes(fresh.state) ? repository.updateCommand(record.commandId, { state: 'waiting_for_host', held: true,
+        return fresh && PENDING.includes(fresh.state) ? repository.updateCommand(record.commandId, { state: 'waiting_for_host', held: !record.captured?.factoryRunId,
           error: { code: 'workspace_denied', message: 'The original conversation checkout changed. Restore its registered checkout before resuming this input.', retryable: true } }) : null;
       });
       if (held) announce(held);
+      return { deferred: true, reason: 'workspace_changed' };
+    }
+    if (record.captured?.factoryBranch && await readFactoryBranch(target.scope.canonicalKey) !== record.captured.factoryBranch) {
+      const fresh = repository.getCommand(record.commandId);
+      if (fresh.revision === record.revision && PENDING.includes(fresh.state) && fresh.error?.code !== 'workspace_denied') {
+        announce(repository.updateCommand(record.commandId, { state: 'waiting_for_host',
+          error: { code: 'workspace_denied', message: 'Restore the factory branch ' + record.captured.factoryBranch + ' to continue.', retryable: true } }));
+      }
       return { deferred: true, reason: 'workspace_changed' };
     }
     const chatId = record.chatId;
@@ -1028,6 +1066,11 @@ export function createChatCommandService({
       if (active.has(chatId) || externallyOwned(chatId) || repository.getLease(chatId)?.state === 'active') { accepted = deferred('owned'); return; }
       if (repository.getLatestExecution(chatId)?.status === 'recovery_required') { accepted = deferred('recovering'); return; }
       if (hosts.get(host.id) !== host) { accepted = deferred('waiting_for_host'); return; }
+      if (record.captured.factoryRunId && factoryDependenciesPending(repository, chatId,
+        id => externallyOwned(id) || repository.getLease(id)?.state === 'active')) {
+        accepted = deferred('waiting_for_agents'); return;
+      }
+      if (!isCurrentFactoryCommand(repository, record)) { accepted = deferred('command_changed'); return; }
       if (!fresh || fresh.revision !== record.revision || firstRunnable(chatId)?.commandId !== record.commandId) { accepted = deferred('command_changed'); return; }
       if (disposedDelivery(fresh)) {
         repository.updateCommand(fresh.commandId, { state: 'cancelled', result: { disposition: 'subscription_disposed' } });
@@ -1131,7 +1174,16 @@ export function createChatCommandService({
       if (!pending) return;
       let target;
       try { target = await context.resolveTarget(chatId); }
-      catch (error) { announce(repository.updateCommand(pending.commandId, { state: 'failed', error: publicError(error) })); continue; }
+      catch (error) {
+        if (pending.captured.factoryRunId && error.code === 'workspace_denied') {
+          if (pending.error?.code !== error.code) announce(repository.updateCommand(pending.commandId, { state: 'waiting_for_host', error: publicError(error) }));
+          return;
+        }
+        announce(repository.updateCommand(pending.commandId, { state: 'failed', error: publicError(error) })); continue;
+      }
+      if (!isCurrentFactoryCommand(repository, pending)) {
+        announce(repository.updateCommand(pending.commandId, { state: 'cancelled', result: { disposition: 'factory_stopped' } })); continue;
+      }
       if (disposedDelivery(pending)) {
         announce(repository.updateCommand(pending.commandId, { state: 'cancelled', result: { disposition: 'subscription_disposed' } })); continue;
       }
@@ -1180,6 +1232,39 @@ export function createChatCommandService({
     }).catch(() => {});
     return promise;
   }
+  const ordinaryRoot = createOrdinaryRootAdmission({ repository, context, enabled, ordinaryFeature, now, requireCaller, producer,
+    keyFor, provenance, selectionFor, captureProfile, captureNativeSelection, defaultOrdinaryModel,
+    captureWorkspacePreparation, admitWorkspacePreparation, admitCausality, emit, announce, schedule });
+  const retryAssignedWorktree = (caller, input, signal) => serialized(input.chatId, async () => {
+    requireCaller(caller);
+    enabled(caller);
+    if (typeof retryWorkspacePreparation !== 'function') failure('capability_unavailable', 'Worktree retry is unavailable on this host');
+    const target = await context.resolveTarget(input.chatId, { workspaceRecovery: true });
+    const source = await context.resolveTarget(caller.chatId);
+    requireCaller(caller);
+    enabled(caller);
+    signal?.throwIfAborted();
+    assertChatToolAllowed(caller.policy, 'chat_retry_worktree', { chat_id: input.chatId }, { currentPolicy: source.policy });
+    const assignment = ordinaryRoot.ordinaryAssignment(caller, source, target, 'retry');
+    if (!assignment) failure('policy_denied', 'Only the assigned chat’s Full access manager may retry this worktree');
+    const setup = repository.getChat(input.chatId).workspacePreparation;
+    const first = repository.getCommand(assignment.commandId);
+    if (setup?.intent?.id !== input.expectedIntentId || setup.status !== 'pending' && !['failed', 'cancelled'].includes(setup.status) ||
+        !['failed', 'cancelled'].includes(first?.state)) {
+      failure('stale_revision', 'Retry requires the currently failed or cancelled setup. Read the chat and check its state.');
+    }
+    try { await retryWorkspacePreparation({ ...input, signal }); }
+    catch (error) {
+      signal?.throwIfAborted();
+      if (!(error instanceof ChatContractError) && error?.name !== 'AbortError') throw error;
+      const latest = repository.getChat(input.chatId).workspacePreparation;
+      if (latest?.intent?.id === input.expectedIntentId && ['failed', 'cancelled'].includes(latest.status)) {
+        return { chatId: input.chatId, commandId: assignment.commandId, status: latest.status };
+      }
+      throw error;
+    }
+    return { chatId: input.chatId, commandId: assignment.commandId, status: 'ready' };
+  });
   const service = {
     ordinaryEligibility, promote,
     async replayAgentAction(caller, operation, input) {
@@ -1191,10 +1276,7 @@ export function createChatCommandService({
       if (operation === 'stop' && PENDING.includes(prior.state)) await drainControls(input.chatId);
       return receipt(repository.getCommand(prior.commandId), true);
     },
-    ...createOrdinaryRootAdmission({ repository, context, enabled, ordinaryFeature, now, requireCaller, producer,
-      keyFor, provenance, selectionFor, captureProfile, captureNativeSelection, defaultOrdinaryModel,
-      captureWorkspacePreparation, admitWorkspacePreparation,
-      admitCausality, emit, announce, schedule }),
+    ...ordinaryRoot, retryAssignedWorktree,
     describeOrdinaryAction, verifyOrdinaryAction,
     send, configure, fork, rewriteHistory, chooseWorkspace, recoverMissingWorktree, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
     stopExecution(executionId) {

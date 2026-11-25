@@ -890,16 +890,6 @@ html.mn-phone :is(.dev-server-log__filter, .dev-server-ports__filter) {
   min-width: 0;
 }
 
-/* ---------- Code: boards overview ---------- */
-
-/* Stacked under the pane, the board list is capped at `max-height: 30%` of an
-   auto grid row, which resolves against the row itself and clipped the list to
-   29px: the "Boards / New board" head sat half outside it. Cap by viewport. */
-html.mn-phone .ov2__list {
-  max-height: 34dvh;
-  padding: 10px var(--mn-phone-pad-right) 10px var(--mn-phone-pad-left);
-}
-
 /* ---------- Code: terminal panel ---------- */
 
 /* Worktree context and actions precede the full-width tab strip. */
@@ -953,17 +943,6 @@ html.mn-touch .chat-thread > .msg.user.msg--has-actions .msg-bubble {
 
 html.mn-touch .msg--has-actions {
   --msg-actions-lane: 52px;
-}
-
-html.mn-touch .ov2__board-delete {
-  opacity: 0.7;
-  pointer-events: auto;
-}
-
-html.mn-touch .board-running-tasks__controls {
-  max-width: 7.5rem;
-  opacity: 0.85;
-  pointer-events: auto;
 }
 
 html.mn-touch .chat-app-outputs-download {

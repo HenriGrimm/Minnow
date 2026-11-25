@@ -7,7 +7,7 @@ import { ChatContractError } from './contracts.js';
 // These durable coordination operations can wait for another chat in this same
 // checkout. They never hold its filesystem boundary while that child runs.
 export const CHECKPOINT_COORDINATION_TOOLS = new Set([
-  'spawn_sub_agent', 'chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop', 'cancel_sub_agent',
+  'spawn_sub_agent', 'chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop', 'chat_retry_worktree', 'cancel_sub_agent',
   'ask_question', 'wait', 'todo_write', 'set_chat_mode', 'propose_mode_switch', 'create_chat_with_mode',
 ]);
 

@@ -1,5 +1,4 @@
 import { streamingChatIds } from '../app-state';
-import { normalizeModeId } from './modes/types';
 import { truncateChatHistory } from './history-truncate';
 import {
   gitLog,
@@ -24,8 +23,6 @@ import { CANONICAL_HISTORY_HINT, supportsLocalHistoryMutation } from '../state/c
 
 export type UndoBlockReason =
   | 'streaming'
-  | 'orchestrate'
-  | 'board'
   | 'worktree'
   | 'no_turn'
   | 'canonical_history'
@@ -91,8 +88,6 @@ export interface SnapshotRestoreOutcome {
 }
 
 const MSG_STREAMING = 'Finish or stop the current reply first';
-const MSG_ORCHESTRATE = 'Undo isn’t available in Orchestrate mode yet';
-const MSG_BOARD = 'Undo isn’t available for board-linked chats yet';
 const MSG_WORKTREE = 'Undo isn’t available for worktree-isolated chats yet';
 const MSG_NO_TURN = 'Nothing to undo yet';
 const MSG_NOT_FOUND = 'Chat not found';
@@ -200,10 +195,6 @@ export function undoBlockMessage(reason: UndoBlockReason): string {
       return MSG_STREAMING;
     case 'canonical_history':
       return CANONICAL_HISTORY_HINT;
-    case 'orchestrate':
-      return MSG_ORCHESTRATE;
-    case 'board':
-      return MSG_BOARD;
     case 'worktree':
       return MSG_WORKTREE;
     case 'no_turn':
@@ -219,14 +210,6 @@ export function getUndoEligibility(chat: Chat): UndoEligibility {
   if (!supportsLocalHistoryMutation(chat)) return { ok: false, reason: 'canonical_history', message: CANONICAL_HISTORY_HINT };
   if (streamingChatIds.has(chat.id)) {
     return { ok: false, reason: 'streaming', message: MSG_STREAMING };
-  }
-
-  if (normalizeModeId(chat.modeId) === 'orchestrate') {
-    return { ok: false, reason: 'orchestrate', message: MSG_ORCHESTRATE };
-  }
-
-  if (chat.boardTaskId?.trim() || chat.boardGroupId?.trim()) {
-    return { ok: false, reason: 'board', message: MSG_BOARD };
   }
 
   if (chat.worktreeRoot?.trim()) {

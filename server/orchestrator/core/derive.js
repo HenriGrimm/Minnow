@@ -1,7 +1,9 @@
 /** Fold journal events into board state. */
 
 import { validateEvent } from './events.js';
-import { OPERATIONAL_CATEGORIES } from './recovery.js';
+import { lastEndedAttempt, OPERATIONAL_CATEGORIES } from './recovery.js';
+
+export { lastEndedAttempt };
 
 // ── Empty state ──────────────────────────────────────────────────────────────
 
@@ -326,7 +328,7 @@ function apply(state, event) {
     case 'board.model.set': {
       if (state.recoveryVersion) {
         for (const [key, hold] of Object.entries(state.recoveryHolds)) {
-          if (hold.stage === 'preflight') state.recoveryHolds[key] = { ...hold, attention: false, probe: true, retryAt: 0 };
+          if (hold.stage === 'preflight' && hold.failure.scope !== 'workspace') state.recoveryHolds[key] = { ...hold, attention: false, probe: true, retryAt: 0 };
           else if (['quota', 'rate_limit', 'unavailable', 'authentication', 'protocol', 'capacity'].includes(hold.failure.category)) delete state.recoveryHolds[key];
         }
       }
@@ -674,20 +676,6 @@ function phaseOf(state, task) {
     return 'merging';
   }
   return 'idle';
-}
-
-/**
- * The most recent attempt that finished, or undefined if none has.
- *
- * @param {import('./types').TaskState} task
- * @returns {import('./types').Attempt | undefined}
- */
-export function lastEndedAttempt(task) {
-  for (let i = task.attempts.length - 1; i >= 0; i -= 1) {
-    const attempt = task.attempts[i];
-    if (attempt.ended && !attempt.retired) return attempt;
-  }
-  return undefined;
 }
 
 /**

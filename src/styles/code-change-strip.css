@@ -435,10 +435,8 @@
 
 /* Not part of chat transcript — hide with composer chrome on overlays / boards / hub */
 .main-column:has(.chat-area--plan-screen) .code-change-strip-wrap,
-.main-column:has(.chat-area--orchestrate-hub) .code-change-strip-wrap,
 .main-column:has(.chat-area--code-brain-map) .code-change-strip-wrap,
 .main-column.main-column--hub .code-change-strip-wrap,
-.main-column.main-column--board-view:not(.main-column--board-chat) .code-change-strip-wrap,
 .main-column.main-column--code-overview .code-change-strip-wrap,
 .main-column.main-column--code-brain-map .code-change-strip-wrap,
 .main-column.main-column--plan-screen .code-change-strip-wrap,

@@ -84,7 +84,6 @@ export function destinationCommands(): Command[] {
       run: () => { window.location.hash = '#/app/issues/projects'; },
     },
     ...([
-      ['boards', 'Open boards', 'orchestrate agents plan'],
       ['dev-server', 'Open dev servers', 'start stop development preview'],
       ['map', 'Open code map', 'brain repository symbols index'],
     ] as const).map(([section, title, keywords]): Command => ({

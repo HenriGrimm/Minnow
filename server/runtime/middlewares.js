@@ -57,15 +57,6 @@ import { createGitMiddleware } from '../git/middleware.js';
 import { createWorktreeMiddleware } from '../worktree/middleware.js';
 import { createWorkAgentsMiddleware } from '../work-agents/routes.js';
 import {
-  createBoardsMiddleware,
-  setEffectorFactory,
-} from '../orchestrator/middleware.js';
-import { armBoardResumeGate } from '../orchestrator/resume-gate.js';
-import {
-  cancelOrphanedRunnerGenerations,
-  createRunnerEffector,
-} from '../orchestrator/effector-runner.js';
-import {
   createAgentsMiddleware,
   setAgentsEffectorFactory,
   getAgentsEngine,
@@ -77,7 +68,6 @@ import {
   createSubAgentEffector,
 } from '../sub-agents/effector-runner.js';
 import { bootAgentsRuntime } from '../sub-agents/runtime.js';
-import { createBoardTestingMiddleware } from '../orchestrate/board-testing/middleware.js';
 import { createToolsMiddleware } from './tools-middleware.js';
 import { createAgentBrowserMiddleware } from '../browser-agent-api.js';
 import { createAuthMiddleware, createRemoteResponseHeadersMiddleware } from './auth-middleware.js';
@@ -95,10 +85,6 @@ import { getEffectiveWorkspaceRoot } from './path-access.js';
  */
 export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPathAccess }) {
   installDiagnosticsProcessHandlers();
-  cancelOrphanedRunnerGenerations();
-  setEffectorFactory((boardId) => createRunnerEffector({ boardId }));
-  armBoardResumeGate();
-  void import('../orchestrator/middleware.js').then(({ bootBoardRuntime }) => bootBoardRuntime()).catch(error => console.error('[orchestrator] boot recovery failed:', error.message));
   cancelOrphanedSubAgentGenerations();
   setAgentsEffectorFactory((parentChatId) => {
     const legacyEffector = createSubAgentEffector({ parentChatId });
@@ -200,9 +186,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createGodotMiddleware());
   connectApp.use(createGitMiddleware());
   connectApp.use(createWorktreeMiddleware());
-  connectApp.use(createBoardsMiddleware());
   connectApp.use(createAgentsMiddleware());
-  connectApp.use(createBoardTestingMiddleware());
   connectApp.use(createChatsWorkspaceMiddleware());
   connectApp.use(createBenchmarkWorkspaceMiddleware());
   connectApp.use(createSystemMiddleware());

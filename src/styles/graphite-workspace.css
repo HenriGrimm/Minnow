@@ -260,11 +260,11 @@ html.is-electron-shell:is(.mn-graphite-workspace, .mn-graphite-apps[data-app-win
 }
 
 /* A planning view can replace the transcript without leaving the chat route. */
-.mn-graphite-workspace #workspaceSplit:has(.sp-stage-header, .orchestrate-plan-stage-header, .ov2__stage-header, .issues-page--embedded) > #graphiteThreadHeader {
+.mn-graphite-workspace #workspaceSplit:has(.sp-stage-header, .issues-page--embedded) > #graphiteThreadHeader {
   display: none;
 }
 
-:is(.sp-stage-header, .orchestrate-plan-stage-header) {
+.sp-stage-header {
   display: flex;
   flex-shrink: 0;
   align-items: center;

@@ -22,7 +22,7 @@ export function syncGoalActiveHint(): void {
 
   const chat = getActiveChat();
   const goal = getActiveGoal(chat);
-  const show = Boolean(goal && (isGoalLoopActive(chat) || goal.achieved));
+  const show = Boolean(goal && (goal.factoryRunId || isGoalLoopActive(chat) || goal.achieved));
   el.classList.toggle('hidden', !show);
 
   if (!show || !goal) {
@@ -31,6 +31,14 @@ export function syncGoalActiveHint(): void {
     return;
   }
 
+  if (goal.factoryRunId) {
+    const saved = goal.factoryProgress;
+    const phase = goal.achieved ? 'Complete' : goal.paused ? 'Paused' : saved?.phase || 'Preparing';
+    el.textContent = 'Factory · ' + phase + (saved?.total ? ' · ' + saved.completed + '/' + saved.total + ' features' : '');
+    el.title = goal.lastReason || '';
+    el.classList.remove('composer-goal-active-hint--evaluating');
+    return;
+  }
   const suffix = goal.achieved ? ' · achieved' : goal.paused ? ' · paused' : '';
   const evaluating = isGoalEvaluating(chat.id);
   const phase = evaluating ? ' · evaluating…' : '';

@@ -153,6 +153,16 @@ function permission(policy, name) {
   return policy.toolPermissions[name] ?? 'off';
 }
 
+/** Existing ordinary profiles captured chat_send before setup retry split out.
+ * Honor an explicit saved denial and require the live catalog to offer retry. */
+export function withOrdinaryWorktreeRetry(saved, live) {
+  const name = 'chat_retry_worktree';
+  if (Object.hasOwn(saved.toolPermissions ?? {}, name) ||
+      (saved.toolPermissions?.chat_send ?? 'off') === 'off' || permission(live, name) === 'off') return saved;
+  return { ...saved, toolPermissions: { ...saved.toolPermissions, [name]: live.toolPermissions[name] },
+    toolEffects: { ...saved.toolEffects, [name]: live.toolEffects[name] } };
+}
+
 function effect(policy, name) {
   // Built-in effects cannot be weakened by a supplied metadata row.
   if (FILE_WRITES.has(name)) return 'file-write';

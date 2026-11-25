@@ -14,9 +14,13 @@ import { prepareWorktreeEnvironment } from './local-environment.js';
 import {
   getBoardWorktreesDir,
   getChatWorktreePath,
-  getWorktreeSlotPath,
   isPathUnderWorktreesRoot,
 } from './paths.js';
+import {
+  boardRepoLockKey, boardRepoPathspec, boardRepoRelativePath, boardRepoSlotPath as getWorktreeSlotPath,
+  boardRevision, boardRevisionRepos, eachBoardRepo, readBoardRepos, runInBoardRepo,
+  inBoardRepo, verifyScopedBoardCheckout, verifyBoardRepoSources, changedBoardSupport,
+} from './board-repos.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { worktreeAdd } from '../git/git-ops.js';
@@ -178,6 +182,11 @@ export async function deleteLocalBranch(branch, options = {}) {
   return { ok: false, output: text };
 }
 
+export async function deleteBoardTaskBranch(boardId, branch, options) {
+  const layout = await readBoardRepos(boardId);
+  return layout ? repoResults(await eachBoardRepo(layout, () => deleteLocalBranch(branch, options))) : deleteLocalBranch(branch, options);
+}
+
 async function resolveRef(ref, cwd = getEffectiveWorkspaceRoot(), options = {}) {
   const r = await git(['rev-parse', '--verify', ref], cwd, options);
   if (!ok(r)) return null;
@@ -201,7 +210,7 @@ const peakIntegrationOps = new Map();
  * @returns {Promise<T>}
  */
 function withBoardIntegrationLock(boardId, task) {
-  const key = boardId || '';
+  const key = boardRepoLockKey(boardId) || '';
   const previous = integrationOpChains.get(key) ?? Promise.resolve();
   const run = async () => {
     const nextActive = (activeIntegrationOps.get(key) ?? 0) + 1;
@@ -234,7 +243,25 @@ export function resetBoardIntegrationLock() {
 }
 
 function isBoardIntegrationLocked(boardId) {
-  return (activeIntegrationOps.get(boardId || '') ?? 0) > 0;
+  return (activeIntegrationOps.get(boardRepoLockKey(boardId) || '') ?? 0) > 0;
+}
+
+function repoResults(rows) {
+  const failure = rows.find(([, result]) => !result.ok);
+  return failure
+    ? { ok: false, error: `${failure[0]}: ${failure[1].output || failure[1].error || 'Git operation failed'}`, repos: Object.fromEntries(rows) }
+    : { ok: true, repos: Object.fromEntries(rows) };
+}
+
+function aggregateBoardStats(rows) {
+  const changed = rows.filter(([, row]) => row.fileCount > 0);
+  return {
+    ...repoResults(rows),
+    ...Object.fromEntries(['additions', 'deletions', 'fileCount'].map(key => [key, rows.reduce((sum, [, row]) => sum + (row[key] ?? 0), 0)])),
+    alreadyLanded: rows.every(([, row]) => row.alreadyLanded),
+    hasRemote: changed.length > 0 && changed.every(([, row]) => row.hasRemote),
+    hasGh: changed.every(([, row]) => row.hasGh),
+  };
 }
 
 /**
@@ -296,6 +323,13 @@ function parseNameOnly(stdout) {
  */
 export async function ensureIntegration({ boardId, branch, baseRef, signal, onProgress }) {
   signal?.throwIfAborted();
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    return withBoardIntegrationLock(boardId, async () => {
+      const rows = await eachBoardRepo(layout, repo => ensureIntegration({ boardId, branch, baseRef: repo.baseSha, signal, onProgress }));
+      return { ...repoResults(rows), path: getWorktreeSlotPath(boardId, 'integration'), branch };
+    });
+  }
   const base = (baseRef && baseRef.trim()) || 'HEAD';
   if (!(await branchExists(branch, { signal }))) {
     const b = await git(['branch', branch, base], undefined, { signal });
@@ -311,11 +345,13 @@ export async function ensureIntegration({ boardId, branch, baseRef, signal, onPr
         error: `Board integration folder is not a valid Git worktree: ${intPath}. Preserve any work in this folder, then repair or move it before retrying.`,
       };
     }
+    await verifyScopedBoardCheckout(intPath, branch);
     const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath, { signal, onProgress });
     if (!deps.ok) return { ok: false, stage: 'deps', path: intPath, deps, output: depFailureOutput(deps) };
     return { ok: true, path: intPath, branch, created: false, deps };
   }
   await fs.mkdir(path.dirname(intPath), { recursive: true });
+  if (inBoardRepo()) await git(['worktree', 'prune', '--expire', 'now'], undefined, { signal });
   const w = await git(['worktree', 'add', intPath, branch], undefined, { signal });
   if (!ok(w)) return { ok: false, stage: 'worktree', path: intPath, output: out(w) };
   const deps = await prepareWorktreeDependencies(getEffectiveWorkspaceRoot(), intPath, { signal, onProgress });
@@ -335,6 +371,14 @@ async function mergeBaseIntoWorktree(wtPath, baseRef, options = {}) {
  */
 export async function createWorktree({ boardId, slotId, branch, baseRef, syncBase = true, signal, onProgress }) {
   signal?.throwIfAborted();
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const base = await withBoardIntegrationLock(boardId, () => readIntegrationRef({ boardId, ref: baseRef }));
+    const revisions = boardRevisionRepos(base);
+    if (!revisions) return { ok: false, error: 'Could not resolve all repository bases for the task checkout.' };
+    const rows = await eachBoardRepo(layout, repo => createWorktree({ boardId, slotId, branch, baseRef: revisions.get(repo.id), syncBase, signal, onProgress }));
+    return { ...repoResults(rows), path: getWorktreeSlotPath(boardId, slotId), branch, created: rows.some(([, result]) => result.created) };
+  }
   onProgress?.({ stage: 'workspace', message: 'Preparing task checkout…' });
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   const base = (baseRef && baseRef.trim()) || 'HEAD';
@@ -343,6 +387,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
   let exists = await pathExists(wtPath);
 
   if (exists && !(await isWorktreeCheckout(wtPath, { signal }))) {
+    if (inBoardRepo()) return { ok: false, error: `Invalid board checkout at ${wtPath}. Preserve its contents before retrying.` };
     // Husk from a release whose `fs.rm` failed. Reclaim the path instead of
     // reusing it, or every later git call runs in a non-repo.
     const reclaimed = await reclaimStaleWorktreeDir(wtPath, { signal });
@@ -359,6 +404,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
   }
 
   if (exists) {
+    await verifyScopedBoardCheckout(wtPath, branch);
     // Validate/copy against the final base's ignore rules, not the old branch.
     const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base, { signal }) : { ok: true };
     if (!synced.ok) {
@@ -392,6 +438,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
   }
 
   if (await branchExists(branch, { signal })) {
+    if (inBoardRepo()) await git(['worktree', 'prune', '--expire', 'now'], undefined, { signal });
     const w = await git(['worktree', 'add', wtPath, branch], undefined, { signal });
     if (!ok(w)) return { ok: false, path: wtPath, branch, output: out(w) };
     const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base, { signal }) : { ok: true };
@@ -440,11 +487,23 @@ export async function createWorktree({ boardId, slotId, branch, baseRef, syncBas
  * @param {{ boardId: string, fromBranch: string, message?: string }} input
  */
 export async function mergeIntoIntegration(input) {
+  const layout = await readBoardRepos(input.boardId);
+  if (layout) {
+    return withBoardIntegrationLock(input.boardId, async () => {
+      const rows = [];
+      for (const repo of layout.repos) {
+        const result = await runInBoardRepo(layout, repo, () => mergeIntoIntegration({ ...input, fastForwardOnly: true }));
+        rows.push([repo.id, result]);
+        if (!result.ok) return { ...repoResults(rows), conflictedFiles: (result.conflictedFiles ?? []).map(file => boardRepoRelativePath(repo, file)) };
+      }
+      return repoResults(rows);
+    });
+  }
   return withBoardIntegrationLock(input.boardId, () => mergeIntoIntegrationUnlocked(input));
 }
 
 /** @param {{ boardId: string, fromBranch: string, message?: string }} input */
-async function mergeIntoIntegrationUnlocked({ boardId, fromBranch, message }) {
+async function mergeIntoIntegrationUnlocked({ boardId, fromBranch, message, fastForwardOnly }) {
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -453,7 +512,7 @@ async function mergeIntoIntegrationUnlocked({ boardId, fromBranch, message }) {
   }
   const headBefore = await git(['rev-parse', 'HEAD'], intPath);
   const integrationSha = ok(headBefore) ? `${headBefore.stdout ?? ''}`.trim() : null;
-  const args = ['merge', '--no-edit'];
+  const args = ['merge', '--no-edit', ...(fastForwardOnly ? ['--ff-only'] : [])];
   if (message && message.trim()) args.push('-m', message.trim());
   args.push(fromBranch);
   const m = await git(args, intPath);
@@ -475,6 +534,11 @@ async function mergeIntoIntegrationUnlocked({ boardId, fromBranch, message }) {
  * @param {{ boardId: string }} input
  */
 export async function mergeInProgress({ boardId }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const rows = await eachBoardRepo(layout, () => mergeInProgress({ boardId }));
+    return { ...repoResults(rows), inProgress: isBoardIntegrationLocked(boardId) || rows.some(([, row]) => row.inProgress) };
+  }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -490,6 +554,11 @@ export async function mergeInProgress({ boardId }) {
  * @returns {Promise<string | null>}
  */
 export async function readIntegrationRef({ boardId, ref = 'HEAD' }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const rows = await eachBoardRepo(layout, () => readIntegrationRef({ boardId, ref }));
+    return rows.every(([, sha]) => sha) ? boardRevision(Object.fromEntries(rows)) : null;
+  }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -505,11 +574,26 @@ export async function readIntegrationRef({ boardId, ref = 'HEAD' }) {
  * @returns {Promise<{ ok: true, sha: string } | { ok: false, conflicts: string[], error?: string }>}
  */
 export async function rebaseOntoIntegration(input) {
+  const layout = await readBoardRepos(input.boardId);
+  if (layout) {
+    return withBoardIntegrationLock(input.boardId, async () => {
+      const rows = [];
+      for (const repo of layout.repos) {
+        const result = await runInBoardRepo(layout, repo, () => rebaseOntoIntegration({ ...input, rebaseUnchanged: true }));
+        if (!result.ok) return {
+          ok: false, conflicts: (result.conflicts ?? []).map(file => boardRepoRelativePath(repo, file)),
+          error: `${repo.id}: ${result.error || 'rebase conflicted'}`,
+        };
+        rows.push([repo.id, result.sha]);
+      }
+      return { ok: true, sha: boardRevision(Object.fromEntries(rows)) };
+    });
+  }
   return withBoardIntegrationLock(input.boardId, () => rebaseOntoIntegrationUnlocked(input));
 }
 
 /** @param {{ boardId: string, slotId: string }} input */
-async function rebaseOntoIntegrationUnlocked({ boardId, slotId }) {
+async function rebaseOntoIntegrationUnlocked({ boardId, slotId, rebaseUnchanged }) {
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
@@ -531,6 +615,11 @@ async function rebaseOntoIntegrationUnlocked({ boardId, slotId }) {
   const unique = await git(['rev-list', '--count', `${intSha}..HEAD`], wtPath);
   const uniqueCount = Number.parseInt(`${unique.stdout ?? ''}`.trim(), 10) || 0;
   if (uniqueCount === 0) {
+    if (rebaseUnchanged && intSha !== shaBefore) {
+      const fastForward = await git(['merge', '--ff-only', intSha], wtPath);
+      if (!ok(fastForward)) return { ok: false, conflicts: [], error: out(fastForward) };
+      return { ok: true, sha: intSha };
+    }
     return { ok: true, sha: shaBefore };
   }
 
@@ -560,13 +649,29 @@ async function rebaseOntoIntegrationUnlocked({ boardId, slotId }) {
  */
 export async function commitWorktree({ boardId, slotId, message, paths, signal }) {
   signal?.throwIfAborted();
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    if (!paths) {
+      const outside = await changedBoardSupport(layout, slotId);
+      if (outside.length) return { ok: false, error: `Changes outside board repositories: ${outside.join(', ')}. Move the changes into a repository or restore the workspace-level files.` };
+    }
+    const rows = await eachBoardRepo(layout, repo => {
+      const selected = paths && paths.filter(file => (layout.repos
+        .filter(candidate => candidate.id === '.' || file.startsWith(candidate.id + '/'))
+        .sort((a, b) => b.id.length - a.id.length)[0])?.id === repo.id)
+        .map(file => repo.id === '.' ? file : file.slice(repo.id.length + 1));
+      return selected?.length === 0 ? { ok: true } : commitWorktree({ boardId, slotId, message, paths: selected, signal });
+    });
+    return { ...repoResults(rows), committed: rows.some(([, result]) => result.committed) };
+  }
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   try {
     await fs.access(wtPath);
   } catch {
     return { ok: false, error: 'worktree missing' };
   }
-  const pathspec = Array.isArray(paths) && paths.length > 0 ? ['--', ...paths] : [];
+  const excludes = boardRepoPathspec();
+  const pathspec = paths?.length || excludes.length ? ['--', ...(paths ?? []), ...excludes] : [];
   const add = await git(['add', '-A', ...pathspec], wtPath, { signal });
   if (!ok(add)) return { ok: false, output: out(add) };
   const staged = await git(['diff', '--cached', '--quiet', ...pathspec], wtPath, { signal });
@@ -583,18 +688,25 @@ export async function commitWorktree({ boardId, slotId, message, paths, signal }
  * @param {{ boardId: string, slotId: string }} input
  */
 export async function checkWorktreeDirty({ boardId, slotId }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const rows = await eachBoardRepo(layout, () => checkWorktreeDirty({ boardId, slotId }));
+    const outside = await changedBoardSupport(layout, slotId);
+    return { ...repoResults(rows), dirty: outside.length > 0 || rows.some(([, row]) => row.dirty),
+      files: [...outside, ...rows.flatMap(([id, row]) => (row.files ?? []).map(file => `${id}: ${file}`))] };
+  }
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   try {
     await fs.access(wtPath);
   } catch {
     return { ok: false, error: 'worktree missing' };
   }
-  const status = await git(['status', '--porcelain'], wtPath);
+  const status = await git(['status', '--porcelain', '--', ...boardRepoPathspec()], wtPath);
   const files = `${status.stdout ?? ''}${status.stderr ?? ''}`
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  return { ok: true, dirty: files.length > 0, files };
+  return { ok: ok(status), dirty: files.length > 0, files };
 }
 
 /**
@@ -617,11 +729,35 @@ export async function checkMerged({ boardId, fromBranch }) {
  * @param {{ boardId: string, sha: string }} input
  */
 export async function restoreIntegration(input) {
+  const layout = await readBoardRepos(input.boardId);
+  if (layout) {
+    const revisions = boardRevisionRepos(input.sha);
+    if (!revisions || revisions.size !== layout.repos.length || layout.repos.some(repo => !revisions.has(repo.id))) {
+      return { ok: false, error: 'Integration revision does not match the board repositories' };
+    }
+    return withBoardIntegrationLock(input.boardId, async () => {
+      const changed = [];
+      for (const repo of layout.repos) {
+        const { ok: targetExists, head } = await runInBoardRepo(layout, repo, async () => ({
+          ok: Boolean(await resolveRef(revisions.get(repo.id))),
+          head: await readIntegrationRef({ boardId: input.boardId }),
+        }));
+        if (!targetExists || !head) return { ok: false, error: `Cannot restore integration history for ${repo.id}.` };
+        if (head !== revisions.get(repo.id)) {
+          const dirty = await runInBoardRepo(layout, repo, () => checkWorktreeDirty({ boardId: input.boardId, slotId: 'integration' }));
+          if (!dirty.ok || dirty.dirty) return { ok: false, error: `Integration checkout ${repo.id} has local changes. Preserve them before restoring.` };
+          changed.push(repo);
+        }
+      }
+      const rows = await eachBoardRepo({ ...layout, repos: changed }, repo => restoreIntegration({ ...input, sha: revisions.get(repo.id), preserveUntracked: true }));
+      return { ...repoResults(rows), sha: input.sha };
+    });
+  }
   return withBoardIntegrationLock(input.boardId, () => restoreIntegrationUnlocked(input));
 }
 
 /** @param {{ boardId: string, sha: string }} input */
-async function restoreIntegrationUnlocked({ boardId, sha }) {
+async function restoreIntegrationUnlocked({ boardId, sha, preserveUntracked }) {
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -636,7 +772,7 @@ async function restoreIntegrationUnlocked({ boardId, sha }) {
   await git(['merge', '--abort'], intPath);
   const reset = await git(['reset', '--hard', resolved], intPath);
   if (!ok(reset)) return { ok: false, output: out(reset) };
-  await git(['clean', '-fd'], intPath);
+  if (!preserveUntracked) await git(['clean', '-fd'], intPath);
   return { ok: true, sha: resolved, output: out(reset) };
 }
 
@@ -644,6 +780,17 @@ async function restoreIntegrationUnlocked({ boardId, sha }) {
  * @param {{ boardId: string, fromBranch: string }} input
  */
 export async function verifyIntegrationMerge({ boardId, fromBranch }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const rows = await eachBoardRepo(layout, () => verifyIntegrationMerge({ boardId, fromBranch }));
+    return { ...repoResults(rows), verified: rows.every(([, result]) => result.verified),
+      reasons: rows.flatMap(([id, result]) => (result.reasons ?? []).map(reason => {
+        const prefix = 'conflict markers remain in: ';
+        return reason.startsWith(prefix)
+          ? prefix + reason.slice(prefix.length).split(', ').map(file => boardRepoRelativePath({ id }, file.replace(/^HEAD:/, ''))).join(', ')
+          : `${id}: ${reason}`;
+      })) };
+  }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -690,6 +837,8 @@ export async function verifyIntegrationMerge({ boardId, fromBranch }) {
  * @param {{ boardId: string }} input
  */
 export async function abortMerge(input) {
+  const layout = await readBoardRepos(input.boardId);
+  if (layout) return repoResults(await eachBoardRepo(layout, () => abortMerge(input)));
   return withBoardIntegrationLock(input.boardId, () => abortMergeUnlocked(input));
 }
 
@@ -708,10 +857,29 @@ async function abortMergeUnlocked({ boardId }) {
 /**
  * @param {{ boardId: string, slotId: string }} input
  */
-export async function removeWorktree({ boardId, slotId }) {
+export async function removeWorktree({ boardId, slotId, protectDirty = false }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    await verifyBoardRepoSources(layout);
+    const root = getWorktreeSlotPath(boardId, slotId);
+    if (protectDirty && await pathExists(root) && (await changedBoardSupport(layout, slotId)).length) {
+      return { ok: false, error: `Preserve workspace-level changes in ${root} before removing this slot.` };
+    }
+    const rows = await eachBoardRepo({ ...layout, repos: [...layout.repos].reverse() }, () => removeWorktree({ boardId, slotId, protectDirty }));
+    const result = repoResults(rows);
+    if (result.ok && !layout.repos.some(repo => repo.id === '.') && isPathUnderWorktreesRoot(root)) {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+    return { ...result, path: root };
+  }
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   if (!isPathUnderWorktreesRoot(wtPath)) {
     return { ok: false, error: 'refusing to remove path outside the worktrees root' };
+  }
+  if (protectDirty) {
+    if (!(await pathExists(wtPath))) return { ok: true };
+    const removed = await git(['worktree', 'remove', wtPath]);
+    return ok(removed) ? { ok: true, path: wtPath } : { ok: false, output: out(removed) };
   }
   const r = await git(['worktree', 'remove', '--force', wtPath]);
   await git(['worktree', 'prune', '--expire', 'now']);
@@ -923,6 +1091,31 @@ export async function cleanupBoardWorktrees({ boardId, includeIntegration = fals
     }
     toRemove.push(slot);
   }
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    if (protectDirty || checkOnly) {
+      const dirtyWorktrees = [];
+      for (const slot of toRemove) {
+        const rows = await eachBoardRepo(layout, async () => {
+          const cwd = getWorktreeSlotPath(boardId, slot);
+          if (!(await pathExists(cwd))) return { ok: true };
+          const result = await checkWorktreeDirty({ boardId, slotId: slot });
+          return { ...result, path: cwd };
+        });
+        for (const [, row] of rows) if (!row.ok || row.dirty) dirtyWorktrees.push({ slot, path: row.path });
+      }
+      if (dirtyWorktrees.length) return { ok: false, dirtyWorktrees, error: `Preserve local changes in ${dirtyWorktrees.map(item => item.path).join(', ')} before cleanup.` };
+      if (checkOnly) return { ok: true, removed: 0 };
+    }
+    let removed = 0;
+    for (const slot of toRemove) {
+      const result = await removeWorktree({ boardId, slotId: slot, protectDirty });
+      if (!result.ok) return { ...result, removed };
+      removed++;
+    }
+    await fs.rmdir(dir).catch(error => { if (!['ENOENT', 'ENOTEMPTY', 'EBUSY'].includes(error.code)) throw error; });
+    return { ok: true, removed, keptIntegration };
+  }
   if (protectDirty || checkOnly) {
     const dirtyWorktrees = [];
     const retainedWorktrees = [];
@@ -991,6 +1184,12 @@ export async function cleanupBoardWorktrees({ boardId, includeIntegration = fals
 
 /** Delete only this board's local branches whose commits are in the workspace HEAD. */
 export async function cleanupBoardBranches({ boardId }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    await verifyBoardRepoSources(layout);
+    const rows = await eachBoardRepo(layout, () => cleanupBoardBranches({ boardId }));
+    return { ...repoResults(rows), retainedBranches: rows.flatMap(([id, row]) => (row.retainedBranches ?? []).map(value => ({ ...value, branch: `${id}: ${value.branch}` }))) };
+  }
   if (typeof boardId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(boardId)) {
     return { ok: false, error: 'Invalid board id' };
   }
@@ -1018,6 +1217,8 @@ export async function cleanupBoardBranches({ boardId }) {
  * @param {{ boardId: string, baseRef?: string }} input
  */
 export async function integrationStats({ boardId, baseRef }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) return aggregateBoardStats(await eachBoardRepo(layout, repo => integrationStats({ boardId, baseRef: repo.baseSha })));
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -1094,7 +1295,11 @@ async function workspaceDirtyStats() {
 /**
  * @param {{ branch?: string }} input
  */
-export async function workspaceLandingStats({ branch } = {}) {
+export async function workspaceLandingStats({ branch, targetRef } = {}) {
+  const id = /^minnow\/board\/([\w-]+)\/integration$/.exec(branch ?? '')?.[1];
+  const layout = id && await readBoardRepos(id);
+  if (layout) return { ...aggregateBoardStats(await eachBoardRepo(layout, repo => workspaceLandingStats({ branch, targetRef: repo.baseBranch || repo.baseSha }))),
+    multiRepo: true, baseBranches: Object.fromEntries(layout.repos.map(repo => [repo.id, repo.baseBranch])) };
   const workspace = getEffectiveWorkspaceRoot();
   const intBranch = (branch && branch.trim()) || '';
   if (!intBranch) return workspaceDirtyStats();
@@ -1105,12 +1310,13 @@ export async function workspaceLandingStats({ branch } = {}) {
   const current = await git(['branch', '--show-current'], workspace);
   const currentBranch = `${current.stdout ?? ''}`.trim() || null;
 
-  const ancestor = await git(['merge-base', '--is-ancestor', intBranch, 'HEAD'], workspace);
+  const destination = targetRef || 'HEAD';
+  const ancestor = await git(['merge-base', '--is-ancestor', intBranch, destination], workspace);
   const alreadyLanded = ancestor.code === 0;
 
   const diff = alreadyLanded
-    ? await git(['diff', '--numstat'], workspace)
-    : await git(['diff', '--numstat', `HEAD...${intBranch}`], workspace);
+    ? targetRef ? { code: 0, stdout: '' } : await git(['diff', '--numstat'], workspace)
+    : await git(['diff', '--numstat', `${destination}...${intBranch}`], workspace);
   if (!ok(diff)) return { ok: false, output: out(diff) };
   const parsed = parseGitNumstat(diff.stdout ?? '');
 
@@ -1132,6 +1338,21 @@ export async function workspaceLandingStats({ branch } = {}) {
  * @param {{ branch: string, message?: string, targetBranch?: string, createBranch?: boolean, baseRef?: string }} input
  */
 export async function mergeIntegrationIntoWorkspace({ branch, message, targetBranch, createBranch = false, baseRef }) {
+  const boardId = /^minnow\/board\/([\w-]+)\/integration$/.exec(branch ?? '')?.[1];
+  const layout = boardId && await readBoardRepos(boardId);
+  if (layout) {
+    await verifyBoardRepoSources(layout);
+    const { loadState } = await import('../orchestrator/journal.js');
+    if ((await loadState(boardId)).status === 'running') return { ok: false, error: 'Stop the board before merging it into its source repositories.' };
+    const rows = await eachBoardRepo(layout, async repo => {
+      const destination = targetBranch || repo.baseBranch;
+      if (!destination) return { ok: false, error: 'Select a base branch in this repository before landing the board.' };
+      const alreadyMerged = await git(['merge-base', '--is-ancestor', branch, destination]);
+      if (ok(alreadyMerged)) return { ok: true, alreadyUpToDate: true };
+      return mergeIntegrationIntoWorkspace({ branch, message, targetBranch: destination, createBranch, baseRef: baseRef || repo.baseSha });
+    });
+    return { ...repoResults(rows), merged: rows.some(([, row]) => row.merged) };
+  }
   const workspace = getEffectiveWorkspaceRoot();
   let createdBranch;
   const intBranch = (branch && branch.trim()) || '';
@@ -1155,7 +1376,7 @@ export async function mergeIntegrationIntoWorkspace({ branch, message, targetBra
       ? await git(['check-ref-format', `refs/heads/${target}`], workspace)
       : null;
     if (!valid || !ok(valid)) return { ok: false, error: 'Invalid destination branch name.' };
-    const status = await git(['status', '--porcelain'], workspace);
+    const status = await git(['status', '--porcelain', '--', ...boardRepoPathspec()], workspace);
     if (!ok(status)) return { ok: false, output: out(status) };
     if (status.stdout.trim()) {
       return { ok: false, error: 'Commit or stash workspace changes before landing the board.' };
@@ -1245,6 +1466,20 @@ export async function commitIntegration({ boardId, message }) {
  * @param {{ boardId: string, branch: string }} input
  */
 export async function pushIntegration({ boardId, branch }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const revisions = await verifiedBoardRevision(layout, branch);
+    const rows = await eachBoardRepo(layout, async repo => {
+      const head = revisions.get(repo.id);
+      const intPath = getWorktreeSlotPath(boardId, 'integration');
+      const diff = await git(['diff', '--quiet', repo.baseSha, head], intPath);
+      if (diff.code === 0) return { ok: true, unchanged: true };
+      if (diff.code !== 1) return { ok: false, output: out(diff) };
+      const push = await git(['push', 'origin', `${head}:refs/heads/${branch}`], intPath);
+      return { ok: ok(push), pushed: ok(push), output: out(push) };
+    });
+    return { ...repoResults(rows), pushed: rows.some(([, row]) => row.pushed) };
+  }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -1270,7 +1505,18 @@ export async function pushIntegration({ boardId, branch }) {
 /**
  * @param {{ boardId: string, branch: string, title?: string, body?: string }} input
  */
-export async function openPr({ boardId, branch, title, body }) {
+export async function openPr({ boardId, branch, title, body, baseBranch }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const pushed = await pushIntegration({ boardId, branch });
+    if (!pushed.ok) return pushed;
+    const rows = await eachBoardRepo(layout, repo => {
+      if (pushed.repos[repo.id]?.unchanged) return { ok: true, unchanged: true };
+      if (!repo.baseBranch) return { ok: false, error: 'A base branch is required to open a pull request.' };
+      return openPr({ boardId, branch, title, body, baseBranch: repo.baseBranch });
+    });
+    return { ...repoResults(rows), urls: rows.flatMap(([repo, row]) => row.url ? [{ repo, url: row.url }] : []) };
+  }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);
@@ -1292,6 +1538,13 @@ export async function openPr({ boardId, branch, title, body }) {
   }
 
   const args = ['pr', 'create', '--head', b];
+  if (baseBranch && inBoardRepo()) {
+    const existing = await runGh(['pr', 'list', '--head', b, '--base', baseBranch, '--state', 'open', '--json', 'url', '--limit', '1'], { cwd: intPath, timeout: 30_000 });
+    if (!ok(existing)) return { ok: false, output: out(existing) };
+    const url = JSON.parse(existing.stdout || '[]')[0]?.url;
+    if (url) return { ok: true, url };
+    args.push('--base', baseBranch);
+  }
   const titleText = (title && title.trim()) || `Orchestrate: ${b}`;
   const bodyText = (body && body.trim()) || '';
   args.push('--title', titleText);
@@ -1302,6 +1555,22 @@ export async function openPr({ boardId, branch, title, body }) {
   const urlMatch = text.match(/https?:\/\/\S+/);
   if (!ok(r)) return { ok: false, output: text, error: 'gh_failed' };
   return { ok: true, url: urlMatch?.[0], output: text };
+}
+
+async function verifiedBoardRevision(layout, branch) {
+  const { boardId } = layout;
+  if (branch !== `minnow/board/${boardId}/integration`) throw new Error('The branch does not belong to this board.');
+  const { loadState } = await import('../orchestrator/journal.js');
+  const state = await loadState(boardId);
+  const head = await readIntegrationRef({ boardId });
+  const branches = await readIntegrationRef({ boardId, ref: `refs/heads/${branch}` });
+  const clean = await checkWorktreeDirty({ boardId, slotId: 'integration' });
+  if (!state.finished || state.finalTest?.outcome !== 'pass' || Object.keys(state.recoveryHolds).length ||
+    [...state.tasks.values()].some(task => task.waived || !task.mergedSha) ||
+    state.finalTest.evidence?.integrationSha !== head || head !== branches || !clean.ok || clean.dirty) {
+    throw new Error('Publishing requires a finished board with clean, verified integration checkouts.');
+  }
+  return boardRevisionRepos(head);
 }
 
 /**
@@ -1583,6 +1852,12 @@ export async function removeChatWorktree({ chatId }) {
  * @param {{ boardId: string, sinceSha?: string }} input
  */
 export async function refreshIntegrationDeps({ boardId, sinceSha }) {
+  const layout = await readBoardRepos(boardId);
+  if (layout) {
+    const bases = boardRevisionRepos(sinceSha);
+    const rows = await eachBoardRepo(layout, repo => refreshIntegrationDeps({ boardId, sinceSha: bases?.get(repo.id) }));
+    return repoResults(rows);
+  }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   try {
     await fs.access(intPath);

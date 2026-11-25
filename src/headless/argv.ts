@@ -56,7 +56,7 @@ Auth:
 
 Agent / model:
   --agent <id>          Work agent id (e.g. builder, planner)
-  --mode <id>           general | build | plan | orchestrate | debug (default build)
+  --mode <id>           general | build | plan | debug (default build)
   --provider <id>       Override provider id
   --model <id>          Override model id
 
@@ -173,7 +173,7 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
     return {
       ok: false,
       message:
-        'Orchestrate mode is not supported in headless v1 (board UI required). Use build or plan.',
+        'Orchestrate mode is retired. Use build or plan.',
     };
   }
 

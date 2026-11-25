@@ -10,7 +10,7 @@ Type **/** at the start of an empty composer, then choose a skill or command fro
 | **/plan** | Save an implementation plan under `documentation/plans/` | `/plan Plan CSV export for filtered results. Save the steps and checks in documentation/plans/csv-export.md.` |
 | **/debug** | Narrow down a failure with evidence | `/debug The first upload succeeds and the second returns 409. Start with the failing test and explain the cause before changing files.` |
 
-A workflow skill applies to the turn. To build after reviewing a plan, send a normal prompt and reference the plan file, or open it in [Orchestrate](../orchestrate/boards.md) if it is structured for a board.
+A workflow skill applies to the turn. To build after reviewing a plan, send a normal prompt and reference the plan file, or run it unattended with [/factory](factory.md).
 
 ## Run a follow-up or compact a thread
 

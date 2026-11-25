@@ -8,7 +8,7 @@ Drop a file, editor selection, editor or preview tab, or an existing thread onto
 
 In a supported server-run thread, ask Minnow to open a separate thread. For example: “Open a new thread called Release review, ask it to review the changelog, and tell me what it finds.” Under **Manual** and **Auto**, review the model, checkout and exact first message in the one-time confirmation. In **Full access**, Minnow opens the thread without asking.
 
-The new top-level thread appears in the sidebar without switching your view. It uses the originating thread's verified checkout unless you choose another authorized checkout in the same project. It does not copy the originating transcript or attachments. If you did not ask for a first message, it stays empty. You can open it and continue it yourself. The agent can report the authorized first reply; later actions in another ordinary thread require their own confirmation.
+The new top-level thread appears in the sidebar without switching your view. It uses the originating thread's verified checkout unless you choose another authorized checkout in the same project. It does not copy the originating transcript or attachments. If you did not ask for a first message, it stays empty. You can open it and continue it yourself. The agent can report the authorized first reply. Later actions in another ordinary thread still follow the originating turn's permissions: Manual and Auto can require confirmation; Full access does not prompt.
 
 ## Find and edit a file
 
@@ -21,6 +21,8 @@ The new top-level thread appears in the sidebar without switching your view. It 
 If completions, formatting, or **Go to definition** are missing, open **Settings**, search for **Language servers**, and check the language for that file. Mixed projects may need a server for each language.
 
 ## Local environments in worktrees
+
+In **Full access**, you can ask a manager thread to open separate worktree threads, use specific models and reasoning levels, and report back. Continue in that same manager thread to review a plan, send feedback, or check the result. If a worktree fails to prepare, the manager can see the setup status and retry that worktree. Retrying setup does not resend the failed message or run it in Local.
 
 Minnow automatically copies Git-ignored local development and test dotenv files into new worktrees before preparing dependencies. This includes `.env`, `.env.local`, `.env.development`, `.env.dev`, `.env.test`, `.env.testing`, their `.local` variants, and files in nested packages. No confirmation or configuration is needed. Existing worktree files are preserved when setup is retried; later edits in one checkout do not update another.
 

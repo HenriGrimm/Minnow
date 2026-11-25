@@ -20,21 +20,16 @@ describe('planner work-agent prompts', () => {
       assert.match(body, /observable pass condition/);
     }
   });
-  test('planner and Plan mode prompts choose the format before scope questions and preserve revisions', async () => {
+  test('both planning prompts produce checked Build steps and offer factory execution', async () => {
     for (const relative of ['work-agents/planner/agent.full.md', 'modes/plan.full.md']) {
       const body = await fs.readFile(path.join(REPO_ROOT, 'src/chat/prompts', relative), 'utf8');
-      assert.match(body, /How would you like to build this\?/);
-      assert.match(body, /Wait for the answer before drafting/);
-      assert.match(body, /Ask once per plan/);
-      assert.match(body, /Preserve its type unless the user explicitly requests conversion/);
-      assert.match(body, /Unattended board or Super Plan tasks/);
       assert.match(body, /planType: build/);
-      assert.match(body, /For Build, summarize the sequential steps and suggest \*\*Build\*\*/);
-      const choice = body.indexOf('How would you like to build this?');
-      const scope = body.indexOf('Would you like a few questions');
-      if (scope >= 0) assert.ok(choice < scope);
+      assert.match(body, /## Implementation steps/);
+      assert.match(body, /check_plan/);
+      assert.match(body, /\/factory/);
     }
   });
+
   test('agent.full.md offers optional clarifying-questions grill before explore', async () => {
     const body = await fs.readFile(path.join(PLANNER_DIR, 'agent.full.md'), 'utf8');
     assert.match(body, /ask_question/);
@@ -53,12 +48,4 @@ describe('planner work-agent prompts', () => {
     assert.ok(clarifyIdx >= 0 && exploreIdx >= 0, 'Process section must include clarify gate and explore step');
     assert.ok(clarifyIdx < exploreIdx, 'clarifying-questions gate must appear before Explore the codebase');
   });
-
-  test('agent.full.md teaches greenfield solo Wave 1 and scheduler-only Depends on', async () => {
-    const body = await fs.readFile(path.join(PLANNER_DIR, 'agent.full.md'), 'utf8');
-    assert.match(body, /Greenfield \(empty workspace\)/);
-    assert.match(body, /Wave 1 is one scaffold task only/);
-    assert.match(body, /Waves do not sequence themselves/);
-  });
-
 });

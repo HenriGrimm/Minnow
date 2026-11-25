@@ -12,7 +12,6 @@ import {
   buildIssuePlanSeed,
   buildIssuesPlanSeed,
   canRunIssueWorkflow,
-  canSendIssueToBoard,
   formatIssueCodeRefLine,
   issueActivityChip,
   issueActivityTarget,
@@ -72,7 +71,7 @@ describe('issues workflow seeds', () => {
     assert.match(seed, /\/plan/);
     assert.match(seed, /documentation\/plans\/issues\/ISS-42\.md/);
     assert.match(seed, /do not implement/i);
-    assert.match(seed, /ask Build or Orchestrate before exploring or drafting/);
+    assert.match(seed, /planType: build/);
     assert.doesNotMatch(seed, /Include Context, Key Files, Waves|Use planner structure/);
   });
 
@@ -82,8 +81,7 @@ describe('issues workflow seeds', () => {
     assert.equal(buildIssuesPlanSeed([issue], path), buildIssuePlanSeed(issue, path));
     const seed = buildIssuesPlanSeed([issue, makeIssue({ id: 'ISS-43', title: 'Second issue' })], path);
     assert.match(seed, /Second issue/);
-    assert.equal(seed.match(/ask Build or Orchestrate/g)?.length, 1);
-    assert.match(seed, /For revisions, read the saved plan and preserve its type/);
+    assert.equal(seed.match(/planType: build/g)?.length, 1);
   });
 
   test('buildIssueDebugSeed carries full context', () => {
@@ -98,14 +96,6 @@ describe('issues workflow seeds', () => {
     assert.match(buildIssueForegroundSeed(makeIssue(), 'build'), /Build mode/);
     assert.match(buildIssueForegroundModeSeed(makeIssue(), 'general'), /General mode/);
     assert.match(buildIssueForegroundModeSeed(makeIssue(), 'plan'), /\/plan/);
-  });
-
-  test('canSendIssueToBoard requires planPath', () => {
-    assert.equal(canSendIssueToBoard(makeIssue()), false);
-    assert.equal(
-      canSendIssueToBoard(makeIssue({ planPath: 'documentation/plans/issues/ISS-42.md' })),
-      true,
-    );
   });
 
   test('canRunIssueWorkflow respects closed statuses', () => {
@@ -127,7 +117,7 @@ describe('issues workflow seeds', () => {
       issueActivityChip(
         makeIssue({ status: 'in_progress', boardChatId: 'chat-1' }),
       ),
-      'On board',
+      'Linked chat',
     );
     assert.equal(
       issueActivityChip(
@@ -162,7 +152,7 @@ describe('issues workflow seeds', () => {
       issueActivityTarget(
         makeIssue({ status: 'in_progress', boardChatId: 'chat-board' }),
       ),
-      { kind: 'board_chat', chatId: 'chat-board' },
+      { kind: 'chat', chatId: 'chat-board' },
     );
     assert.deepEqual(
       issueActivityTarget(

@@ -8,6 +8,8 @@ import { createReadStream } from 'node:fs';
 import { boardDir, boardExists } from './journal.js';
 import { safeSegment } from './journal-store.js';
 import { isPathUnderWorktreesRoot, getBoardWorktreesDir } from '../worktree/paths.js';
+import { boardRevision, boardRevisionRepos, readBoardRepos, eachBoardRepo, boardRepoPathspec } from '../worktree/board-repos.js';
+import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 
 const exec = promisify(execFile);
 const recoveryChains = new Map();
@@ -64,15 +66,28 @@ function ownedWorktree(boardId, worktree, workspacePath) {
 export function checkpointAttempt(input) {
   return withBoardRecovery(input.boardId, async () => {
     await requireBoard(input.boardId);
+    const layout = await readBoardRepos(input.boardId);
+    if (layout) {
+      const rows = await eachBoardRepo(layout, repo => captureCheckpoint({
+        ...input, worktree: path.join(input.worktree, repo.id), workspacePath: layout.workspace,
+        repoId: repo.id, previousAttemptId: undefined,
+      }));
+      return { attemptId: input.attemptId, tree: boardRevision(Object.fromEntries(rows.map(([id, value]) => [id, value.tree]))) };
+    }
     return captureCheckpoint(input);
   });
 }
 
-async function captureCheckpoint({ boardId, attemptId, worktree, previousAttemptId }) {
+function checkpointDir(boardId, attemptId, repoId) {
+  const base = path.join(boardDir(boardId), 'recovery', safeSegment(attemptId));
+  return repoId === undefined ? base : path.join(base, createHash('sha256').update(repoId).digest('hex').slice(0, 24));
+}
+
+async function captureCheckpoint({ boardId, attemptId, worktree, previousAttemptId, workspacePath, repoId }) {
   // An explicit nonisolated cwd can contain user work. Never stage it, even in
   // a temporary index, or treat its contents as owned by board recovery.
-  if (!ownedWorktree(boardId, worktree)) throw new Error('Checkpoint requires a managed isolated worktree owned by this board');
-  const directory = path.join(boardDir(boardId), 'recovery', safeSegment(attemptId));
+  if (!ownedWorktree(boardId, worktree, workspacePath)) throw new Error('Checkpoint requires a managed isolated worktree owned by this board');
+  const directory = checkpointDir(boardId, attemptId, repoId);
   await fs.mkdir(directory, { recursive: true });
   const manifestPath = path.join(directory, 'manifest.json');
   try {
@@ -86,7 +101,7 @@ async function captureCheckpoint({ boardId, attemptId, worktree, previousAttempt
   try {
     await fs.rm(temporaryIndex, { force: true });
     await git(worktree, ['read-tree', 'HEAD'], env);
-    await git(worktree, ['add', '-A', '--', '.'], env);
+    await git(worktree, ['add', '-A', '--', '.', ...boardRepoPathspec()], env);
     const tree = await git(worktree, ['write-tree'], env);
     if (previousAttemptId && previousAttemptId !== attemptId) {
       const previous = JSON.parse(await fs.readFile(path.join(boardDir(boardId), 'recovery', safeSegment(previousAttemptId), 'manifest.json'), 'utf8'));
@@ -120,7 +135,7 @@ async function captureCheckpoint({ boardId, attemptId, worktree, previousAttempt
     const hash = await digest(bundle);
     // Git clean/smudge filters and core.autocrlf can change bytes. Keep the raw
     // checkout too, so restoring a checkpoint does not rewrite source contents.
-    const names = (await git(worktree, ['ls-files', '--cached', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean);
+    const names = (await git(worktree, ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', ...boardRepoPathspec()])).split('\0').filter(Boolean);
     const files = [];
     const contents = path.join(directory, 'files');
     await fs.mkdir(contents, { recursive: true });
@@ -149,13 +164,20 @@ async function captureCheckpoint({ boardId, attemptId, worktree, previousAttempt
 export function restoreCheckpoint(input) {
   return withBoardRecovery(input.boardId, async () => {
     await requireBoard(input.boardId);
+    const layout = await readBoardRepos(input.boardId);
+    if (layout) {
+      const repos = input.repoIds ? layout.repos.filter(repo => input.repoIds.includes(repo.id)) : layout.repos;
+      return eachBoardRepo({ ...layout, repos }, repo => restoreSavedCheckpoint({
+        ...input, worktree: path.join(input.worktree, repo.id), workspacePath: layout.workspace, repoId: repo.id,
+      }));
+    }
     return restoreSavedCheckpoint(input);
   });
 }
 
-async function restoreSavedCheckpoint({ boardId, attemptId, worktree, transaction, afterGitRestore }) {
-  if (!ownedWorktree(boardId, worktree)) throw new Error('Restore requires a managed isolated worktree owned by this board');
-  const directory = path.join(boardDir(boardId), 'recovery', safeSegment(attemptId));
+async function restoreSavedCheckpoint({ boardId, attemptId, worktree, transaction, afterGitRestore, workspacePath, repoId }) {
+  if (!ownedWorktree(boardId, worktree, workspacePath)) throw new Error('Restore requires a managed isolated worktree owned by this board');
+  const directory = checkpointDir(boardId, attemptId, repoId);
   const manifest = JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8'));
   const bundle = path.join(directory, 'checkpoint.bundle');
   const hash = await digest(bundle);
@@ -174,7 +196,7 @@ async function restoreSavedCheckpoint({ boardId, attemptId, worktree, transactio
   try { previous = JSON.parse(await fs.readFile(marker, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const resuming = transaction && previous?.transaction === transaction && previous.worktree === worktree;
-  if (!resuming && await git(worktree, ['status', '--porcelain'])) throw new Error('Refusing to restore over existing work');
+  if (!resuming && await git(worktree, ['status', '--porcelain', '--', ...boardRepoPathspec()])) throw new Error('Refusing to restore over existing work');
   if (resuming && previous.completed) {
     let complete = await git(worktree, ['rev-parse', 'HEAD']) === manifest.head && await git(worktree, ['write-tree']) === manifest.indexTree;
     for (const file of manifest.files) {
@@ -229,6 +251,11 @@ export function cleanupCompletedRecovery(boardId, state) {
 /** Remove only this board's recovery refs, including interrupted writes without manifests.
  * Call under withBoardRecovery so a checkpoint cannot publish refs after cleanup. */
 export async function cleanupRecoveryRefs(boardId, workspacePath, attemptIds) {
+  const layout = await readBoardRepos(boardId, workspacePath);
+  if (layout) {
+    await eachBoardRepo(layout, repo => cleanupRecoveryRefs(boardId, repo.source, attemptIds));
+    return;
+  }
   const prefix = `refs/minnow/recovery/${safeSegment(boardId)}/`;
   const selected = attemptIds && new Set(attemptIds.flatMap(id => {
     const ref = `${prefix}${safeSegment(id)}`;
@@ -252,6 +279,9 @@ export async function cleanupRecoveryRefs(boardId, workspacePath, attemptIds) {
 async function cleanupCompletedCheckpoints(boardId, state) {
   if (!state.recoveryVersion || !state.finished || state.finalTest?.outcome !== 'pass' || Object.keys(state.recoveryHolds).length) return;
   if (!await boardExists(boardId)) return;
+  const layout = await readBoardRepos(boardId, state.workspacePath ?? getEffectiveWorkspaceRoot());
+  const revisions = layout && boardRevisionRepos(state.integrationSha);
+  if (layout && !revisions) return;
   const revision = state.recoveryRevision;
   const current = () => state.finished && state.recoveryRevision === revision;
   let allSafe = true;
@@ -264,6 +294,24 @@ async function cleanupCompletedCheckpoints(boardId, state) {
       if (!ownedWorktree(boardId, worktree, state.workspacePath)) { safe = false; continue; }
       try {
         await fs.access(worktree);
+        if (layout) {
+          const slotId = path.relative(getBoardWorktreesDir(boardId, state.workspacePath), worktree);
+          if (slotId.includes(path.sep) || slotId === 'integration') { safe = false; continue; }
+          const rows = await eachBoardRepo(layout, async repo => {
+            const checkout = path.join(worktree, repo.id);
+            if (await git(checkout, ['status', '--porcelain', '--untracked-files=all', '--', ...boardRepoPathspec()])) return false;
+            const sha = revisions.get(repo.id);
+            if (!sha) return false;
+            await git(checkout, ['merge-base', '--is-ancestor', 'HEAD', sha]);
+            return true;
+          });
+          if (rows.some(([, clean]) => !clean)) { safe = false; continue; }
+          if (!current()) return;
+          const { removeWorktree } = await import('../worktree/worktree-ops.js');
+          const removed = await removeWorktree({ boardId, slotId, protectDirty: true });
+          safe &&= removed.ok;
+          continue;
+        }
         if (await git(worktree, ['status', '--porcelain', '--untracked-files=all'])) { safe = false; continue; }
         await git(worktree, ['merge-base', '--is-ancestor', 'HEAD', state.integrationSha]);
         if (!state.finished || state.recoveryRevision !== revision) return;

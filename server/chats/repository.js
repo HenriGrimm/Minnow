@@ -998,6 +998,23 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
       });
     },
     assertFence, appendMessage, patchMessage, readMessage, readTranscript, setTranscriptMeta,
+    /** Publish the delivery report in the transaction that marks the factory complete. */
+    appendFactoryReport(commandId, content) {
+      const record = getCommand(identity(commandId));
+      const run = record && repository.getChat(record.chatId).factoryRun;
+      if (record?.state !== 'settled' || record.captured.factoryPhase !== 'verify' || record.command.provenance.source !== 'factory' ||
+          run?.cursor !== commandId || run.id !== record.captured.factoryRunId || repository.getLease(record.chatId)?.state === 'active') {
+        fail('ownership_conflict', 'A settled factory verification is required to publish its report');
+      }
+      const messageId = 'report-' + run.id;
+      if (repository.readMessageByIdentity(record.chatId, messageId)) return;
+      const rowId = nextMessageSeq(record.chatId);
+      const message = { role: 'assistant', content, messageId, createdAt: Date.now(), commandId };
+      upsertMessageRow(db, record.chatId, rowId, message);
+      db.prepare('INSERT INTO chat_message_identities(chat_id,message_id,seq,input_hash) VALUES(?,?,?,?)')
+        .run(record.chatId, messageId, rowId, hashChatPayload(message));
+      updateMessageDerived(record.chatId);
+    },
     /** Trusted admission only: retain a legacy result while no execution owns the transcript. */
     appendAdmittedResult(commandId) {
       return transaction(() => {

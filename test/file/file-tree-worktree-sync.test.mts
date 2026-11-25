@@ -183,6 +183,25 @@ describe('syncFileTreeToPanelWorktree', () => {
     assert.equal(buildFileTreeToolContext().workspaceRoot, undefined);
   });
 
+  test('opening Factory files preserves a Local editor draft under its original root', async () => {
+    setupDom();
+    launchInstance('code');
+    setWorkspaceFromServer({ path: MAIN_WS, label: 'minnow', isDefault: false });
+    const { openViewerTab, listViewerTabs, snapshotViewerTabEditorContent, resetViewerTabStoreForTests } =
+      await import('../../src/ui/file-viewer-tab-store.ts');
+    const { syncFileTreeToPanelWorktree } = await import('../../src/ui/file-tree.ts');
+    try {
+      await openViewerTab('README.md', { content: 'Original' });
+      snapshotViewerTabEditorContent('README.md', 'Local unsaved edit', true);
+      await syncFileTreeToPanelWorktree(WORKTREE);
+      const [draft] = listViewerTabs();
+      assert.equal(draft.workspaceRoot, MAIN_WS);
+      assert.equal(draft.path, MAIN_WS + '/README.md');
+      assert.equal(draft.cachedEditorContent, 'Local unsaved edit');
+      assert.equal(draft.isDirty, true);
+    } finally { resetViewerTabStoreForTests(); }
+  });
+
   test('force refresh preserves expansion when listing root unchanged', async () => {
     setupDom();
     launchInstance('code');
@@ -307,6 +326,46 @@ describe('resolvePanelBrowseCwd', () => {
 // ── syncPanelFromActiveChat browse ───────────────────────────────────────────
 
 describe('syncPanelFromActiveChat browse override', () => {
+  test('Factory binds only its thread and opening thread files does not change a sibling or a new chat', async () => {
+    setupDom();
+    launchInstance('code');
+    setWorkspaceFromServer({ path: MAIN_WS, label: 'minnow', isDefault: false });
+    const sessions = await import('../../src/state/sessions.ts');
+    const { createEmptyChatObject } = sessions;
+    const { getWorkspacePath } = await import('../../src/state/workspace.ts');
+    const { resolveChatToolWorkspaceRoot } = await import('../../src/state/chat-worktree.ts');
+    const { resolveFileExplorerTerminalCwd } = await import('../../src/ui/terminal-worktree-cwd.ts');
+    const panel = await import('../../src/ui/git-panel.ts');
+    const factory = createEmptyChatObject('model');
+    const sibling = createEmptyChatObject('model');
+    setSessionStateForTests({ activeId: factory.id, chats: [factory, sibling], groups: [] });
+    try {
+      panel.syncPanelFromActiveChat();
+      factory.worktreeRoot = WORKTREE;
+      panel.syncPanelFromActiveChat();
+      assert.equal(panel.getGitPanelCwd(), MAIN_WS);
+      assert.equal(getWorkspacePath(), MAIN_WS);
+      assert.equal(resolveChatToolWorkspaceRoot(factory), WORKTREE);
+      assert.equal(resolveFileExplorerTerminalCwd(), MAIN_WS);
+      await panel.browseThreadFiles(factory);
+      assert.equal(buildFileTreeToolContext().workspaceRoot, WORKTREE);
+      assert.equal(resolveFileExplorerTerminalCwd(), WORKTREE);
+      const next = createEmptyChatObject('model');
+      assert.equal(next.workspacePath, MAIN_WS);
+      assert.equal(resolveChatToolWorkspaceRoot(next), undefined);
+      sessions.sessionState!.activeId = sibling.id;
+      panel.syncPanelFromActiveChat();
+      await panel.browseThreadFiles(sibling);
+      assert.deepEqual(buildFileTreeToolContext(), {});
+      assert.equal(resolveFileExplorerTerminalCwd(), MAIN_WS);
+      assert.equal(sibling.workspacePath, MAIN_WS);
+      assert.equal(resolveChatToolWorkspaceRoot(sibling), undefined);
+      assert.equal(getWorkspacePath(), MAIN_WS);
+    } finally {
+      panel.resetGitPanelForTests();
+    }
+  });
+
   test('skips sync while browse override is active', async () => {
     setupDom();
     launchInstance('code');
@@ -326,7 +385,7 @@ describe('syncPanelFromActiveChat browse override', () => {
     gitPanel.resetGitPanelForTests();
   });
 
-  test('syncs chat worktree after override cleared', async () => {
+  test('clearing a workspace browse override returns to the project checkout', async () => {
     setupDom();
     launchInstance('code');
     setWorkspaceFromServer({ path: MAIN_WS, label: 'minnow', isDefault: false });
@@ -342,7 +401,7 @@ describe('syncPanelFromActiveChat browse override', () => {
     gitPanel.setGitPanelCwd('C:/projects/other-wt');
     gitPanel.clearPanelCwdUserOverride();
     gitPanel.syncPanelFromActiveChat();
-    assert.equal(gitPanel.getGitPanelCwd(), WORKTREE);
+    assert.equal(gitPanel.getGitPanelCwd(), MAIN_WS);
     gitPanel.resetGitPanelForTests();
   });
 });

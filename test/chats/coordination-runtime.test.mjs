@@ -26,22 +26,26 @@ async function pendingRequest(fixture, chatId) {
   throw new Error('Expected a durable approval for ' + chatId);
 }
 
-test('actual native chat_send uses one production command path and persists agent provenance while upstream bodies stay clean', { timeout: 20000 }, async t => {
+for (const permissionLevel of ['manual', 'auto', 'full']) test(`chat_send respects ${permissionLevel} in production and preserves agent provenance`, { timeout: 20000 }, async t => {
   const f = await environment.fixture(t, { install, respond: body => {
     if (lastUser(body) === 'Coordinate with peer' && !body.messages.some(row => row.role === 'tool')) {
       return [tool('chat_send', { chat_id: 'peer', message: 'Peer instruction', mode: 'auto', client_request_id: 'peer-input' })];
     }
     return String(lastUser(body)).includes('Peer instruction') ? 'Peer answered.' : 'Coordinator finished.';
   } });
+  f.settings.meta.toolSecurity.permissionLevel = permissionLevel;
   const accepted = await f.request('/api/chats/coordinator/commands', { action: 'send', text: 'Coordinate with peer', clientRequestId: 'coordinate' });
   assert.equal(accepted.status, 202);
-  const pending = await pendingRequest(f, 'coordinator');
-  assert.equal(pending.presentation.arguments.message, 'Peer instruction');
-  assert.equal(f.repository.listCommands({ chatId: 'peer' }).length, 0);
-  const approval = await f.request('/api/chats/coordinator/requests/' + pending.requestId + '/respond',
-    { answer: { decision: 'allow_once' }, clientRequestId: 'allow-peer' });
-  assert.equal(approval.status, 200);
+  if (permissionLevel !== 'full') {
+    const pending = await pendingRequest(f, 'coordinator');
+    assert.equal(pending.presentation.arguments.message, 'Peer instruction');
+    assert.equal(f.repository.listCommands({ chatId: 'peer' }).length, 0);
+    const approval = await f.request('/api/chats/coordinator/requests/' + pending.requestId + '/respond',
+      { answer: { decision: 'allow_once' }, clientRequestId: 'allow-peer' });
+    assert.equal(approval.status, 200);
+  }
   await f.runtime.service.idle();
+  if (permissionLevel === 'full') assert.equal(f.repository.listRequests('coordinator').length, 0);
   const source = f.repository.getCommand(accepted.body.receipt.commandId);
   assert.equal(source.state, 'settled');
   const toolRow = f.repository.readTranscript('coordinator').messages.find(row => row.role === 'tool');
@@ -310,6 +314,114 @@ for (const firstMessage of [true, false]) test(`chat_create enables a multi-repo
     assert.equal(await fs.readFile(path.join(chat.worktreeRoot, id, 'tracked.txt'), 'utf8'), 'committed ' + id);
     assert.equal(await fs.readFile(path.join(f.workspace, id, 'tracked.txt'), 'utf8'), 'uncommitted ' + id);
   }
+});
+
+test('a Full access manager follows up across turns and retries failed isolated setup', { timeout: 45000 }, async t => {
+  let assignment, failedOnce = false;
+  const git = promisify(execFile);
+  const { enableChatWorktree } = await import('../../server/worktree/worktree-ops.js');
+  const f = await environment.fixture(t, {
+    runtimeOptions: { enableChatWorktree: async options => {
+      const result = await enableChatWorktree(options);
+      if (result.ok && options.title === 'Assigned issue' && !failedOnce) {
+        failedOnce = true;
+        return { ok: false, error: 'Worktree kept. Setup failed: npm (exit 2: fixture secret)' };
+      }
+      return result;
+    } },
+    async install(runtime, { workspace, modelAdapters }) {
+      const exec = (...args) => git('git', args, { cwd: workspace, windowsHide: true });
+      await exec('init');
+      await fs.writeFile(path.join(workspace, 'readme.txt'), 'fixture');
+      await exec('add', '.');
+      await exec('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'base');
+      modelAdapters.listModels = async () => [{ id: 'model', reasoning: { allowed_options: ['medium', 'high'] } }];
+      return install(runtime);
+    },
+    toolNames: ['chat_create', 'chat_read', 'chat_send', 'chat_wait', 'chat_retry_worktree'],
+    respond(body) {
+      const result = id => body.messages.find(row => row.role === 'tool' && row.tool_call_id === id);
+      switch (lastUser(body)) {
+        case 'Initialize other manager': return 'Ready.';
+        case 'Create issue assignment':
+          return result('assign') ? 'Assignment admitted.' : [tool('chat_create', { title: 'Assigned issue', message: 'Plan the issue',
+            enable_worktree: true, report_back: true, reasoning_effort: 'high', provider_id: f.providerId, model_id: 'model' }, 'assign')];
+        case 'Create independent assignment':
+          return result('assign-other') ? 'Assignment admitted.' : [tool('chat_create', { title: 'Independent assignment',
+            message: 'Plan another issue', enable_worktree: true, report_back: true }, 'assign-other')];
+        case 'Read someone else’s assignment':
+          return result('other-read') ? 'Done.' : [tool('chat_read', { chat_id: assignment.chatId }, 'other-read')];
+        case 'Try to continue on Local':
+          return result('detached-send') ? 'Done.' : [tool('chat_send', { chat_id: assignment.chatId, message: 'Must not run in Local' }, 'detached-send')];
+        case 'Recover and continue assignment': {
+          const address = { chat_id: assignment.chatId };
+          if (!result('check-initial')) return [tool('chat_wait', { ...address, command_id: assignment.commandId }, 'check-initial')];
+          const setup = JSON.parse(result('check-initial').content).worktree_setup;
+          if (!result('retry-setup')) return [tool('chat_retry_worktree', { ...address, intent_id: setup.intent_id }, 'retry-setup')];
+          if (!result('read-ready')) return [tool('chat_read', address, 'read-ready')];
+          if (!result('send-plan')) return [tool('chat_send', { ...address, message: 'Plan the issue' }, 'send-plan')];
+          if (!result('wait-plan')) return [tool('chat_wait', { ...address, command_id: JSON.parse(result('send-plan').content).commandId, timeout_ms: 5000 }, 'wait-plan')];
+          return 'Plan handoff received.';
+        }
+        default: return 'Here is the plan.';
+      }
+    },
+  });
+  f.settings.meta.toolSecurity.permissionLevel = 'full';
+  const send = async (chatId, text, clientRequestId) => {
+    const response = await f.request('/api/chats/' + chatId + '/commands', { action: 'send', text, clientRequestId });
+    assert.equal(response.status, 202, JSON.stringify(response.body));
+    await f.runtime.service.idle();
+  };
+  const toolResult = (chatId, callId) => {
+    const messages = f.repository.readTranscript(chatId).messages;
+    const row = messages.findLast(row => row.role === 'tool' && row.tool_call_id === callId);
+    assert.ok(row, JSON.stringify(messages.map(({ role, tool_call_id, content }) => ({ role, tool_call_id, content }))));
+    return row.content;
+  };
+  await send('peer', 'Initialize other manager', 'initialize-peer');
+  await send('coordinator', 'Create issue assignment', 'create-assignment');
+  assignment = JSON.parse(toolResult('coordinator', 'assign'));
+  assert.equal(assignment.modelSelection.options.reasoningEffort, 'high');
+  const initial = f.repository.getCommand(assignment.commandId);
+  assert.equal(initial.state, 'failed');
+  assert.equal(f.repository.getChat(assignment.chatId).workspacePreparation.status, 'failed');
+  await send('coordinator', 'Create independent assignment', 'create-independent');
+  const other = JSON.parse(toolResult('coordinator', 'assign-other'));
+  assert.equal(f.repository.getCommand(other.commandId).state, 'settled');
+  assert.equal(f.repository.getChat(assignment.chatId).workspacePreparation.status, 'failed');
+
+  // A retained profile and report created before the retry tool existed do
+  // not contain its catalog row, as with an existing manager after upgrade.
+  f.db.prepare(`UPDATE chat_execution_profiles SET payload_json=json_remove(payload_json,
+    '$.policy.toolPermissions.chat_retry_worktree', '$.policy.toolEffects.chat_retry_worktree') WHERE chat_id IN (?,?)`)
+    .run('coordinator', assignment.chatId);
+  f.db.prepare(`UPDATE chat_outbox SET payload_json=json_remove(payload_json,
+    '$.policy.toolPermissions.chat_retry_worktree', '$.policy.toolEffects.chat_retry_worktree') WHERE kind='conversation.report' AND chat_id=?`)
+    .run(assignment.chatId);
+  await send('coordinator', 'Recover and continue assignment', 'recover-assignment');
+  const failed = JSON.parse(toolResult('coordinator', 'check-initial'));
+  assert.match(failed.worktree_setup.error, /Dependency setup failed \(exit 2\)/);
+  assert.doesNotMatch(JSON.stringify(failed), /fixture secret/);
+  assert.equal(JSON.parse(toolResult('coordinator', 'retry-setup')).status, 'ready');
+  const worker = f.repository.getChat(assignment.chatId);
+  assert.notEqual(path.resolve(worker.worktreeRoot), path.resolve(f.workspace));
+  assert.equal(JSON.parse(toolResult('coordinator', 'read-ready')).worktree_setup.status, 'ready');
+  const followup = JSON.parse(toolResult('coordinator', 'send-plan'));
+  assert.equal(f.repository.getCommand(followup.commandId).command.modelSelection.options.reasoningEffort, 'high');
+  const report = JSON.parse(toolResult('coordinator', 'wait-plan'));
+  assert.equal(report.command_id, followup.commandId);
+  assert.equal(report.assistant_final, 'Here is the plan.');
+  assert.equal(f.repository.readTranscript(assignment.chatId).messages.filter(row => row.role === 'user').length, 1);
+  await send('peer', 'Read someone else’s assignment', 'denied-peer');
+  assert.match(toolResult('peer', 'other-read'), /workspace_denied/);
+  const detach = await f.request('/api/chats/' + assignment.chatId + '/workspace', {
+    action: 'local', expectedIntentId: worker.workspacePreparation.intent.id, clientRequestId: 'detach-assignment',
+  });
+  assert.equal(detach.status, 200, JSON.stringify(detach.body));
+  await send('coordinator', 'Try to continue on Local', 'denied-local');
+  assert.match(toolResult('coordinator', 'detached-send'), /No action was sent to Local/);
+  assert.equal(f.repository.listCommands({ chatId: assignment.chatId }).length, 2);
 });
 
 test('an existing ordinary chat uses Full access for shell commands after its first Auto turn', { timeout: 20000 }, async t => {

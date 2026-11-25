@@ -3,10 +3,11 @@ import { getWorkspacePath } from '../../state/workspace';
 import { getActiveChat, sessionState } from '../../state/sessions';
 import { openFileInViewer } from '../file-viewer';
 import { applyFileSidebarVisuals } from '../file-layout';
+import { isCodeAppForeground } from '../preview-restore-policy';
 import { openContextMenu, type MenuItem } from '../context-menu';
 import { initFileTreeIfNeeded } from '../file-tree';
 import { closeGitCommitDiffPanel, getGraphiteReviewPane } from '../git-commit-diff-panel';
-import { openGitSurfaceTarget, setGitSurfaceVisible } from '../git-panel';
+import { browseThreadFiles, getGitPanelFileBrowseCwd, openGitSurfaceTarget, setGitSurfaceVisible } from '../git-panel';
 import { createIcon } from '../icon';
 import { openTerminalSurfaceRun, setTerminalSurfaceVisible } from '../terminal-panel';
 import { subscribeSidebarRender } from '../sidebar';
@@ -103,7 +104,9 @@ export function initCodeGraphiteSurfaces(): void {
   });
   registerSurface('terminal', {
     render: () => terminal,
-    setVisible: setTerminalSurfaceVisible,
+    setVisible(visible) {
+      setTerminalSurfaceVisible(visible, getGitPanelFileBrowseCwd() ?? getWorkspacePath());
+    },
     async open({ chat, target }) {
       const { runId } = record(target);
       if (typeof runId === 'string' && runId) await openTerminalSurfaceRun(chat.id, runId);
@@ -169,7 +172,13 @@ export function initCodeGraphiteSurfaces(): void {
     if (before.rightPaneMode === 'viewer' || before.rightPaneMode === 'split') open.push('files');
   }
   if (!terminal.classList.contains('hidden')) open.push('terminal');
-  mountSurfacePanels(stage, { legacyOpen: open, content });
+  mountSurfacePanels(stage, {
+    legacyOpen: open, content,
+    setFileBrowseChat(chat) {
+      const inCode = isCodeAppForeground() || document.documentElement.classList.contains('mn-mobile-app');
+      void browseThreadFiles(inCode ? chat : undefined);
+    },
+  });
   subscribeSidebarRender(refreshSurfacePanels);
   subscribeSidebarGitState(refreshSurfacePanels);
 }

@@ -2,7 +2,7 @@
 
 import { getChatItemDotContext, resolveChatItemDotState, subscribeChatInputPending } from '../ui/chat-item-dot';
 import { subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
-import { isChatPinned, isBoardOwnedChat } from '../state/chat-groups';
+import { isChatPinned } from '../state/chat-groups';
 import { projectChatRelationships } from '../state/chat-relationships';
 import { formatDraftChatSidebarName, getChatsForWorkspace, isChatArchived, isSidebarListedChat } from '../state/session-workspace-scope';
 import { getChatSummaryPreview, isHiddenFromMainSidebar, sessionState } from '../state/sessions';
@@ -40,7 +40,6 @@ export function listedMobileChats(filter: ThreadFilter = 'active'): Chat[] {
   if (!sessionState) return [];
   const candidates = getChatsForWorkspace(getWorkspacePath(), sessionState)
     .filter((chat) => !isHiddenFromMainSidebar(chat))
-    .filter((chat) => !isBoardOwnedChat(chat))
     .filter((chat) => !isChatsWorkspacePath(chat.workspacePath ?? ''));
   const family = projectChatRelationships(candidates);
   return candidates.filter((chat) => {

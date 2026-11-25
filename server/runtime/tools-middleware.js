@@ -149,7 +149,6 @@ import {
 } from '../dev-server/manager.js';
 import { toolManageDevServers } from '../dev-server/tool-handler.js';
 import { resolveChatContext } from '../workspace/chat-cwd.js';
-import { appendBoardLogLine } from '../orchestrate/board-log-sink.js';
 import { guardCdOutsideWorktree as _guardCdRaw } from '../tools/cwd-guard.js';
 import { readConfigJson } from '../config/store.js';
 import { normalizeToolConfig } from '../config/validators.js';
@@ -162,10 +161,8 @@ import {
 } from '../browser-agent-api.js';
 import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 import { toolGodotControl, toolGodotInspect } from '../godot/tool-handler.js';
-import { formatParseErrors } from '../orchestrator/core/parse-plan.js';
-import { validateBoardPlan } from '../orchestrator/validate-plan.js';
 import { readPlanType } from '../orchestrator/core/plan-format.js';
-import { validateBuildPlan } from '../tools/validate-build-plan.js';
+import { formatParseErrors, validateBuildPlan } from '../tools/validate-build-plan.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -414,18 +411,13 @@ async function toolCheckPlan(args) {
     return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}).`;
   }
   const markdown = await fs.readFile(filePath, 'utf8');
-  if (readPlanType(markdown) === 'build') {
-    const { errors, stepCount } = validateBuildPlan(markdown);
-    return errors.length
-      ? `Plan does not parse:\n${formatParseErrors(errors)}`
-      : `Build plan parses successfully: ${stepCount} sequential step(s).`;
+  if (readPlanType(markdown) !== 'build') {
+    return 'Error: this plan has no `planType: build` front matter. Orchestrate board plans are retired; rewrite it in the Build format (it can still be run unattended with /factory).';
   }
-  const validation = await validateBoardPlan(markdown);
-  if (!validation.ok) {
-    return `Plan does not parse:\n${formatParseErrors(validation.errors)}`;
-  }
-  const parsed = validation.graph;
-  return `Plan parses successfully: ${parsed.tasks.length} task(s) across ${parsed.waves.length} wave(s).`;
+  const { errors, stepCount } = validateBuildPlan(markdown);
+  return errors.length
+    ? `Plan does not parse:\n${formatParseErrors(errors)}`
+    : `Build plan parses successfully: ${stepCount} sequential step(s).`;
 }
 
 async function readUtf8OrEmpty(filePath) {
@@ -1130,18 +1122,8 @@ async function resolveDefaultCwd(chatId) {
  * @returns {{ command: string; redirected: boolean }}
  */
 function guardCdOutsideWorktree(command, worktreeRoot, meta) {
-  const result = _guardCdRaw(command, worktreeRoot);
-  if (result.redirected && meta.groupId) {
-    void appendBoardLogLine(meta.groupId, {
-      type: 'cwd_redirect',
-      chatId: meta.chatId,
-      from: /** @type {any} */ (result).originalTarget ?? '(unknown)',
-      to: worktreeRoot,
-      reason: 'worktree_isolation',
-      ts: Date.now(),
-    });
-  }
-  return result;
+  void meta;
+  return _guardCdRaw(command, worktreeRoot);
 }
 
 async function resolveBoardSpawnEnv(args, cwd, chatId) {
@@ -1325,23 +1307,6 @@ async function toolExecuteCommand(args, options) {
       outputSlice: resolveOutputSliceFromArgs(args),
       ...(spawnEnv ? { env: spawnEnv } : {}),
     });
-    if (groupId) {
-      const text = String(output);
-      const sandboxed = /\[sandboxed:/i.test(text);
-      const notSandboxed = /\[NOT sandboxed:/i.test(text);
-      if (sandboxed || notSandboxed || text.trimStart().startsWith('Error: Agent shell sandbox')) {
-        void appendBoardLogLine(groupId, {
-          type: 'sandbox',
-          chatId,
-          applied: sandboxed,
-          trailer: sandboxed
-            ? (text.match(/\[sandboxed:[^\]]+\]/i)?.[0] ?? null)
-            : (text.match(/\[NOT sandboxed:[^\]]+\]/i)?.[0] ?? null),
-          error: text.trimStart().startsWith('Error: Agent shell sandbox') ? text.slice(0, 400) : null,
-          ts: Date.now(),
-        });
-      }
-    }
     const interpreter = describeOneShotInterpreter({ command, shellProfile });
     if (String(output).trimStart().startsWith('Error')) {
       return `${output}\nOne-shot interpreter: ${interpreter}`;

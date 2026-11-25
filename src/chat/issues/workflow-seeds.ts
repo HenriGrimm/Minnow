@@ -95,7 +95,7 @@ export function buildIssuesPlanSeed(issues: IssueCard[], path: string): string {
     ...issues.map(buildIssueContextBlock),
     '',
     `Save the executable plan to exactly \`${path}\` (create documentation/plans/issues/ if needed).`,
-    'Follow the /plan execution-format choice: ask Build or Orchestrate before exploring or drafting a new plan. Wait for the answer and use the chosen format. For revisions, read the saved plan and preserve its type unless the user requests conversion.',
+    'Use the Build plan format with planType: build, sequential steps, and checks for each step.',
     'When the plan is saved, stop and summarize the path.',
   ].join('\n');
 }
@@ -146,11 +146,6 @@ export function resolveIssuePlanPath(issue: IssueCard): string {
 
 // ── Gates ────────────────────────────────────────────────────────────────────
 
-/** True when Send to board should be enabled. */
-export function canSendIssueToBoard(issue: IssueCard): boolean {
-  return Boolean(issue.planPath?.trim());
-}
-
 /** True when Plan / Debug actions should be offered. */
 export function canRunIssueWorkflow(issue: IssueCard): boolean {
   return !isClosedStatus(getIssuesTaxonomySync(), issue.status);
@@ -159,13 +154,13 @@ export function canRunIssueWorkflow(issue: IssueCard): boolean {
 /** What the workflow activity chip can open (pure; chat ids resolved at click time). */
 export type IssueActivityTarget =
   | { kind: 'sub_agent'; runId: string }
-  | { kind: 'board_chat'; chatId: string };
+  | { kind: 'chat'; chatId: string };
 
 /** Activity chip label derived from linked runs (no extra status enum). */
 export function issueActivityChip(issue: IssueCard): string | null {
   const taxonomy = getIssuesTaxonomySync();
   if (isReviewStatus(taxonomy, issue.status)) return 'In review';
-  if (issue.boardChatId && isInProgressStatus(taxonomy, issue.status)) return 'On board';
+  if (issue.boardChatId && isInProgressStatus(taxonomy, issue.status)) return 'Linked chat';
   if (
     issue.planRunId &&
     isInProgressStatus(taxonomy, issue.status) &&
@@ -188,7 +183,7 @@ export function issueActivityChip(issue: IssueCard): string | null {
 export function issueActivityTarget(issue: IssueCard): IssueActivityTarget | null {
   const taxonomy = getIssuesTaxonomySync();
   if (issue.boardChatId && isInProgressStatus(taxonomy, issue.status)) {
-    return { kind: 'board_chat', chatId: issue.boardChatId };
+    return { kind: 'chat', chatId: issue.boardChatId };
   }
   if (issue.planRunId && isInProgressStatus(taxonomy, issue.status) && !issue.boardChatId) {
     return { kind: 'sub_agent', runId: issue.planRunId };

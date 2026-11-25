@@ -1,12 +1,9 @@
 import { getSharedChatHost } from '../ui/shared-chat-host-state';
 import { expertsPageOpen, streamingChatIds } from '../app-state';
 import { getActiveChat } from '../state/sessions';
-import { isOrchestratePlanScreenSuppressingChatDom } from '../ui/orchestrate-plan-screen';
 import { isChatAppForeground } from '../ui/chat-mount';
 import { isMainColumnOverlaySuppressingChatDom } from '../ui/main-column-overlay';
 import { isCodeMapChatOpenForChat } from '../ui/code-map/chat-state';
-import { isBoardChatEmbedOpenForChat } from '../ui/orchestrate-board-chat-state';
-import { isBoardViewActive } from '../ui/view-mode-toggle';
 import { reportBackgroundError } from '../boot/report-background-error';
 import { isChatRunningRemotely } from './remote-turn-state';
 import { getForegroundAppId } from '../os/instances';
@@ -179,11 +176,8 @@ export function isStreamDomVisible(chatId: string): boolean {
   const foreground = getForegroundAppId();
   if (foreground != null && foreground !== 'code') return false;
   if (isCodeMapChatOpenForChat(chatId)) return true;
-  if (isBoardChatEmbedOpenForChat(chatId)) return true;
-  if (isOrchestratePlanScreenSuppressingChatDom(chatId)) return false;
   if (isMainColumnOverlaySuppressingChatDom()) return false;
   if (active.kind === 'expert-lab' && expertsPageOpen) return false;
   if (isChatAppForeground()) return true;
-  if (isBoardViewActive()) return false;
   return true;
 }

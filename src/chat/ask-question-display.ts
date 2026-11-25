@@ -6,8 +6,6 @@ import { getActiveChat } from '../state/sessions';
 import { isChatAppForeground } from '../ui/chat-mount';
 import { isMainColumnOverlaySuppressingChatDom } from '../ui/main-column-overlay';
 import { isCodeMapChatOpenForChat } from '../ui/code-map/chat-state';
-import { isBoardChatEmbedOpenForChat } from '../ui/orchestrate-board-chat-state';
-import { isBoardViewActive } from '../ui/view-mode-toggle';
 import {
   runAskQuestionDisplayContextSync,
 } from './ask-question-display-sync';
@@ -16,26 +14,6 @@ export { registerAskQuestionDisplayContextSync } from './ask-question-display-sy
 
 type AskQuestionDisplayListener = () => void;
 const displayListeners = new Set<AskQuestionDisplayListener>();
-
-type PlanQuestionHostResolver = (chatId: string) => HTMLElement | null;
-type PlanScreenDomSuppressor = (chatId: string) => boolean;
-
-const planScreenHooks: {
-  resolveQuestionHost: PlanQuestionHostResolver | null;
-  isSuppressingChatDom: PlanScreenDomSuppressor | null;
-} = {
-  resolveQuestionHost: null,
-  isSuppressingChatDom: null,
-};
-
-/** Wired from app boot to avoid circular imports at module load time. */
-export function bindAskQuestionPlanScreenHooks(hooks: {
-  resolveQuestionHost: PlanQuestionHostResolver;
-  isSuppressingChatDom: PlanScreenDomSuppressor;
-}): void {
-  planScreenHooks.resolveQuestionHost = hooks.resolveQuestionHost;
-  planScreenHooks.isSuppressingChatDom = hooks.isSuppressingChatDom;
-}
 
 /** Notify waiters and sync hooks when chat or foreground app context changes. */
 export function notifyAskQuestionDisplayContextChanged(): void {
@@ -63,18 +41,11 @@ export function isAskQuestionDomVisible(chatId: string): boolean {
   if (getSharedChatHost(trimmed)) return true;
   if (resolveIssueChatQuestionHost(trimmed)) return true;
 
-  if (planScreenHooks.resolveQuestionHost?.(trimmed)) {
-    return true;
-  }
-
   const active = getActiveChat();
   if (active.id !== trimmed) return false;
   if (isCodeMapChatOpenForChat(trimmed)) return true;
-  if (isBoardChatEmbedOpenForChat(trimmed)) return true;
-  if (planScreenHooks.isSuppressingChatDom?.(trimmed)) return false;
   if (isMainColumnOverlaySuppressingChatDom()) return false;
   if (active.kind === 'expert-lab' && expertsPageOpen) return false;
-  if (isBoardViewActive()) return false;
 
   const foregroundAppId = getForegroundAppId();
   if (foregroundAppId == null || foregroundAppId === 'code') {

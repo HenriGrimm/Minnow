@@ -17,30 +17,12 @@ import { describe, it } from 'node:test';
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SRC_DIR = path.join(PROJECT_ROOT, 'src');
 const ORCHESTRATE_DIR = path.join(SRC_DIR, 'chat', 'orchestrate');
-const PLANS_DIR = path.join(SRC_DIR, 'chat', 'plans');
 
 /**
  * Presentation modules still allowed under `src/chat/orchestrate/`.
  * Anything else in that directory is engine-shaped leftover and must not return.
  */
 const ALLOWED_ORCHESTRATE_FILES = [];
-
-/**
- * MIN-714 keepers plus plan-listing helpers that moved out of the engine-implying
- * path. Enumerated so a new file cannot sneak back into `src/chat/plans/`
- * without this test being updated on purpose.
- */
-const ALLOWED_PLANS_FILES = [
-  'list-plans.ts',
-  'plan-from-history.ts',
-  'plan-path.ts',
-  'plan-preview.ts',
-  'planner-chat-title.ts',
-  'stats-math.ts',
-];
-
-/** Category chip helper moved next to the V2 board view (MIN-714 keeper). */
-const MOVED_ORCHESTRATOR_KEEPER = 'task-category-badge.ts';
 
 /**
  * Strings that named the V1 repair subsystem. The Phase 4 grep gate is that
@@ -87,19 +69,6 @@ describe('P4-B no renderer lifecycle-repair (MIN-714)', () => {
       .filter((n) => n.endsWith('.ts'))
       .sort();
     assert.deepEqual(names, ALLOWED_ORCHESTRATE_FILES);
-  });
-
-  it('moved keepers live under src/chat/plans/ and src/orchestrator/', () => {
-    const planNames = fs
-      .readdirSync(PLANS_DIR)
-      .filter((n) => n.endsWith('.ts'))
-      .sort();
-    assert.deepEqual(planNames, ALLOWED_PLANS_FILES);
-    assert.equal(
-      fs.existsSync(path.join(SRC_DIR, 'orchestrator', MOVED_ORCHESTRATOR_KEEPER)),
-      true,
-      `${MOVED_ORCHESTRATOR_KEEPER} should live next to the V2 board view`,
-    );
   });
 
   it('src/ has no display-wake / boot-resume / oom-recovery / reconcileRunningBoards', () => {

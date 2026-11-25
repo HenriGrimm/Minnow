@@ -18,10 +18,9 @@ If a tool stops at an approval, look in **Activity → Needs you**. Confirm the 
 
 Open the exact local URL in your system browser. If it fails there, check the listening address and port in **Terminal** or **Dev servers** and fix the startup error first. If it works there, reload the **Browser** surface and confirm you are using the desktop app for native preview and agent browser tools.
 
-## A thread, board, or automation is waiting
+## A thread or automation is waiting
 
 - For a thread, read its last tool step, check pending approvals in Activity, and inspect its child runs in **Agents**. If asked to **Confirm stopped**, verify the command has stopped on the host first.
-- For a board, open **Needs attention**. Open the task's **Activity** and read the latest build or test result. Resolve the displayed prerequisite and use **Check again** when offered.
 - For an automation, inspect its latest run and schedule. Minnow must be running when it is due. If the prompt needs approval, interactive input, or a desktop-only tool, the run cannot get it.
 
 When reporting a problem, include the Minnow version, OS, the steps that reproduce it, the expected result, and the first error. [Minnow issues](https://github.com/HenriGrimm/Minnow/issues)

@@ -82,6 +82,7 @@ export {
 } from './file-tree-indent';
 
 const listingCache = new Map<string, ParsedListing>();
+let listingScopeVersion = 0;
 const loadingDirs = new Set<string>();
 
 /**
@@ -272,8 +273,12 @@ async function fetchListing(relativePath: string): Promise<ParsedListing | { err
   const cached = listingCache.get(relativePath);
   if (cached) return cached;
 
+  const scope = listingScopeVersion;
+  const workspace = getWorkspacePath();
   const parsed = await readListing(relativePath, buildFileTreeToolContext());
-  if (!('error' in parsed)) listingCache.set(relativePath, parsed);
+  if (scope === listingScopeVersion && workspace === getWorkspacePath() && !('error' in parsed)) {
+    listingCache.set(relativePath, parsed);
+  }
   return parsed;
 }
 
@@ -500,6 +505,11 @@ async function refreshFileTreeForListingRootChange(
 ): Promise<void> {
   invalidateListingCacheScopes(prevRoot, nextRoot, getWorkspacePath().trim() || undefined);
   setFileTreeListingWorkspaceRoot(nextRoot);
+  const scope = ++listingScopeVersion;
+  listingCache.clear();
+  loadingDirs.clear();
+  gitStatusMap.clear();
+  invalidateFileTreeIndex();
 
   patchFilePanelState({
     expandedDirs: [],
@@ -508,11 +518,9 @@ async function refreshFileTreeForListingRootChange(
     activeViewerTab: null,
   });
 
-  const { closeFileViewerForce } = await import('./file-viewer');
-  closeFileViewerForce();
-
-  listingCache.clear();
-  invalidateFileTreeIndex();
+  const { leaveFileViewerCheckout } = await import('./file-viewer');
+  if (scope !== listingScopeVersion) return;
+  leaveFileViewerCheckout(prevRoot ?? getWorkspacePath());
 
   await refreshFileTree();
 }
@@ -531,6 +539,7 @@ export async function syncFileTreeToPanelWorktree(
     await refreshFileTree();
   }
 
+  if (!fileTreeListingRootsEqual(nextRoot, getFileTreeListingWorkspaceRoot())) return;
   startFileTreeGitStatusPoll(nextRoot ?? getWorkspacePath());
   syncFileSidebarTitleFromFileTree();
   void import('./terminal-panel').then((m) => m.syncTerminalFromFileExplorer());
@@ -1071,6 +1080,8 @@ export async function refreshFileTree(): Promise<void> {
 }
 
 async function refreshFileTreeInner(): Promise<void> {
+  const scope = listingScopeVersion;
+  const workspace = getWorkspacePath();
   const scrollTop = captureFileTreeScrollTop();
   invalidateFileTreeCache();
   if (!isFileTreeServerAvailable()) {
@@ -1086,9 +1097,10 @@ async function refreshFileTreeInner(): Promise<void> {
   try {
     rootResult = await fetchListing(root);
   } finally {
-    loadingDirs.delete(root);
+    if (scope === listingScopeVersion) loadingDirs.delete(root);
   }
 
+  if (scope !== listingScopeVersion || workspace !== getWorkspacePath()) return;
   if ('error' in rootResult) {
     const host = document.getElementById('fileTreeHost');
     if (host) renderTreeError(host, rootResult.error);
@@ -1105,14 +1117,16 @@ async function refreshFileTreeInner(): Promise<void> {
         try {
           await fetchListing(dir);
         } finally {
-          loadingDirs.delete(dir);
+          if (scope === listingScopeVersion) loadingDirs.delete(dir);
         }
       }),
     );
   }
 
-  renderFileTree();
-  restoreFileTreeScrollTop(scrollTop);
+  if (scope === listingScopeVersion && workspace === getWorkspacePath()) {
+    renderFileTree();
+    restoreFileTreeScrollTop(scrollTop);
+  }
 }
 
 export async function initFileTreeIfNeeded(): Promise<void> {

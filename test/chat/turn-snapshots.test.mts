@@ -67,10 +67,10 @@ afterEach(() => {
 });
 
 describe('turn-snapshots', () => {
-  test('shouldCaptureTurnSnapshots blocks board / worktree / orchestrate', () => {
+  test('shouldCaptureTurnSnapshots handles legacy chats and skips isolated worktrees', () => {
     assert.equal(shouldCaptureTurnSnapshots(makeChat()), true);
-    assert.equal(shouldCaptureTurnSnapshots(makeChat({ modeId: 'orchestrate' })), false);
-    assert.equal(shouldCaptureTurnSnapshots(makeChat({ boardTaskId: 't1' })), false);
+    assert.equal(shouldCaptureTurnSnapshots(makeChat({ modeId: 'orchestrate' })), true);
+    assert.equal(shouldCaptureTurnSnapshots(makeChat({ boardTaskId: 't1' })), true);
     assert.equal(shouldCaptureTurnSnapshots(makeChat({ worktreeRoot: 'C:\\wt' })), false);
   });
 

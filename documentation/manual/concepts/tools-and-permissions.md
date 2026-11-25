@@ -1,12 +1,12 @@
 # Tools and permissions
 
-Choose how independently the agent can work using the permission control in the composer. This setting applies across chats, boards, and agent tools, including shell commands, browser actions, MCP servers, and plugins.
+Choose how independently the agent can work using the permission control in the composer. This setting applies across chats and agent tools, including shell commands, browser actions, MCP servers, and plugins.
 
 | Choose | Use it for |
 | --- | --- |
 | **Manual** | Review edits, commands, and actions outside the workspace as they come up. Routine local reads and searches can run. |
 | **Auto** | Let routine in-workspace work proceed. Minnow asks about actions it classifies as risky, destructive, remote, or outside the workspace. |
-| **Full access** | Give tools broad authority without routine prompts. Minnow still protects its secret stores. |
+| **Full access** | Run authorized actions without approval prompts. Hard limits, such as secret-store protection and turn restrictions, still apply. |
 
 The limit captured for a running turn or delegated agent still applies. Send a new turn to use a higher level. For one task with narrower scope, start the turn with **/ask** for read-only work or **/plan** to allow plan writes under `documentation/plans/`. Issue tools can still manage issues during **/plan**, with deletion blocked.
 

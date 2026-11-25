@@ -84,6 +84,7 @@ import { findChatById, getActiveChat, sessionState } from '../state/sessions';
 import { listWorktrees } from '../state/worktree-service';
 
 import { getWorkspacePath } from '../state/workspace';
+import { isCodeAppForeground } from './preview-restore-policy';
 
 import {
   panelPathsEqual,
@@ -164,6 +165,7 @@ let graphiteReviewBtn: HTMLButtonElement | null = null;
 let graphiteCheckoutTarget: { chatId: string; kind: 'checkout' | 'commit' } | null = null;
 let graphiteGitChatId: string | null = null;
 let graphiteWorkspaceDiffChatId: string | null = null;
+let fileBrowseChatId: string | null = null;
 let graphiteReviewRoot: HTMLElement | null = null;
 let graphiteReviewAbort: AbortController | null = null;
 let recovery: ReturnType<typeof createGitRecoveryNotice> | null = null;
@@ -297,11 +299,20 @@ export function getGitPanelGitCwd(): string {
   return getEffectiveCwdArg() ?? getWorkspacePath();
 }
 
-/** Workspace Diff can browse the main checkout while Files and Terminal follow the thread. */
+/** Only a thread's Files or Terminal surface opts the shared explorer into its checkout. */
 export function getGitPanelFileBrowseCwd(): string | undefined {
-  if (!graphiteWorkspaceDiffChatId || !sessionState) return panelCwd;
-  const diffChat = graphiteGitChatId === graphiteWorkspaceDiffChatId ? findChatById(graphiteGitChatId) : undefined;
-  return resolvePanelBrowseCwd({ chat: diffChat ?? getActiveChat(), groups: sessionState.groups });
+  if (panelCwdUserOverride) return panelCwd;
+  if (!sessionState || !fileBrowseChatId) return undefined;
+  const chat = findChatById(fileBrowseChatId);
+  if (!chat) return undefined;
+  return resolvePanelBrowseCwd({ chat, groups: sessionState.groups });
+}
+
+export async function browseThreadFiles(chat?: Chat): Promise<void> {
+  const next = chat?.id ?? null;
+  if (next === fileBrowseChatId) return;
+  fileBrowseChatId = next;
+  return syncFileTreeGitPollCwd();
 }
 
 /** Set panel cwd (Git Center lightbox sync). */
@@ -1360,6 +1371,10 @@ function paintFollowBar(): void {
   follow.className = 'git-panel-follow-bar__action';
   follow.textContent = 'Show chat’s checkout';
   follow.addEventListener('click', () => {
+    if (!graphiteGitChatId) {
+      setGitPanelCwd(chatCwd);
+      return;
+    }
     clearPanelCwdUserOverride();
     syncPanelFromActiveChat({ forceFileTree: true });
     void refreshGitPanel();
@@ -2438,19 +2453,25 @@ export function toggleGitSidePanel(): void {
 export function syncPanelFromActiveChat(options?: { forceFileTree?: boolean }): void {
   if (!sessionState) return;
   refreshGraphiteSurfaceLayout();
-  if (panelCwdUserOverride || (panelOpen && graphiteWorkspaceDiffChatId)) {
-    // The active chat may have changed under a manual pick; keep the bar honest.
+  if (panelCwdUserOverride) {
     paintFollowBar();
     return;
   }
 
   const chat = getActiveChat();
-  if (document.documentElement.classList.contains('mn-mobile-app') && graphiteGitChatId && graphiteGitChatId !== chat.id) return;
-  const nextCwd = resolvePanelBrowseCwd({
-    chat,
-    groups: sessionState.groups,
-  });
+  const mobile = document.documentElement.classList.contains('mn-mobile-app');
+  if (mobile && graphiteGitChatId && graphiteGitChatId !== chat.id) return;
+  if (!mobile && (!isCodeAppForeground() || fileBrowseChatId !== chat.id)) fileBrowseChatId = null;
+  if (panelOpen && graphiteWorkspaceDiffChatId === chat.id) {
+    // Workspace Diff has its own target even when Factory binds the Files and Terminal tabs.
+    void syncFileTreeGitPollCwd(options?.forceFileTree);
+    return;
+  }
+  if (graphiteWorkspaceDiffChatId !== chat.id) graphiteWorkspaceDiffChatId = null;
   const ws = getWorkspacePath().trim();
+  const nextCwd = panelOpen && graphiteGitChatId === chat.id
+    ? resolvePanelBrowseCwd({ chat, groups: sessionState.groups })
+    : ws;
   const worktree = resolvePanelWorktreeCwd(nextCwd);
   const before = cwdGeneration;
   setPanelCwd(worktree ?? (ws || undefined));
@@ -2569,6 +2590,7 @@ export function resetGitPanelForTests(): void {
   graphiteReviewBtn = null;
   graphiteGitChatId = null;
   graphiteWorkspaceDiffChatId = null;
+  fileBrowseChatId = null;
   graphiteCheckoutTarget = null;
 
   panelCwd = undefined;

@@ -70,65 +70,6 @@ describe('ask_question notification producer', () => {
     assert.equal(row?.chatId, 'chat-a');
   });
 
-  test('pushes notification even when embedded plan screen owns the chat', async () => {
-    const planScreen = await import('../../src/ui/orchestrate-plan-screen.ts');
-    const chat = sessions.createEmptyChatObject('model-a');
-    chat.id = 'chat-a';
-    chat.modeId = 'plan';
-    sessions.setSessionStateForTests({
-      version: 5,
-      activeId: 'chat-a',
-      chats: [chat],
-      groups: [],
-    });
-    instances.launchInstance('code');
-
-    const chatArea = document.createElement('div');
-    chatArea.id = 'chatArea';
-    document.body.appendChild(chatArea);
-
-    planScreen.renderOrchestratePlanScreen({
-      phase: 'working',
-      chatId: 'chat-a',
-      savedPrompt: 'Build a dashboard',
-    });
-
-    askQuestion.notifyAskQuestionShown('chat-a', sampleArgs);
-    assert.equal(store.getUnreadNotificationCount(), 1);
-    assert.equal(store.getNotifications()[0]?.kind, 'chat_question');
-
-    planScreen.resetOrchestratePlanScreenForTests();
-  });
-
-  test('pushes notification when plan screen is suspended', async () => {
-    const planScreen = await import('../../src/ui/orchestrate-plan-screen.ts');
-    const chat = sessions.createEmptyChatObject('model-a');
-    chat.id = 'chat-a';
-    chat.modeId = 'plan';
-    sessions.setSessionStateForTests({
-      version: 5,
-      activeId: 'chat-a',
-      chats: [chat],
-      groups: [],
-    });
-    const chatArea = document.createElement('div');
-    chatArea.id = 'chatArea';
-    document.body.appendChild(chatArea);
-    planScreen.renderOrchestratePlanScreen({
-      phase: 'working',
-      chatId: 'chat-a',
-      savedPrompt: 'Build a dashboard',
-    });
-    planScreen.suspendOrchestratePlanScreenOnLeave('chat-a');
-    instances.showDesktop();
-
-    askQuestion.notifyAskQuestionShown('chat-a', sampleArgs);
-    assert.equal(store.getUnreadNotificationCount(), 1);
-    assert.equal(store.getNotifications()[0]?.kind, 'chat_question');
-
-    planScreen.resetOrchestratePlanScreenForTests();
-  });
-
   test('dedupes identical question batches', () => {
     const chat = sessions.createEmptyChatObject('model-a');
     chat.id = 'chat-a';

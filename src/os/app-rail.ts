@@ -27,7 +27,7 @@ import { subscribeIssuesChanges } from '../state/issues-events';
 import { getWorkspacePath } from '../state/workspace';
 import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { isCoarsePointer } from '../ui/mobile-layout';
-import { getCurrentRoute, launchApp, navigateToCodeBoards } from './router';
+import { launchApp } from './router';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import type { AppId } from './types';
 import type { IssueCard } from '../types';
@@ -410,21 +410,6 @@ export function initAppRail(root: HTMLElement): () => void {
 
   const nav = document.createElement('div');
   nav.className = 'mn-os-app-rail__nav';
-  const boards = document.createElement('button');
-  boards.type = 'button';
-  boards.className = 'mn-os-app-rail__btn mn-os-app-rail__boards';
-  const boardsLabel = document.createElement('span');
-  boardsLabel.className = 'mn-os-app-rail__label';
-  boardsLabel.textContent = 'Boards';
-  boards.append(createIcon('boardView', { size: 14 }), boardsLabel);
-  boards.addEventListener('click', navigateToCodeBoards);
-
-  function syncBoards(): void {
-    const active = getForegroundAppId() === 'code' && getCurrentRoute().codeSection === 'boards';
-    boards.classList.toggle('is-active', active);
-    boards.setAttribute('aria-current', active ? 'page' : 'false');
-  }
-
   const tileByAppId = new Map<AppId, HTMLButtonElement>();
   /** Per-tile listener disposers; cleared on every rebuild. */
   let tileDisposers: Array<() => void> = [];
@@ -445,10 +430,8 @@ export function initAppRail(root: HTMLElement): () => void {
       tileByAppId.set(app.id, btn);
       nav.appendChild(btn);
     }
-    nav.appendChild(boards);
 
     syncRailButtons(tileByAppId);
-    syncBoards();
   }
 
   const onNavPointerLeave = (): void => {
@@ -462,7 +445,6 @@ export function initAppRail(root: HTMLElement): () => void {
 
   const onInstances = (): void => {
     syncRailButtons(tileByAppId);
-    syncBoards();
     syncRailVisibility(root);
   };
 
@@ -479,13 +461,11 @@ export function initAppRail(root: HTMLElement): () => void {
 
   window.addEventListener('resize', onLayoutChange, { passive: true });
   window.addEventListener('scroll', onLayoutChange, { passive: true, capture: true });
-  window.addEventListener('hashchange', syncBoards);
 
   return () => {
     nav.removeEventListener('pointerleave', onNavPointerLeave);
     window.removeEventListener('resize', onLayoutChange);
     window.removeEventListener('scroll', onLayoutChange, true);
-    window.removeEventListener('hashchange', syncBoards);
     unsubInstances();
     unsubPrefs();
     unsubRegistry();

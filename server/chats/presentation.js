@@ -1,4 +1,5 @@
 import { validateModelSelection } from './contracts.js';
+import { withFactoryActivity } from './factory-activity.js';
 
 const active = new Set(['running', 'loading_model']);
 const terminal = new Set(['completed', 'failed', 'stopped', 'settled', 'cancelled', 'recovery_required']);
@@ -27,7 +28,7 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
     if (execution?.status === 'recovery_required' && needsManualRecovery?.(chatId, execution.executionId)) execution.needsManualRecovery = true;
     return { kind: 'chat-changed', chatId, sequence: ++sequence, at: now(),
       execution: execution ? { executionId: execution.executionId, status: execution.status } : null, requests,
-      fields: { ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId),
+      fields: { ...(chat.factoryRun ? { factoryGoal: chat.activeGoal?.factoryRunId ? chat.activeGoal : null } : {}), ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId),
         ...(chat.workspacePreparation ? { workspacePreparation: chat.workspacePreparation, worktreeSetupRequired: chat.worktreeSetupRequired ?? null,
           worktreeEnabled: chat.worktreeEnabled ?? null, gitBranch: chat.gitBranch ?? null, chatWorktreeManaged: chat.chatWorktreeManaged ?? null } : {}),
         ...(!chat.workspacePreparation && chat.explicitOrdinaryRoot && chat.worktreeEnabled ? { worktreeEnabled: true } : {}),
@@ -51,6 +52,7 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
     const output = Object.fromEntries(fields.map(name => [name, chat[name] ?? null]));
     const profile = repository.getLatestProfile(chatId)?.snapshot;
     const selection = validateModelSelection(profile?.modelSelection);
+    if (chat.factoryRun) output.factoryGoal = chat.activeGoal?.factoryRunId ? chat.activeGoal : null;
     output.agentModelSelection = selection.ok ? selection.value : null;
     if (selection.ok) {
       output.reasoningEffort = selection.value.options?.reasoningEffort ?? null;
@@ -84,7 +86,7 @@ export function createChatPresentation({ repository, needsManualRecovery, now = 
       output.historyRewriteRevision = chat.historyRewrite?.revision ?? 0;
       const transcript = repository.readTranscript(chatId)?.messages ?? [];
       const start = Math.max(0, transcript.length - 20);
-      result.history = { start, length: transcript.length, messages: transcript.slice(start) };
+      result.history = { start, length: transcript.length, messages: withFactoryActivity(repository.getDatabase(), chatId, transcript.slice(start)) };
     }
     return result;
   }

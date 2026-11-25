@@ -11,7 +11,6 @@ import {
   touchChat,
 } from '../state/sessions';
 import { findRunById, noteRunOutputIndex } from '../state/runs-store';
-import { isBoardTaskChat } from '../state/chat-groups';
 import { markChatTurnError, recordAssistantReplyOnChat } from '../ui/chat-item-dot';
 import { renderSidebar } from '../ui/sidebar';
 import { setStatus } from '../ui/status';
@@ -345,16 +344,6 @@ export function settleFailedTurn(
     if (isStreamDomVisible(chat.id)) {
       if (chrome.wrap) removeOrphanStreamingRow(chrome.wrap, chrome.streamStatus);
       renderChatFromHistory(chat);
-    }
-  } else if (isBoardTaskChat(chat)) {
-    const repaired = repairSessionHistoryTail(chat);
-    if (repaired) {
-      recordChatMessage(chat);
-      scheduleSaveSessions();
-      renderSidebar();
-      if (isStreamDomVisible(chat.id)) {
-        renderChatFromHistory(chat);
-      }
     }
   } else if (turnProducedOutput(chat.history, failedForkIndex)) {
     preservedTurnOutput = true;

@@ -1,4 +1,5 @@
 import { gitFileDiff } from '../state/git-api';
+import { getWorkspacePath } from '../state/workspace';
 
 let requestGeneration = 0;
 
@@ -14,7 +15,7 @@ export async function openGitFileEditor(options: { path: string; staged: boolean
   const viewer = await import('./file-viewer');
   if (!isCurrent()) return { ok: false, cancelled: true };
   if (result.binary) {
-    await viewer.openFileInViewer(options.path);
+    await viewer.openFileInViewer(options.path, { workspaceRoot: options.cwd ?? getWorkspacePath() });
     return { ok: true };
   }
   const opened = await viewer.openGitFileInEditor({ ...options,

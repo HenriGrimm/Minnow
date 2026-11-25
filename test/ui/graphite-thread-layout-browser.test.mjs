@@ -15,7 +15,7 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-layout-'));
   const styles = await Promise.all([
     'tokens', 'scrollbars', 'global', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
-    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar', 'sub-agent-drawer', 'mobile-app', 'automations', 'orchestrator-boards',
+    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces', 'sidebar', 'sub-agent-drawer', 'mobile-app', 'automations',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -382,36 +382,6 @@ test('Code and Automations lay out their chat transcripts', { timeout: 30_000 },
       hit: card.contains(document.elementFromPoint(left + 1, top + 1)) };
   })()`);
   assert.deepEqual(corner, { hovered: true, overflow: 'clip', topRadius: 14, hit: false });
-
-  // Exercise retained DOM directly: lifecycle cleanup cannot be assumed after HMR
-  // or a late chat update. Boards must own the entire viewport regardless.
-  for (const width of [1100, 1920, 3840]) {
-    await session.client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, mobile: false, deviceScaleFactor: 1 });
-    const { bounds, rect, ...board } = await session.evaluate(`(() => {
-      const column = document.getElementById('mainColumn');
-      column.classList.add('main-column--orchestrator-boards');
-      const area = document.getElementById('chatArea');
-      area.classList.add('chat-area--orchestrator-boards');
-      area.innerHTML = '<div id="orchestratorBoardsRoot" class="ov2">Boards</div>';
-      const viewport = column.querySelector('.chat-viewport');
-      const panel = viewport.querySelector('.chat-todo-panel');
-      const root = area.firstElementChild;
-      const bounds = viewport.getBoundingClientRect();
-      const rect = root.getBoundingClientRect();
-      return { bounds: bounds.toJSON(), rect: rect.toJSON(), hidden: panel.getClientRects().length === 0,
-        layout: getComputedStyle(viewport).display,
-        padding: getComputedStyle(area).padding,
-        fillsViewport: Math.abs(rect.left - bounds.left) <= 1 && Math.abs(rect.right - bounds.right) <= 1 &&
-          Math.abs(rect.top - bounds.top) <= 1 && Math.abs(rect.bottom - bounds.bottom) <= 1 };
-    })()`);
-    assert.deepEqual(board, { hidden: true, layout: 'flex', padding: '0px', fillsViewport: true }, JSON.stringify({ width, bounds, rect }));
-  }
-
-  assert.equal(await session.evaluate(`(() => {
-    document.getElementById('mainColumn').classList.remove('main-column--orchestrator-boards');
-    document.getElementById('chatArea').classList.remove('chat-area--orchestrator-boards');
-    return document.querySelector('.chat-todo-panel').getClientRects().length > 0;
-  })()`), true, 'returning to chat restores the retained checklist');
 
   await session.evaluate(`(() => {
     document.getElementById('workspaceSplit').remove();

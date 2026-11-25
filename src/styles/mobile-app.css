@@ -884,9 +884,7 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
 .m-thread #composerThinkingWrap,
 .m-thread #composerContextDocumentsWrap,
 .m-thread #composerCodeMapWrap,
-.m-thread #orchestratePlanStrip,
 .m-thread #workAgentDev,
-.m-thread #btnViewModeToggleBoard,
 .m-thread #composerToolsAnchor,
 .m-thread #composerOverflowAnchor {
   display: none !important;

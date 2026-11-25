@@ -33,7 +33,6 @@ import {
   issueActivityTarget,
   openIssueActivity,
   runIssueExpandWithAgent,
-  runIssueSendToBoard,
   openIssuePlanInEditor,
   ISSUE_FOREGROUND_CHAT_MODES,
 } from '../chat/issues/pipeline';
@@ -1152,16 +1151,6 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
               },
             },
             {
-              id: 'plan-to-board',
-              label: 'Send to board',
-              hint: workflowOk ? 'Launch an Orchestrate board from this plan' : 'Issue is closed',
-              disabled: !workflowOk || workflowBusy,
-              iconClass: 'fi-rr-layout-fluid',
-              onSelect: () => {
-                void runWorkflowAction(issue.id, 'board');
-              },
-            },
-            {
               id: 'plan-unlink',
               label: 'Unlink plan',
               hint: 'The file stays on disk',
@@ -2040,8 +2029,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         if (chip instanceof HTMLButtonElement) {
           chip.type = 'button';
           chip.title =
-            activityTarget.kind === 'board_chat'
-              ? 'Open board chat'
+            activityTarget.kind === 'chat'
+              ? 'Open linked chat'
               : 'View sub-agent chat';
           chip.addEventListener('click', () => {
             void openIssueActivity(issue).then((ok) => {
@@ -2222,9 +2211,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     return row;
   }
 
-  type WorkflowAction =
-    | { kind: 'foreground'; modeId: IssueForegroundChatMode }
-    | { kind: 'board' };
+  type WorkflowAction = { kind: 'foreground'; modeId: IssueForegroundChatMode };
 
   async function runWorkflowAction(
     issueId: string,
@@ -2267,9 +2254,6 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         }
         return;
       }
-      const result = await runIssueSendToBoard(issueId);
-      if (!result.ok) showIssuesToast(result.error || 'Send to board failed', 'error');
-      else showIssuesToast('Board started', 'success');
     } finally {
       workflowBusyIds.delete(issueId);
       refreshIssueDetailIfOpen();

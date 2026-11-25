@@ -48,8 +48,6 @@ import { bindFileViewerTabs } from './file-viewer-tabs';
 import { isLocalServerAvailable } from '../tools/config';
 import { getLocalServerAvailable } from '../tools/client';
 import { refreshWorkspaceUi } from './workspace-button';
-import { syncOrchestratePlanStripFromActiveChat } from './orchestrate-plan-selector';
-import { syncViewModeToggleFromActiveChat } from './view-mode-toggle';
 import { initGitPanel, syncPanelFromActiveChat } from './git-panel';
 import { syncComposerRunTargetFromActiveChat } from './composer-run-target';
 import { initSourceControlCenter } from './source-control-center-entry';
@@ -170,8 +168,6 @@ export function onFilePanelServerAvailabilityChanged(): void {
     }
     if (!sessionState) return;
     void refreshWorkspaceUi();
-    void syncOrchestratePlanStripFromActiveChat();
-    syncViewModeToggleFromActiveChat();
     syncPanelFromActiveChat({ forceFileTree: true });
     syncComposerRunTargetFromActiveChat();
     startFileTreeGitStatusPoll();

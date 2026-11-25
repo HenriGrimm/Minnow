@@ -10,7 +10,6 @@ describe('Code stage chrome', () => {
     ).join('\n');
     const stages = [
       { id: 'devServerScreenRoot' },
-      { id: 'orchestratorBoardsRoot' },
       { id: 'codeBrainMapRoot' },
     ] as Array<{ id: string; htmlClass?: string }>;
     for (const { id, htmlClass } of stages) {
@@ -37,17 +36,5 @@ describe('Code stage chrome', () => {
         }
       }
     }
-  });
-
-  test('hides the Code composer while the Boards surface is mounted', () => {
-    const css = readFileSync(
-      new URL('../../src/styles/orchestrator-boards.css', import.meta.url),
-      'utf8',
-    );
-    const marker = '.main-column.main-column--orchestrator-boards .input-bar';
-    const start = css.indexOf(marker);
-    assert.ok(start >= 0, 'composer hide selector must exist');
-    const rule = css.slice(start, css.indexOf('}', start));
-    assert.ok(rule.includes('display: none'), 'composer hide must be display:none');
   });
 });

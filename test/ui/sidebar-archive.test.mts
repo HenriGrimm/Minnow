@@ -118,7 +118,7 @@ test('a rejected attachment-only first send removes its temporary list row', () 
   assert.equal(ids(list).includes(sending.id), false);
 });
 
-test('bottom views count the current workspace and Unassigned, excluding boards and other folders', () => {
+test('bottom views count the current workspace and Unassigned, including legacy chats and excluding other workspaces', () => {
   const working = chat('working');
   const archived = chat('archived'); archived.archivedAt = 100;
   const unassigned = chat('legacy', ''); unassigned.archivedAt = 200;
@@ -127,15 +127,15 @@ test('bottom views count the current workspace and Unassigned, excluding boards 
   const list = setup([working, archived, unassigned, elsewhere, board]);
   assert.deepEqual(ids(list), ['working']);
   assert.equal(view('working').getAttribute('aria-label'), 'Working (1)');
-  assert.equal(view('archive').getAttribute('aria-label'), 'Archive (2)');
+  assert.equal(view('archive').getAttribute('aria-label'), 'Archive (3)');
   assert.equal(list.nextElementSibling?.id, 'chatListViews');
   view('archive').click();
-  assert.deepEqual(ids(list), ['legacy', 'archived']);
+  assert.deepEqual(ids(list), ['board', 'legacy', 'archived']);
   assert.equal(view('archive').getAttribute('aria-pressed'), 'true');
   assert.equal(list.getAttribute('aria-label'), 'Archived chats');
   renderSidebar();
   assert.equal(document.querySelectorAll('#chatListViews').length, 1);
-  assert.deepEqual(ids(list), ['legacy', 'archived']);
+  assert.deepEqual(ids(list), ['board', 'legacy', 'archived']);
 });
 
 test('right-click archive and restore preserve transcript, active chat, pin, group and activity across reload', () => {

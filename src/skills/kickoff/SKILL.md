@@ -63,7 +63,7 @@ Write for a junior developer by default: plain language, short sentences, and qu
    - **Done:** observable success criteria
    - **Risks:** the unknowns most likely to change the plan
 5. **Leave brand and visual taste alone.** Impeccable init (Stage 3) and the design stage ask about register, personality, anti-references, and accessibility; don't ask them here.
-6. **Execution.** Close the grilling with one `ask_question` card, "How would you like to build this?", with options **Build** (one agent works through the steps in this chat) and **Orchestrate** (several agents share the work on a task board). Reuse the user's stated preference. If they explicitly delegated this choice too, select Build and record that assumption. Otherwise wait for their decision. This is the same plan-format question Plan mode asks, so Stage 5 reuses the answer.
+6. **Execution.** Close the grilling with one `ask_question` card, "How would you like to build this?", with options **In this chat** (one agent works through the plan with you watching) and **Factory** (`/factory` builds the plan unattended on its own branch and comes back when it works). Reuse the user's stated preference. If they explicitly delegated this choice too, select Factory for a full app and In this chat for a smaller feature, and record that assumption. Both use the same Build plan format.
 7. **Recap.** Summarize the settled answers in a short list, marking anything the user deferred. Save it to `documentation/plans/references/<slug>-context.md`, headed with slug, Kind, Interface, Execution, and the PRD path.
 
 **Done when:** every branch is answered or explicitly deferred by the user, the slug and Execution are chosen, the recap is saved, and the user confirms it at the gate.
@@ -118,10 +118,8 @@ Do not implement anything: skip frontend-design's implement, inspect, and delive
 
 ## Finish
 
-The client shows Open plan / Build here / Orchestrate buttons once a plan is saved, so don't ask a next-step question. End with:
+The client shows Open plan / Build here / Run factory buttons once a plan is saved, so don't ask a next-step question. End with:
 
 - Every path written: context recap, PRD, `PRODUCT.md`, design artifact, and the plan
-- One line: **Recommended next step: Build** (smaller feature) or **Orchestrate** (larger feature or full app), matching the Execution choice
+- One line: **Recommended next step: Build here** (smaller feature) or **Run factory** (`/factory <plan path>`, larger feature or full app), matching the Execution choice
 - Open questions carried over from the PRD, if any
-
-If the user now wants the other execution path, the plan must be converted first: revise its type in Plan mode before they start.

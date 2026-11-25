@@ -17,13 +17,17 @@ async function git(args, cwd) {
   return result.stdout.trim();
 }
 
-export async function readGitBinding(cwd, { exactRoot = false, registered = false, rebasingBranch } = {}) {
+export async function readGitBinding(cwd, { exactRoot = false, registered = false, rebasingBranch, allowUnborn = false } = {}) {
   const canonical = await directory(cwd);
-  const [locations, current, head] = await Promise.all([
+  const [locations, current, revision] = await Promise.all([
     git(['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'], canonical),
     runProcess('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd: canonical, timeout: 10_000 }),
-    git(['rev-parse', '--verify', 'HEAD'], canonical),
+    runProcess('git', ['rev-parse', '--verify', '--quiet', 'HEAD'], { cwd: canonical, timeout: 10_000 }),
   ]);
+  if (revision.accumulationTruncated || revision.code !== 0 && !(allowUnborn && revision.code === 1)) {
+    throw denied('Cannot verify the worktree repository. Inspect it in Source Control before retrying.');
+  }
+  const head = revision.code === 0 ? revision.stdout.trim() : null;
   const [top, common, gitDir] = locations.split(/\r?\n/);
   let branch = current.code === 0 && !current.accumulationTruncated ? current.stdout.trim() : '';
   if (!branch && current.code === 1 && rebasingBranch) {
@@ -48,11 +52,25 @@ export async function readGitBinding(cwd, { exactRoot = false, registered = fals
   return { path: canonical, checkoutIdentity, commonIdentity, gitIdentity, branch, head };
 }
 
-export async function readWorktreeSource(cwd, { mirror } = {}) {
+export async function readWorktreeSource(cwd, { mirror, allowInitialization = false } = {}) {
   if (mirror === false) return readGitBinding(cwd);
   const source = await readMirroredSource(cwd);
   if (!source && mirror) throw denied('The source workspace repositories changed before setup.');
-  return source ?? readGitBinding(cwd);
+  if (source || !allowInitialization) return source ?? readGitBinding(cwd);
+  const canonical = await directory(cwd);
+  const marker = await fs.lstat(path.join(canonical, '.git')).catch(error => {
+    if (error.code !== 'ENOENT') throw error;
+    return null;
+  });
+  if (!marker) {
+    const probe = await runProcess('git', ['rev-parse', '--git-dir'], {
+      cwd: canonical, timeout: 10_000, env: { LC_ALL: 'C' },
+    });
+    if (probe.code === 128 && /not a git repository/i.test(probe.stderr)) {
+      return { path: canonical, checkoutIdentity: await readChatCheckoutIdentity(canonical), head: null };
+    }
+  }
+  return readGitBinding(canonical, { exactRoot: true, allowUnborn: marker?.isDirectory() });
 }
 
 export async function readMirroredSource(cwd) {

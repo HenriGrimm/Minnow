@@ -11,7 +11,7 @@ import {
 } from './derive.js';
 import { bundleAbandonmentEvidence } from './evidence.js';
 import { decide, wantsSameWorktree } from './policy.js';
-import { held, OPERATIONAL_CATEGORIES, TASK_REPAIR_LIMIT } from './recovery.js';
+import { held, OPERATIONAL_CATEGORIES, taskRecoveryHold, taskRepairFailures, TASK_REPAIR_LIMIT } from './recovery.js';
 
 // ── Task actions ─────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ export function nextAction(state, taskId) {
   if (!task) return { kind: 'none' };
   if (isSettled(task)) return { kind: 'none' };
   if (task.attempts.some((a) => !a.ended)) return { kind: 'none' };
-  if (held(state, taskId, 'builder') || held(state, taskId, 'tester') || held(state, taskId, 'merge')) return { kind: 'none' };
+  if (taskRecoveryHold(state, taskId)) return { kind: 'none' };
 
   const last = lastEndedAttempt(task);
   if (!last) {
@@ -50,14 +50,13 @@ export function nextAction(state, taskId) {
   if (state.recoveryVersion && last.outcome !== 'pass') {
     if (last.role === 'merge') {
       if (last.outcome === 'rebased') return { kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: true };
-      if (task.attempts.filter((attempt) => !attempt.retired && attempt.ended && attempt.role === 'merge' && !['pass', 'rebased'].includes(attempt.outcome)).length >= (state.recoveryLimits?.task ?? TASK_REPAIR_LIMIT)) {
+      if (taskRepairFailures(task, last.role).length >= (state.recoveryLimits?.task ?? TASK_REPAIR_LIMIT)) {
         return { kind: 'abandon', reason: 'repair-budget-exhausted', evidence: { summary: 'Repeated merge repairs did not resolve the failure. Review the recorded Git diagnosis.' } };
       }
       return { kind: 'start', role: last.outcome === 'conflicted' ? 'builder' : 'merge', seedKind: 'rebase', sameWorktree: true };
     }
-    const failures = task.attempts.filter((attempt) => attempt.ended && !attempt.retired && attempt.outcome !== 'pass');
     const operational = OPERATIONAL_CATEGORIES.includes(last.evidence?.failure?.category);
-    const repairFailures = failures.filter((attempt) => !OPERATIONAL_CATEGORIES.includes(attempt.evidence?.failure?.category));
+    const repairFailures = taskRepairFailures(task, last.role);
     const fingerprint = last.evidence?.failure?.fingerprint;
     const repeated = fingerprint && repairFailures.filter((attempt) => attempt.evidence?.failure?.fingerprint === fingerprint);
     const diagnosed = repeated && repeated.some((attempt) => attempt.seedKind === 'diagnose');

@@ -8,7 +8,7 @@
 
 import { el } from './dom';
 
-export type MobileTabId = 'chats' | 'boards' | 'issues' | 'files';
+export type MobileTabId = 'chats' | 'issues' | 'files';
 
 export interface MobileScreen {
   /** Stable key, e.g. `chat:<id>`; pushing the top screen's key again is a no-op. */

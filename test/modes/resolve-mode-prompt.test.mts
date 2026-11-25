@@ -27,7 +27,7 @@ describe('resolveModePromptPath', () => {
 
   test('orchestrate', () => {
     assert.ok(
-      resolveModePromptPath('orchestrate').endsWith('modes/orchestrate.full.md'),
+      resolveModePromptPath('orchestrate').endsWith('modes/build.full.md'),
     );
   });
 

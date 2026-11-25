@@ -855,7 +855,7 @@ export function renderToolResult(
   attachments?: ToolImageAttachment[],
   toolArgs?: Record<string, unknown> | unknown,
   codeChange?: CodeChangeStats,
-  options: { showFailure?: boolean } = {},
+  options: { showFailure?: boolean; failed?: boolean } = {},
 ): void {
   const details = wrap.querySelector('.tool-call-details');
   const summary = wrap.querySelector('.tool-call-summary');
@@ -864,7 +864,7 @@ export function renderToolResult(
   if (!details || !summary || !statusGlyph || !body) return;
 
   const toolName = wrap.dataset.toolName || 'tool';
-  const failed = isToolResultFailure(result);
+  const failed = options.failed ?? isToolResultFailure(result);
   wrap.hidden = failed && !options.showFailure;
   if (wrap.hidden) {
     wrap.removeAttribute('aria-busy');

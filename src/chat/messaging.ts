@@ -33,11 +33,14 @@ import {
   getActiveChat,
   getActiveGoal,
   getDurablySavedChatRevision,
+  ensureChatHistoryLoaded,
+  canArmSkillGoal,
   isGoalLoopActive,
   markChatDirty,
   persistSessionsBeforeDeliveryAck,
   scheduleSaveSessions,
   sessionState,
+  setActiveGoal,
   touchChat,
 } from '../state/sessions';
 import { canSendImagesToModel } from '../providers/vision-model.ts';
@@ -127,7 +130,7 @@ export {
 /** Non-tool send (legacy / internal). */
 export { sendMessage as sendMessagePlain } from '../api/chat';
 
-// ── Options ──────────────────────────────────────────────────────────────────
+// â”€â”€ Options â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Send the composer text with tool calling. */
 export interface ComposerSendOptions extends Partial<ComposerSurface> {
@@ -155,7 +158,7 @@ export interface SendProgrammaticChatTextOptions {
   requiredSkillId?: string;
   /** Reject a handoff if its turn could not run to completion. */
   requireCompletedTurn?: boolean;
-  /** Pre-adjusted slash input (orchestrate plan injection); defaults to `text`. */
+  /** Text to parse for a slash skill, if different from `text`. */
   slashInput?: string;
   titleSeed?: string;
   deferTitleUntilTurnEnd?: boolean;
@@ -168,7 +171,16 @@ export interface SendProgrammaticChatTextOptions {
   reportStatus?: (level: 'ok' | 'err', message: string) => void;
 }
 
-// ── Programmatic ─────────────────────────────────────────────────────────────
+// â”€â”€ Programmatic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+async function routeChatInput(chat: Chat, factory: boolean): Promise<void> {
+  const startingFactory = factory && canArmSkillGoal(chat) && chat.chatCommandVersion !== 1;
+  if (startingFactory && chat.historyLoaded === false) await ensureChatHistoryLoaded(chat.id);
+  const route = await ensureOrdinaryChatRoute(chat);
+  if (startingFactory && route !== 'server') {
+    throw new Error('Automatic factory recovery requires a Code chat connected to the local Minnow server. Open a new Code chat in this project and send the plan there.');
+  }
+}
 
 /** The renderer selects identities; only the server resolves their instruction bodies. */
 function managedSendContext(chat: Chat, text: string, options: SendProgrammaticChatTextOptions) {
@@ -209,7 +221,8 @@ export async function sendProgrammaticChatText(
     ? resolveComposerSurface(options.composerSurface).inputEl : null;
   const inputBeforeAdmission = composerInput?.value;
   if (text.trim() || options.validAttachments?.length || options.slashInput?.trim()) {
-    await ensureOrdinaryChatRoute(chat);
+    const factory = options.requiredSkillId === 'factory' || (options.parseSlash !== false && /^\/factory(?:\s|$)/i.test((options.slashInput ?? text).trim()));
+    await routeChatInput(chat, factory);
   }
   if (chat.chatCommandVersion === 1) {
     options.signal?.throwIfAborted();
@@ -315,6 +328,7 @@ export async function sendProgrammaticChatText(
   // Boot owns server detection, and MCP/plugin settings refresh their catalogs.
   // Re-probing here delayed every first turn before its user row could be painted.
   let skillBody: string | null = null;
+  let skillArmedGoal = false;
   if (skillId) {
     const skill = await resolveActiveSkill(skillId);
     if (!skill?.body?.trim()) {
@@ -334,6 +348,12 @@ export async function sendProgrammaticChatText(
     }
     if (skillId === PARTYMODE_SKILL_ID) {
       skillBody = augmentPartyModeSkillBody(skillBody);
+    }
+    // A skill with `goal:` front matter (`/factory`) keeps working until its condition holds.
+    // Only an explicit composer invocation arms it, never a pinned repeat or a running goal/loop/chain.
+    if (skill.goal && slashSkillId === skillId && canArmSkillGoal(chat)) {
+      setActiveGoal(chat, skill.goal, skillId);
+      skillArmedGoal = true;
     }
   }
 
@@ -398,7 +418,7 @@ export async function sendProgrammaticChatText(
     firstUserSend,
     skillBody,
     composerSurface: options.composerSurface,
-    goalDriven: options.goalDriven ?? false,
+    goalDriven: options.goalDriven || skillArmedGoal,
     ephemeralContext: options.ephemeralContext,
     ownsGlobalStreaming:
       options.ownsGlobalStreaming ?? chat.id === getActiveChat().id,
@@ -410,7 +430,7 @@ export async function sendProgrammaticChatText(
   }
 }
 
-// ── Tools ────────────────────────────────────────────────────────────────────
+// â”€â”€ Tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function sendMessageWithTools(
   composer?: ComposerSendOptions,
@@ -473,7 +493,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
   if ((rawTextEarly || attachmentsAtSend.length) && !isPluginSlashCommand(rawTextEarly) &&
       !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(rawTextEarly)) {
     if (chat.chatCommandVersion !== 1) flushComposerDraftSessionSave();
-    try { await ensureOrdinaryChatRoute(chat); }
+    try { await routeChatInput(chat, /^\/factory(?:\s|$)/i.test(rawTextEarly)); }
     catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); return; }
     // Server admission belongs to the captured conversation, not its mounted
     // composer. Navigating during promotion must not silently abandon Send.
@@ -569,7 +589,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     }
     return;
   }
-  // /followup arms a chain and is never sent to the model — deliberately handled
+  // /followup arms a chain and is never sent to the model â€” deliberately handled
   // before the streaming branch, since typing it while the last turn is still
   // running is the normal case (a queued slash would be sent as literal text).
   const followupDispatch = handleFollowupCommand(chat, rawTextEarly, setStatus);
@@ -709,7 +729,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
   if (!draftSubmission) replacePendingAttachments(resolvedAttachments);
 
   if (attachmentsHaveImages(validAttachments) && !canSendImagesToModel(sendModelId)) {
-    setStatus('err', 'This model cannot read images — sending the text only');
+    setStatus('err', 'This model cannot read images â€” sending the text only');
   }
 
   if (!draftSubmission && !goalDispatch && !chat.worktreeEnabled) {
@@ -736,7 +756,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
   });
 }
 
-// ── Send ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Send â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Send with optional composer surface override (defaults to foreground app). */
 export async function sendMessage(

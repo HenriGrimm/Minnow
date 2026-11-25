@@ -7,34 +7,13 @@ import {
   abortChatTitleGeneration,
   listTitleJobInflightChatIds,
 } from './titles/inflight';
-import { getPlannerChatForGroup, isLeftoverBoardRunning } from '../state/chat-groups';
 import { buildAgentActivitySnapshot } from '../state/agent-activity-registry';
 import { getChatItemDotContext } from '../ui/chat-item-dot';
 import { sessionState } from '../state/sessions';
-import type { ChatGroup, LeftoverBoardTask } from '../types';
 import { forceCloseAskQuestionModal } from '../ui/question-cards-modal';
 import { sendManagedChatAction } from './managed-chat-client';
 import { chatReadOnlyReason } from '../state/chat-relationships';
 import { reportBackgroundError } from '../boot/report-background-error';
-
-function leftoverBoardHasLiveWork(group: ChatGroup): boolean {
-  if (isLeftoverBoardRunning(group)) return true;
-  const board = group.orchestrateBoard;
-  if (!board) return false;
-  return board.tasks.some(
-    (t: LeftoverBoardTask) =>
-      Boolean(t.chatId?.trim()) &&
-      (t.status === 'in_progress' || t.status === 'testing' || t.status === 'merging'),
-  );
-}
-
-function hasRunningBoardWork(): boolean {
-  if (!sessionState) return false;
-  for (const group of sessionState.groups ?? []) {
-    if (leftoverBoardHasLiveWork(group)) return true;
-  }
-  return false;
-}
 
 function hasAgentActivityPanelRows(): boolean {
   if (!sessionState) return false;
@@ -56,7 +35,6 @@ function hasAgentActivityPanelRows(): boolean {
 export function hasStopAllAgentActivityTargets(): boolean {
   if (!sessionState) return false;
   if (hasAgentActivityPanelRows()) return true;
-  if (hasRunningBoardWork()) return true;
   if (streamingChatIds.size > 0) return true;
   if (abortByChatId.size > 0) return true;
   return false;
@@ -98,21 +76,6 @@ export function stopAllAgentActivity(): void {
       void sendManagedChatAction(chat.id, 'stop', { executionId: execution.executionId, scope: 'tree' })
         .catch(error => reportBackgroundError('activity-stop-all', error));
     }
-    for (const group of sessionState.groups ?? []) {
-      if (!leftoverBoardHasLiveWork(group)) continue;
-      const planner = getPlannerChatForGroup(group);
-      if (planner) {
-        stopGeneration(planner.id, 'user');
-        handledChatIds.add(planner.id);
-      }
-      for (const task of group.orchestrateBoard?.tasks ?? []) {
-        const chatId = task.chatId?.trim();
-        if (!chatId) continue;
-        stopGeneration(chatId, 'user');
-        handledChatIds.add(chatId);
-      }
-    }
-
   }
 
   for (const chatId of streamingChatIds) {

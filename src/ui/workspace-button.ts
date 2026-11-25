@@ -1,6 +1,6 @@
 import { isOsShellEnabled } from '../os/page-bridge';
 import type { WorkspaceInfo } from '../config/workspace-api';
-import { executeWorkspaceSwitch, dismissBoardViewOutsideWorkspace } from './workspace-switch-guard';
+import { executeWorkspaceSwitch } from './workspace-switch-guard';
 import {
   getWorkspacePath,
   loadWorkspaceFromServer,
@@ -72,7 +72,6 @@ export function updateWorkspaceButtonLabel(label: string, fullPath: string): voi
  */
 export async function applyWorkspaceSwitch(info: WorkspaceInfo): Promise<void> {
   const previousPath = getWorkspacePath();
-  await dismissBoardViewOutsideWorkspace(info.path);
   clearCachesForWorkspace(previousPath);
   setWorkspaceFromServer(info);
   updateWorkspaceButtonLabel(info.label, info.path);
@@ -114,12 +113,6 @@ export async function applyWorkspaceSwitch(info: WorkspaceInfo): Promise<void> {
   );
   if (isSourceControlCenterOpen()) {
     refreshSourceControlCenter();
-  }
-  const { isBoardsViewOpen, refreshBoardsViewAfterWorkspaceSwitch } = await import(
-    '../orchestrator/boards-view'
-  );
-  if (isBoardsViewOpen()) {
-    refreshBoardsViewAfterWorkspaceSwitch();
   }
   const { isDevServerScreenOpen, refreshDevServerWorktreesAfterWorkspaceSwitch } = await import(
     './dev-server-screen'

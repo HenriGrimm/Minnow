@@ -44,12 +44,11 @@ function chat(
   };
 }
 
-function lookup(chats: Chat[], streaming: string[] = [], boards: Record<string, { id: string; name: string }> = {}): IssuePeekChatLookup {
+function lookup(chats: Chat[], streaming: string[] = []): IssuePeekChatLookup {
   const byId = new Map(chats.map((row) => [row.id, row]));
   const live = new Set(streaming);
   return {
     findChat: (id) => byId.get(id),
-    boardForChat: (session) => boards[session.id],
     isStreaming: (id) => live.has(id),
   };
 }
@@ -63,7 +62,7 @@ describe('listIssuePeekChatRows', () => {
       lookup([older, newer]),
     );
     assert.deepEqual(
-      rows.filter((row) => row.kind === 'chat').map((row) => row.chatId),
+      rows.map((row) => row.chatId),
       ['chat-new', 'chat-old', 'gone'],
     );
     assert.equal(rows[2]?.title, 'Chat unavailable');
@@ -82,28 +81,17 @@ describe('listIssuePeekChatRows', () => {
     assert.equal(rows[0]?.title, 'Agent');
   });
 
-  test('adds one board row for a linked chat board and issue.boardChatId', () => {
-    const planner = chat('chat-plan', { name: 'Planner', lastMessageAt: 50 });
+  test('legacy issue links open as chats and duplicate links unlink together', () => {
+    const planner = chat('chat-plan', { name: 'Planner' });
     const rows = listIssuePeekChatRows(
-      issue({ id: 'ISS-1', chatIds: ['chat-plan'], boardChatId: 'chat-plan' }),
-      lookup([planner], [], { 'chat-plan': { id: 'grp-1', name: 'Ship it' } }),
-    );
-    const boards = rows.filter((row) => row.kind === 'board');
-    assert.equal(boards.length, 1);
-    assert.equal(boards[0]?.title, 'Ship it');
-    assert.equal(boards[0]?.boardGroupId, 'grp-1');
-    assert.equal(boards[0]?.unlinkBoardChat, true);
-    assert.equal(rows.some((row) => row.kind === 'chat' && row.chatId === 'chat-plan'), true);
-  });
-
-  test('boardChatId without a group still gets a board row', () => {
-    const rows = listIssuePeekChatRows(
-      issue({ id: 'ISS-1', boardChatId: 'missing-board' }),
-      lookup([]),
+      issue({ id: 'ISS-1', chatIds: ['chat-plan'], boardChatId: 'chat-plan' }), lookup([planner]),
     );
     assert.equal(rows.length, 1);
-    assert.equal(rows[0]?.kind, 'board');
-    assert.equal(rows[0]?.title, 'Board unavailable');
+    assert.equal(rows[0]?.title, 'Planner');
+    assert.equal(rows[0]?.unlinkChatId, planner.id);
     assert.equal(rows[0]?.unlinkBoardChat, true);
+    const [missing] = listIssuePeekChatRows(issue({ id: 'ISS-1', boardChatId: 'gone' }), lookup([]));
+    assert.equal(missing?.available, false);
+    assert.equal(missing?.unlinkBoardChat, true);
   });
 });

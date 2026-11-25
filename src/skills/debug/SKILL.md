@@ -27,7 +27,7 @@ Help the user **file, triage, and fix issues** via the **Issues** app (`#/app/is
 | Todo / Backlog | Accepted work not started |
 | In progress | Investigation or active fix |
 | Planned | Fix plan written under `documentation/plans/issues/<id>.md` |
-| Review | Board / PR ready for review |
+| Review | Fix ready for review |
 | Done / Canceled | Closed |
 
 ## Tools
@@ -44,11 +44,11 @@ Help the user **file, triage, and fix issues** via the **Issues** app (`#/app/is
 
 1. **Send to chat** — open the issue in a chat (add `/debug` to investigate).
 2. **Plan** — use `/plan` to write `documentation/plans/issues/<id>.md`.
-3. **Send to board** — launch an Orchestrate board from the plan; board completion moves linked issues to **Review**.
+3. **Run factory** on the saved plan to implement it in the chat.
 
 ## Ad-hoc sub-agents
 
-Only when the user explicitly requests delegation, spawn a sub-agent with a focused brief (reproduce, bisect, or read a subsystem). Fuller fixes can go to a board from the issue plan.
+Only when the user explicitly requests delegation, spawn a sub-agent with a focused brief (reproduce, bisect, or read a subsystem). Use the saved plan to scope larger fixes.
 
 ## Conventions
 

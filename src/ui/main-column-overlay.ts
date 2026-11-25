@@ -1,13 +1,10 @@
 import type { CodeSectionId } from '../os/types';
-import { getActiveBoardGroup } from '../state/chat-groups';
 import { emitChatSidebarChanged } from './layout-events';
 
 /** View-bar / embed destinations that compete for #chatArea. */
 export type CodeStageViewKeep =
   | 'overview'
   | 'dev-server'
-  | 'orchestrate'
-  | 'boards'
   | 'map'
   | 'issues'
   | 'research';
@@ -15,10 +12,6 @@ export type CodeStageViewKeep =
 const CHAT_AREA_OVERLAY_CLASSES = [
   'chat-area--code-overview',
   'chat-area--code-brain-map',
-  'chat-area--orchestrate-hub',
-  'chat-area--orchestrate',
-  'chat-area--orchestrator-boards',
-  'chat-area--plan-screen',
   'chat-area--issues',
   'chat-area--dev-server',
   'chat-area--research',
@@ -27,8 +20,6 @@ const CHAT_AREA_OVERLAY_CLASSES = [
 const MAIN_COLUMN_OVERLAY_CLASSES = [
   'main-column--code-overview',
   'main-column--code-brain-map',
-  'main-column--orchestrator-boards',
-  'main-column--plan-screen',
   'main-column--issues',
   'main-column--dev-server',
   'main-column--research',
@@ -62,9 +53,6 @@ export function isMainColumnOverlaySuppressingChatDom(): boolean {
 function isCodeStageRootHidingChatSidebar(): boolean {
   if (document.getElementById('codeOverviewRoot')) return true;
   if (document.getElementById('codeBrainMapRoot')) return true;
-  if (document.getElementById('orchestrateHub')) return true;
-  if (document.getElementById('orchestratorBoardsRoot')) return true;
-  if (document.getElementById('orchestratePlanScreen')) return true;
   if (document.getElementById('devServerScreenRoot')) return true;
 
   const area = document.getElementById('chatArea');
@@ -75,10 +63,6 @@ function isCodeStageRootHidingChatSidebar(): boolean {
 /** True while a Code view-bar destination owns the stage and the session list is hidden in CSS (same behaviour as Super Plan). */
 export function isCodeStageViewHidingChatSidebar(): boolean {
   if (isCodeStageRootHidingChatSidebar()) return true;
-  if (document.getElementById('orchestrateBoardPage')) return true;
-  const boardGroup = getActiveBoardGroup();
-  if (boardGroup?.viewMode === 'board') return true;
-
   return isMainColumnOverlaySuppressingChatDom();
 }
 
@@ -98,21 +82,6 @@ export function notifyCodeStageViewChanged(): void {
 /** Tear down every Code main-column overlay except `keep`. */
 export async function closeOtherCodeStageViews(keep?: CodeStageViewKeep): Promise<void> {
   const area = document.getElementById('chatArea');
-
-  if (document.getElementById('orchestratePlanScreen')) {
-    const { teardownOrchestratePlanScreen } = await import('./orchestrate-plan-screen');
-    teardownOrchestratePlanScreen();
-  }
-
-  if (keep !== 'orchestrate' && document.getElementById('orchestrateHub')) {
-    const hub = await import('./orchestrate-hub');
-    hub.teardownOrchestrateHub();
-  }
-
-  if (keep !== 'boards' && document.getElementById('orchestratorBoardsRoot')) {
-    const boards = await import('../orchestrator/boards-view');
-    boards.teardownBoardsView();
-  }
 
   if (keep !== 'overview' && document.getElementById('codeOverviewRoot')) {
     const overview = await import('./code-overview');
@@ -156,11 +125,6 @@ export async function showCodeStageSection(section: CodeSectionId): Promise<void
     await dev.openDevServerScreen();
     return;
   }
-  if (section === 'orchestrate' || section === 'boards') {
-    const boards = await import('../orchestrator/boards-view');
-    await boards.openBoardsView();
-    return;
-  }
   if (section === 'map') {
     const map = await import('./code-brain-map');
     await map.openCodeBrainMap({ skipNavigate: true });
@@ -170,42 +134,6 @@ export async function showCodeStageSection(section: CodeSectionId): Promise<void
 
 /** Leave whichever Code stage view is active and restore the chat transcript. */
 export async function closeActiveCodeStageView(): Promise<void> {
-  if (document.getElementById('orchestratePlanScreen')) {
-    const plan = await import('./orchestrate-plan-screen');
-    const { sessionState } = await import('../state/sessions');
-    plan.teardownOrchestratePlanScreen();
-    const chat = sessionState?.activeId
-      ? sessionState.chats.find((c) => c.id === sessionState.activeId)
-      : undefined;
-    if (chat) {
-      const { renderChatFromHistory } = await import('./messages');
-      renderChatFromHistory(chat);
-    }
-    return;
-  }
-
-  const boards = await import('../orchestrator/boards-view');
-  if (boards.isBoardsViewOpen()) {
-    await boards.closeBoardsView();
-    return;
-  }
-
-  const hub = await import('./orchestrate-hub');
-  if (hub.isOrchestrateHubMounted()) {
-    hub.closeOrchestrateHub();
-    return;
-  }
-
-  if (
-    !isCodeStageOverlayMounted() &&
-    (document.getElementById('orchestrateBoardPage') ||
-      getActiveBoardGroup()?.viewMode === 'board')
-  ) {
-    const { setOrchestrateViewMode } = await import('./view-mode-toggle');
-    setOrchestrateViewMode('chat');
-    return;
-  }
-
   const overview = await import('./code-overview');
   if (overview.isCodeOverviewOpen()) {
     overview.closeCodeOverview();

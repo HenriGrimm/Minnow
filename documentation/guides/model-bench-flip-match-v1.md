@@ -188,7 +188,6 @@ Score each model **0–2** per row (0 = fail, 1 = partial, 2 = clean). Max **10*
 2. **Build** — same prompt in Build mode (no board); compare one-shot completion.
 3. **Orchestrate** — feed the plan to a board; compare convergence time, retries, quarantines.
 
-See also: [Orchestrate board testing](../contributor/orchestrate-board-testing.md) (fake model, seed board, log invariants).
 
 ---
 

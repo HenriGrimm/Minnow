@@ -131,7 +131,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         send(200, { receipt: await service.readCommand(caller, record.commandId) }); return;
       }
       const legacy = /^\/api\/chats\/([A-Za-z0-9_-]{1,160})\/legacy\/([A-Za-z0-9_-]{1,160})\/continue$/.exec(url.pathname);
-      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|fork|history|requests|ack|recovery|workspace|ordinary-routing)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
+      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|factory|fork|history|requests|ack|recovery|workspace|ordinary-routing)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
       if (!match) { send(404, { error: { code: 'chat_not_found', message: 'Conversation operation does not exist', retryable: false } }); return; }
       const [, chatId, operation, requestId] = match;
       if (!operation && req.method === 'DELETE') {
@@ -185,6 +185,13 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         workspaceRecovery: req.method === 'POST' && operation === 'workspace',
       });
       assertCallerCanTarget(caller, target, { operation: 'read', currentPolicy: target.currentPolicy, registry: target.registry });
+      if (operation === 'factory' && req.method === 'POST' && !requestId) {
+        if (!['host', 'device'].includes(req.minnowAuth?.kind) || caller.actor !== 'human') throw new ChatContractError('caller_denied', 'Only an authenticated user may control a factory run.');
+        assertCallerCanTarget(caller, target, { operation: 'send', currentPolicy: target.currentPolicy, registry: target.registry });
+        const body = await readBody(req, 2048); fields(body, ['runId', 'action']);
+        if (!ID.test(body.runId ?? '') || !['resume', 'clear'].includes(body.action)) fail('Invalid factory control');
+        send(200, { goal: runtime.factory.control(chatId, body.runId, body.action) }); return;
+      }
       if (operation === 'recovery' && !requestId) {
         if (req.minnowAuth?.kind !== 'host' || caller.actor !== 'human') throw new ChatContractError('caller_denied', 'Recovery requires the authenticated local user.');
         assertCallerCanTarget(caller, target, { operation: 'stop', currentPolicy: target.currentPolicy, registry: target.registry });

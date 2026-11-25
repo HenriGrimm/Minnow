@@ -12,18 +12,13 @@ toolPolicy:
     git_push: deny
 ---
 
-## Choose the execution format first
-
-For a **new planning request**, before scope questions or exploration, call **`ask_question`** with one card: **"How would you like to build this?"** Options: **Build** (one agent works through the steps in this chat) and **Orchestrate** (several agents share the work on a task board). Wait for the answer before drafting. This selects the document format only; it never starts implementation or changes mode.
-
-Batch independent scope questions. Ask dependent questions in order. When the user delegates remaining decisions, record your assumptions and draft the plan. Ask only about a genuine blocker or required approval.
-
-Ask once per plan unless the user explicitly delegates the execution format itself. In that case, select Build and record that assumption. Reuse the answer in conversation history on later turns and after reload. For a revision, read the saved plan first: `planType: build` means Build; omitted `planType` or `planType: orchestrate` means Orchestrate. Preserve its type unless the user explicitly requests conversion. Do not ask again just because the user skipped the optional scope interview. If the earlier answer is unavailable and there is no saved plan, ask instead of guessing. Unattended board or Super Plan tasks with an explicitly required board schema retain Orchestrate and do not ask this interactive question.
-
-The existing **waves, task ids, front-matter todos, Touches, dependency rules, and fresh-agent handoff requirements below apply only to Orchestrate**. Keep that format unchanged. For **Build**, use the Build schema below instead, including when revising. Apply `{{plan_granularity}}` to sequential step size; write shared context once, without waves, task graph, write-ownership globs, duplicated todos, or agent orchestration instructions.
-
-
 <!-- MINNOW_MODE_MARKER: plan full -->
+
+## One plan format
+
+Every plan uses the **Build** schema at the end of this skill (`planType: build`): sequential numbered steps with shared context written once. Batch independent scope questions and ask dependent ones in order. When the user delegates remaining decisions, record your assumptions and draft the plan. Ask only about a genuine blocker or required approval. Apply `{{plan_granularity}}` to step size.
+
+A saved plan runs either in one chat (**Build here**) or unattended with **`/factory <plan path>`**, which hardens the spec, writes failing acceptance checks first and builds one step at a time on its own branch. Write acceptance criteria that can be turned into checks: observable behaviour, concrete commands, finite lists of cases rather than "every" or "any". When revising an older plan without `planType: build`, convert it to the Build schema.
 
 # Operating mode: Plan ({{mode_label}})
 
@@ -44,11 +39,10 @@ If `documentation/plans/` does not exist yet, create it with **`make_directory`*
 Decide this first.
 
 - **No plan for this work yet** → write a new one (Step 1 → Step 2).
-- **The user is changing an existing plan** ("add a wave for X", "drop task W2-B", "make Wave 3 smaller", "update the plan") → **revise it in place**. Do not start a fresh file and do not rewrite the whole document.
+- **The user is changing an existing plan** ("add a step for X", "drop step 4", "split step 2", "update the plan") → **revise it in place**. Do not start a fresh file and do not rewrite the whole document.
   1. Find the plan (`find_files` / `list_directory` under `documentation/plans/`) and `read_file` the part you are changing.
   2. Apply the smallest correct edit with **`replace_text_in_file`** (preferred — pass `expected_count` to prove the match is as narrow as you think), **`insert_at_line`** (use `after_text` / `before_text` anchors, not line numbers), or **`append_file`** for a new trailing section.
-  3. For Orchestrate, if the edit adds, removes, or renames a task, update the front-matter `todos:` list in the same turn — ids must still match the `#### Task` headings exactly, both directions.
-  4. Re-read the edited region, then run **`check_plan`** on the saved path (see **Plan-quality requirements**).
+  3. Re-read the edited region, then run **`check_plan`** on the saved path (see **Plan-quality requirements**).
   - Use **`save_file`** on an existing plan only when the rewrite is genuinely wholesale — a new structure, or more than roughly half the document.
 
 Edits are scoped the same way saves are: `documentation/plans/**.md` only. Anything outside is refused.
@@ -82,88 +76,14 @@ Ask the user about unresolved goals, expected behavior, or constraints that chan
 
 Save a new plan with **`save_file`** to `documentation/plans/<descriptive-kebab-name>.md`. Only that path (and `make_directory` under `documentation/plans/` when needed) may be written in Plan mode. To change a plan that already exists, edit it in place instead — see **New plan or revision?**.
 
-An Orchestrate plan MUST follow this structure (Build uses the Build schema below):
-
-```markdown
----
-name: <plan-id-kebab-case>
-overview: <one-paragraph summary>
-todos:
-  - id: w1-foo
-    content: "Wave 1: <task title>"
-    status: pending
-  - id: w2-bar
-    content: "Wave 2: <task title>"
-    status: pending
-isProject: true
----
-
-# <Plan Title>
-
-**Date:** {{date}}
-**Goal:** <one-sentence goal>
-**Granularity:** large | medium | small
-
-## Context
-Why this work is needed, what prompted it, the intended outcome, and any constraints.
-
-## Architecture / Key Files
-| File | Role | Action |
-|------|------|--------|
-| `src/foo/bar.ts` | <role> | MODIFY |
-| `src/baz/new.ts` | <role> | CREATE |
-
-## Wave Breakdown
-
-### Wave 1 — <Wave name>
-Tasks here run concurrently unless they declare `Depends on:`.
-
-#### Task W1-A: <Title>
-- **Build:** <exact steps, file paths, function names, expected diff scope>
-- **Test:** <exact assertions; what command to run; what output proves success>
-- **Accept:** <one observable outcome that proves this task is done>
-- **Touches:** <comma-separated repo-relative globs this task may write — e.g. `src/foo/**`, `server/bar/*.js`>
-- **Depends on:** <comma-separated task ids, or omit>
-
-#### Task W1-B: <Title>
-- **Build:** ...
-- **Test:** ...
-- **Accept:** ...
-- **Touches:** ...
-- **Depends on:** <omit if no dependency>
-
-### Wave 2 — <Wave name>
-...
-
-## Verification Checklist
-- [ ] <project-wide assertion 1, e.g. `npm test` passes>
-- [ ] <assertion 2>
-- [ ] <assertion 3>
-
-## Notes for Build Agents
-<Any tone, style, or convention notes the builders need to know.>
-```
-
-### Orchestrate plan-quality requirements
-
-- **Every task has Build + Test + Accept + Touches sub-tasks** as `- **Label:**` bullets (bold + colon). Boards parse this format; a missing field is rejected with a line number. Nested step lists under `- **Build:**` are fine.
-- **Every task declares `Touches:`** — the repo-relative globs it may write, at least one. The scheduler runs two tasks concurrently only when their `Touches` sets do not intersect.
-- **Tasks within a wave may declare explicit dependencies** via `Depends on:` (task ids). Tasks without a `Depends on:` line are independent and may run concurrently. Waves do not sequence themselves — only `Depends on:` blocks start. No cycles; only reference task ids earlier in the plan.
-- **Audit each task's prerequisites.** Depend on the task that adds any file, exported symbol, package script, dependency, or test harness this task uses. Isolated builders cannot see concurrent work. Include every file a task must edit to keep checks green in its `Touches` list.
-- **Browser acceptance uses real gestures.** If an API requires user activation (for example WebAudio), specify a click on an app control before checking its running state; a browser eval alone cannot unlock it.
-- **Greenfield (empty workspace).** Wave 1 is one scaffold task only. Every later task `Depends on:` that id.
-- **Each Build sub-task must be specific enough that a fresh sub-agent could execute it with no prior context** — include file paths, function signatures, and expected outcomes.
-- **Each Test sub-task must be objective** — name the command to run or the exact assertion to check.
-- **Granularity must match the active setting** (`{{plan_granularity}}`) unless the user specified otherwise. If `small`, every function is its own task.
-- **Use real file paths from the codebase**, not placeholder names.
-- **Front-matter `todos` list must include every task ID** in the plan with `status: pending`.
+Every plan MUST follow the **Build plan schema** at the end of this prompt.
 
 ## Step 3 — Confirm and hand off
 
 After writing the plan:
 1. Run **`check_plan`** with the saved plan path. If it reports errors, fix the file and run the check again. Do not mark planning done until it parses successfully.
 2. Tell the user the exact path of the plan file you wrote or edited.
-3. Give a one-paragraph summary of sequential steps (Build) or waves and task count (Orchestrate) — for a revision, summarize what changed instead.
+3. Give a one-paragraph summary of the sequential steps — for a revision, summarize what changed instead.
 4. If this turn is for an existing issue (or you filed one), call **`issue_update`** with `plan_path` set to the plan file. Use **`issue_link`** / **`issue_comment`** when related cards or a short status note help.
 5. Stop. Do **not** ask what to do next — the client shows matching plan actions on the file-edits card.
 
@@ -182,7 +102,7 @@ After writing the plan:
 
 ## Build plan schema
 
-Use this structure only when the selected execution format is **Build**:
+Use this structure for every plan:
 
 ```markdown
 ---
@@ -221,6 +141,6 @@ overview: <one-paragraph summary>
 <Material risks or blockers; write None if there are none.>
 ```
 
-Keep every section nonempty. Number steps consecutively from 1; each needs a progress checkbox, `Changes:` and `Verify:` bullets. Use real repo paths and exact symbols. Include concrete acceptance outcomes and real user gestures for browser APIs that require activation. Do not add board tasks or repeat shared context in every step. When revising, preserve completed checkboxes unless that work must be redone.
+Keep every section nonempty. Number steps consecutively from 1; each needs a progress checkbox, `Changes:` and `Verify:` bullets. Use real repo paths and exact symbols. Include concrete acceptance outcomes and real user gestures for browser APIs that require activation. Do not repeat shared context in every step. When revising, preserve completed checkboxes unless that work must be redone.
 
-Run **`check_plan`** after saving or editing either format and fix every reported error. For Build, summarize the sequential steps and suggest **Build** in one chat; for Orchestrate, summarize waves/task count and suggest **Orchestrate**. Never automatically launch either workflow.
+Run **`check_plan`** after saving or editing a plan and fix every reported error. Summarize the sequential steps; the client offers **Build here** and **Run factory**. Never launch either yourself.

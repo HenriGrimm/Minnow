@@ -9,6 +9,38 @@ export function recoverySpent(state) {
   return state.recoveryFailures?.length ?? 0;
 }
 
+/** The most recent finished attempt in the current run. */
+export function lastEndedAttempt(task) {
+  for (let i = task.attempts.length - 1; i >= 0; i -= 1) {
+    const attempt = task.attempts[i];
+    if (attempt.ended && !attempt.retired) return attempt;
+  }
+  return undefined;
+}
+
+/** Attempts charged to the repair limit for the current kind of work. */
+export function taskRepairFailures(task, role = lastEndedAttempt(task)?.role) {
+  return task.attempts.filter((attempt) => {
+    if (!attempt.ended || attempt.retired || attempt.outcome === 'pass') return false;
+    if (role === 'merge') return attempt.role === 'merge' && attempt.outcome !== 'rebased';
+    return !OPERATIONAL_CATEGORIES.includes(attempt.evidence?.failure?.category);
+  });
+}
+
+export function isRecoveryBudgetHold(hold) {
+  return hold.stage === 'budget' || hold.failure.message.startsWith('repair-budget-exhausted:') ||
+    (hold.role === 'final' && hold.failure.message.startsWith('Final repair budget-exhausted.'));
+}
+
+export function taskRecoveryHold(state, taskId) {
+  if (!state.recoveryVersion) return undefined;
+  const holds = state.recoveryHolds;
+  const resource = `${state.model?.providerId ?? ''}:${state.model?.id ?? ''}`;
+  return holds[recoveryKey(taskId, 'builder')] ?? holds[recoveryKey(taskId, 'tester')] ??
+    holds[recoveryKey(taskId, 'merge')] ?? holds['preflight:'] ??
+    Object.values(holds).find((hold) => hold.resource === resource);
+}
+
 export function held(state, taskId, role) {
   if (!state.recoveryVersion) return false;
   return Object.values(state.recoveryHolds).some((hold) =>

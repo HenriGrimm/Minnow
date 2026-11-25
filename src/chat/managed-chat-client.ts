@@ -2,9 +2,10 @@ import type { InterruptedExecutionReview } from '../../server/chats/repository';
 import { buildHistoryUserContent, persistableUserImages } from './build-api-messages';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { randomUUID } from '../lib/random-id';
-import { findChatById, touchChat, scheduleSaveSessions } from '../state/sessions';
+import { canArmSkillGoal, findChatById, setActiveGoal, touchChat, scheduleSaveSessions } from '../state/sessions';
 import { parseSlashCommand, formatHistoryWithSkillTag } from '../skills/parse-slash';
 import { resolveTurnSkill, normalizeCavemanUserText } from '../skills/pinned-skill';
+import { getSkillCatalog } from '../skills/client';
 import { isSkillEnabled } from '../skills/config';
 import { CAVEMAN_SKILL_ID, isCavemanIntensity } from '../skills/caveman-client';
 import { syncComposerPinnedSkillFromActiveChat } from '../ui/composer-pinned-skill';
@@ -218,6 +219,7 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
   let method = 'POST';
   const payload: Record<string, unknown> = { action };
   const previousPin = chat.pinnedSkill;
+  let skillGoal: { id: string; condition: string } | undefined;
   let directSkill: ReturnType<typeof resolveTurnSkill> | undefined;
   if (action === 'send' || action === 'steer') {
     const attachments = data.attachments ?? [];
@@ -240,7 +242,12 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
           ...(isCavemanIntensity(intensity) ? { intensity } : {}) } : null };
         payload.text = buildHistoryUserContent(directSkill.skillId ? formatHistoryWithSkillTag(userText, directSkill.skillId) : userText, attachments);
       }
-      const intent = validateChatSendIntent({ ...selectedIntent, version: 1,
+      if (selectedIntent.skill?.source === 'slash' && canArmSkillGoal(chat)) {
+        const skillId = selectedIntent.skill.id;
+        const condition = getSkillCatalog().find(skill => skill.id === skillId)?.goal;
+        if (condition) skillGoal = { id: skillId, condition };
+      }
+      const intent = validateChatSendIntent({ ...selectedIntent, version: 1, ...(skillGoal ? { goalDriven: true } : {}),
         ...(attachments.length ? { attachments: attachments.map(({ id, name, kind, size, mimeType, workspacePath, chatId, lineStart, lineEnd }) =>
           ({ id, name, kind, size, mimeType, workspacePath, chatId, lineStart, lineEnd })) } : {}) });
       if (!intent.ok) throw new Error(intent.error.message);
@@ -315,6 +322,21 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
     throw new Error('The admission acknowledgement is incomplete. Your draft is kept; retry to recover its original receipt.');
   }
   clearReceipt();
+  // A rejected send must not leave a goal that can start unrelated work.
+  if (body.frame?.fields?.factoryGoal?.factoryRunId) {
+    chat.activeGoal = body.frame.fields.factoryGoal;
+  } else if (skillGoal && (skillGoal.id !== 'factory' || !Object.hasOwn(body.frame?.fields ?? {}, 'factoryGoal')) && canArmSkillGoal(chat) && !['failed', 'cancelled'].includes(body.receipt.state)) {
+    setActiveGoal(chat, skillGoal.condition, skillGoal.id);
+    const execution = chat.agentExecution;
+    if (execution && execution.commandId === body.receipt.commandId) {
+      // The host may have published the running or completed frame before admission returned.
+      const snapshot = { executionId: execution.executionId, status: execution.status };
+      void import('./goal/evaluate').then(({ noteManagedGoalExecution, maybeContinueGoalAfterTurn }) => {
+        if (snapshot.status === 'completed') return maybeContinueGoalAfterTurn(chat);
+        noteManagedGoalExecution(chat, snapshot);
+      }).catch(() => {});
+    }
+  }
   if (action === 'send') acceptFirstMessageSubmission(chat, data.composerSubmissionId, body.receipt.commandId, body.receipt.state);
   if (directSkill && chat.pinnedSkill === previousPin && directSkill.nextPinned !== (previousPin ?? null)) {
     chat.pinnedSkill = directSkill.nextPinned;

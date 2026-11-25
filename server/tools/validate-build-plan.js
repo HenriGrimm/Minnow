@@ -7,7 +7,17 @@ const SECTIONS = [
   'Risks and open questions',
 ];
 
-/** Validate sequential build instructions without imposing a board task graph. */
+/**
+ * Render plan errors for a human (`check_plan`).
+ * @param {Array<{ line: number, column: number, message: string, hint: string }>} errors
+ */
+export function formatParseErrors(errors) {
+  return errors
+    .map((e) => `line ${e.line}:${e.column} — ${e.message}\n    hint: ${e.hint}`)
+    .join('\n');
+}
+
+/** Validate sequential build instructions. */
 export function validateBuildPlan(markdown) {
   const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
   const errors = [];

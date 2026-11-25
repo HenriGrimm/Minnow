@@ -8,34 +8,18 @@ import { isSkillEnabled } from './config';
 import { mergeSkillLists } from './loader';
 import type { SkillDetail, SkillListItem } from './types';
 
-/** Vite-only glob map; lazy so Node/tsx tests never call import.meta.glob. */
-let builtinSkillModules: Record<string, () => Promise<string>> | null | undefined;
-
-function getBuiltinSkillModules(): Record<string, () => Promise<string>> {
-  if (builtinSkillModules !== undefined) {
-    return builtinSkillModules ?? {};
+/** Vite expands these literal globs at build time. Node tests read the files directly. */
+async function loadBuiltinSkillRaw(id: string, name: 'SKILL.md' | 'templates.md' = 'SKILL.md'): Promise<string | null> {
+  if (import.meta.env?.MODE) {
+    const modules = import.meta.glob<string>(['./*/SKILL.md', './factory/templates.md'], { query: '?raw', import: 'default' });
+    return modules[`./${id}/${name}`]?.() ?? null;
   }
-  const globFn = (import.meta as ImportMeta & { glob?: (p: string, o: object) => unknown }).glob;
-  if (typeof globFn !== 'function') {
-    builtinSkillModules = null;
-    return {};
-  }
-  builtinSkillModules = globFn('./*/SKILL.md', {
-    query: '?raw',
-    import: 'default',
-  }) as Record<string, () => Promise<string>>;
-  return builtinSkillModules;
-}
 
-async function loadBuiltinSkillRaw(id: string): Promise<string | null> {
-  const loader = getBuiltinSkillModules()[`./${id}/SKILL.md`];
-  if (loader) return loader();
-
-  if (process.env.MINNOW_TEST === '1') {
+  if (typeof process !== 'undefined' && process.env.MINNOW_TEST === '1') {
     const { readFile } = await import('node:fs/promises');
     const { dirname, join } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
-    const skillPath = join(dirname(fileURLToPath(import.meta.url)), id, 'SKILL.md');
+    const skillPath = join(dirname(fileURLToPath(import.meta.url)), id, name);
     try {
       return await readFile(skillPath, 'utf8');
     } catch {
@@ -126,6 +110,8 @@ export async function fetchSkillById(id: string): Promise<SkillDetail | null> {
     try {
       const { parseSkillFrontmatter, defaultSkillLabel } = await import('./parse-frontmatter');
       const { meta, body } = parseSkillFrontmatter(raw);
+      const templates = id === 'factory' && body.includes('<!-- factory-templates -->')
+        ? await loadBuiltinSkillRaw(id, 'templates.md') : null;
       const detail: SkillDetail = {
         id,
         label: meta.label?.trim() || defaultSkillLabel(id),
@@ -133,7 +119,8 @@ export async function fetchSkillById(id: string): Promise<SkillDetail | null> {
         source: 'builtin',
         disableModelInvocation: meta['disable-model-invocation'] === 'true',
         ...(meta.access === 'read-only' || meta.access === 'plans' ? { access: meta.access } : {}),
-        body,
+        ...(meta.goal?.trim() ? { goal: meta.goal.trim().slice(0, 4000) } : {}),
+        body: templates ? body.replace('<!-- factory-templates -->', () => templates) : body,
         raw,
       };
       detailCache.set(id, detail);

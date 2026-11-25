@@ -3,12 +3,9 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import {
-  FAKE_MODEL_ID,
-  FAKE_PROVIDER_ID,
-} from '../server/orchestrate/board-testing/fake-model-ids.js';
-
-export { FAKE_MODEL_ID, FAKE_PROVIDER_ID };
+/** Stable ids for the dev-only fake OpenAI provider. */
+export const FAKE_MODEL_ID = 'fake-board-model';
+export const FAKE_PROVIDER_ID = 'fake-board';
 
 /** @typedef {{ role?: string; taskId?: string; nth?: number }} ScenarioMatch */
 /** @typedef {{ match?: ScenarioMatch; emit: string[] }} ScenarioStep */

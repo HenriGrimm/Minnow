@@ -3,9 +3,12 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { runWithToolContext } from '../runtime/path-access.js';
+import { withFileWriteLocks } from '../workspace/file-write-lock.js';
+import { initializeWorkspaceGit } from '../workspace/initialize-git.js';
 import { enableChatWorktree } from '../worktree/worktree-ops.js';
 import { getChatWorktreePath } from '../worktree/paths.js';
 import { readGitBinding, readWorktreeSource } from './worktree-binding.js';
+import { readChatCheckoutIdentity } from './checkout-identity.js';
 import { assertCaller, assertCallerCanTarget, resolveProjectScope } from './caller.js';
 import { ChatContractError } from './contracts.js';
 import { createChatPolicy } from './policy.js';
@@ -62,7 +65,7 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     if (!same(current, expected)) fail('workspace_denied', 'The selected checkout or branch changed. Restore the original checkout before retrying, or explicitly choose Local.');
     return current;
   }
-  async function capture(target, choice, { newChat = false } = {}) {
+  async function capture(target, choice, { newChat = false, factory = false } = {}) {
     const chat = target.chat, previous = newChat ? null : read(chat.id);
     if (choice?.kind === 'local') return null;
     if (choice && choice.kind !== 'automatic') fail('invalid_request', 'Server deferred setup supports automatic worktrees or explicit Local only');
@@ -72,7 +75,7 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     if (chat.worktreeRoot && previous?.status === 'ready') return null;
     if (chat.worktreeRoot) fail('workspace_denied', 'Detach the existing checkout explicitly before requesting automatic setup');
     if (previous?.intent && previous.status !== 'local') return previous.intent;
-    const source = await readWorktreeSource(chat.workspacePath);
+    const source = await readWorktreeSource(chat.workspacePath, { allowInitialization: factory });
     if (source.checkoutIdentity !== target.checkoutIdentity || key(source.path) !== target.scope.canonicalKey) {
       fail('workspace_denied', 'The source checkout changed before worktree admission');
     }
@@ -118,9 +121,41 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     if (scope.projectId !== intent.projectId) fail('workspace_denied', 'The prepared checkout is no longer in the original project');
     return { binding: current, scope };
   }
+  // Two factory threads may be admitted against the same folder before either owns a worktree.
+  async function initializeSource(input, intent) {
+    const expected = intent.source;
+    return withFileWriteLocks([expected.path], async () => {
+      async function inspect() {
+        const source = await readWorktreeSource(expected.path, { allowInitialization: true });
+        if (source.repos || source.checkoutIdentity !== expected.checkoutIdentity || source.path !== expected.path ||
+            expected.gitIdentity && (source.gitIdentity !== expected.gitIdentity || source.branch !== expected.branch)) {
+          fail('workspace_denied', 'The selected workspace or its repository changed before Factory could initialize it.');
+        }
+        if (source.gitIdentity) {
+          const marker = path.join(expected.path, '.git');
+          if (!(await fs.lstat(marker)).isDirectory() || source.commonIdentity !== source.gitIdentity ||
+              await readChatCheckoutIdentity(marker) !== source.gitIdentity) {
+            fail('workspace_denied', 'Factory initialization requires the original workspace repository.');
+          }
+        }
+        assertOwner(input, intent);
+        return source;
+      }
+      let source = await inspect();
+      if (source.head === null) {
+        const result = await initializeWorkspaceGit(source.path, { signal: input.signal });
+        if (!result.ok) fail('capability_unavailable', 'Factory could not initialize Git: ' + result.error);
+        source = await inspect();
+        if (!source.head) fail('capability_unavailable', 'Factory could not verify the initial Git commit.');
+      }
+      const initialized = { ...intent, source };
+      repository.atomic(() => write(input.command.chatId, { ...assertOwner(input, intent), intent: initialized }));
+      return initialized;
+    });
+  }
   async function perform(input) {
     const { command, signal } = input;
-    const intent = input.execution.captured?.workspacePreparation;
+    let intent = input.execution.captured?.workspacePreparation;
     if (!intent) {
       const chat = repository.getChat(command.chatId);
       if (chat.worktreeSetupRequired || chat.worktreeEnabled && !chat.worktreeRoot) {
@@ -130,6 +165,9 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
     }
     let current = assertOwner(input, intent);
     try {
+      // A previous execution may have finished Git initialization before it was interrupted.
+      intent = current.intent;
+      if (intent.source.head === null) intent = await initializeSource(input, intent);
       if (current.status !== 'ready') await assertBinding(intent.source);
       if (current.binding) await verifiedSlot(intent, current.binding, { ready: current.status === 'ready' });
       else {
@@ -163,7 +201,7 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
       if (current.status !== 'ready') await assertBinding(intent.source);
       const verified = await verifiedSlot(intent, current.binding, { ready: current.status === 'ready' });
       const policyBinding = { sourceWorkspaceId: intent.sourceWorkspaceId, workspaceId: verified.scope.workspaceId };
-      const rebind = captured => ({ ...captured, scope: verified.scope, checkoutIdentity: verified.binding.checkoutIdentity,
+      const rebind = captured => ({ ...captured, workspacePreparation: intent, scope: verified.scope, checkoutIdentity: verified.binding.checkoutIdentity,
         workspacePolicyBinding: policyBinding,
         ...(captured.policy ? { policy: rebindChatWorkspacePolicy(captured.policy, policyBinding) } : {}) });
       repository.atomic(() => {
@@ -175,7 +213,9 @@ export function createChatWorkspacePreparation({ repository, context, enableWork
           { worktreeEnabled: false, worktreeSetupRequired: false, chatWorktreeManaged: true });
         // Queued sends admitted during this setup must bind this SAME allocation,
         // not become stranded on the captured source scope after the first send.
-        const rows = db.prepare("SELECT command_id,captured_json FROM chat_commands WHERE chat_id=? AND state IN ('accepted','queued','waiting_for_host','running')").all(command.chatId);
+        // A continuation may finish the setup after the original factory command was interrupted.
+        const rows = db.prepare("SELECT command_id,captured_json FROM chat_commands WHERE chat_id=? AND (state IN ('accepted','queued','waiting_for_host','running') OR command_id=?)")
+          .all(command.chatId, chat.factoryRun?.id ?? null);
         for (const row of rows) {
           const captured = JSON.parse(row.captured_json);
           if (captured.workspacePreparation?.id !== intent.id) continue;

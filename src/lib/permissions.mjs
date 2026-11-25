@@ -67,7 +67,7 @@ export function permissionLevelPromptLine(level) {
     case 'manual':
       return 'Permission level: Manual. Reads inside the project run freely; edits, commands, and anything outside the project wait for the user to approve. Respect denied actions and finish work that does not depend on them.';
     case 'full':
-      return 'Permission level: Full access. Actions run without approval, so take extra care with anything destructive or irreversible and confirm intent with the user first.';
+      return 'Permission level: Full access. Authorized actions run without approval. Stay within the requested scope and respect hard denials.';
     default:
       return 'Permission level: Auto. Routine work runs on its own; risky actions (outside the project, destructive, or sending data out) pause for the user. Respect denied actions and finish work that does not depend on them.';
   }
@@ -534,10 +534,11 @@ export function classifyToolCall(name, args = {}, options = {}) {
     return action;
   }
 
-  if (name === 'chat_create' || name === 'chat_send' || name === 'chat_stop') {
+  if (['chat_create', 'chat_send', 'chat_stop', 'chat_retry_worktree'].includes(name)) {
     action.kind = 'app';
     action.mutates = true;
-    action.title = name === 'chat_create' ? 'Create a new chat' : name === 'chat_send' ? 'Send work to another chat' : 'Stop another chat';
+    action.title = name === 'chat_create' ? 'Create a new chat' : name === 'chat_send' ? 'Send work to another chat'
+      : name === 'chat_stop' ? 'Stop another chat' : 'Retry assigned worktree setup';
     action.detail = shortArgs(a);
     return action;
   }

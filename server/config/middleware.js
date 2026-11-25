@@ -40,6 +40,7 @@ import {
   useJsonSessionsStore,
 } from './sessions-repo.js';
 import { getSessionsDb, readSessionMeta } from './sessions-db.js';
+import { withFactoryActivity } from '../chats/factory-activity.js';
 import { sessionsDbPath } from './sessions-paths.js';
 import { runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
@@ -423,7 +424,7 @@ export async function handleConfigRequest(req, res, pathname) {
 
       await sendJsonCompressed(req, res, 200, {
         chatId,
-        history: readChatHistory(chatId, opts),
+        history: withFactoryActivity(getSessionsDb(), chatId, readChatHistory(chatId, opts)),
         ...(withDetail ? { detail: readChatDetail(chatId) } : {}),
       });
       return true;

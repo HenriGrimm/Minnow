@@ -7,6 +7,9 @@ import { setPairedDevice } from '../../src/api/session-token.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import { sendProgrammaticChatText } from '../../src/chat/messaging.ts';
 import { forkManagedChat, rewriteManagedChatHistory, sendManagedChatAction } from '../../src/chat/managed-chat-client.ts';
+import { createTurnChanges } from '../../src/ui/chat-turn-changes.ts';
+import { ensureActiveGoal } from '../../src/state/session-schema.mjs';
+import { maybeContinueGoalAfterTurn, setGoalEvalImplForTests } from '../../src/chat/goal/evaluate.ts';
 import { registerPluginSlashCommand } from '../../src/chat/slash-commands/registry.ts';
 import { sendMessageWithTools } from '../../src/chat/messaging.ts';
 import { attachMessageActions, closeMessageActionsMenu } from '../../src/ui/message-actions.ts';
@@ -232,6 +235,101 @@ test('managed programmatic options reach canonical admission as bounded intent r
   assert.equal(calls[0].intent.codeMap.title, 'Definition'); assert.equal(calls[0].systemPrompt, undefined);
   await assert.rejects(sendProgrammaticChatText(chat, 'Work', { signal: AbortSignal.abort(new Error('Already stopped')) }), /Already stopped/);
   assert.equal(calls.length, 1);
+});
+
+test('a factory goal reloads its skill on continuation until the evaluator verifies completion', async t => {
+  t.after(() => setGoalEvalImplForTests(null));
+  const chat = setup();
+  const intents: any[] = [];
+  globalThis.fetch = async (_url, options) => {
+    intents.push(JSON.parse(String(options?.body)).intent);
+    return Response.json({ receipt: { commandId: 'factory', chatId, revision: 2, state: 'accepted' } });
+  };
+  await sendProgrammaticChatText(chat, '/factory documentation/plans/example.md');
+  assert.equal(intents[0].skill.id, 'factory');
+  assert.equal(intents[0].goalDriven, true);
+  assert.match(chat.activeGoal!.conditionText, /factory\/REPORT\.md/);
+  chat.activeGoal = ensureActiveGoal(JSON.parse(JSON.stringify(chat.activeGoal)));
+  assert.equal(chat.activeGoal?.skillId, 'factory');
+  const originalGoal = chat.activeGoal;
+  chat.pinnedSkill = { id: 'plan' };
+  chat.historyLoaded = true;
+  setGoalEvalImplForTests(async () => ({ met: false, reason: 'A feature check is still failing.' }));
+  await maybeContinueGoalAfterTurn(chat);
+  assert.equal(intents[1].skill.id, 'factory');
+  assert.equal(intents[1].goalDriven, true);
+  assert.match(intents[1].skill.input, /A feature check is still failing/);
+  assert.equal(chat.pinnedSkill.id, 'plan');
+  setGoalEvalImplForTests(async () => ({ met: true, reason: 'All checks pass and the report is committed.' }));
+  await maybeContinueGoalAfterTurn(chat);
+  assert.equal(chat.activeGoal?.achieved, true);
+  assert.equal(intents.length, 2);
+  await sendRemoteChatCommand(chatId, 'send', { text: '/factory again' });
+  assert.equal(chat.activeGoal, originalGoal);
+});
+
+test('a server-owned factory goal never schedules renderer evaluation or a duplicate continuation', async () => {
+  const chat = setup();
+  const goal = { factoryRunId: 'start-factory', skillId: 'factory', conditionText: 'All checks pass',
+    startedAt: 1000, turnCount: 0, tokenBaseline: 0 };
+  let sends = 0;
+  globalThis.fetch = async () => {
+    sends++;
+    return Response.json({ receipt: { chatId, commandId: 'start-factory', state: 'accepted', revision: 1 }, frame: { fields: { factoryGoal: goal } } });
+  };
+  await sendManagedChatAction(chatId, 'send', { text: '/factory Build F1' });
+  const restored = ensureActiveGoal(JSON.parse(JSON.stringify(chat.activeGoal)));
+  assert.deepEqual(restored, goal);
+  chat.activeGoal = restored;
+  await maybeContinueGoalAfterTurn(chat);
+  assert.equal(chat.activeGoal?.turnCount, 0);
+  assert.equal(sends, 1);
+});
+
+test('Run factory on a saved plan starts the skill in that chat while preserving its pin', { timeout: 5000 }, async t => {
+  const chat = setup();
+  const planPath = 'documentation/plans/example.md';
+  chat.pinnedSkill = { id: 'plan' };
+  chat.history.push({ role: 'tool', content: 'Saved', codeChange: { path: planPath, additions: 1, deletions: 0 } });
+  let command;
+  globalThis.fetch = async (_url, options) => {
+    command = JSON.parse(String(options?.body));
+    return Response.json({ receipt: { commandId: 'plan-factory', chatId, revision: 1, state: 'accepted' } });
+  };
+  const card = createTurnChanges(chat, 0, 0)!;
+  const button = [...card.querySelectorAll('button')].find(el => el.textContent === 'Run factory');
+  assert.ok(button);
+  const admitted = new Promise<void>(resolve => {
+    const onChange = () => resolve();
+    window.addEventListener('minnow:managed-chat-change', onChange, { once: true });
+    t.after(() => window.removeEventListener('minnow:managed-chat-change', onChange));
+  });
+  button.click();
+  await admitted;
+  assert.equal(command.intent.skill.id, 'factory');
+  assert.equal(command.intent.skill.input, planPath);
+  assert.equal(chat.activeGoal?.skillId, 'factory');
+  assert.equal(chat.pinnedSkill.id, 'plan');
+});
+
+test('rejection, pins, loops and follow-up chains cannot arm a skill goal', async () => {
+  const chat = setup();
+  globalThis.fetch = async () => Response.json({ error: { message: 'Rejected' } }, { status: 409 });
+  await assert.rejects(sendManagedChatAction(chatId, 'send', { text: '/factory run' }));
+  assert.equal(chat.activeGoal, undefined);
+  globalThis.fetch = async (_url, options) => {
+    const { intent } = JSON.parse(String(options?.body));
+    assert.equal(intent.goalDriven, undefined);
+    return Response.json({ receipt: { commandId: 'accepted', chatId, revision: 2, state: 'queued' } });
+  };
+  chat.pinnedSkill = { id: 'factory' };
+  await sendManagedChatAction(chatId, 'send', { text: 'hello' });
+  chat.activeLoops = [{ id: 'loop' } as NonNullable<typeof chat.activeLoops>[number]];
+  await sendManagedChatAction(chatId, 'send', { text: '/factory run' });
+  delete chat.activeLoops;
+  chat.followupChain = { remaining: 1 } as NonNullable<typeof chat.followupChain>;
+  await sendManagedChatAction(chatId, 'send', { text: '/factory run' });
+  assert.equal(chat.activeGoal, undefined);
 });
 
 test('an incomplete successful admission keeps its request identity and cannot report acceptance or fall back', async () => {

@@ -1,5 +1,5 @@
 /**
- * Lazy initialization for Code workspace modules (editor, terminal, orchestrate hub).
+ * Lazy initialization for Code workspace modules (editor, terminal, Code panels).
  * Deferred on Minnow desktop cold start so the entry chunk stays smaller.
  */
 
@@ -70,11 +70,6 @@ export function ensureCodeWorkspaceModules(): Promise<void> {
       await step('views/chats toggle', async () => {
         const { initCodeViewsChatsToggle } = await import('../ui/code-views-chats-toggle');
         initCodeViewsChatsToggle();
-      });
-
-      await step('orchestrate hub', async () => {
-        const { initOrchestrateHub } = await import('../ui/orchestrate-hub');
-        initOrchestrateHub();
       });
 
 

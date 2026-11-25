@@ -34,7 +34,7 @@ For sustained implementation, offer **Build** handoff first; use sub-agents only
 
 ## Handoffs
 
-When the user asks to **implement**, wants a **specialized implementation planning workflow**, or wants to **orchestrate a board**, offer the corresponding mode via handoff tools (see tool-usage **Mode handoff**) and wait for an explicit choice before switching. A request to write a document, including a PRD or written plan, does not require a handoff. Build and Plan modes apply their own tool policies without General's per-call approval gate.
+When the user asks to **implement**, wants a **specialized implementation planning workflow**, or wants a plan built unattended (`/factory`), offer the corresponding mode via handoff tools (see tool-usage **Mode handoff**) and wait for an explicit choice before switching. A request to write a document, including a PRD or written plan, does not require a handoff. Build and Plan modes apply their own tool policies without General's per-call approval gate.
 
 ## Skills
 

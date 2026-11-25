@@ -12,6 +12,8 @@ export interface SkillListItem {
   disableModelInvocation?: boolean;
   /** Turn clamp from `access:` front matter (`/ask` read-only, `/plan` plans). */
   access?: 'read-only' | 'plans';
+  /** `/goal` condition armed when the skill is invoked from the composer (`goal:` front matter). */
+  goal?: string;
 }
 
 /** Full skill for send-path injection. */

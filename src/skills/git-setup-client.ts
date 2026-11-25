@@ -1,6 +1,5 @@
 /**
  * Client hooks for /git-setup — programmatic baseline .gitignore before the model runs.
- * Board onboarding init uses POST /api/workspace/initialize-git instead of this skill (MIN-615).
  */
 
 import { BUILT_IN_TOOLS, type OpenAIFunctionDefinition } from '../tools/definitions';
@@ -9,8 +8,7 @@ import { ensureBaselineGitignore } from '../state/baseline-gitignore';
 export const GIT_SETUP_SKILL_ID = 'git-setup';
 
 /**
- * Built-in tools listed in skills/git-setup/SKILL.md. Orchestrate mode omits git-write,
- * code-exec, and files-write — inject these for /git-setup turns only.
+ * Built-in tools listed in skills/git-setup/SKILL.md.
  */
 export const GIT_SETUP_SKILL_TOOL_IDS = [
   'execute_command',
@@ -22,7 +20,7 @@ export const GIT_SETUP_SKILL_TOOL_IDS = [
   'save_file',
 ] as const;
 
-/** Add git-setup skill tools when orchestrate (or any mode) did not expose them. */
+/** Add git-setup skill tools when missing from the turn catalog. */
 export function injectGitSetupSkillTools(
   defs: OpenAIFunctionDefinition[],
 ): OpenAIFunctionDefinition[] {

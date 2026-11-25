@@ -24,14 +24,8 @@ export async function openPresentedFile(file: PresentedFile): Promise<void> {
 
 /** Open the file's contents in Code's viewer, read from its originating workspace. */
 export async function openPresentedFileSource(file: PresentedFile): Promise<void> {
-  const absolute = /^(?:[A-Za-z]:[\\/]|\/)/.test(file.path)
-    ? file.path : `${file.workspaceRoot.replace(/[\\/]$/, '')}/${file.path}`;
-  const { getFileTreeListingWorkspaceRoot } = await import('./file-tree-listing-root');
-  const { getWorkspacePath } = await import('../state/workspace');
-  const { panelPathsEqual } = await import('./panel-worktree-cwd');
-  const sameRoot = panelPathsEqual(getFileTreeListingWorkspaceRoot() ?? getWorkspacePath(), file.workspaceRoot);
   const { openFileInViewer } = await import('./file-viewer');
-  await openFileInViewer(sameRoot ? file.path : absolute, { workspaceRoot: file.workspaceRoot });
+  await openFileInViewer(file.path, { workspaceRoot: file.workspaceRoot });
 }
 
 export async function downloadPresentedFile(file: PresentedFile): Promise<void> {

@@ -3,8 +3,6 @@ import { MTPLX_LOCAL_ID } from '../../src/models/engine-ids.mjs';
  * Proxy upstream models (and load/unload) with server-side auth injection.
  */
 
-import { FAKE_PROVIDER_ID } from '../orchestrate/board-testing/fake-model-ids.js';
-import { getFakeModelStatus } from '../orchestrate/board-testing/fake-model-host.js';
 import { getProviderRuntime, LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from './store.js';
 import { getDefaultPaths, normalizeModelsResponse, enrichLmStudioModelsWithV1Reasoning } from './paths.js';
 import {
@@ -106,14 +104,10 @@ export function isUpstreamCatalogUnreachable(err) {
 
 /**
  * @param {string} id
- * Fake board-testing provider is registered but returns no models until the host starts.
  * A local runtime that is simply not up returns an empty catalog (not HTTP 500).
  */
 export async function proxyModels(id, options = {}) {
   validateProviderId(id);
-  if (id === FAKE_PROVIDER_ID && !getFakeModelStatus().running) {
-    return { data: [] };
-  }
   const { profile, secrets, headers, paths } = await getProviderRuntime(id);
   if (id === MTPLX_LOCAL_ID) {
     const rows = (await listServes()).filter((serve) => serve.runtime === 'mtplx' && serve.status === 'running');

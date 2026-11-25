@@ -44,6 +44,11 @@ export function handleGoalCommand(
   if (!parsed) return null;
 
   if (parsed.kind === 'clear') {
+    if (chat.activeGoal?.factoryRunId) {
+      void import('./factory-control').then(module => module.controlFactoryGoal(chat, 'clear'))
+        .then(() => reportStatus('ok', 'Factory goal cleared'), error => reportStatus('err', error.message));
+      return 'handled';
+    }
     clearActiveGoal(chat);
     syncGoalActiveHint();
     syncLoopActiveHint();
@@ -66,6 +71,10 @@ export function handleGoalCommand(
     return 'handled';
   }
 
+  if (chat.activeGoal?.factoryRunId) {
+    reportStatus('err', 'Clear the factory goal with /goal clear before starting another goal.');
+    return 'handled';
+  }
   setActiveGoal(chat, parsed.conditionText);
   syncGoalActiveHint();
   syncLoopActiveHint();

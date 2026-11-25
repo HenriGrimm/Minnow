@@ -12,6 +12,7 @@
  * @property {string} [version]
  * @property {boolean} [disableModelInvocation]
  * @property {'read-only'|'plans'} [access] Turn clamp the skill applies (`/ask`, `/plan`).
+ * @property {string} [goal] `/goal` condition armed when the skill is invoked from the composer (`/factory`).
  */
 
 /**

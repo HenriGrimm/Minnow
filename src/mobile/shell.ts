@@ -7,8 +7,6 @@ import { sessionState } from '../state/sessions';
 import { getWorkspaceLabel, getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import type { NotificationRecord } from '../notifications/types';
-import { createBoardScreen } from './board';
-import { createBoardsScreen } from './boards';
 import { createChatThreadScreen } from './chat-thread';
 import { createChatsScreen, createMobileModelCard, listedMobileChats } from './chats';
 import { el, icon, iconButton } from './dom';
@@ -22,7 +20,7 @@ import { openPhoneApp } from './apps';
 import { switchWorkspaceFromSheet } from './workspace-switch';
 import { isPairedDevice } from '../api/session-token';
 
-const TABS: readonly MobileTabId[] = ['chats', 'boards', 'issues', 'files'];
+const TABS: readonly MobileTabId[] = ['chats', 'issues', 'files'];
 
 const TAB_KEY = 'minnow.mobile.tab';
 
@@ -59,10 +57,6 @@ async function newChat(prompt?: string): Promise<boolean> {
   } finally {
     creatingThread = false;
   }
-}
-
-function openBoard(boardId: string): void {
-  pushScreen(createBoardScreen(boardId), 'boards');
 }
 
 function openIssue(issueId: string): void {
@@ -127,7 +121,6 @@ function openDrawer(): void {
   applications.append(
     navRow('Threads', 'fi-rr-comment', () => { selectTab('chats'); popToRoot('chats'); }, { tab: 'chats', count: chats.length, selected: current === 'chats' }),
     navRow('Issues', 'fi-rr-ticket', () => selectTab('issues'), { tab: 'issues', count: countIssuesNeedingInput(), selected: current === 'issues' }),
-    navRow('Boards', 'fi-rr-layers', () => selectTab('boards'), { tab: 'boards', selected: current === 'boards' }),
     navRow('Files', 'fi-rr-folder', () => selectTab('files'), { tab: 'files', selected: current === 'files' }),
     navRow('Brain', 'fi-rr-book-alt', () => openPhoneApp('brain')),
     navRow('Automations', 'fi-rr-bolt', () => openPhoneApp('scheduler')),
@@ -228,11 +221,10 @@ export function mountMobileShell(): void {
       openAlertsSettings: () => openPhoneApp('settings', { settingsSection: 'notifications' }),
     }));
     const roots = {
-      boards: createBoardsScreen({ openBoard }),
       issues: createIssuesScreen({ openIssue }),
       files: createDirScreen('.', { openDir, openFile }),
     };
-    for (const id of ['boards', 'issues', 'files'] as const) {
+    for (const id of ['issues', 'files'] as const) {
       const screen = roots[id];
       screen.el.querySelector('.m-header__actions')?.append(iconButton('fi-rr-menu-burger', 'Open menu', openDrawer));
       registerTab(id, hosts.get(id)!, screen);

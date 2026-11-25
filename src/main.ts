@@ -52,10 +52,8 @@ import './styles/sub-agent-drawer.css';
 import './styles/agent-model-mark.css';
 import './styles/composer-pinned-skill.css';
 import './styles/composer-model-trigger.css';
-import './styles/view-mode-toggle.css';
 import './styles/toast.css';
 import './styles/git-activity-overlay.css';
-import './styles/plan-progress.css';
 import './styles/minnowos-shell.css';
 import './styles/minnowos-responsive.css';
 import './styles/chat-app.css';
@@ -127,18 +125,7 @@ import {
   parkResumeCandidatesAtBoot,
   startBootResumeGate,
 } from './boot/resume-gate-boot';
-import {
-  bindAskQuestionPlanScreenHooks,
-  notifyAskQuestionDisplayContextChanged,
-} from './chat/ask-question-display';
-import {
-  isOrchestratePlanScreenSuppressingChatDom,
-  resolveOrchestratePlanScreenQuestionHost,
-} from './ui/orchestrate-plan-screen';
-import {
-  isBoardOnboardingSuppressingChatDom,
-  resolveBoardOnboardingQuestionHost,
-} from './ui/orchestrate-board-onboarding-questions';
+import { notifyAskQuestionDisplayContextChanged } from './chat/ask-question-display';
 import { subscribeInstances } from './os/instances';
 import { initComposerInput } from './ui/input';
 import {
@@ -170,14 +157,6 @@ import { syncGoalActiveHint } from './ui/goal-active-hint';
 import { syncLoopActiveHint } from './ui/loop-active-hint';
 import { syncFollowupActiveHint } from './ui/followup-active-hint';
 import { syncTodoPanel } from './ui/todo-panel';
-import {
-  initOrchestratePlanSelector,
-  syncOrchestratePlanStripFromActiveChat,
-} from './ui/orchestrate-plan-selector';
-import {
-  initViewModeToggle,
-  syncViewModeToggleFromActiveChat,
-} from './ui/view-mode-toggle';
 import { initModeSelector, syncModeSelectorFromActiveChat } from './ui/mode-selector';
 import { initComposerPermissionPill } from './ui/permission-level';
 import { registerSlashMenuCommands } from './ui/slash-menu-commands';
@@ -254,14 +233,6 @@ export async function initApp(): Promise<void> {
 
   markBootPhase('ui-init');
   installAppDialogs();
-  bindAskQuestionPlanScreenHooks({
-    resolveQuestionHost: (chatId) =>
-      resolveOrchestratePlanScreenQuestionHost(chatId) ??
-      resolveBoardOnboardingQuestionHost(chatId),
-    isSuppressingChatDom: (chatId) =>
-      isOrchestratePlanScreenSuppressingChatDom(chatId) ||
-      isBoardOnboardingSuppressingChatDom(chatId),
-  });
   subscribeInstances(() => {
     notifyAskQuestionDisplayContextChanged();
   });
@@ -352,10 +323,8 @@ export async function initApp(): Promise<void> {
     initCodeMapInjectionControl();
     initContextDocumentsInjectionControl();
     initComposerReasoningEffort();
-    initOrchestratePlanSelector();
     const { initComposerRunTarget } = await import('./ui/composer-run-target');
     initComposerRunTarget();
-    initViewModeToggle();
     initWorkAgentDevUi();
     // Model chip lives in the trail; mount before compact parks Tools out of that row.
     initComposerModelTriggers();
@@ -462,10 +431,8 @@ export async function initApp(): Promise<void> {
     syncModeSelectorFromActiveChat();
     syncComposerReasoningEffortFromActiveChat();
     syncWorkAgentDevFromActiveChat();
-    void syncOrchestratePlanStripFromActiveChat();
     syncComposerPinnedSkillFromActiveChat();
     syncChatLinkChipsFromActiveChat();
-    syncViewModeToggleFromActiveChat();
     syncGoalActiveHint();
     syncLoopActiveHint();
     syncFollowupActiveHint();
@@ -598,7 +565,6 @@ async function startApp(): Promise<void> {
     { initIssueCaptureMenus },
     { wireCaptureAccessors },
     { initCaptureSurfaceMenus },
-    { initIssueAgentWatcher },
     { installAppearancePersistence, hydrateAppearanceFromServer },
   ] = await Promise.all([
     import('./ui/shell-keyboard-help'),
@@ -608,7 +574,6 @@ async function startApp(): Promise<void> {
     import('./ui/issue-capture'),
     import('./ui/issue-capture-wiring'),
     import('./ui/capture-surface-menus'),
-    import('./chat/issues/agent-watch'),
     import('./appearance/persist'),
     detectConfigServer(),
   ]);
@@ -619,7 +584,6 @@ async function startApp(): Promise<void> {
   initIssueCaptureMenus();
   initCaptureSurfaceMenus();
   wireCaptureAccessors();
-  initIssueAgentWatcher();
   installScopedSelectAllHandler();
   applyAppWindowBoot();
   if (isOsShellEnabled()) {

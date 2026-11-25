@@ -149,6 +149,7 @@ export function initChatConversationSchema(db) {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_chat_outbox_pending ON chat_outbox(state, created_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_outbox_ordinary_reports ON chat_outbox(chat_id) WHERE kind='conversation.report';
     CREATE TABLE IF NOT EXISTS chat_task_results (
       run_id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, journal_owner_id TEXT NOT NULL,
       command_id TEXT NOT NULL, payload_hash TEXT NOT NULL, payload_json TEXT NOT NULL,

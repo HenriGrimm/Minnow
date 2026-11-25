@@ -5,11 +5,6 @@
  * Chats used to restart with no prompt at all: a chat whose reply was still
  * streaming, one with an unfinished tool batch, or one stamped `resumeInterrupted`
  * by Quit Minnow all resumed on their own. They now wait for an answer here.
- *
- * Orchestrate boards are gated too, but the hold lives on the server
- * (`server/orchestrator/resume-gate.js`): under V2 a board resumes when its
- * engine loads, which any request can trigger, so the renderer can only ask
- * which boards are held and relay the answer.
  */
 
 import { getActiveChat, saveSessionsNow } from '../state/sessions.ts';
@@ -20,11 +15,6 @@ import { getWorkspacePath } from '../state/workspace.ts';
 import { listChatsWithGenerationId } from '../chat/generation-resume.ts';
 import { hasIncompleteToolBatchForBoot } from '../chat/incomplete-tool-resume.ts';
 import { declineChatAutoResume, setResumeGateState } from '../chat/resume-gate.ts';
-import {
-  fetchPendingBoardResumes,
-  resolveBoardResumes,
-  type PendingBoardResume,
-} from './board-resume-gate-client.ts';
 import {
   clearResumeInterruptedForChats,
   isChatResumeInterrupted,
@@ -44,11 +34,10 @@ export interface ResumeChatCandidate {
 
 export interface ResumeCandidates {
   chats: ResumeChatCandidate[];
-  boards: PendingBoardResume[];
 }
 
 function hasCandidates(candidates: ResumeCandidates): boolean {
-  return candidates.chats.length > 0 || candidates.boards.length > 0;
+  return candidates.chats.length > 0;
 }
 
 /**
@@ -116,7 +105,7 @@ export async function collectResumeCandidates(state: SessionState): Promise<Resu
     pushChat(chat, 'interrupted');
   }
 
-  return { chats, boards: await fetchPendingBoardResumes() };
+  return { chats };
 }
 
 /**
@@ -147,17 +136,8 @@ function describeChatCandidate(candidate: ResumeChatCandidate): ResumePromptItem
   };
 }
 
-function describeBoardCandidate(candidate: PendingBoardResume): ResumePromptItem {
-  const count = candidate.taskCount;
-  return {
-    label: `${candidate.name?.trim() || 'Board'} — orchestrate board`,
-    detail: count ? `${count} task${count === 1 ? '' : 's'}, still running` : 'Still running',
-  };
-}
-
 /** Drop stale generation / interrupt markers ("Don't resume"). */
 function declineResume(candidates: ResumeCandidates): void {
-  if (candidates.boards.length) void resolveBoardResumes('decline', candidates.boards);
   for (const candidate of candidates.chats) declineChatAutoResume(candidate.chat.id);
 
   clearResumeInterruptedForChats(
@@ -188,10 +168,7 @@ export async function runBootResumeGate(state: SessionState): Promise<void> {
 
   setResumeGateState('pending');
 
-  const choice = await showResumePromptModal([
-    ...candidates.chats.map(describeChatCandidate),
-    ...candidates.boards.map(describeBoardCandidate),
-  ]);
+  const choice = await showResumePromptModal(candidates.chats.map(describeChatCandidate));
 
   if (!choice) {
     declineResume(candidates);
@@ -199,16 +176,9 @@ export async function runBootResumeGate(state: SessionState): Promise<void> {
     return;
   }
 
-  const boardOffset = candidates.chats.length;
   const selectedChats = candidates.chats.filter((_, index) => choice.has(index));
-  const selectedBoards = candidates.boards.filter((_, index) => choice.has(boardOffset + index));
-  declineResume({
-    chats: candidates.chats.filter((_, index) => !choice.has(index)),
-    boards: candidates.boards.filter((_, index) => !choice.has(boardOffset + index)),
-  });
+  declineResume({ chats: candidates.chats.filter((_, index) => !choice.has(index)) });
   setResumeGateState('resumed');
-
-  if (selectedBoards.length) await resolveBoardResumes('resume', selectedBoards);
 
   const selectedIds = new Set(selectedChats.map(candidate => candidate.chat.id));
   await resumeScopedChats(scopedChats.filter(chat => selectedIds.has(chat.id)));

@@ -434,12 +434,11 @@ describe('engine — one report per run', () => {
 // ── report never feeds ───────────────────────────────────────────────────────
 
 describe('report never feeds engine decisions', () => {
-  it('plan, derive, policy, and merge-queue do not import report.js', () => {
+  it('plan, derive, and policy do not import report.js', () => {
     const files = [
       'core/plan.js',
       'core/derive.js',
       'core/policy.js',
-      'merge-queue.js',
     ];
     for (const rel of files) {
       const source = fs.readFileSync(path.join(ORCH_DIR, rel), 'utf8');

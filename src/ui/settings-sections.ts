@@ -11,7 +11,6 @@ import {
   savePromptMetaSettings,
 } from '../config/prompt-meta';
 import { detectConfigServer } from '../config/storage-mode';
-import { loadAutopilotMeta } from '../config/autopilot-meta';
 import { listProviders } from '../providers/store';
 import { renderProvidersSettingsSection } from './settings-providers';
 import { renderUsageSettingsSection } from './settings-usage';
@@ -23,7 +22,6 @@ import { renderProjectLocationSettings } from './settings-project-location';
 import { renderShellSandboxSettings } from './settings-shell-sandbox';
 import { renderAppUpdatesSettings } from './settings-updates';
 import { renderAgentPacksSettingsSection } from './settings-agent-packs';
-import { renderAutopilotSettingsSection } from './settings-autopilot';
 import { renderAgentSupervisionSection } from './settings-watchdog';
 import { renderSkillsSettingsSection } from './settings-skills';
 import { renderSkillsLibrarySettingsSection } from './settings-skills-library';
@@ -480,7 +478,7 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
     const shellSandbox = appendSettingsGroup(
       shell,
       'Agent shell sandbox',
-      'Limit which files agent commands can access. Applies to chats and boards on supported systems.',
+      'Limit which files agent commands can access. Applies to chats on supported systems.',
       'general.shellSandbox',
       { emphasis: true },
     );
@@ -644,15 +642,6 @@ async function renderServersSettingsSectionWrapper(): Promise<void> {
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
-
-async function renderAutopilotSection(): Promise<void> {
-  const mount = clearMount('settingsAutopilotBody');
-  if (!mount) return;
-  const generation = beginAsyncSectionRender('autopilot');
-  await loadAutopilotMeta();
-  if (isAsyncSectionRenderStale('autopilot', generation)) return;
-  await renderAutopilotSettingsSection(mount);
-}
 
 /** Generation upstream timeouts (Settings → Agents → Watchdog). */
 async function appendGenerationTimeoutsSection(
@@ -1648,9 +1637,6 @@ export async function refreshSettingsSection(
       break;
     case 'agent-packs':
       await renderAgentPacksSection();
-      break;
-    case 'autopilot':
-      await renderAutopilotSection();
       break;
     case 'watchdog':
       await renderWatchdogSection();

@@ -41,6 +41,7 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
         pendingToolIds.clear();
       }
       if (!turn) continue;
+      if (msg.provenance?.source === 'factory' && Array.isArray(msg.factoryTools)) turn.toolCount += msg.factoryTools.filter(tool => !tool.failed).length;
       if (msg.commandId) byCommand.set(msg.commandId, turn);
       if (msg.workStatus) turn.executionStatus = msg.workStatus;
       if (typeof msg.workDurationMs === 'number' && Number.isFinite(msg.workDurationMs) && msg.workDurationMs >= 0) {

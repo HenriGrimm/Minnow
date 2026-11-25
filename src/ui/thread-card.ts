@@ -1,6 +1,7 @@
 import '../styles/thread-card.css';
 import { hasHostSessionToken } from '../api/session-token';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
+import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { subscribeFirstMessageSubmission } from '../chat/first-message-submission';
 import { findIncompleteToolBatchAtTail } from '../chat/incomplete-tool-batch';
 import { getPendingTranscriptMessages } from '../chat/message-queue';
@@ -138,11 +139,71 @@ let goalButton: HTMLButtonElement | undefined;
 let goalPopover: PopoverHandle | undefined;
 let goalPopoverChat: string | undefined;
 
+function openFactoryCard(chat: Chat, anchor: HTMLElement): void {
+  const runId = chat.activeGoal?.factoryRunId;
+  const root = el('div', 'graphite-goal-card');
+  const heading = el('div', 'graphite-goal-card__heading');
+  const state = el('span', 'graphite-goal-card__state');
+  heading.append(createIcon('appAgentActivity', { size: 14 }), el('strong', '', 'Factory'), state,
+    button('Close factory details', () => goalPopover?.close(), 'clear', true));
+  const checkpoint = el('div', 'graphite-goal-card__evaluator');
+  const count = el('strong', '');
+  const progress = el('progress', 'factory-feature-progress');
+  progress.setAttribute('aria-label', 'Completed features');
+  const reason = el('p', '');
+  checkpoint.append(count, progress, reason);
+  const details = el('div', 'graphite-thread-card');
+  const controls = el('div', 'graphite-goal-card__actions');
+  root.append(heading, checkpoint, details, controls);
+  const action = async (kind: 'pause' | 'resume' | 'clear') => {
+    if (chat.activeGoal?.factoryRunId !== runId || activeChat()?.id !== chat.id) return;
+    try {
+      if (kind === 'pause') {
+        const { sendManagedChatAction } = await import('../chat/managed-chat-client');
+        await sendManagedChatAction(chat.id, 'stop', { scope: 'tree' });
+      } else {
+        const { controlFactoryGoal } = await import('../chat/goal/factory-control');
+        await controlFactoryGoal(chat, kind);
+      }
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Could not update factory', 'error'); }
+  };
+  function sync(): void {
+    const goal = chat.activeGoal;
+    if (!goal || goal.factoryRunId !== runId) { goalPopover?.close(); return; }
+    const saved = goal.factoryProgress;
+    state.textContent = goal.achieved ? 'Complete' : goal.paused ? 'Paused' : saved?.phase || 'Preparing';
+    count.textContent = saved?.total ? saved.completed + ' of ' + saved.total + ' features passed' : 'Preparing the build contract';
+    progress.hidden = !saved?.total;
+    progress.max = saved?.total || 1;
+    progress.value = saved?.completed || 0;
+    reason.textContent = goal.lastReason || '';
+    details.replaceChildren(row('gitBranch', chat.gitBranch || 'Checkout', chat.worktreeRoot || chat.workspacePath),
+      row('appModels', chat.modelId || 'Selected model', chat.providerId));
+    const child = chat.subAgentRuns?.filter(run => /^(Builder|Reviewer) · /.test(run.title || '')).at(-1);
+    if (child) details.append(rowButton('appAgentActivity', child.title!, child.status, () => {
+      goalPopover?.close();
+      void import('./sub-agent-drawer').then(({ openSubAgentDrawer }) => openSubAgentDrawer(child.runId, chat.id));
+    }));
+    controls.replaceChildren();
+    if (goal.achieved) controls.append(button('Dismiss', () => void action('clear')),
+      button('Review changes', () => { goalPopover?.close(); openSurface('changes', { force: true }); }, 'gitGraph'));
+    else if (goal.paused) controls.append(button('End factory', () => void action('clear')),
+      button('Resume factory', () => void action('resume'), 'loop'));
+    else controls.append(button('Pause factory', () => void action('pause'), 'stop'));
+  }
+  sync();
+  const unsubscribe = subscribeManagedChatMetadata(id => { if (id === chat.id) sync(); });
+  goalPopoverChat = chat.id;
+  goalPopover = openPopover({ anchor, content: root, className: 'graphite-goal-popover', placement: 'bottom-end',
+    ariaLabel: 'Factory', onClose: () => { unsubscribe(); goalPopover = undefined; goalPopoverChat = undefined; } });
+}
+
 async function toggleThreadGoal(chat: Chat, anchor: HTMLElement): Promise<void> {
   if (goalPopover?.isOpen()) {
     goalPopover.close('anchor');
     return;
   }
+  if (chat.activeGoal?.factoryRunId) { openFactoryCard(chat, anchor); return; }
   const [{ getGoalEvalSession, subscribeGoalEvalSessions }, { isGoalEvaluating }, { isGoalTurnBusy, maybeContinueGoalAfterTurn }] = await Promise.all([
     import('../chat/goal/eval-session'),
     import('../chat/goal/evaluating-state'),
@@ -194,7 +255,7 @@ async function toggleThreadGoal(chat: Chat, anchor: HTMLElement): Promise<void> 
   function sync(): void {
     const latest = getGoalEvalSession(chat.id);
     const running = isGoalEvaluating(chat.id) || isGoalTurnBusy(chat);
-    state.textContent = goal?.achieved ? 'Achieved' : running ? 'Running' : goal?.paused ? 'Paused' : 'Ready';
+    state.textContent = goal?.achieved ? 'Achieved' : goal?.paused ? 'Paused' : running ? 'Running' : 'Ready';
     rounds.textContent = `${goal?.turnCount ?? 0} ${goal?.turnCount === 1 ? 'round' : 'rounds'}`;
     result.textContent = (goal?.paused ? goal.lastReason : undefined) || latest?.reason || goal?.lastReason || (running ? 'Evaluating…' : 'Waiting for the next round');
     inspect.hidden = !latest;
@@ -372,7 +433,7 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
         });
       }
     })));
-    if (goal) overview.append(rowButton('loop', 'Goal', goal.achieved ? 'Achieved' : goal.conditionText, action(() => {
+    if (goal) overview.append(rowButton(goal.factoryRunId ? 'appAgentActivity' : 'loop', goal.factoryRunId ? 'Factory' : 'Goal', goal.achieved ? 'Achieved' : goal.conditionText, action(() => {
       if (goalButton) void toggleThreadGoal(chat, goalButton);
     })));
 
@@ -478,6 +539,8 @@ export function mountGraphiteThreadHeader(): void {
     title.textContent = hasThread ? chat.name : 'New thread';
     if (currentCardChat && (currentCardChat !== chat || !isThreadView)) currentCard?.close();
     branch.hidden = !chat;
+    const label = chat?.activeGoal?.factoryRunId ? 'Factory' : 'Goal';
+    if (goal.lastChild?.textContent !== label) goal.replaceChildren(createIcon(label === 'Factory' ? 'appAgentActivity' : 'loop', { size: 14 }), label);
     goal.hidden = !hasThread || !getActiveGoal(chat!);
     if (goal.hidden || !isThreadView || goalPopoverChat !== chat?.id) goalPopover?.close();
     const totals = chat ? getChatCodeChangeTotals(chat) : undefined;
@@ -491,6 +554,7 @@ export function mountGraphiteThreadHeader(): void {
     }
   }
 
+  subscribeManagedChatMetadata(id => { if (activeChat()?.id === id) refresh(); });
   subscribeSidebarRender(refresh);
   subscribeFirstMessageSubmission(chat => {
     if (chat === activeChat()) refresh();

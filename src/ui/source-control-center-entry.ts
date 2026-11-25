@@ -28,7 +28,7 @@ export function initSourceControlCenter(): void {
     if (!target.closest(`#${OPEN_BUTTON_ID}`)) return;
 
     event.preventDefault();
-    void import('./git-panel').then(({ getGitPanelGitCwd }) => openSourceControlCenterLazy({ cwd: getGitPanelGitCwd() }));
+    void openSourceControlCenterLazy();
   });
 }
 

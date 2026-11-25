@@ -22,7 +22,7 @@ Follow the [first-change walkthrough](documentation/manual/get-started/first-cha
 | Read or edit a file while keeping the thread visible | Open **Files** in the side panel. Put **Terminal** below it or open **Browser** for a local preview. [Work in Code](documentation/manual/apps/code.md) |
 | See what an agent did | Read the **Edited** summary for changed files, open **Diff** for the checkout, or use **Agents** for delegated work. [Find your way around Minnow](documentation/manual/apps/overview.md) |
 | Take a bug from report to review | Capture an issue from the thread. Start a linked conversation, optionally in a new Git worktree, and inspect the result under **Work**. [Work with issues](documentation/manual/apps/issues.md) |
-| Run a multi-step plan | Open **Boards** to assign tasks to builders and testers, inspect checkouts, and verify the integration result. [Run a plan with Orchestrate](documentation/manual/orchestrate/boards.md) |
+| Run a multi-step plan | Send `/factory` with a plan or goal. It writes acceptance checks first, builds one feature at a time on its own branch, and reports when everything passes. [Build a plan unattended](documentation/manual/chat/factory.md) |
 | Keep a decision or repeat a check | Save a project decision in **Brain**, or create an **Automation** with a schedule and run history. [Brain](documentation/manual/apps/brain.md) · [Automations](documentation/manual/apps/scheduler.md) |
 
 ![Minnow Source Control showing the forecast diff in the demo repository](documentation/images/app-source-control.png)

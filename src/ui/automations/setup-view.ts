@@ -505,24 +505,8 @@ export function renderSetupView(options: SetupOptions): { root: HTMLElement; dis
       }
     }
     scheduleField({ allowManual: false });
-    if (p.engine === 'github-watch') {
-      const guide = section('Additional guidance', 'Optional. Repository-specific constraints for the planning agent.');
-      const area = el('textarea', 'auto-textarea');
-      area.rows = 4;
-      area.setAttribute('aria-label', 'Additional guidance');
-      area.value = state.config.guidance ?? '';
-      area.addEventListener('input', () => { state.config.guidance = area.value; });
-      guide.append(area);
-      aside.append(railList('Each run', [
-        ['Pick the oldest open issue labeled minnow', 'One issue at a time per repository.'],
-        ['Plan it in a separate worktree', 'A planning agent triages the issue and writes a board plan.'],
-        ['Build and test on a board', 'Builder and Tester agents implement the plan.'],
-        ['Open a PR', 'Only when every task merged and the final test passed. You review and merge it.'],
-      ]));
-    } else {
-      instructionsField({ editable: true });
-      aside.append(capabilitiesCard(p));
-    }
+    instructionsField({ editable: true });
+    aside.append(capabilitiesCard(p));
     modelField();
     if (p.engine === 'prompt') chatCreationField();
   }

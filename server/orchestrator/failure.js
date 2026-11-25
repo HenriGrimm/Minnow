@@ -15,11 +15,16 @@ export function boardFailure(input = {}, now = Date.now()) {
   const detail = String(input.message ?? input.error ?? input.summary ?? evidence.error ?? input.outcome ?? 'Unknown failure');
   const needs = input.outcome === 'blocked' && Array.isArray(evidence.needs) ? evidence.needs.filter((need) => typeof need === 'string').slice(0, 8).join('; ') : '';
   const message = redactDiagnosticText(needs ? `${detail}: ${needs}` : detail, 3000);
-  const status = Number(supplied.status ?? input.status ?? /(?:Upstream\s+)?HTTP\s+(\d{3})\b/i.exec(message)?.[1]) || undefined;
-  const allowance = allowanceFailure(message, { ...input, ...supplied, status, now });
+  // A failed check can quote HTTP responses from the project under test.
+  const reportedFailure = input.outcome === 'fail' && supplied.status == null && input.status == null &&
+    !supplied.kind && !input.quotaExceeded && !evidence.providerUnreachable;
+  const status = reportedFailure ? undefined
+    : Number(supplied.status ?? input.status ?? /(?:Upstream\s+)?HTTP\s+(\d{3})\b/i.exec(message)?.[1]) || undefined;
+  const allowance = reportedFailure ? null : allowanceFailure(message, { ...input, ...supplied, status, now });
   let category = supplied.category;
   if (!['quota', 'rate_limit', 'unavailable', 'capacity', 'context', 'authentication', 'prerequisite', 'environment', 'protocol', 'interrupted', 'implementation', 'verification', 'unknown'].includes(category)) {
-    if (supplied.kind === 'quota' || input.quotaExceeded || isQuotaExhaustedText(message)) category = 'quota';
+    if (reportedFailure) category = 'implementation';
+    else if (supplied.kind === 'quota' || input.quotaExceeded || isQuotaExhaustedText(message)) category = 'quota';
     else if (supplied.kind === 'rate_limit' || allowance?.kind === 'rate_limit') category = 'rate_limit';
     else if (/memory.*(?:limit|budget)|GENERATION_MEMORY_LIMIT/i.test(message)) category = status === 413 || (!status && /single|request.*(?:large|exceed)|context/i.test(message)) ? 'context' : 'capacity';
     else if (/process limit|cli.*(?:limit|capacity)|too many.*process/i.test(message)) category = 'capacity';

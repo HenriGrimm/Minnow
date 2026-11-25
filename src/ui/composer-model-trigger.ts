@@ -3,7 +3,6 @@ import { getComposerReasoningState, setComposerReasoningChoice, toggleComposerRe
 import { wrapReasoningChoiceWithFavorite } from './reasoning-favorite-button';
 import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
 import { positionAnchoredModelPicker } from './model-picker-position';
-import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
 import { getModelRowForSelectOrCanonicalId, updateModelLoadUnloadButtons } from '../api/models';
 import { modelCache, streamingChatIds } from '../app-state';
 import { getForegroundAppId, getOsView } from '../os/instances';
@@ -19,7 +18,6 @@ import {
   onActiveChatModelChange,
   refreshActiveChatReasoningDefault,
 } from './chat-model-ui';
-import { scheduleCapabilityProbeForSelectValue } from '../providers/first-load-probe';
 import {
   clearModelSearchQuery,
   closeModelSelectMenu,
@@ -56,22 +54,12 @@ type ComposerModelVariant =
   | 'code'
   | 'chat'
   | 'menubar'
-  | 'board'
   | 'research'
   | 'super-plan';
 
-type ComposerModelSurfaceVariant = Exclude<ComposerModelVariant, 'menubar' | 'board'>;
+type ComposerModelSurfaceVariant = Exclude<ComposerModelVariant, 'menubar'>;
 
-type MenubarStyleVariant = 'menubar' | 'board';
-
-/** Per-board model chip: display + persist, so V1 store and V2 journal can share the UI. */
-export interface BoardModelChipContext {
-  resolveBinding: () => { providerId: string; modelId: string };
-  persist: (providerId: string, modelId: string) => void;
-  onChanged: () => void;
-}
-
-let boardModelTriggerContext: BoardModelChipContext | null = null;
+type MenubarStyleVariant = 'menubar';
 
 /** How long the menubar hover label stays visible before collapsing. */
 const MENUBAR_EXPAND_HOLD_MS = 3200;
@@ -144,29 +132,12 @@ function findChatModelTrigger(
   return triggers.find((trigger) => trigger.variant === variant);
 }
 
-function findBoardModelTrigger(): ComposerModelTrigger | undefined {
-  return triggers.find((trigger) => trigger.variant === 'board');
-}
-
 function findResearchModelTrigger(): ComposerModelTrigger | undefined {
   return triggers.find((trigger) => trigger.variant === 'research');
 }
 
 function isMenubarStyleVariant(variant: ComposerModelVariant): variant is MenubarStyleVariant {
-  return variant === 'menubar' || variant === 'board';
-}
-
-/** Update board model chip context (orchestrate board header). */
-export function setBoardModelTriggerContext(ctx: BoardModelChipContext | null): void {
-  boardModelTriggerContext = ctx;
-  const boardTrigger = findBoardModelTrigger();
-  if (boardTrigger) syncTrigger(boardTrigger);
-}
-
-/** Re-sync the board header model chip from persisted board state. */
-export function syncBoardModelChipTrigger(): void {
-  const boardTrigger = findBoardModelTrigger();
-  if (boardTrigger) syncTrigger(boardTrigger);
+  return variant === 'menubar';
 }
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
@@ -196,10 +167,6 @@ function resolveTriggerSelectValue(trigger: ComposerModelTrigger): string {
   if (!sel) return '';
   if (trigger.variant === 'menubar') {
     return sel.value.trim();
-  }
-  if (trigger.variant === 'board' && boardModelTriggerContext) {
-    const values = [...sel.options].map((o) => o.value);
-    return resolveModelSelectValueForChat(canonicalRouterBinding(boardModelTriggerContext.resolveBinding()), values);
   }
   if (trigger.variant === 'research') {
     const values = [...sel.options].map((o) => o.value);
@@ -316,10 +283,9 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     }
     syncMenubarLoadDot(trigger, selectValue);
     const summary = provider ? `${model} · ${provider}` : model;
-    const labelPrefix = trigger.variant === 'board' ? 'Board model' : 'Default model';
-    trigger.trigger.setAttribute('aria-label', `${labelPrefix}: ${summary}`);
+    trigger.trigger.setAttribute('aria-label', `Default model: ${summary}`);
     trigger.trigger.title =
-      trigger.variant === 'menubar' ? `Default for new chats: ${summary}` : summary;
+      `Default for new chats: ${summary}`;
   } else {
     applyModelProducerLogo(trigger.logoEl, modelId);
     syncMenubarLoadDot(trigger, selectValue);
@@ -371,7 +337,6 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
 /** Sync every mounted composer model trigger. */
 export function syncComposerModelTriggers(): void {
   for (const trigger of triggers) syncTrigger(trigger);
-  syncBoardHeaderReasoning();
   if (openTrigger) rebuildOpenMenu();
   updateModelLoadUnloadButtons();
 }
@@ -381,22 +346,6 @@ export function syncComposerModelTriggers(): void {
 function handleComposerModelPick(trigger: ComposerModelTrigger, modelId: string): void {
   if (trigger.variant === 'menubar') {
     selectModelInPicker(modelId);
-    return;
-  }
-  if (trigger.variant === 'board') {
-    if (!boardModelTriggerContext) return;
-    const decoded = decodeModelSelectKey(modelId);
-    const canonicalModelId = decoded?.modelId ?? modelId.trim();
-    const providerId =
-      decoded?.providerId?.trim() ||
-      boardModelTriggerContext.resolveBinding().providerId.trim() ||
-      '';
-    if (!canonicalModelId || !providerId) return;
-    boardModelTriggerContext.persist(providerId, canonicalModelId);
-    scheduleCapabilityProbeForSelectValue(modelId);
-    boardModelTriggerContext.onChanged();
-    syncTrigger(trigger);
-    syncBoardHeaderReasoning();
     return;
   }
   if (trigger.variant === 'research') {
@@ -581,12 +530,6 @@ function positionMenubarExpandLabel(trigger: ComposerModelTrigger): void {
   const expand = trigger.expandEl;
   if (!expand) return;
   const rect = trigger.trigger.getBoundingClientRect();
-  if (trigger.variant === 'board') {
-    expand.style.left = `${rect.left + rect.width / 2}px`;
-    expand.style.top = `${rect.bottom + 6}px`;
-    expand.style.right = 'auto';
-    return;
-  }
   expand.style.left = `${rect.left - 6}px`;
   expand.style.top = `${rect.top + rect.height / 2}px`;
   expand.style.right = 'auto';
@@ -920,13 +863,10 @@ function createModelMenuPanel(
 function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTrigger {
   const root = document.createElement('div');
   root.className =
-    `mn-os-mb-model-chip composer-model-trigger-wrap composer-model-trigger-wrap--menubar composer-model-trigger-wrap--${variant}`;
+    `mn-os-mb-model-chip composer-model-trigger-wrap composer-model-trigger-wrap--menubar`;
 
   const expandEl = document.createElement('div');
   expandEl.className = 'mn-os-mb-model-expand';
-  if (variant === 'board') {
-    expandEl.classList.add('mn-os-mb-model-expand--board');
-  }
   expandEl.setAttribute('aria-hidden', 'true');
 
   const expandInner = document.createElement('div');
@@ -940,14 +880,10 @@ function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTr
   providerEl.className = 'mn-os-mb-model-provider';
   providerEl.hidden = true;
 
-  if (variant === 'menubar') {
-    const expandRoleEl = document.createElement('span');
-    expandRoleEl.className = 'mn-os-mb-model-expand-role';
-    expandRoleEl.textContent = 'Default model';
-    expandInner.append(expandRoleEl, labelEl, providerEl);
-  } else {
-    expandInner.append(labelEl, providerEl);
-  }
+  const expandRoleEl = document.createElement('span');
+  expandRoleEl.className = 'mn-os-mb-model-expand-role';
+  expandRoleEl.textContent = 'Default model';
+  expandInner.append(expandRoleEl, labelEl, providerEl);
   expandEl.appendChild(expandInner);
 
   const triggerBtn = document.createElement('button');
@@ -956,9 +892,6 @@ function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTr
   triggerBtn.setAttribute('aria-haspopup', 'listbox');
   triggerBtn.setAttribute('aria-expanded', 'false');
   triggerBtn.setAttribute('aria-label', 'Default model');
-  if (variant === 'board') {
-    triggerBtn.dataset.focusKey = 'board-model';
-  }
 
   const dotEl = document.createElement('span');
   dotEl.className = 'model-load-dot mn-os-mb-model-dot';
@@ -1068,39 +1001,6 @@ export function mountMenubarModelChipTrigger(anchor: HTMLElement): void {
   if (anchor.querySelector('.composer-model-trigger-wrap--menubar')) return;
   const entry = buildMenubarStyleTrigger('menubar');
   anchor.appendChild(entry.root);
-}
-
-/** Mount the orchestrate board model chip (same UI as menubar; per-board binding). */
-export function mountBoardModelChipTrigger(anchor: HTMLElement): void {
-  ensureGlobals();
-  if (anchor.querySelector('.composer-model-trigger-wrap--board')) return;
-  const entry = buildMenubarStyleTrigger('board');
-  anchor.appendChild(entry.root);
-}
-
-/** Re-home the existing board chip, or mount one. */
-export function adoptBoardModelChipTrigger(anchor: HTMLElement): void {
-  ensureGlobals();
-  const existing = findBoardModelTrigger();
-  if (existing) {
-    if (existing.root.parentElement !== anchor) anchor.appendChild(existing.root);
-    return;
-  }
-  mountBoardModelChipTrigger(anchor);
-}
-
-/** Tear down the board model chip and floating menu (board header rebuild). */
-export function unmountBoardModelChipTrigger(): void {
-  const idx = triggers.findIndex((trigger) => trigger.variant === 'board');
-  if (idx === -1) return;
-  const entry = triggers[idx];
-  if (openTrigger === entry) closeComposerModelMenu();
-  clearMenubarCollapseTimer(entry);
-  entry.expandEl?.remove();
-  entry.panel.remove();
-  entry.root.remove();
-  triggers.splice(idx, 1);
-  boardModelTriggerContext = null;
 }
 
 /** Mount the Code composer model chip into the trail, even when Tools is parked. */

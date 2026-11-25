@@ -34,13 +34,6 @@ const MODE_DEFINITIONS: ModeDefinition[] = [
     toolPolicy: allowGroupsToolPolicy('plan', MODE_ALLOWED_GROUPS.plan),
   },
   {
-    id: 'orchestrate',
-    label: 'Orchestrate',
-    description: 'Open a multi-agent board from a plan. Not a chat — parsePlan is intake.',
-    promptId: 'orchestrate',
-    toolPolicy: allowGroupsToolPolicy('orchestrate', MODE_ALLOWED_GROUPS.orchestrate),
-  },
-  {
     id: 'debug',
     label: 'Debug',
     description:
@@ -74,7 +67,7 @@ export function listComposerModes(): ModeDefinition[] {
 }
 
 export function getMode(id: ModeId): ModeDefinition {
-  const resolvedId = id === 'super-plan' ? 'plan' : id === 'desktop' || id === 'email' ? 'general' : id;
+  const resolvedId = id === 'super-plan' ? 'plan' : id === 'desktop' || id === 'email' ? 'general' : id === 'orchestrate' ? 'build' : id;
   const mode = MODE_DEFINITIONS.find((m) => m.id === resolvedId);
   if (!mode) {
     throw new Error(`Unknown mode id: ${id}`);
@@ -86,15 +79,13 @@ export function getMode(id: ModeId): ModeDefinition {
  * Logical relative path for built-in mode prompt files (used in tests).
  */
 export function resolveModePromptPath(id: ModeId): string {
-  const resolvedId = id === 'super-plan' ? 'plan' : id === 'desktop' || id === 'email' ? 'general' : id;
-  return `modes/${resolvedId}.full.md`;
+  return `modes/${getMode(id).promptId}.full.md`;
 }
 
 /**
  * Load mode prompt body for compose / tests.
  */
 export function loadModePromptBody(id: ModeId): string {
-  const resolvedId = id === 'super-plan' ? 'plan' : id === 'desktop' || id === 'email' ? 'general' : id;
-  const loaded = loadPromptById('mode', resolvedId);
+  const loaded = loadPromptById('mode', getMode(id).promptId);
   return loaded?.body?.trim() ?? '';
 }

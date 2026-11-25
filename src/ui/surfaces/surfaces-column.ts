@@ -57,6 +57,7 @@ interface ActiveSurface {
 let stage: HTMLElement | null = null;
 let stageSize: { width: number; height: number } | undefined;
 let content: SurfaceContent | undefined;
+let setFileBrowseChat: ((chat?: Chat) => void) | undefined;
 let activeKey = '';
 let state = normalizeSurfaceState();
 let desktopState: ThreadSurfaceState | undefined;
@@ -707,6 +708,7 @@ function render(animateClose?: SurfaceDock): void {
       closeSurfaceTab(state, id);
       persist();
     }
+    setFileBrowseChat?.(state.open.includes('files') || state.open.includes('terminal') ? chat : undefined);
     renderPlacement(animateClose);
     renderSurfaces(chat);
     for (const [id, wrapper] of wrappers) {
@@ -1233,12 +1235,14 @@ export function mountMobileSurfacePortal(host: HTMLElement, chatId?: string): ()
 export function mountSurfacePanels(host: HTMLElement, options: {
   legacyOpen?: readonly SurfaceId[];
   content?: SurfaceContent;
+  setFileBrowseChat?: (chat?: Chat) => void;
 } = {}): void {
   if (stage === host) return;
   if (stage) return;
   stage = host;
   stageSize = undefined;
   content = options.content;
+  setFileBrowseChat = options.setFileBrowseChat;
   legacySurfaces = options.legacyOpen ?? [];
   stage.classList.add('graphite-surfaces');
   mobileBackdrop = element('button', 'graphite-surface-backdrop');

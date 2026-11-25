@@ -55,6 +55,7 @@ export interface ChatPolicySnapshot {
 export function createChatPolicy(input: ChatPolicyInput): ChatPolicySnapshot;
 export function assertChatPolicy(policy: unknown): ChatPolicySnapshot;
 export function intersectChatPolicies(...inputs: readonly ChatPolicySnapshot[]): ChatPolicySnapshot;
+export function withOrdinaryWorktreeRetry(saved: ChatPolicyInput, live: ChatPolicySnapshot): ChatPolicyInput;
 export function compareChatPolicies(ceiling: ChatPolicySnapshot, target: ChatPolicySnapshot): {
   readonly allowed: boolean;
   readonly violations: readonly string[];

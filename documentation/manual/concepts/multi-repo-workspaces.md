@@ -50,6 +50,5 @@ For a linked issue, use **Work → Repository** to review, commit, or merge one 
 
 ## Limits
 
-- **Boards** run in a single repository. Starting a board in a folder of repositories stops with a message asking you to open one of them as the workspace.
 - Minnow will not run **Initialize git** on a folder that already holds repositories, because the parent repository would swallow them.
 - Git **submodules** are not treated as separate repositories, and repositories outside the workspace folder cannot be added to it.

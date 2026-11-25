@@ -33,8 +33,6 @@ import { chatHistoryHasBrowserToolUse } from './browser-allowlist-gate';
 import { getWorkspacePath } from '../../state/workspace';
 import { resolveShellSandboxModeForChat } from '../../tools/shell-sandbox-client';
 import type { ComposeContext } from './types';
-import { getBoardGroupForChat } from '../../state/chat-groups';
-import { resolveEffectiveOrchestratePlanPath } from '../plans/plan-path';
 import { runWithDeadline } from '../../lib/async-deadline.mjs';
 import { getPermissionLevelCached } from '../../config/tool-security-meta';
 import { getCachedProviderList } from '../../providers/store';
@@ -97,10 +95,6 @@ export async function buildComposeContext(
   const meta = await loadPromptMetaSettings();
 
   const modeId = normalizeModeId(chat.modeId);
-  const orchestratePlanPath =
-    modeId === 'orchestrate'
-      ? resolveEffectiveOrchestratePlanPath(chat, getBoardGroupForChat(chat)) ?? null
-      : null;
   const enabledToolIds = getEnabledToolIdsForChat(chat);
 
   const infoPresetId =
@@ -194,7 +188,6 @@ export async function buildComposeContext(
   const ctx: ComposeContext = {
     cwd: worktreeCwd ?? resolveComposeCwd(),
     modeId,
-    orchestratePlanPath,
     expertId: null,
     workAgentId: null,
     skillBody: null,

@@ -138,6 +138,5 @@ A bare request without the header returns `401 Unauthorized` — that is the gat
 
 - [commands.md](commands.md) — scripts, tests, env vars
 - [architecture.md](architecture.md) — three-process map
-- [orchestrate-board-testing.md](orchestrate-board-testing.md) — board test harness
 - [`../manual/reference/configuration.md`](../manual/reference/configuration.md) — `~/.minnow` layout
 - [tool authoring](../plugins/tool-authoring.md), [agent packs](../agent-packs/README.md)
