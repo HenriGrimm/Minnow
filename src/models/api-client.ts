@@ -814,10 +814,23 @@ export interface ServeActivitySlot {
   remaining: number | null;
   /** Derived from consecutive samples; null until there are two. */
   tokensPerSecond: number | null;
+  /** Prompt (prefill) rate from consecutive `promptProcessed` samples; null outside prefill. */
+  promptTokensPerSecond?: number | null;
+}
+
+/** Oldest in-flight MTPLX request; `latest` only describes completed requests. */
+export interface MtplxLiveRequest {
+  phase: 'prompt' | 'generating';
+  promptTotal: number | null;
+  /** Prompt tokens ready, cached ones included; null once prefill is over. */
+  promptDone: number | null;
+  promptTokS: number | null;
+  decodeTokS: number | null;
+  completionTokens: number | null;
 }
 
 export interface ServeActivity {
-  mtplx?: { activeRequests: number; requestsCompleted?: number; latest: { decode_tok_s?: number; prefill_tok_s?: number; ttft_s?: number; cached_tokens?: number; mtp_depth?: number; accepted_by_depth?: number[]; drafted_by_depth?: number[]; mean_accept_probability_by_depth?: number[] } | null; memoryPlan?: unknown; [key: string]: unknown };
+  mtplx?: { activeRequests: number; requestsCompleted?: number; live?: MtplxLiveRequest | null; latest: { decode_tok_s?: number; prefill_tok_s?: number; ttft_s?: number; cached_tokens?: number; mtp_depth?: number; accepted_by_depth?: number[]; drafted_by_depth?: number[]; mean_accept_probability_by_depth?: number[] } | null; memoryPlan?: unknown; [key: string]: unknown };
   serveId: string;
   /** Identity for surfaces that never hold a serve list (the header picker). */
   modelLabel: string;

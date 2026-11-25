@@ -1547,7 +1547,147 @@ html:not(.minnow-os-enabled) .models-page.is-open {
 .models-loaded__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px 0;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.models-loaded__fact {
+  white-space: nowrap;
+}
+
+.models-loaded__fact + .models-loaded__fact::before {
+  content: '·';
+  padding: 0 7px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  opacity: 0.6;
+}
+
+/* Live line, generation trace and last-request figures for a loaded model. */
+.models-runtime-telemetry {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.models-runtime-telemetry__now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.models-runtime-telemetry__label {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12.5px;
+}
+
+.models-runtime-telemetry__rate {
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.models-runtime-telemetry__detail {
+  margin-left: auto;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.models-runtime-telemetry[data-phase='idle'] .models-runtime-telemetry__label {
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.models-runtime-telemetry__now [hidden],
+.models-runtime-telemetry__last[hidden] {
+  display: none;
+}
+
+.models-runtime-telemetry__meter {
+  position: relative;
+  height: 40px;
+}
+
+.models-runtime-telemetry__trace {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.models-runtime-telemetry__line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--mn-graphite-text-subtle, var(--mn-fg-subtle)) 45%, transparent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.models-runtime-telemetry__area {
+  fill: transparent;
+}
+
+.models-runtime-telemetry[data-phase='generating'] .models-runtime-telemetry__line { stroke: var(--mn-accent); }
+.models-runtime-telemetry[data-phase='generating'] .models-runtime-telemetry__area { fill: color-mix(in srgb, var(--mn-accent) 10%, transparent); }
+
+/* Prompt progress takes the trace's place while the total is known. */
+.models-runtime-telemetry__progress {
+  position: absolute;
+  inset: auto 0 0;
+  display: none;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--mn-radius-pill);
+  background: color-mix(in srgb, var(--mn-graphite-text-subtle, var(--mn-fg-subtle)) 25%, transparent);
+}
+
+.models-runtime-telemetry__progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--mn-accent);
+  transform: scaleX(var(--models-runtime-progress, 0));
+  transform-origin: left center;
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.models-runtime-telemetry[data-phase='prompt'][data-progress] .models-runtime-telemetry__progress { display: block; }
+.models-runtime-telemetry[data-phase='prompt'][data-progress] .models-runtime-telemetry__trace { visibility: hidden; }
+
+.models-runtime-telemetry__last {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--mn-graphite-line, var(--mn-border));
+}
+
+.models-runtime-telemetry__caption {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-subtle));
+  font-size: 11px;
+}
+
+.models-runtime-telemetry__figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.models-runtime-telemetry__figures dt {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 11.5px;
+}
+
+.models-runtime-telemetry__figures dd {
+  margin: 2px 0 0;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Classified llama.cpp failure — title + cause + what to do. Full border, no side stripe. */

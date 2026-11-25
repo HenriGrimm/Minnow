@@ -41,7 +41,15 @@ export function serveActivityChipLabels(
 ): string[] {
   const queuedLabel = formatQueuedChipLabel(activity?.queued ?? 0);
   if (activity?.mtplx) {
-    const work = activity.mtplx.activeRequests > 0 ? `${activity.mtplx.activeRequests} active` : 'Ready';
+    const live = activity.mtplx.activeRequests > 0 ? activity.mtplx.live : null;
+    let work = activity.mtplx.activeRequests > 0 ? `${activity.mtplx.activeRequests} active` : 'Ready';
+    if (live?.phase === 'prompt') {
+      work = live.promptDone != null && live.promptTotal
+        ? `PP ${Math.min(99, Math.floor((live.promptDone / live.promptTotal) * 100))}%`
+        : 'PP';
+    } else if (live?.phase === 'generating') {
+      work = live.completionTokens ? `GEN ${formatActivityTokenCount(live.completionTokens)} tok` : 'GEN';
+    }
     return [activity.stale ? `${work} · stale` : work, ...(queuedLabel ? [queuedLabel] : [])];
   }
 

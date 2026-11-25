@@ -225,7 +225,8 @@ describe('models local server loading card', () => {
     assert.equal(log.scrollTop, 37);
     assert.equal(card?.classList.contains('is-selected'), true);
     assert.match(card?.querySelector('.models-loaded__state')?.textContent ?? '', /GEN 25 tok/);
-    assert.match(card?.querySelector('.models-loaded__facts')?.textContent ?? '', /30.0 tok\/s/);
+    assert.match(card?.querySelector('.models-runtime-telemetry')?.textContent ?? '', /Generating.*30\.0 tok\/s/);
+    assert.doesNotMatch(card?.querySelector('.models-loaded__facts')?.textContent ?? '', /tok\/s/);
 
     activity.slots[0].state = 'idle';
     render();
@@ -259,7 +260,7 @@ describe('models local server loading card', () => {
     assert.equal(document.querySelector('.models-loaded details'), details);
     assert.equal(details.open, true);
     assert.match(details.querySelector('pre')?.textContent ?? '', /9/);
-    assert.match(document.querySelector('.models-loaded__facts')?.textContent ?? '', /15.0 tok\/s/);
+    assert.match(document.querySelector('.models-runtime-telemetry__last')?.textContent ?? '', /Last request.*Generation15.0 tok\/s/);
   });
 
   test('a second model completing its load updates the list during another load', async () => {

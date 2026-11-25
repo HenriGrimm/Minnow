@@ -60,8 +60,22 @@ describe('normalizeSlots', () => {
         decoded: 0,
         remaining: null,
         tokensPerSecond: null,
+        promptTokensPerSecond: null,
       },
     ]);
+  });
+
+  it('derives a prompt rate from consecutive prefill samples of the same task', () => {
+    const prev = new Map();
+    const prefill = (processed) => [{
+      id: 0, is_processing: true, id_task: 42,
+      n_prompt_tokens_processed: processed, n_prompt_tokens_cache: 0,
+      next_token: [{ n_remain: 0, n_decoded: 0 }],
+    }];
+    assert.equal(normalizeSlots(prefill(2048), prev, 1_000)[0].promptTokensPerSecond, null);
+    const [slot] = normalizeSlots(prefill(4096), prev, 1_500);
+    assert.equal(slot.state, 'prompt');
+    assert.equal(slot.promptTokensPerSecond, 4096);
   });
 
   it('reports prefill as a token count, because /slots has no total to divide by', () => {

@@ -9,9 +9,20 @@ import { closeWorkspaceMenu } from '../ui/workspace-recent-menu';
 import { subscribeModelInventory } from '../models/inventory-events';
 import type { ServeActivity } from '../models/api-client';
 import { subscribeServeActivityFeed } from '../models/serve-activity-feed';
+import { getInFlightPromptOverlay } from '../models/in-flight-prompt';
+import { localModelPhase, type LocalModelPhase } from '../models/local-model-phase';
+import { runtimeDisplayName } from '../models/runtime-names';
 import { getOsView, subscribeInstances } from './instances';
 import { launchApp, navigateToCodeChat, navigateToCodeDevServers, navigateToCodeMap, navigateToCodeOrchestrate } from './router';
 import { syncWorkspaceMenubarPlacement } from './workspace-menubar';
+
+const SPARK_SLOTS = 32;
+
+/** `mtplx-inkling-2` reads as `inkling-2`; the runtime is already implied by the serve. */
+function stripRuntimePrefix(label: string, runtime: string): string {
+  const prefix = `${runtime}-`;
+  return label.toLowerCase().startsWith(prefix) && label.length > prefix.length ? label.slice(prefix.length) : label;
+}
 
 function move(element: HTMLElement, target: HTMLElement, before: Element | null = null): void {
   if (element.parentElement !== target) target.insertBefore(element, before);
@@ -85,25 +96,43 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   modelCard.type = 'button';
   modelCard.className = 'mn-graphite-local-model';
   modelCard.hidden = true;
-  const modelTitle = document.createElement('span');
-  modelTitle.className = 'mn-graphite-local-model__title';
-  const modelDetail = document.createElement('span');
-  modelDetail.className = 'mn-graphite-local-model__detail';
   const modelDot = document.createElement('span');
   modelDot.className = 'mn-graphite-local-model__dot';
   modelDot.setAttribute('aria-hidden', 'true');
-  const modelCopy = document.createElement('span');
-  modelCopy.className = 'mn-graphite-local-model__copy';
-  modelCopy.append(modelTitle, modelDetail);
-  const modelLink = createIcon('chevronRight', { size: 14 });
+  const modelTitle = document.createElement('span');
+  modelTitle.className = 'mn-graphite-local-model__title';
+  const modelLink = createIcon('chevronRight', { size: 12 });
+  modelLink.classList.add('mn-graphite-local-model__link');
+  const modelHead = document.createElement('span');
+  modelHead.className = 'mn-graphite-local-model__head';
+  modelHead.append(modelDot, modelTitle, modelLink);
+  const modelDetail = document.createElement('span');
+  modelDetail.className = 'mn-graphite-local-model__detail';
   const modelRate = document.createElement('span');
   modelRate.className = 'mn-graphite-local-model__rate';
   modelRate.hidden = true;
-  const spark = document.createElement('span');
-  spark.className = 'mn-graphite-local-model__spark';
+  const modelMeta = document.createElement('span');
+  modelMeta.className = 'mn-graphite-local-model__meta';
+  modelMeta.append(modelDetail, modelRate);
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const spark = document.createElementNS(svgNs, 'svg');
+  spark.classList.add('mn-graphite-local-model__spark');
+  spark.setAttribute('viewBox', `0 0 ${SPARK_SLOTS - 1} 16`);
+  spark.setAttribute('preserveAspectRatio', 'none');
   spark.setAttribute('aria-hidden', 'true');
-  spark.hidden = true;
-  modelCard.append(modelDot, modelCopy, modelLink, modelRate, spark);
+  const sparkArea = document.createElementNS(svgNs, 'path');
+  sparkArea.classList.add('mn-graphite-local-model__spark-area');
+  const sparkLine = document.createElementNS(svgNs, 'path');
+  sparkLine.classList.add('mn-graphite-local-model__spark-line');
+  sparkLine.setAttribute('vector-effect', 'non-scaling-stroke');
+  spark.append(sparkArea, sparkLine);
+  const modelProgress = document.createElement('span');
+  modelProgress.className = 'mn-graphite-local-model__progress';
+  modelProgress.setAttribute('aria-hidden', 'true');
+  const modelMeter = document.createElement('span');
+  modelMeter.className = 'mn-graphite-local-model__meter';
+  modelMeter.append(spark, modelProgress);
+  modelCard.append(modelHead, modelMeta, modelMeter);
   modelCard.addEventListener('click', () => launchApp('models', { modelsSection: 'server' }));
 
   const auxiliary = document.createElement('div');
@@ -125,6 +154,19 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   let stopModelActivity: (() => void) | undefined;
   let lastSample = 0;
   const samples: number[] = [];
+  let shownPhase: LocalModelPhase['phase'] = 'idle';
+  let heldRate: number | null = null;
+  const paintSpark = (): void => {
+    // Newest sample sits at the right edge; with no samples the trace is a flat baseline.
+    const peak = Math.max(1, ...samples) * 1.25;
+    const start = samples.length > 1 ? SPARK_SLOTS - samples.length : 0;
+    const values = samples.length > 1 ? samples : [samples[0] ?? 0, samples[0] ?? 0];
+    const step = samples.length > 1 ? 1 : SPARK_SLOTS - 1;
+    const line = values.map((value, index) =>
+      `${index ? 'L' : 'M'}${start + index * step} ${(15 - value / peak * 12).toFixed(2)}`).join('');
+    sparkLine.setAttribute('d', line);
+    sparkArea.setAttribute('d', `${line}V16H${start}Z`);
+  };
   const setTrackedModel = (id: string | undefined): void => {
     if (serveId === id) return;
     stopModelActivity?.();
@@ -132,35 +174,47 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     serveId = id;
     lastSample = 0;
     samples.length = 0;
-    spark.hidden = modelRate.hidden = true;
-    modelLink.removeAttribute('hidden');
-    spark.replaceChildren();
+    modelRate.hidden = true;
+    shownPhase = 'idle';
+    heldRate = null;
+    delete modelCard.dataset.activity;
+    delete modelCard.dataset.progress;
+    paintSpark();
     if (id) stopModelActivity = subscribeServeActivityFeed(paintModelActivity);
   };
   function paintModelActivity(activity: ServeActivity): void {
     if (activity.serveId !== serveId || activity.updatedAt <= lastSample) return;
     lastSample = activity.updatedAt;
-    const rate = activity.mtplx?.latest?.decode_tok_s
-      ?? activity.slots.find(slot => slot.state === 'generating')?.tokensPerSecond;
-    if (!activity.available || activity.stale || rate == null || !Number.isFinite(rate) || rate <= 0) {
+    const { phase, rate, progress } = localModelPhase(activity, getInFlightPromptOverlay());
+    // Samples without a fresh rate keep the last one for the same phase, so the figure doesn't blink.
+    if (phase !== shownPhase) heldRate = null;
+    shownPhase = phase;
+    if (rate != null) heldRate = rate;
+    // The trace plots decode speed only; prompt rates run an order of magnitude higher.
+    if (phase === 'idle') samples.push(0);
+    else if (phase === 'generating' && heldRate != null) samples.push(heldRate);
+    if (samples.length > SPARK_SLOTS) samples.shift();
+    if (samples.every(sample => sample === 0)) samples.length = 0;
+    paintSpark();
+    if (phase === 'idle') {
       modelDetail.textContent = 'Ready';
+      delete modelCard.dataset.activity;
+      delete modelCard.dataset.progress;
       modelRate.hidden = true;
-      modelLink.removeAttribute('hidden');
       return;
     }
-    modelDetail.textContent = 'Generating';
-    modelRate.textContent = `${Math.round(rate)} tok/s`;
-    modelRate.hidden = false;
-    modelLink.setAttribute('hidden', '');
-    samples.push(rate);
-    if (samples.length > 18) samples.shift();
-    const peak = Math.max(...samples);
-    spark.replaceChildren(...samples.map(sample => {
-      const bar = document.createElement('span');
-      bar.style.height = `${Math.max(12, sample / peak * 100)}%`;
-      return bar;
-    }));
-    spark.hidden = false;
+    modelCard.dataset.activity = phase;
+    if (phase === 'prompt' && progress != null) {
+      const percent = Math.min(99, Math.floor(progress * 100));
+      modelCard.dataset.progress = '';
+      modelProgress.style.setProperty('--mn-local-model-progress', String(progress));
+      modelDetail.textContent = `Reading prompt ${percent}%`;
+    } else {
+      delete modelCard.dataset.progress;
+      modelDetail.textContent = phase === 'prompt' ? 'Reading prompt' : 'Generating';
+    }
+    modelRate.hidden = heldRate == null;
+    if (heldRate != null) modelRate.textContent = `${Math.round(heldRate).toLocaleString()} tok/s`;
   }
   const refreshModel = async () => {
     if (!sidebarShown || document.hidden || modelRequest) return;
@@ -180,13 +234,19 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
         return;
       }
       modelCard.dataset.state = serve.status;
-      modelTitle.textContent = serve.modelLabel || 'Local model';
-      if (!running || serveId !== running.id) modelDetail.textContent = running ? 'Ready' : starting ? 'Loading model…' : 'Runtime unhealthy';
+      const label = serve.modelLabel || 'Local model';
+      const runtime = runtimeDisplayName(serve.runtime);
+      modelTitle.textContent = stripRuntimePrefix(label, serve.runtime);
+      modelCard.title = `${label} · ${runtime} · port ${serve.port}`;
+      modelCard.setAttribute('aria-label', `${label}, ${runtime}. Open Models`);
+      if (!running || serveId !== running.id) modelDetail.textContent = running ? 'Ready' : starting ? 'Loading…' : 'Unhealthy';
       setTrackedModel(running?.id);
     } catch {
       if (!controller.signal.aborted && !modelCard.hidden) {
         setTrackedModel(undefined);
         modelCard.dataset.state = 'unavailable';
+        modelCard.removeAttribute('title');
+        modelCard.removeAttribute('aria-label');
         modelTitle.textContent = 'Local server unavailable';
         modelDetail.textContent = 'Open Models';
       }

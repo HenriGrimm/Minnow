@@ -14,6 +14,7 @@ const STALE_AFTER_MS = 10_000;
  * @property {number} decoded
  * @property {number | null} remaining
  * @property {number | null} tokensPerSecond
+ * @property {number | null} promptTokensPerSecond
  */
 
 /**
@@ -100,25 +101,32 @@ export function normalizeSlots(raw, prev, now) {
     const generating = busy && remaining != null && remaining > 0;
     const decoded = generating && nextToken ? asInt(nextToken.n_decoded) : 0;
 
+    const promptProcessed = busy ? asInt(entry.n_prompt_tokens_processed) : 0;
     const before = prev.get(id);
+    const sameTask = Boolean(before) && before.taskId === taskId;
+    const deltaMs = before ? now - before.at : 0;
     let tokensPerSecond = null;
-    if (generating && before && before.taskId === taskId && decoded > before.decoded) {
-      const deltaMs = now - before.at;
-      if (deltaMs > 0) tokensPerSecond = ((decoded - before.decoded) / deltaMs) * 1000;
+    if (generating && sameTask && decoded > before.decoded && deltaMs > 0) {
+      tokensPerSecond = ((decoded - before.decoded) / deltaMs) * 1000;
+    }
+    let promptTokensPerSecond = null;
+    if (busy && !generating && sameTask && promptProcessed > before.promptProcessed && deltaMs > 0) {
+      promptTokensPerSecond = ((promptProcessed - before.promptProcessed) / deltaMs) * 1000;
     }
 
     slots.push({
       id,
       taskId,
       state: !busy ? 'idle' : generating ? 'generating' : 'prompt',
-      promptProcessed: busy ? asInt(entry.n_prompt_tokens_processed) : 0,
+      promptProcessed,
       promptCached: busy ? asInt(entry.n_prompt_tokens_cache) : 0,
       decoded,
       remaining: generating ? remaining : null,
       tokensPerSecond,
+      promptTokensPerSecond,
     });
 
-    prev.set(id, { taskId, decoded, at: now });
+    prev.set(id, { taskId, decoded, promptProcessed, at: now });
   }
 
   return slots;

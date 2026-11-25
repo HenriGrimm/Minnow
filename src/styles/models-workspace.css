@@ -435,16 +435,9 @@
 }
 
 .models-server .models-loaded__facts {
-  gap: 6px 14px;
+  gap: 2px 0;
 }
 
-.models-server .models-loaded__facts .models-chip {
-  padding: 0;
-  background: transparent;
-  border: 0;
-  font-size: 10px;
-  text-transform: none;
-}
 
 .models-server-connection {
   min-width: 0;

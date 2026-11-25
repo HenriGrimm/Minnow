@@ -148,3 +148,16 @@ describe('serve activity chip labels', () => {
     assert.equal(formatQueuedChipLabel(0), null);
   });
 });
+
+describe('MTPLX chips', () => {
+  const it = test;
+  const mtplx = (live) => ({
+    serveId: 's', modelLabel: 'm', libraryId: null, updatedAt: 1, available: true, stale: false, queued: 0, slots: [],
+    mtplx: { activeRequests: 1, latest: { decode_tok_s: 92 }, live },
+  });
+  it('names the live phase instead of a request count', () => {
+    assert.deepEqual(serveActivityChipLabels(mtplx({ phase: 'prompt', promptDone: 1000, promptTotal: 4000, promptTokS: 800, decodeTokS: null, completionTokens: null })), ['PP 25%']);
+    assert.deepEqual(serveActivityChipLabels(mtplx({ phase: 'generating', promptDone: null, promptTotal: 4000, promptTokS: null, decodeTokS: 44, completionTokens: 2623 })), ['GEN 2.6k tok']);
+    assert.deepEqual(serveActivityChipLabels(mtplx(null)), ['1 active']);
+  });
+});

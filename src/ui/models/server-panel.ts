@@ -3,10 +3,10 @@ import { classifyLogLine, foldServeLogEvent, toLogLines } from '../../models/ser
 import { isLiveServeStatus, isRetryableServeStatus, retryLabelForServe, serveStatusLabel } from '../../models/serve-status';
 import { setStatus } from '../status';
 import {
-  chip,
   copyField,
   copyText,
   el,
+  formatCount,
   formatElapsed,
   icon,
   iconButton,
@@ -30,6 +30,7 @@ import type { ServeActivity } from '../../models/api-client';
 import { serveActivityChipLabels } from '../../models/serve-activity-chips';
 import { activityForLoadedServe } from '../../models/mlx-serve-activity';
 import { mtplxHostLabel } from '../../models/mtplx-loaded-with';
+import { runtimeDisplayName } from '../../models/runtime-names';
 import {
   getInFlightPromptOverlay,
   subscribeInFlightPromptOverlay,
@@ -515,10 +516,10 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   head.appendChild(actions);
   card.appendChild(head);
 
-  card.appendChild(loadedFacts(serve, activity));
+  card.appendChild(loadedFacts(serve));
   const telemetry = createRuntimeTelemetry();
   telemetryByCard.set(card, telemetry);
-  telemetry.update(activity);
+  telemetry.update(activity, overlay);
   card.append(telemetry.element);
 
   if (activity?.mtplx) {
@@ -535,38 +536,22 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   return card;
 }
 
-function loadedFacts(serve: ServeRecord, activity: ServeActivity | undefined): HTMLElement {
+/** Static facts about the serve. Live figures belong to the telemetry block, not here. */
+function loadedFacts(serve: ServeRecord): HTMLElement {
   const meta = el('div', 'models-loaded__facts');
-  meta.append(
-    chip(serve.runtime),
-    chip(`port ${serve.port}`),
-    chip(`up ${formatElapsed(serve.startedAt)}`),
-  );
-  if (serve.runtime === 'mtplx') {
-    meta.append(chip('Powered by MTPLX'), chip(mtplxHostLabel(serve)));
-    if (serve.mtplxVersion) meta.append(chip(serve.mtplxVersion));
-    if (serve.mtplxSettings?.context_window) meta.append(chip('ctx ' + serve.mtplxSettings.context_window));
-    const metrics = activity?.mtplx?.latest;
-    if (metrics?.decode_tok_s != null) meta.append(chip(metrics.decode_tok_s.toFixed(1) + ' tok/s'));
-    if (metrics?.prefill_tok_s != null) meta.append(chip('prefill ' + metrics.prefill_tok_s.toFixed(1) + ' tok/s'));
-    if (metrics?.ttft_s != null) meta.append(chip('TTFT ' + metrics.ttft_s.toFixed(2) + ' s'));
-    if (metrics?.mtp_depth != null) meta.append(chip('MTP D' + metrics.mtp_depth));
-    if (metrics?.cached_tokens != null) meta.append(chip(metrics.cached_tokens + ' cached'));
-    if (activity?.mtplx) meta.append(chip(activity.mtplx.activeRequests + ' active'));
-  }
+  const runtime = runtimeDisplayName(serve.runtime);
+  const facts = [serve.runtime === 'mtplx' && serve.mtplxVersion ? `${runtime} ${serve.mtplxVersion}` : runtime];
+  if (serve.runtime === 'mtplx') facts.push(mtplxHostLabel(serve));
   const settings = serve.llamaSettings as
     | { ctx?: number; parallel?: number; spec_type?: string }
     | null;
-  if (settings?.ctx) meta.appendChild(chip(`ctx ${settings.ctx}`));
-  if (serve.mlxSettings?.contextLength) {
-    meta.appendChild(chip(`ctx ${serve.mlxSettings.contextLength}`));
-  }
-  if (settings?.parallel) meta.appendChild(chip(`parallel ${settings.parallel}`));
-  if (settings?.spec_type && settings.spec_type !== 'none') {
-    meta.appendChild(chip(settings.spec_type));
-  }
-  const rate = activity?.slots.find((slot) => slot.tokensPerSecond != null)?.tokensPerSecond;
-  if (rate != null && rate > 0) meta.appendChild(chip(`${rate.toFixed(1)} tok/s`));
+  const context = serve.mtplxSettings?.context_window ?? settings?.ctx ?? serve.mlxSettings?.contextLength;
+  if (context) facts.push(`${formatCount(context)} context`);
+  if (serve.mtplxSettings?.depth) facts.push(`MTP depth ${serve.mtplxSettings.depth}`);
+  if (settings?.parallel) facts.push(`${settings.parallel} parallel`);
+  if (settings?.spec_type && settings.spec_type !== 'none') facts.push(settings.spec_type);
+  facts.push(`port ${serve.port}`, `up ${formatElapsed(serve.startedAt)}`);
+  meta.append(...facts.map((fact) => el('span', 'models-loaded__fact', fact)));
   return meta;
 }
 
@@ -585,7 +570,8 @@ function performanceDetails(activity: ServeActivity): string {
 
 /** Keep buttons, disclosures and busy spinners mounted through telemetry ticks. */
 function patchLoadedCard(card: HTMLElement, serve: ServeRecord): void {
-  const activity = activityForLoadedServe(serve, getModelsState().activity.get(serve.id), getInFlightPromptOverlay());
+  const overlay = getInFlightPromptOverlay();
+  const activity = activityForLoadedServe(serve, getModelsState().activity.get(serve.id), overlay);
   const head = card.querySelector('.models-loaded__head')!;
   const existing = Array.from(head.querySelectorAll<HTMLElement>('.models-loaded__state'));
   const next = activityChips(activity);
@@ -600,7 +586,7 @@ function patchLoadedCard(card: HTMLElement, serve: ServeRecord): void {
   existing.slice(next.length).forEach((chipEl) => chipEl.remove());
 
   const facts = card.querySelector('.models-loaded__facts')!;
-  const nextFacts = loadedFacts(serve, activity);
+  const nextFacts = loadedFacts(serve);
   const factChips = Array.from(nextFacts.children);
   factChips.forEach((chipEl, index) => {
     const current = facts.children[index];
@@ -611,7 +597,7 @@ function patchLoadedCard(card: HTMLElement, serve: ServeRecord): void {
   const details = card.querySelector('details pre');
   const text = activity?.mtplx ? performanceDetails(activity) : '';
   if (details && details.textContent !== text) details.textContent = text;
-  telemetryByCard.get(card)?.update(activity);
+  telemetryByCard.get(card)?.update(activity, overlay);
 }
 
 /** Crashed / unhealthy / error — distinct from Stopped (user eject) and load Failed. */
