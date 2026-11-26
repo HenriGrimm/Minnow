@@ -179,12 +179,15 @@ describe('createFreshChatIdForWorkspaceEntry', () => {
       ],
     });
 
-    const next = createFreshChatIdForWorkspaceEntry(PATH_A, state, 'fallback-model', (modelId, ws) =>
+    const binding = { providerId: 'codex-cli', modelId: 'fallback-model' };
+    const next = createFreshChatIdForWorkspaceEntry(PATH_A, state, binding, ws =>
       chatRow('new-chat', 'New', ws, Date.now()),
     );
     assert.notEqual(next, CHAT_A);
     assert.equal(state.chats[0].id, next);
     assert.equal(normalizeWorkspacePath(state.chats[0].workspacePath), key);
+    assert.equal(state.chats[0].providerId, binding.providerId);
+    assert.equal(state.chats[0].modelId, binding.modelId);
   });
 });
 
@@ -200,7 +203,7 @@ describe('resolveActiveChatIdForWorkspace', () => {
       ],
     });
 
-    const next = resolveActiveChatIdForWorkspace(PATH_A, state, '', (modelId, ws) =>
+    const next = resolveActiveChatIdForWorkspace(PATH_A, state, {}, ws =>
       chatRow('new', 'New', ws, Date.now()),
     );
     assert.equal(next, CHAT_A);
@@ -214,13 +217,16 @@ describe('resolveActiveChatIdForWorkspace', () => {
 
     assert.equal(getChatsForWorkspace(PATH_A, state).length, 0);
 
-    const next = resolveActiveChatIdForWorkspace(PATH_A, state, 'fallback-model', (modelId, ws) =>
+    const binding = { providerId: 'codex-cli', modelId: 'fallback-model' };
+    const next = resolveActiveChatIdForWorkspace(PATH_A, state, binding, ws =>
       chatRow('new-chat', 'New', ws, Date.now()),
     );
     const after = getChatsForWorkspace(PATH_A, state);
     assert.equal(after.length, 1);
     assert.equal(next, after[0].id);
     assert.equal(after[0].workspacePath, normalizeWorkspacePath(PATH_A));
+    assert.equal(after[0].providerId, binding.providerId);
+    assert.equal(after[0].modelId, binding.modelId);
   });
 });
 

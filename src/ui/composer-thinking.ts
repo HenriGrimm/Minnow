@@ -19,7 +19,6 @@ import {
   modelUsesComposerThinkingToggle,
   resolveEffectiveReasoningEffort,
 } from '../lib/reasoning-effort';
-import { resolveSendCapabilities } from '../providers/model-capabilities';
 import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
 import {
   ensureSessionsReady,
@@ -28,7 +27,7 @@ import {
   sessionState,
   touchChat,
 } from '../state/sessions';
-import { syncComposerReasoningEffortFromActiveChat, setComposerReasoningChoice } from './composer-reasoning-effort';
+import { getComposerReasoningCapabilities, syncComposerReasoningEffortFromActiveChat, setComposerReasoningChoice } from './composer-reasoning-effort';
 import { createIcon } from './icon';
 import { isComposerRecoveryBlocked } from './composer-send';
 import { configureManagedChatModel, isManagedModelBusy, managedModelReadOnlyReason, managedReasoningSelection } from './managed-chat-model';
@@ -58,17 +57,8 @@ function formatBudgetHint(budget: ReturnType<typeof resolveThinkingBudgetTokens>
   return ` · budget: ${k} (${budget.sourceLabel})`;
 }
 
-function effectiveCapabilities(): ReturnType<typeof resolveSendCapabilities> {
-  if (!sessionState) return undefined;
-  const chat = getActiveChat();
-  const modelId = chat.modelId?.trim();
-  const providerId = chat.providerId?.trim();
-  if (!modelId || !providerId) return undefined;
-  return resolveSendCapabilities(providerId, modelId);
-}
-
 function isDropdownReasoningActive(
-  caps: ReturnType<typeof resolveSendCapabilities>,
+  caps: ReturnType<typeof getComposerReasoningCapabilities>,
 ): boolean {
   const chat = getActiveChat();
   if (chat.reasoningEffort === 'off') return false;
@@ -105,7 +95,7 @@ function applyChatThinkingMode(mode: ThinkingTriState): void {
 /** Toggle reasoning off/on for models that use the level dropdown + brain combo. */
 function applyDropdownModeBrainToggle(): void {
   const chat = getActiveChat();
-  const caps = effectiveCapabilities();
+  const caps = getComposerReasoningCapabilities();
   if (modelUsesAlwaysOnReasoning(caps)) return;
   if (chat.chatCommandVersion === 1) {
     setComposerReasoningChoice(chat.reasoningEffort === 'off' ? defaultComposerReasoningLevel(caps) ?? 'inherit' : 'off');
@@ -126,8 +116,8 @@ function applyDropdownModeBrainToggle(): void {
 // ── Toggle ───────────────────────────────────────────────────────────────────
 
 function onToggleClick(): void {
-  if (toggleBtn?.disabled) return;
-  const caps = effectiveCapabilities();
+  if (!sessionState || toggleBtn?.disabled) return;
+  const caps = getComposerReasoningCapabilities();
   if (modelUsesComposerReasoningDropdown(caps)) {
     applyDropdownModeBrainToggle();
     return;
@@ -169,7 +159,7 @@ export function initThinkingControl(): void {
 /** Sync reasoning toggle from active chat, inheritance, and model capabilities. */
 export function syncThinkingControlFromActiveChat(): void {
   if (!sessionState) return;
-  const caps = effectiveCapabilities();
+  const caps = getComposerReasoningCapabilities();
   const thinkingWrap = document.getElementById('composerThinkingWrap');
   const dropdownMode = modelUsesComposerReasoningDropdown(caps);
   const toggleMode = modelUsesComposerThinkingToggle(caps);

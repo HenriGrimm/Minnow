@@ -7,6 +7,7 @@ import { AUTO_TITLE_MAX_LEN, PLACEHOLDER_CHAT_NAME } from '../constants';
 import { DEFAULT_MODE_ID } from '../chat/modes/types';
 import { normalizePersistedModeId } from './session-schema.mjs';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { copyChatModelBinding, type ModelSelectChatBinding } from '../lib/model-select-key';
 import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import { getFirstMessageSubmission } from '../chat/first-message-submission';
 import { hasUnsettledAgentWork } from './chat-relationships';
@@ -353,11 +354,12 @@ export function getUnassignedChats(state: SessionState): Chat[] {
 export function createFreshChatIdForWorkspaceEntry(
   workspacePath: string,
   state: SessionState,
-  fallbackModelId: string,
-  createScopedEmptyChat: (modelId: string, workspaceKey: string) => Chat,
+  fallbackModel: ModelSelectChatBinding,
+  createScopedEmptyChat: (workspaceKey: string) => Chat,
 ): string {
   const key = normalizeWorkspacePath(workspacePath);
-  const fresh = createScopedEmptyChat(fallbackModelId, key);
+  const fresh = createScopedEmptyChat(key);
+  copyChatModelBinding(fallbackModel, fresh);
   state.chats.unshift(fresh);
   const now = Date.now();
   fresh.updatedAt = now;
@@ -374,8 +376,8 @@ export function createFreshChatIdForWorkspaceEntry(
 export function resolveActiveChatIdForWorkspace(
   workspacePath: string,
   state: SessionState,
-  fallbackModelId: string,
-  createScopedEmptyChat: (modelId: string, workspaceKey: string) => Chat,
+  fallbackModel: ModelSelectChatBinding,
+  createScopedEmptyChat: (workspaceKey: string) => Chat,
 ): string {
   const key = normalizeWorkspacePath(workspacePath);
   const map = state.lastActiveChatIdByWorkspace ?? {};
@@ -393,12 +395,7 @@ export function resolveActiveChatIdForWorkspace(
   const scoped = getSidebarListedChatsForWorkspace(key, state);
   if (scoped.length) return scoped[0]!.id;
 
-  const fresh = createScopedEmptyChat(fallbackModelId, key);
-  state.chats.unshift(fresh);
-  const now = Date.now();
-  fresh.updatedAt = now;
-  fresh.lastMessageAt = now;
-  return fresh.id;
+  return createFreshChatIdForWorkspaceEntry(key, state, fallbackModel, createScopedEmptyChat);
 }
 
 /** Minimal chat coerce for migration unit tests (workspacePath only). */

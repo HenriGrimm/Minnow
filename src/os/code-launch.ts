@@ -89,7 +89,7 @@ export async function restoreCodeSessionOnForeground(): Promise<void> {
   const targetId = resolveActiveChatIdForWorkspace(
     workspacePath,
     sessionState,
-    active.modelId ?? '',
+    active,
   );
 
   const { switchChat } = await import('../ui/sidebar');

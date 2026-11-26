@@ -18,7 +18,7 @@ import {
   scheduleSaveSessions,
   touchChat,
 } from '../state/sessions';
-import type { ReasoningEffortOption as EffortOption } from '../types';
+import type { Chat, ReasoningEffortOption as EffortOption } from '../types';
 import { syncThinkingControlFromActiveChat } from './composer-thinking';
 import { syncComposerCodeMapFromActiveChat } from './composer-code-map';
 import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
@@ -27,7 +27,7 @@ import { modelCache } from '../app-state';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { favoriteReasoningLevel, savedReasoningFavorite, saveReasoningFavorite } from '../models/reasoning-favorite';
 import { cursorVariantFamilyKey, cursorVariantParts, resolveCursorVariantId, usesCliReasoningFavorite } from '../models/cursor-variants.mjs';
-import { syncComposerModelTriggers } from './composer-model-trigger';
+import { resolveComposerModelSelectValue, syncComposerModelTriggers } from './composer-model-trigger';
 import { configureManagedChatModel, isManagedModelBusy, managedChatModelSelection, managedModelReadOnlyReason, managedReasoningSelection } from './managed-chat-model';
 import { showToast } from './toast';
 
@@ -38,21 +38,16 @@ let cursorFastButton: HTMLButtonElement | null = null;
 
 // ── Options ──────────────────────────────────────────────────────────────────
 
-function effectiveCapabilities(): ReturnType<typeof resolveSendCapabilities> {
-  const chat = getActiveChat();
-  const modelId = chat.modelId?.trim();
-  const providerId = chat.providerId?.trim();
-  if (!modelId || !providerId) return undefined;
-  return resolveSendCapabilities(providerId, modelId);
+function reasoningModelBinding(chat: Chat) {
+  return decodeModelSelectKey(resolveComposerModelSelectValue(chat));
 }
 
-function getAllowedOptions(): EffortOption[] {
-  const caps = effectiveCapabilities();
-  return normalizeReasoningAllowedOptions(caps?.reasoningAllowedOptions ?? []);
+export function getComposerReasoningCapabilities(binding = reasoningModelBinding(getActiveChat())): ReturnType<typeof resolveSendCapabilities> {
+  return binding ? resolveSendCapabilities(binding.providerId, binding.modelId) : undefined;
 }
 
-function getLevelOptions(): EffortOption[] {
-  return getComposerReasoningLevelOptions(getAllowedOptions());
+function getLevelOptions(caps = getComposerReasoningCapabilities()): EffortOption[] {
+  return getComposerReasoningLevelOptions(normalizeReasoningAllowedOptions(caps?.reasoningAllowedOptions ?? []));
 }
 
 /** Drop saved effort when the active model no longer allows it. */
@@ -60,8 +55,10 @@ function validateAndClearInvalidEffort(): void {
   const chat = getActiveChat();
   if (chat.chatCommandVersion === 1) return;
   if (!chat.reasoningEffort) return;
-  const caps = effectiveCapabilities();
-  const levels = getLevelOptions();
+  const caps = getComposerReasoningCapabilities();
+  // Cold boot can render the chat before its catalog supplies capabilities.
+  if (!caps) return;
+  const levels = getLevelOptions(caps);
   if (chat.reasoningEffort === 'off' && !modelUsesAlwaysOnReasoning(caps)) return;
   const effort = legacyMtplxReasoningEffort(chat.reasoningEffort, caps, chat.modelId);
   if (isComposerReasoningLevel(effort) && levels.includes(effort)) {
@@ -72,21 +69,21 @@ function validateAndClearInvalidEffort(): void {
   scheduleSaveSessions();
 }
 
-function resolveDisplayEffort(levels: EffortOption[]): EffortOption | undefined {
+function resolveDisplayEffort(levels: EffortOption[], caps = getComposerReasoningCapabilities()): EffortOption | undefined {
   if (levels.length === 0) return undefined;
   const chat = getActiveChat();
   if (chat.reasoningEffort && levels.includes(chat.reasoningEffort)) {
     return chat.reasoningEffort;
   }
-  const caps = effectiveCapabilities();
   const agent = resolveActiveWorkAgent(chat);
   const resolved = resolveThinkingMode({
     kind: 'work-agent',
     agentKey: agent?.id ?? null,
     chatThinkingMode: chat.thinkingMode,
   });
-  const favorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId) && chat.thinkingMode !== 'off'
-    ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined;
+  const binding = reasoningModelBinding(chat);
+  const favorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(binding?.providerId) && chat.thinkingMode !== 'off'
+    ? favoriteReasoningLevel(binding?.providerId, binding?.modelId) : undefined;
   const effort = resolveEffectiveReasoningEffort(favorite ? { reasoningEffort: favorite } : chat, caps, favorite ? 'on' : resolved.mode, chat.modelId);
   if (effort && levels.includes(effort)) return effort;
   return levels.includes('medium') ? 'medium' : levels[0];
@@ -142,16 +139,18 @@ export interface ComposerReasoningChoice {
 
 /** Current chat reasoning, shared by the model label and its menu. */
 export function getComposerReasoningState() {
-  const caps = effectiveCapabilities();
   const chat = getActiveChat();
-  const levels = getLevelOptions();
+  const binding = reasoningModelBinding(chat);
+  const caps = getComposerReasoningCapabilities(binding);
+  const allowed = normalizeReasoningAllowedOptions(caps?.reasoningAllowedOptions ?? []);
+  const levels = getComposerReasoningLevelOptions(allowed);
   const toggle = modelShowsComposerBrainToggle(caps);
   const agent = resolveActiveWorkAgent(chat);
   const resolved = resolveThinkingMode({
     kind: 'work-agent', agentKey: agent?.id ?? null, chatThinkingMode: chat.thinkingMode,
   });
-  const favorite = levels.length ? favoriteReasoningLevel(chat.providerId, chat.modelId) : undefined;
-  const followsCliFavorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId)
+  const favorite = levels.length ? favoriteReasoningLevel(binding?.providerId, binding?.modelId) : undefined;
+  const followsCliFavorite = chat.chatCommandVersion === 1 && usesCliReasoningFavorite(binding?.providerId)
     && !chat.reasoningEffort && chat.thinkingMode !== 'off' && favorite;
   const effective = followsCliFavorite || resolveEffectiveReasoningEffort(chat, caps, resolved.mode, chat.modelId) || resolved.mode;
   const choices: ComposerReasoningChoice[] = [];
@@ -165,10 +164,10 @@ export function getComposerReasoningState() {
     }
   }
   const label = levels.length && effective !== 'off'
-    ? formatReasoningEffortLabel(resolveDisplayEffort(levels) ?? effective)
+    ? formatReasoningEffortLabel(resolveDisplayEffort(levels, caps) ?? effective)
     : `Reasoning ${effective === 'off' ? 'off' : 'on'}`;
   return {
-    label: choices.length && (caps?.reasoning === true || getAllowedOptions().length || chat.thinkingMode || chat.reasoningEffort) ? label : '', choices,
+    label: choices.length && (caps?.reasoning === true || allowed.length || chat.thinkingMode || chat.reasoningEffort) ? label : '', choices,
     selected: (legacyMtplxReasoningEffort(chat.reasoningEffort, caps, chat.modelId) ?? chat.thinkingMode ?? 'inherit') as ComposerReasoningChoice['value'],
     favorite,
     disabled: (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked(),
@@ -180,14 +179,15 @@ export function setComposerReasoningChoice(value: string): void {
   const state = getComposerReasoningState();
   if (state.disabled || !state.choices.some(choice => choice.value === value)) return;
   const chat = getActiveChat();
+  const binding = reasoningModelBinding(chat);
   if (chat.chatCommandVersion === 1) {
-    const target = value === 'inherit' && !usesCliReasoningFavorite(chat.providerId) ? state.favorite ?? value : value;
+    const target = value === 'inherit' && !usesCliReasoningFavorite(binding?.providerId) ? state.favorite ?? value : value;
     void configureManagedChatModel(chat, managedReasoningSelection(chat, target, getLevelOptions().length > 0))
       .catch(error => showToast(String(error?.message || error), 'error')).finally(syncComposerReasoningEffortFromActiveChat);
     syncComposerReasoningEffortFromActiveChat(); return;
   }
   if (value === 'inherit') {
-    const saved = savedReasoningFavorite(chat.providerId, chat.modelId);
+    const saved = savedReasoningFavorite(binding?.providerId, binding?.modelId);
     if (saved) chat.reasoningEffort = saved;
     else delete chat.reasoningEffort;
     delete chat.thinkingMode;
@@ -211,11 +211,12 @@ export function toggleComposerReasoningFavorite(level: string): void {
   const choice = state.choices.find(entry => entry.level === level);
   if (!choice?.level) return;
   const chat = getActiveChat();
+  const binding = reasoningModelBinding(chat);
   const next = state.favorite === choice.level ? null : choice.level;
-  void saveReasoningFavorite(chat.providerId, chat.modelId, next)
+  void saveReasoningFavorite(binding?.providerId, binding?.modelId, next)
     .catch(error => showToast(`Could not save favorite reasoning: ${String(error?.message || error)}`, 'error'));
   if (next && state.selected === 'inherit' && !state.disabled &&
-      !(chat.chatCommandVersion === 1 && usesCliReasoningFavorite(chat.providerId))) setComposerReasoningChoice('inherit');
+      !(chat.chatCommandVersion === 1 && usesCliReasoningFavorite(binding?.providerId))) setComposerReasoningChoice('inherit');
   else syncComposerReasoningEffortFromActiveChat();
 }
 
@@ -299,7 +300,7 @@ function syncCursorFastButton(): void {
 }
 
 function isLevelDropdownVisible(): boolean {
-  const caps = effectiveCapabilities();
+  const caps = getComposerReasoningCapabilities();
   if (!modelUsesComposerReasoningLevelDropdown(caps)) return false;
   if (modelUsesAlwaysOnReasoning(caps)) return true;
   return getActiveChat().reasoningEffort !== 'off';

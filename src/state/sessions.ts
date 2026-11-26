@@ -28,7 +28,7 @@ import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import { isMinnowSandboxWorkspacePath } from '../lib/workspace-sandbox';
 import { paintChatHistoryPendingInForegroundShell } from '../ui/messages';
 import { notifySessionCreated } from '../webhooks/client';
-import { decodeModelSelectKey } from '../lib/model-select-key';
+import { decodeModelSelectKey, type ModelSelectChatBinding } from '../lib/model-select-key';
 import {
   CHAT_APP_ID,
   CODE_APP_ID,
@@ -1494,14 +1494,14 @@ export function activateAssistantChatForApp(chatsWorkspacePath: string): Chat {
 export function resolveActiveChatIdForWorkspace(
   workspacePath: string,
   state: SessionState = requireSessionState(),
-  fallbackModelId = '',
+  fallbackModel: ModelSelectChatBinding = {},
 ): string {
   return pickActiveChatIdForWorkspace(
     workspacePath,
     state,
-    fallbackModelId,
-    (modelId, workspaceKey) => {
-      const fresh = createEmptyChatObject(modelId, workspaceKey);
+    fallbackModel,
+    workspaceKey => {
+      const fresh = createEmptyChatObject('', workspaceKey);
       touchChat(fresh);
       return fresh;
     },
@@ -1525,13 +1525,12 @@ export async function onWorkspaceChanged(
   const prevKey = normalizeWorkspacePath(previousPath ?? '');
   rememberActiveChatForWorkspaceKey(prevKey);
 
-  const fallbackModelId =
-    state.chats.find((c) => c.id === state.activeId)?.modelId ?? '';
+  const fallbackModel = state.chats.find((c) => c.id === state.activeId) ?? {};
   const nextId = pickFreshChatIdForWorkspaceEntry(
     newPath,
     state,
-    fallbackModelId,
-    (modelId, workspaceKey) => createEmptyChatObject(modelId, workspaceKey),
+    fallbackModel,
+    workspaceKey => createEmptyChatObject('', workspaceKey),
   );
   const activeChanged = state.activeId !== nextId;
   state.activeId = nextId;

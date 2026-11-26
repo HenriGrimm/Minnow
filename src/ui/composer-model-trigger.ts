@@ -1,4 +1,4 @@
-import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
+import { decodeModelSelectKey, resolveModelSelectValueForChat, type ModelSelectChatBinding } from '../lib/model-select-key';
 import { getComposerReasoningState, setComposerReasoningChoice, toggleComposerReasoningFavorite } from './composer-reasoning-effort';
 import { wrapReasoningChoiceWithFavorite } from './reasoning-favorite-button';
 import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
@@ -162,18 +162,17 @@ function selectedOptionForValue(
   return sel.options[sel.selectedIndex];
 }
 
+/** Resolve the picker value for a chat, including older bindings with only a model ID. */
+export function resolveComposerModelSelectValue(chat: ModelSelectChatBinding): string {
+  const binding = canonicalRouterBinding(chat);
+  const sel = binding.providerId?.trim() ? null : getModelSelect();
+  const values = sel ? [...sel.options].map(option => option.value) : [];
+  return resolveModelSelectValueForChat(binding, values);
+}
+
 function resolveTriggerSelectValue(trigger: ComposerModelTrigger): string {
-  const sel = getModelSelect();
-  if (!sel) return '';
-  if (trigger.variant === 'menubar') {
-    return sel.value.trim();
-  }
-  if (trigger.variant === 'research') {
-    const values = [...sel.options].map((o) => o.value);
-    return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
-  }
-  const values = [...sel.options].map((o) => o.value);
-  return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
+  if (trigger.variant === 'menubar') return getModelSelect()?.value.trim() ?? '';
+  return resolveComposerModelSelectValue(getActiveChat());
 }
 
 /** True while fetchModels has the select parked on its "Loading models…" placeholder. */
